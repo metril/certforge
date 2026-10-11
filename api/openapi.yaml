@@ -2331,7 +2331,7 @@ paths:
       operationId: updateUser
       tags: [access]
       summary: Enable or disable a user
-      description: Needs users:write (global admin). Disabling revokes every session of the user at once and stops API keys they created. You cannot disable yourself (409). Users are never deleted.
+      description: Needs users:write (global admin). Disabling revokes every session of the user at once and stops API keys they created. You cannot disable yourself (409).
       requestBody:
         required: true
         content:
@@ -2351,6 +2351,18 @@ paths:
         "413": {$ref: "#/components/responses/PayloadTooLarge"}
         "415": {$ref: "#/components/responses/UnsupportedMediaType"}
         "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    delete:
+      operationId: deleteUser
+      tags: [access]
+      summary: Delete a user
+      description: Needs users:write (global admin). Permanently removes the user, their sessions and role bindings, and revokes the API keys they created (the keys stay listed as revoked with no creator). Audit history keeps the user's id. You cannot delete yourself, a local admin account, or the last enabled global admin (409).
+      responses:
+        "204": {description: User deleted.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/InternalError"}
   /api-keys:
     get:
@@ -4122,8 +4134,8 @@ components:
         prefix: {type: string, description: "Public part of the token: cf_<prefix>_…"}
         scopes: {type: array, items: {$ref: "#/components/schemas/ApiKeyScope"}, description: Granted scopes after intersection with the creator's role.}
         orgId: {type: string, format: uuid, nullable: true, description: The only org the key can act in; null for all orgs its creator can.}
-        createdBy: {type: string, format: uuid, description: Creating user; the key never exceeds their current permissions.}
-        createdByName: {type: string, description: Creator's display name.}
+        createdBy: {type: string, format: uuid, nullable: true, description: Creating user; the key never exceeds their current permissions. Null once that user is deleted (the key is then revoked).}
+        createdByName: {type: string, description: Creator's display name; "(deleted user)" once they are deleted.}
         expiresAt: {type: string, format: date-time, nullable: true, description: Expiry; null never expires.}
         lastUsedAt: {type: string, format: date-time, nullable: true, description: Last authenticated use, to the minute.}
         revokedAt: {type: string, format: date-time, nullable: true, description: When the key was revoked.}

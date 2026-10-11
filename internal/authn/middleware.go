@@ -173,7 +173,10 @@ func (o MiddlewareOptions) resolveBearer(ctx context.Context, header string) (*P
 		(k.ExpiresAt != nil && !time.Now().Before(*k.ExpiresAt)) {
 		return nil, ErrBadAPIKey
 	}
-	u, err := o.Queries.GetUser(ctx, k.CreatedBy)
+	if k.CreatedBy == nil { // creator deleted: the key is orphaned
+		return nil, ErrBadAPIKey
+	}
+	u, err := o.Queries.GetUser(ctx, *k.CreatedBy)
 	if err != nil {
 		return nil, err
 	}

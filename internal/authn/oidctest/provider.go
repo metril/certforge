@@ -43,6 +43,9 @@ type Provider struct {
 	nonce        string
 	audience     string
 	publicClient bool
+	slimIDToken  bool
+	uiStatus     int
+	uiUser       *User
 	closeOnce    sync.Once
 	codes        map[string]grant
 	tokens       map[string]User
@@ -94,6 +97,19 @@ func (p *Provider) SetAudience(aud string) { p.mu.Lock(); p.audience = aud; p.mu
 // client secret (a public client using PKCE alone), in addition to the
 // normal confidential-client credentials.
 func (p *Provider) SetPublicClient(v bool) { p.mu.Lock(); p.publicClient = v; p.mu.Unlock() }
+
+// SetClaimsInIDToken controls whether ID tokens carry email, name and groups
+// (default true). When false they carry only iss/sub/aud/exp/iat/nonce and the
+// profile is available from userinfo alone, like Authentik without "Include
+// claims in ID token".
+func (p *Provider) SetClaimsInIDToken(v bool) { p.mu.Lock(); p.slimIDToken = !v; p.mu.Unlock() }
+
+// SetUserinfoStatus forces /userinfo to answer with this HTTP status. 0 restores normal behaviour.
+func (p *Provider) SetUserinfoStatus(code int) { p.mu.Lock(); p.uiStatus = code; p.mu.Unlock() }
+
+// SetUserinfoUser makes /userinfo answer with u instead of the logged-in user
+// (conflict and subject-mismatch tests). nil restores the default.
+func (p *Provider) SetUserinfoUser(u *User) { p.mu.Lock(); p.uiUser = u; p.mu.Unlock() }
 
 // Stop shuts the provider down before the test ends, for tests that need to
 // simulate the identity provider becoming unreachable mid-flow. Safe to call
@@ -195,12 +211,20 @@ func (p *Provider) token(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"access_token": "at-" + code, "token_type": "Bearer", "expires_in": 300, "id_token": idt})
 }
 
-// userinfo answers for access tokens this provider issued. CertForge reads
-// claims from the ID token; this exists so clients that call userinfo work.
+// userinfo answers for access tokens this provider issued. CertForge merges
+// these claims under those of the ID token.
 func (p *Provider) userinfo(w http.ResponseWriter, r *http.Request) {
 	p.mu.Lock()
 	u, ok := p.tokens[strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")]
+	status, override := p.uiStatus, p.uiUser
 	p.mu.Unlock()
+	if status != 0 {
+		writeJSON(w, status, map[string]string{"error": "forced"})
+		return
+	}
+	if ok && override != nil {
+		u = *override
+	}
 	if !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_token"})
 		return
@@ -211,15 +235,17 @@ func (p *Provider) userinfo(w http.ResponseWriter, r *http.Request) {
 func (p *Provider) sign(g grant) (string, error) {
 	now := time.Now()
 	p.mu.Lock()
-	aud := p.audience
+	aud, slim := p.audience, p.slimIDToken
 	p.mu.Unlock()
 	if aud == "" {
 		aud = ClientID
 	}
 	claims := map[string]any{"iss": p.srv.URL, "sub": g.user.Subject, "aud": aud,
-		"iat": now.Unix(), "exp": now.Add(5 * time.Minute).Unix(), "nonce": g.nonce,
-		"email": g.user.Email, "name": g.user.Name}
-	if g.user.Groups != nil {
+		"iat": now.Unix(), "exp": now.Add(5 * time.Minute).Unix(), "nonce": g.nonce}
+	if !slim {
+		claims["email"], claims["name"] = g.user.Email, g.user.Name
+	}
+	if !slim && g.user.Groups != nil {
 		claims["groups"] = g.user.Groups
 	}
 	payload, err := json.Marshal(claims)

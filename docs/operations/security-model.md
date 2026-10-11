@@ -60,7 +60,7 @@ A `vault-kv` target writes into one shared Vault. Without global `delivery:write
 - The local admin is break-glass access. There is at most one. Its password (12 to 1024 characters) is stored as argon2id. Logins for a missing user take as long as a real check.
 - Sessions are server-side rows. The `cf_session` cookie holds a random 256-bit token; the database stores its SHA-256. The cookie is `HttpOnly`, `SameSite=Lax`, and `Secure` when the base URL is https, the request came over TLS, or it came from a trusted proxy with `X-Forwarded-Proto: https`. Lifetime is **Settings → Authentication → Session lifetime (hours)** (default 12 hours).
 - Every session has its own CSRF token. Mutating requests must send it in `X-CSRF-Token`, except public routes. Bodies must be `application/json`, so a cross-site form cannot reach login or setup.
-- A new login revokes the user's other sessions. Disabled and deleted users lose access on their next request.
+- A new login revokes the user's other sessions. Disabled and deleted users lose access on their next request. Deleting a user (`DELETE /users/{id}`, `users:write`) removes their sessions and role bindings and revokes the API keys they created; the keys remain as revoked rows with no creator, and a key whose creator is gone is refused. Self, the local admin and the last global admin cannot be deleted.
 - Login, OIDC start and callback, and setup are rate limited per client address (default 10 a minute, burst 5; `0` disables). Beyond the limit, login returns `429` with `Retry-After`; OIDC redirects to `/login?error=rate_limited`.
 
 ## Single sign-on

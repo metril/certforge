@@ -512,6 +512,19 @@ func TestVaultAgainstCompose(t *testing.T) {
 	if !ok || gotFullchain == "" {
 		t.Fatalf("KV document missing fullchain.pem: keys=%v", kv.Data.Data)
 	}
+	// Compare against the certificate's *current* version, not the v2
+	// downloaded earlier. Step 1 recreates the server, whose issuance
+	// scheduler (River periodic job, RunOnStart) sweeps due certificates
+	// about a second after start, at a random point during steps 2-3. Step 3
+	// revokes v2, which sets next_renew_at = now(); if the sweep lands after
+	// the revoke, a v3 is issued and becomes current, and the deploy renders
+	// v3; if it has not run yet, the revoked v2 stays current until it does.
+	var curCert certOut
+	c.call(ctx, t, http.MethodGet, localCertPath, nil, &curCert)
+	if curCert.CurrentVersion == nil {
+		t.Fatal("certificate has no current version at KV check")
+	}
+	fullchain = c.download(ctx, t, localCertPath+"/versions/"+curCert.CurrentVersion.ID+"/download?format=pem&parts=fullchain")
 	if gotFullchain != string(fullchain) {
 		// Both are the same version's rendered fullchain.pem — the vault-kv
 		// target writes render.File.Data verbatim, byte for byte identical

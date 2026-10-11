@@ -38,7 +38,9 @@ An organization separates certificates, credentials and access. Sites are labels
 
 CertForge never creates users by hand. A person appears after their first single sign-on, or as the local admin created by the setup wizard. A new single sign-on user has no access until a role binding or group mapping gives them a role.
 
-To disable a user, turn off their status switch and type their name to confirm. Their sessions end at once and the API keys they created stop working. Turn the switch back on to re-enable them. Your own switch is locked, and users are never deleted. The page offers a search box; on a narrow screen the table becomes cards.
+To disable a user, turn off their status switch and type their name to confirm. Their sessions end at once and the API keys they created stop working. Turn the switch back on to re-enable them. Your own switch is locked. The page offers a search box; on a narrow screen the table becomes cards.
+
+Disabling is reversible. To remove someone for good, use the trash button on their row and type their name to confirm. Deletion needs the user-write permission and is permanent: it ends their sessions, removes their direct role bindings and revokes the API keys they created. Those keys stay listed as revoked, with the creator shown as "(deleted user)", and the audit log keeps the user's past events. You cannot delete yourself, the local admin or the last global administrator (the server answers 409). A deleted OIDC user who signs in again is created as a new user with no access until a binding or group mapping grants one.
 
 If you hold the user-read permission only in one organization (an **Org admin**), you see other users' name, email, status and creation time, but not their groups, source or last sign-in.
 
@@ -111,7 +113,7 @@ CertForge signs users in through any OpenID Connect provider. Users are matched 
    | **Client ID** | The client you registered | none |
    | **Client secret** | Leave empty for a public client using PKCE only. Stored sealed; shows as stored with **Replace** | none |
    | **Scopes** | Must include `openid` | `openid profile email groups` |
-   | **Groups claim** | The ID-token claim that lists the user's groups. A dotted path such as `realm_access.roles` reads a nested claim | `groups` |
+   | **Groups claim** | The claim that lists the user's groups, read from the ID token or, if absent there, from the provider's userinfo endpoint. A dotted path such as `realm_access.roles` reads a nested claim | `groups` |
    | **Session lifetime (hours)** | How long a sign-in lasts; applies to new sessions | 12 |
    | **Trusted proxies** | Addresses or CIDRs of reverse proxies whose `X-Forwarded-For` header is believed | none |
    | **Login rate limit (per minute)** | Login attempts per client address; `0` disables the limit | 10 |
@@ -130,6 +132,10 @@ The login page then shows **Sign in with single sign-on**. The local admin passw
 
 Under **Group mappings** on the same page, select **Add mapping**, type the group name exactly as the provider sends it, and choose a role and scope. Mappings are role bindings with a group subject, so they also show in **Role bindings**. Only global admins can add them.
 
+Claims (name, email, groups) are read from the ID token and completed from the provider's userinfo endpoint; the ID token wins on conflict.
+
+**Authentik.** The provider needs the `openid`, `email` and `profile` scope mappings. Groups arrive as `groups` through the profile mapping. **Include claims in ID token** is optional.
+
 A user gets the roles of every group listed at their last sign-in. Without any matching group or binding they have no access.
 
 ## Common problems
@@ -137,6 +143,8 @@ A user gets the roles of every group listed at their last sign-in. Without any m
 **Sign-in returns to the login page with a message.** The message names the cause: "The sign-in expired or was interrupted" (start again), "The identity provider refused the sign-in", "Your account is disabled" (an admin disabled you), "Single sign-on is not configured", or a generic "Single sign-on failed. Try again." (too many attempts from one address also ends here; wait a minute).
 
 **Group mappings do nothing.** The group name must match the claim exactly, and the **Groups claim** must be the claim your provider actually fills. Make sure the `groups` scope is requested and that the user signed in again after the mapping was added.
+
+**The display name shows a long ID.** The provider sent no `name`, `preferred_username` or `email`, in the ID token or in userinfo. Add the `profile` and `email` scopes and their mappings at the provider; the server log has a "display name falls back to subject" warning.
 
 **You cannot save the issuer.** Plain `http://` issuers are accepted only on `localhost` and loopback addresses. For a test stack on another host, the server must be started with `CF_OIDC_ALLOW_INSECURE_ISSUER=true`.
 

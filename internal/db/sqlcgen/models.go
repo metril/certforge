@@ -38,7 +38,7 @@ type ApiKey struct {
 	SecretHash []byte     `json:"secret_hash"`
 	Scopes     []string   `json:"scopes"`
 	OrgID      *uuid.UUID `json:"org_id"`
-	CreatedBy  uuid.UUID  `json:"created_by"`
+	CreatedBy  *uuid.UUID `json:"created_by"`
 	ExpiresAt  *time.Time `json:"expires_at"`
 	LastUsedAt *time.Time `json:"last_used_at"`
 	RevokedAt  *time.Time `json:"revoked_at"`
