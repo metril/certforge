@@ -302,6 +302,8 @@ export const help = {
   },
   'grant.layout': { text: 'Files the agent writes, built from PEM parts.', learnMore: 'guide/agents.md#file-layouts' },
   'grant.target': { text: 'What the agent does besides writing files, such as updating Traefik.', learnMore: 'guide/delivery.md#traefik' },
+  'grant.targetOptions': { text: "Per-grant settings for this target type, e.g. Traefik's default certificate." },
+  'grant.defaultCert': { text: 'Serves when no SNI matches.' },
   'grant.hooks': { text: 'Commands the agent runs around the deploy, in the numbered order. Reorder them with the arrows.', learnMore: 'guide/agents.md#hooks-and-the-allowlist' },
   'grant.autoRemediate': { text: 'On drift, reinstall the files automatically instead of only reporting it.', learnMore: 'guide/agents.md#drift' },
   'grant.files': { text: 'Expected digests come from the server; installed ones from the agent’s last report.', learnMore: 'guide/agents.md#drift' },

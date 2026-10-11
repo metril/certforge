@@ -67,12 +67,12 @@ func TestDeployTargetCRUD(t *testing.T) {
 	in := func(cfg map[string]interface{}, typ string) *gen.DeployTargetInput {
 		return &gen.DeployTargetInput{Name: "traefik", Type: gen.DeployTargetType(typ), Config: cfg}
 	}
-	res, err := f.srv.CreateDeployTarget(op, gen.CreateDeployTargetRequestObject{OrgId: f.org, Body: in(map[string]interface{}{"dir": "/etc/traefik/dynamic", "defaultCert": true}, "traefik")})
+	res, err := f.srv.CreateDeployTarget(op, gen.CreateDeployTargetRequestObject{OrgId: f.org, Body: in(map[string]interface{}{"dir": "/etc/traefik/dynamic", "pathPrefix": "/mnt/traefik"}, "traefik")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	dt := res.(gen.CreateDeployTarget201JSONResponse)
-	if string(dt.RunsOn) != "agent" || dt.Config["dir"] != "/etc/traefik/dynamic" || dt.Config["defaultCert"] != true {
+	if string(dt.RunsOn) != "agent" || dt.Config["dir"] != "/etc/traefik/dynamic" || dt.Config["pathPrefix"] != "/mnt/traefik" {
 		t.Fatalf("target %+v", dt)
 	}
 	for _, bad := range []*gen.DeployTargetInput{

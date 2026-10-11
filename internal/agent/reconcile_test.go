@@ -501,3 +501,14 @@ func TestReconcileStateSafeAgainstHeartbeats(t *testing.T) {
 }
 
 func heartbeatInstalled(id *Identity) []agentproto.InstalledFile { return id.Installed() }
+
+func TestCertsDirFromTargetCustom(t *testing.T) {
+	opts := json.RawMessage(`{"certsDir":"/srv/tls/web"}`)
+	tgt := &agentproto.Target{Type: "traefik", Config: json.RawMessage(`{"dir":"/etc/traefik/dynamic"}`), GrantOptions: opts}
+	if got := certsDirFromTarget(tgt, []string{"/etc/traefik/dynamic/certforge-web.yml", "/srv/tls/web/privkey.pem"}); got != "/srv/tls/web" {
+		t.Fatalf("got %q", got)
+	}
+	if got := certsDirFromTarget(tgt, []string{"/etc/traefik/dynamic/certforge-web.yml"}); got != "" {
+		t.Fatalf("no file in the custom dir: got %q", got)
+	}
+}

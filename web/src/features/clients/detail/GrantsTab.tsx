@@ -1,7 +1,7 @@
 import { Fragment, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { ChevronDown, Pencil, RotateCw, Server, Trash2 } from 'lucide-react';
+import { ChevronDown, Pencil, RotateCw, Server, Star, Trash2 } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { deployTargetsQuery, layoutsQuery } from '@/api/queries/delivery';
 import { grantsQuery, useDeleteGrant, useRedeployGrant } from '@/api/queries/grants';
@@ -83,6 +83,24 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
   // runsOn:'server' grant (5a-facts.md); this endpoint is client-scoped and
   // never actually returns one, but the table must render one safely rather
   // than dereferencing `deployment!` if it ever does.
+  const optionsMeta = (g: Grant) => {
+    const dir = g.targetOptions?.certsDir;
+    return (
+      <>
+        {g.targetOptions?.defaultCert === true && <ToneChip tone="neutral" icon={Star} label="Default" help="grant.defaultCert" />}
+        {typeof dir === 'string' && dir && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0} className="min-w-0 truncate font-mono text-xs text-ink-muted">
+                {dir}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="font-mono text-xs">{dir}</TooltipContent>
+          </Tooltip>
+        )}
+      </>
+    );
+  };
   const targetCell = (g: Grant) =>
     g.runsOn === 'server' ? (
       <span className="inline-flex items-center gap-1">
@@ -90,7 +108,10 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
         <span className="truncate">{targetName(g.deployTargetId)}</span>
       </span>
     ) : (
-      targetName(g.deployTargetId)
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span className="truncate">{targetName(g.deployTargetId)}</span>
+        {optionsMeta(g)}
+      </span>
     );
   const stateCell = (g: Grant) =>
     g.runsOn === 'server' ? (
@@ -269,8 +290,11 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
                   <DeploymentChip state={g.deployment!.state} withHelp />
                 )}
               </div>
-              <span className="truncate text-xs text-ink-muted">
+              <span className="flex min-w-0 items-center gap-1.5 text-xs text-ink-muted">
+                <span className="min-w-0 truncate">
                 {DELIVERY_LABEL[g.delivery]} · {layoutName(g.layoutId)} · {targetName(g.deployTargetId)} · {g.hookIds.length || '–'} hooks · Auto-remediate {g.autoRemediate ? 'On' : 'Off'}
+                </span>
+                {g.runsOn !== 'server' && optionsMeta(g)}
               </span>
               <div className="flex items-center justify-between">
                 {g.deployment ? toggleButton(g) : <span />}

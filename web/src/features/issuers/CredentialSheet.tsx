@@ -5,7 +5,7 @@ import { meQuery } from '@/api/queries/auth';
 import { CircleAlert } from 'lucide-react';
 import type { RJSFSchema } from '@rjsf/utils';
 import { revealCredentialSecret, useSaveCredential } from '@/api/queries/dns';
-import { ApiError, errorMessage } from '@/api/errors';
+import { ApiError, errorMessage, fieldOfTitle } from '@/api/errors';
 import type { DnsCredential, DnsCredentialInput, ProviderSchema } from '@/api/types';
 import { UNCHANGED } from '@/api/types';
 import { Field } from '@/components/Field';
@@ -29,15 +29,6 @@ type Props = {
   onSaved?: (c: DnsCredential) => void;
   onChangeProvider?: () => void;
 };
-
-// The server rejects a PUT that changes a non-secret config value while any
-// secret is still __unchanged__ (internal/issuance/store_dnscreds.go
-// UpdateDNSCredential): "secrets must be re-entered when connection settings
-// change". Its 422 carries `title: "Invalid " + field`, `detail: msg` (no
-// separate structured field), so the field name is read back out of the title.
-function fieldFromTitle(title: string | undefined): string | null {
-  return title?.startsWith('Invalid ') ? title.slice('Invalid '.length) : null;
-}
 
 export function CredentialSheet({ orgId, open, onOpenChange, provider, credential, onSaved, onChangeProvider }: Props) {
   const guard = useSheetGuard(onOpenChange);
@@ -134,7 +125,7 @@ export function CredentialSheet({ orgId, open, onOpenChange, provider, credentia
       onSaved?.(saved);
       guard.close();
     } catch (e) {
-      const field = e instanceof ApiError ? fieldFromTitle(e.problem.title) : null;
+      const field = e instanceof ApiError ? fieldOfTitle(e.problem.title) : null;
       setServerError({ field, message: errorMessage(e) });
     }
   }

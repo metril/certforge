@@ -288,3 +288,26 @@ it('shows a dash with a permission tooltip for layout and target without deliver
   expect(screen.queryByText('…')).not.toBeInTheDocument();
   expect(screen.getAllByText('—').length).toBeGreaterThan(0);
 });
+
+it('marks a default-certificate grant with a Default chip and tooltip', async () => {
+  grants = [
+    makeGrant({ id: 'g-1', certificateName: 'www', deployTargetId: 't-1', targetOptions: { defaultCert: true } }),
+    makeGrant({ id: 'g-2', certificateId: 'c-2', certificateName: 'api', deployTargetId: 't-1' }),
+  ];
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates');
+  await findLoadedTable();
+  expect(within(rowOf('api')).queryByText('Default')).not.toBeInTheDocument();
+  expect(within(rowOf('www')).getByText('Default')).toBeInTheDocument();
+  await user.hover(within(screen.getByText('Default')).getByRole('button', { name: 'Help' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Serves when no SNI matches');
+});
+
+it('shows a custom certsDir with the full path in a tooltip', async () => {
+  grants = [makeGrant({ id: 'g-1', certificateName: 'www', deployTargetId: 't-1', targetOptions: { certsDir: '/srv/certs/www' } })];
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates');
+  await findLoadedTable();
+  const path = within(rowOf('www')).getByText('/srv/certs/www');
+  expect(path).toHaveClass('truncate');
+  await user.hover(path);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('/srv/certs/www');
+});

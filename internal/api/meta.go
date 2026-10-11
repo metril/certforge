@@ -44,6 +44,13 @@ func (s *Server) schemaEntries(k meta.Kind) ([]gen.SchemaEntry, error) {
 		if len(e.Aliases) > 0 {
 			se.Aliases = &e.Aliases
 		}
+		if len(e.GrantSchema) > 0 {
+			var gs map[string]interface{}
+			if err := json.Unmarshal(e.GrantSchema, &gs); err != nil {
+				return nil, fmt.Errorf("meta %s/%s grantSchema: %w", k, e.Code, err)
+			}
+			se.GrantSchema = &gs
+		}
 		// e.Attrs is set only for KindDeployTarget entries
 		// (targets.AddToMeta); every other kind's Attrs is nil, so runsOn
 		// and keyPolicy stay unset here too.

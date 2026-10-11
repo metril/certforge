@@ -1989,6 +1989,9 @@ type Grant struct {
 	// ServerDeployment Server-side deployment state; null for an agent grant (see deployment).
 	ServerDeployment *ServerDeployment `json:"serverDeployment"`
 
+	// TargetOptions Per-type options for the deploy target
+	TargetOptions map[string]interface{} `json:"targetOptions"`
+
 	// UpdatedAt Last change.
 	UpdatedAt time.Time `json:"updatedAt"`
 }
@@ -2015,6 +2018,9 @@ type GrantInput struct {
 
 	// LayoutId Output layout in the same org.
 	LayoutId *openapi_types.UUID `json:"layoutId"`
+
+	// TargetOptions Per-type options for the deploy target
+	TargetOptions *map[string]interface{} `json:"targetOptions,omitempty"`
 }
 
 // GrantList A client's live grants.
@@ -2039,6 +2045,9 @@ type GrantUpdate struct {
 
 	// LayoutId Output layout in the same org.
 	LayoutId *openapi_types.UUID `json:"layoutId"`
+
+	// TargetOptions Per-type options for the deploy target
+	TargetOptions map[string]interface{} `json:"targetOptions"`
 }
 
 // Hook A command an agent runs around a deploy, only if its argv[0] is in the agent's CF_HOOK_ALLOW.
@@ -2864,6 +2873,9 @@ type SchemaEntry struct {
 
 	// Code Stable type code, for example cloudflare.
 	Code string `json:"code"`
+
+	// GrantSchema JSON Schema for a grant's targetOptions; absent when the type has none.
+	GrantSchema *map[string]interface{} `json:"grantSchema,omitempty"`
 
 	// KeyPolicy Whether this type ever needs the certificate's private key; deploy targets only.
 	KeyPolicy *KeyPolicy `json:"keyPolicy,omitempty"`

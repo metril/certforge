@@ -34,7 +34,7 @@ func GrantFiles(reg *Registry, m *render.Material, extras map[uuid.UUID]render.M
 	if !ok {
 		return nil, fmt.Errorf("targets: type %q is not a file target", t.Type)
 	}
-	tf, err := ft.Files(Request{CertName: certName, Names: names, Material: m, Config: t.Config})
+	tf, err := ft.Files(Request{CertName: certName, Names: names, Material: m, Config: t.Config, GrantOptions: t.GrantOptions})
 	if err != nil {
 		return nil, err
 	}

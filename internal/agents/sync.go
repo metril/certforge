@@ -102,7 +102,7 @@ func (s *Service) Assignments(ctx context.Context, c sqlcgen.Client) (agentproto
 			if err != nil {
 				return agentproto.Assignments{}, err
 			}
-			if target, err = targetOf(r.TargetType, r.TargetConfig, secrets); err != nil {
+			if target, err = targetOf(r.TargetType, r.TargetConfig, secrets, r.TargetOptions); err != nil {
 				return agentproto.Assignments{}, err
 			}
 		}

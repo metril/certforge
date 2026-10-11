@@ -1477,7 +1477,7 @@ export interface paths {
         put?: never;
         /**
          * Grant a certificate to a client
-         * @description Needs clients:write. The certificate, layout, deploy target and hooks must be in the client's org (422 otherwise); a layout or a deploy target is required. One grant per client and certificate (409). Two grants on one client never write the same path, counting Traefik `certs/<name>` files and grants awaiting agent removal (409). 422 when the certificate's current version has no key and the layout or target needs one. Bumps the client's desired revision.
+         * @description Needs clients:write. The certificate, layout, deploy target and hooks must be in the client's org (422 otherwise); a layout or a deploy target is required. One grant per client and certificate (409). Two grants on one client never write the same path, counting Traefik `certs/<name>` files and grants awaiting agent removal (409), or two grants on the client both set Traefik's default certificate for the same directory and store (409). 422 when the certificate's current version has no key and the layout or target needs one, or targetOptions invalid or not supported by the target type. Bumps the client's desired revision.
          */
         post: operations["createGrant"];
         delete?: never;
@@ -1535,7 +1535,7 @@ export interface paths {
         head?: never;
         /**
          * Change a grant
-         * @description Needs clients:write. Replaces delivery, layout, deploy target, hooks and auto-remediation; the certificate cannot change. Re-renders the deployment and bumps the client's revision. 409 when another of the client's grants (including one awaiting agent removal) would write one of the same file paths. 422 when the certificate's current version has no key and the layout or target needs one.
+         * @description Needs clients:write. Replaces delivery, layout, deploy target, hooks and auto-remediation; the certificate cannot change. Re-renders the deployment and bumps the client's revision. 409 when another of the client's grants (including one awaiting agent removal) would write one of the same file paths, or two grants on the client both set Traefik's default certificate for the same directory and store. 422 when the certificate's current version has no key and the layout or target needs one, or targetOptions invalid or not supported by the target type.
          */
         patch: operations["updateGrant"];
         trace?: never;
@@ -1680,7 +1680,7 @@ export interface paths {
         head?: never;
         /**
          * Replace a deploy target
-         * @description Needs delivery:write; also keys:export when the resolved config needs the certificate's private key, re-checked on every update. type and runsOn cannot change (422). A secret field of config sent as __unchanged__, or omitted, keeps its stored value (422 "<field> has no stored value" when there is none to keep); an explicit "" clears it, and clearing a required secret is its own 422. Changing a URL while a secret is reused needs every secret re-entered (422 "re-enter the secret"). Every URL in config is checked against the URL policy (422 "address not allowed"). Every grant using it is re-rendered and its client's revision bumped in the same transaction; 409 when that would make two of a client's grants write one path.
+         * @description Needs delivery:write; also keys:export when the resolved config needs the certificate's private key, re-checked on every update. type and runsOn cannot change (422). A secret field of config sent as __unchanged__, or omitted, keeps its stored value (422 "<field> has no stored value" when there is none to keep); an explicit "" clears it, and clearing a required secret is its own 422. Changing a URL while a secret is reused needs every secret re-entered (422 "re-enter the secret"). Every URL in config is checked against the URL policy (422 "address not allowed"). Every grant using it is re-rendered and its client's revision bumped in the same transaction; 409 when that would make two of a client's grants write one path, or two grants on the client both set Traefik's default certificate for the same directory and store.
          */
         patch: operations["updateDeployTarget"];
         trace?: never;
@@ -2410,6 +2410,10 @@ export interface components {
             };
             /** @description Other codes that select this type; used by search. */
             aliases?: string[];
+            /** @description JSON Schema for a grant's targetOptions; absent when the type has none. */
+            grantSchema?: {
+                [key: string]: unknown;
+            };
             /** @description Where this type runs; deploy targets only. */
             runsOn?: components["schemas"]["TargetRunsOn"];
             /** @description Whether this type ever needs the certificate's private key; deploy targets only. */
@@ -4350,6 +4354,10 @@ export interface components {
              * @description Deploy target; null for files only.
              */
             deployTargetId: string | null;
+            /** @description Per-type options for the deploy target */
+            targetOptions: {
+                [key: string]: unknown;
+            };
             /** @description Hooks in run order. */
             hookIds: string[];
             /** @description On drift */
@@ -4388,6 +4396,13 @@ export interface components {
              * @description Deploy target in the same org.
              */
             deployTargetId?: string | null;
+            /**
+             * @description Per-type options for the deploy target
+             * @default {}
+             */
+            targetOptions: {
+                [key: string]: unknown;
+            };
             /** @description Hooks in the same org */
             hookIds?: string[];
             /**
@@ -4409,6 +4424,10 @@ export interface components {
              * @description Deploy target in the same org.
              */
             deployTargetId: string | null;
+            /** @description Per-type options for the deploy target */
+            targetOptions: {
+                [key: string]: unknown;
+            };
             /** @description Hooks in run order. */
             hookIds: string[];
             /** @description Reinstall automatically on drift. */

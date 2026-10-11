@@ -75,10 +75,23 @@ type FileTarget interface {
 	Target
 	// Files renders the files this target writes for req.
 	Files(req Request) ([]delivery.File, error)
-	// Paths returns the paths Files would write for cfg and certName, with
-	// no material needed — used by agents.grantPaths to prune stale files
-	// left by a config change.
-	Paths(cfg json.RawMessage, certName string) ([]string, error)
+	// Paths returns the paths Files would write for cfg, the grant's own
+	// options (nil when it has none) and certName, with no material needed
+	// — used by agents.grantPaths to prune stale files left by a config
+	// change.
+	Paths(cfg, grantOpts json.RawMessage, certName string) ([]string, error)
+}
+
+// GrantOptions is implemented by a target type whose grants carry their
+// own options (a grant's targetOptions), such as Traefik's default
+// certificate or certificate directory. Types without per-grant options do
+// not implement it.
+type GrantOptions interface {
+	// GrantSchema is the JSON Schema of a grant's options
+	// (MetaSchemaEntry.grantSchema).
+	GrantSchema() json.RawMessage
+	// ParseGrantOptions decodes and validates raw, empty meaning no options.
+	ParseGrantOptions(raw json.RawMessage) (any, error)
 }
 
 // Reloader is implemented by a FileTarget whose files need a service
@@ -118,8 +131,11 @@ type Request struct {
 	// resolved secrets), as JSON — what Target.Parse returned Config for,
 	// re-merged (Merge).
 	Config json.RawMessage
-	Side   Mode
-	HTTP   HTTPFactory
+	// GrantOptions is the grant's own options (its targetOptions) for a
+	// type implementing GrantOptions; nil or empty means none.
+	GrantOptions json.RawMessage
+	Side         Mode
+	HTTP         HTTPFactory
 }
 
 // Result is what Deploy produced: any files (unwritten until an agent

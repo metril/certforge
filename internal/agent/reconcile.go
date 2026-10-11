@@ -119,6 +119,18 @@ func certsDirFromTarget(t *agentproto.Target, files []string) string {
 	if err != nil {
 		return ""
 	}
+	opts, err := delivery.ParseTraefikGrantOptions(t.GrantOptions)
+	if err != nil {
+		return ""
+	}
+	if opts.CertsDir != "" {
+		for _, p := range files {
+			if filepath.Dir(p) == opts.CertsDir {
+				return opts.CertsDir
+			}
+		}
+		return ""
+	}
 	prefix := filepath.Join(cfg.Dir, "certs") + string(filepath.Separator)
 	for _, p := range files {
 		if !strings.HasPrefix(p, prefix) {

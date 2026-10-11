@@ -384,7 +384,6 @@ func TestOpsAgainstCompose(t *testing.T) {
 	if cert.CurrentVersion == nil {
 		t.Fatal("active certificate has no current version")
 	}
-	versionID := cert.CurrentVersion.ID
 
 	var versions []versionOut
 	c.call(ctx, t, http.MethodGet, certPath+"/versions", nil, &versions)
@@ -444,43 +443,21 @@ func TestOpsAgainstCompose(t *testing.T) {
 		t.Fatalf("cert.issued event deliveries = %+v, want 2 delivered", ev.Deliveries)
 	}
 
-	// 4. Traefik dynamic file: the issued leaf+key as the default
-	// certificate on the websecure entrypoint, plus a catch-all router to
-	// noop@internal (Deviations R11).
-	fullchain := c.download(ctx, t, certPath+"/versions/"+versionID+"/download?format=pem&parts=fullchain")
-	key := c.download(ctx, t, certPath+"/versions/"+versionID+"/download?format=pem&parts=key")
-	if err := os.MkdirAll(filepath.Join(dir, "traefik", "ops"), 0o755); err != nil {
-		t.Fatal(err)
+	// 4. A real agent grant on a Traefik target with defaultCert: the
+	// issued certificate becomes the websecure store's default (served
+	// without SNI), plus the shared catch-all router so the handshake
+	// completes (Deviations R11).
+	writeTraefikCatchAllRouter(t, dir)
+	clientID := enrolledAgent(ctx, t, c, orgID)
+	clientPath := "/api/v1/orgs/" + orgID + "/clients/" + clientID.String()
+	var opsTarget, opsGrant struct {
+		ID string `json:"id"`
 	}
-	if err := os.WriteFile(filepath.Join(dir, "traefik", "ops", "fullchain.pem"), fullchain, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "traefik", "ops", "privkey.pem"), key, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	opsYAML := `# Managed by TestOpsAgainstCompose. Do not edit; changes are overwritten.
-tls:
-  certificates:
-    - certFile: "/etc/traefik/dynamic/ops/fullchain.pem"
-      keyFile: "/etc/traefik/dynamic/ops/privkey.pem"
-      stores:
-        - "default"
-  stores:
-    default:
-      defaultCertificate:
-        certFile: "/etc/traefik/dynamic/ops/fullchain.pem"
-        keyFile: "/etc/traefik/dynamic/ops/privkey.pem"
-http:
-  routers:
-    ops-catchall:
-      rule: "PathPrefix(` + "`" + `/` + "`" + `)"
-      entryPoints:
-        - websecure
-      service: noop@internal
-`
-	if err := os.WriteFile(filepath.Join(dir, "traefik", "certforge-ops.yml"), []byte(opsYAML), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	c.call(ctx, t, http.MethodPost, "/api/v1/orgs/"+orgID+"/deploy-targets", map[string]any{"name": "ops-traefik-default", "type": "traefik",
+		"config": map[string]any{"dir": "/etc/traefik/dynamic"}}, &opsTarget)
+	c.call(ctx, t, http.MethodPost, clientPath+"/grants", map[string]any{"certificateId": cert.ID, "delivery": "push",
+		"deployTargetId": opsTarget.ID, "targetOptions": map[string]any{"defaultCert": true}}, &opsGrant)
+	waitGrantDeployed(ctx, t, c, clientPath, opsGrant.ID)
 
 	var monitor opsMonitorOut
 	c.call(ctx, t, http.MethodPost, "/api/v1/orgs/"+orgID+"/monitors", map[string]any{

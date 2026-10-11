@@ -1,9 +1,10 @@
 import { useDirty } from '@/lib/useDirty';
-import { useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, CircleAlert, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
-import { errorMessage } from '@/api/errors';
+import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
+import { ApiError, errorMessage, fieldOfTitle } from '@/api/errors';
 import { allCertificatesPickerQuery, plural } from '@/api/queries/certificates';
 import { deployTargetsQuery, hooksQuery, layoutsQuery } from '@/api/queries/delivery';
 import { metaSchemasQuery } from '@/api/queries/dns';
@@ -20,6 +21,9 @@ import { SwitchField } from '@/components/SwitchField';
 import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
+import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
+import { fieldErrorFromMessage } from '@/forms/uiSchema';
+import { HelpTip } from '@/components/HelpTip';
 import { PHASE_LABEL } from '@/lib/clientStatus';
 import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
@@ -46,6 +50,8 @@ function QueryField({ label, q, children }: { label: string; q: UseQueryResult<u
   return <>{children}</>;
 }
 
+const fieldErr = (key: string, msg: string) => ({ [key]: { __errors: [msg] } }) as unknown as ErrorSchema;
+
 const fileHasKey = (f: { format: string; parts?: string[] }) =>
   f.format === 'p12' || f.format === 'jks' || !!f.parts?.some((p) => p === 'key' || p === 'combined');
 
@@ -70,7 +76,30 @@ export function GrantSheet({ orgId, client, grants, editing, removed = false, on
   const [errors, setErrors] = useState<{ certs?: string; where?: string }>({});
   const [failures, setFailures] = useState<GrantBatchResult['failed']>([]);
   const [formError, setFormError] = useState<string | null>(null);
-  const dirty = useDirty({ certIds, delivery, layoutId, targetId, hookIds, autoRemediate });
+  const [targetOptions, setTargetOptions] = useState<Record<string, unknown>>(editing?.targetOptions ?? {});
+  const [optsExtra, setOptsExtra] = useState<ErrorSchema | null>(null);
+  const optsRef = useRef<SchemaFormHandle>(null);
+  const selectedTarget = targets.find((t) => t.id === targetId);
+  const grantSchema = useMemo(
+    () => meta?.deployTargets.find((t) => t.code === selectedTarget?.type)?.grantSchema as RJSFSchema | undefined,
+    [meta, selectedTarget?.type],
+  );
+  const showOpts = !!targetId && !!grantSchema;
+  // Unset-equivalent values (false, '', []) are dropped: the form fills defaults such as
+  // defaultCert: false on mount, possibly after the first-render snapshot (meta loads async).
+  const dirty = useDirty({ certIds, delivery, layoutId, targetId, hookIds, autoRemediate, targetOptions: Object.fromEntries(Object.entries(targetOptions).filter(([, v]) => v !== false && v !== '' && v !== undefined && !(Array.isArray(v) && v.length === 0))) });
+  // A 422 titles the field "Invalid targetOptions.<key>"; failing that, match a
+  // schema key named in the message. A 409 about the default certificate belongs
+  // under its switch.
+  const optsFieldError = (msg: string, status?: number, title?: string): ErrorSchema | null => {
+    if (!showOpts) return null;
+    const key = fieldOfTitle(title) === 'targetOptions' ? title?.split('.')[1] : undefined;
+    if (key && grantSchema.properties?.[key]) return fieldErr(key, msg);
+    const field = fieldErrorFromMessage(grantSchema, msg.replace(/\btargetOptions\./g, ''));
+    if (field) return field;
+    if (status === 409 && /default/i.test(msg)) return fieldErr('defaultCert', msg);
+    return null;
+  };
   const busy = create.isPending || update.isPending;
   // Mirrors the server's agent-grant rule: any deploy target, or a layout with
   // a key-bearing file, hands the agent a private key and needs keys:export.
@@ -100,14 +129,19 @@ export function GrantSheet({ orgId, client, grants, editing, removed = false, on
     setErrors(next);
     setFormError(null);
     setFailures([]);
+    setOptsExtra(null);
     if (next.certs || next.where) return;
-    const rest = { delivery, layoutId: layoutId ?? null, deployTargetId: targetId ?? null, hookIds, autoRemediate };
+    if (showOpts && !optsRef.current?.validate()) return;
+    const rest = { delivery, layoutId: layoutId ?? null, deployTargetId: targetId ?? null, hookIds, autoRemediate, targetOptions: showOpts ? targetOptions : {} };
     if (editing) {
       try {
         await update.mutateAsync({ id: editing.id, body: rest });
         guard.close();
       } catch (e) {
-        setFormError(errorMessage(e));
+        const msg = errorMessage(e);
+        const field = optsFieldError(msg, e instanceof ApiError ? e.status : undefined, e instanceof ApiError ? e.problem.title : undefined);
+        if (field) setOptsExtra(field);
+        else setFormError(msg);
       }
       return;
     }
@@ -119,6 +153,9 @@ export function GrantSheet({ orgId, client, grants, editing, removed = false, on
     }
     setCertIds(r.failed.map((f) => f.certificateId));
     setFailures(r.failed);
+    // Every certificate failed on the same options field: mark that field too.
+    const marks = r.failed.map((f) => optsFieldError(f.message, f.status, f.title));
+    if (marks.every((m) => m) && new Set(marks.map((m) => Object.keys(m!)[0])).size === 1) setOptsExtra(marks[0]!);
   };
 
   return (
@@ -198,6 +235,11 @@ export function GrantSheet({ orgId, client, grants, editing, removed = false, on
                 clearable
                 value={targetId}
                 onChange={(v) => {
+                  const nextType = targets.find((t) => t.id === v)?.type;
+                  if (nextType !== selectedTarget?.type) {
+                    setTargetOptions({});
+                    setOptsExtra(null);
+                  }
                   setTargetId(v);
                   setErrors((e) => ({ ...e, where: undefined }));
                 }}
@@ -211,6 +253,24 @@ export function GrantSheet({ orgId, client, grants, editing, removed = false, on
               />
             </QueryField>
           </Field>
+          {showOpts && (
+            <div className="grid gap-1.5">
+              <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
+                Target options
+                <HelpTip id="grant.targetOptions" />
+              </span>
+              <SchemaForm
+                ref={optsRef}
+                schema={grantSchema}
+                value={targetOptions}
+                onChange={(v) => {
+                  setTargetOptions(v);
+                  setOptsExtra(null);
+                }}
+                extraErrors={optsExtra ?? undefined}
+              />
+            </div>
+          )}
           <FormSection title="Advanced" collapsible count={(hookIds.length > 0 ? 1 : 0) + (autoRemediate ? 1 : 0)}>
             <Field id="grant-hooks" label="Hooks" help="grant.hooks" optional>
               <QueryField label="hooks" q={hooksQ}>

@@ -55,6 +55,9 @@ type InstalledFile struct {
 type Target struct {
 	Type   string          `json:"type"`
 	Config json.RawMessage `json:"config"`
+	// GrantOptions are the grant's own options for this target type
+	// (the grant's targetOptions); absent for a type without any.
+	GrantOptions json.RawMessage `json:"grantOptions,omitempty"`
 }
 
 // HookSpec is one hook a grant runs.

@@ -90,7 +90,7 @@ func TestDeployerLayoutTraefikAndRemove(t *testing.T) {
 	}
 	yml := filepath.Join(dir, "traefik", "certforge-web.yml")
 	fullchain, key := testMaterial()
-	want := delivery.RenderTraefik("Web", nil, delivery.TraefikConfig{Dir: filepath.Join(dir, "traefik")}, fullchain, key)
+	want := delivery.RenderTraefik("Web", nil, delivery.TraefikConfig{Dir: filepath.Join(dir, "traefik")}, delivery.TraefikGrantOptions{}, fullchain, key)
 	got, _ := os.ReadFile(yml)
 	if !bytes.Equal(got, want[2].Data) || mode(t, filepath.Join(dir, "traefik", "certs", "web", "privkey.pem")) != 0o600 {
 		t.Fatalf("yml %s", got)
@@ -411,7 +411,7 @@ func (r *recordingFileTarget) Files(req targets.Request) ([]delivery.File, error
 	return []delivery.File{{Path: filepath.Join(r.dir, "out.pem"), Mode: "0644", Data: []byte("data")}}, nil
 }
 
-func (r *recordingFileTarget) Paths(_ json.RawMessage, _ string) ([]string, error) {
+func (r *recordingFileTarget) Paths(_, _ json.RawMessage, _ string) ([]string, error) {
 	return []string{filepath.Join(r.dir, "out.pem")}, nil
 }
 
@@ -584,5 +584,39 @@ func TestAgentNilGrantIDRefused(t *testing.T) {
 	res2, written2, _ := d.DeployTargetOnly(a)
 	if res2.State != agentproto.StateFailed || !strings.Contains(res2.Error, "grant id is required") || len(written2) != 0 {
 		t.Fatalf("DeployTargetOnly res %+v written %d", res2, len(written2))
+	}
+}
+
+// TestDeployerTraefikCustomCertsDir: a grant's certsDir option moves the
+// key and chain, the YAML points at it, and the returned certsDir is the
+// custom one so Remove prunes it once empty.
+func TestDeployerTraefikCustomCertsDir(t *testing.T) {
+	dir := t.TempDir()
+	d := testDeployer([]string{dir})
+	a, b := traefikGrant(dir)
+	custom := filepath.Join(dir, "traefik", "tls", "web")
+	a.Target.GrantOptions, _ = json.Marshal(map[string]any{"certsDir": custom, "defaultCert": true})
+	res, written, certsDir := d.Deploy(context.Background(), a, b)
+	if res.State != agentproto.StateOK {
+		t.Fatalf("res %+v", res)
+	}
+	if certsDir != custom {
+		t.Fatalf("certsDir %q, want %q", certsDir, custom)
+	}
+	if mode(t, filepath.Join(custom, "privkey.pem")) != 0o600 {
+		t.Fatal("privkey not written in the custom dir")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "traefik", "certs")); !os.IsNotExist(err) {
+		t.Fatal("default certs dir was created")
+	}
+	yml, _ := os.ReadFile(filepath.Join(dir, "traefik", "certforge-web.yml"))
+	if !bytes.Contains(yml, []byte(filepath.Join(custom, "fullchain.pem"))) || !bytes.Contains(yml, []byte("defaultCertificate")) {
+		t.Fatalf("yml %s", yml)
+	}
+	if _, err := d.Remove(written, certsDir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(custom); !os.IsNotExist(err) {
+		t.Fatal("custom certs dir not pruned")
 	}
 }

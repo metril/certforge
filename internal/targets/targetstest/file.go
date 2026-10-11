@@ -94,7 +94,7 @@ func (f *File) Files(req targets.Request) ([]delivery.File, error) {
 }
 
 // Paths implements targets.FileTarget.
-func (f *File) Paths(cfg json.RawMessage, certName string) ([]string, error) {
+func (f *File) Paths(cfg, _ json.RawMessage, certName string) ([]string, error) {
 	var c struct {
 		Dir string `json:"dir"`
 	}
