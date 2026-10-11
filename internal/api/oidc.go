@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authn"
@@ -110,6 +112,9 @@ func (s *Server) OidcCallback(ctx context.Context, _ gen.OidcCallbackRequestObje
 	if u.Disabled {
 		return fail("user_disabled", u.ID.String()), nil
 	}
+	if u.Inserted {
+		s.bindNewOIDCUser(ctx, st, u.ID, email)
+	}
 	if _, err := s.startSession(ctx, u.ID); err != nil {
 		s.d.Log.Error("oidc callback: session start failed", "err", err)
 		return fail("oidc_failed", u.ID.String()), nil
@@ -133,4 +138,36 @@ func (s *Server) TestAuthentication(ctx context.Context, req gen.TestAuthenticat
 	}
 	return gen.TestAuthentication200JSONResponse{Ok: true, AuthorizationEndpoint: &res.AuthorizationEndpoint,
 		TokenEndpoint: &res.TokenEndpoint, Keys: &res.Keys}, nil
+}
+
+// bindNewOIDCUser grants a first-time OIDC user the configured default role in
+// the default organisation, unless their email domain is not allowed. Failures
+// are logged only: the login itself still succeeds.
+func (s *Server) bindNewOIDCUser(ctx context.Context, st authn.AuthSettings, userID uuid.UUID, email *string) {
+	if st.DefaultOrgID == "" {
+		return
+	}
+	orgID, err := uuid.Parse(st.DefaultOrgID)
+	if err != nil {
+		return
+	}
+	addr := ""
+	if email != nil {
+		addr = *email
+	}
+	if !st.EmailAllowed(addr) {
+		s.d.Log.Info("oidc: first login outside allowed email domains; no default role granted", "user", userID)
+		return
+	}
+	role := st.DefaultRole
+	if role == "" {
+		role = authz.RoleViewer
+	}
+	if err := s.d.Queries.CreateRoleBinding(ctx, sqlcgen.CreateRoleBindingParams{
+		SubjectType: "user", Subject: userID.String(), Role: role, OrgID: &orgID}); err != nil {
+		s.d.Log.Error("oidc: default role binding failed", "user", userID, "err", err)
+		return
+	}
+	s.audit(ctx, audit.Event{Action: "role_binding.create", ResourceType: "role_binding", OrgID: &orgID,
+		ActorType: "system", Details: map[string]any{"subjectType": "user", "subject": userID.String(), "role": role, "source": "oidc_first_login"}})
 }

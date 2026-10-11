@@ -24,7 +24,7 @@ func TestListUsersRedactsWithoutGlobalUsersRead(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		*dst = u
+		*dst = sqlcgen.User{ID: u.ID, DisplayName: u.DisplayName, OidcGroups: u.OidcGroups}
 	}
 	list := func(p authn.Principal) gen.UserList {
 		t.Helper()

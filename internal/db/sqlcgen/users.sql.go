@@ -7,6 +7,7 @@ package sqlcgen
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -211,7 +212,7 @@ INSERT INTO users (oidc_issuer, oidc_sub, email, display_name, oidc_groups)
 VALUES ($1::text, $2::text, $3, $4::text, $5::text[])
 ON CONFLICT (oidc_issuer, oidc_sub) DO UPDATE
 SET email = EXCLUDED.email, display_name = EXCLUDED.display_name, oidc_groups = EXCLUDED.oidc_groups
-RETURNING id, oidc_issuer, oidc_sub, email, display_name, local_password_hash, disabled, last_login, created_at, oidc_groups
+RETURNING id, oidc_issuer, oidc_sub, email, display_name, local_password_hash, disabled, last_login, created_at, oidc_groups, (xmax = 0) AS inserted
 `
 
 type UpsertOIDCUserParams struct {
@@ -222,7 +223,21 @@ type UpsertOIDCUserParams struct {
 	Groups      []string `json:"groups"`
 }
 
-func (q *Queries) UpsertOIDCUser(ctx context.Context, arg UpsertOIDCUserParams) (User, error) {
+type UpsertOIDCUserRow struct {
+	ID                uuid.UUID  `json:"id"`
+	OidcIssuer        *string    `json:"oidc_issuer"`
+	OidcSub           *string    `json:"oidc_sub"`
+	Email             *string    `json:"email"`
+	DisplayName       string     `json:"display_name"`
+	LocalPasswordHash *string    `json:"local_password_hash"`
+	Disabled          bool       `json:"disabled"`
+	LastLogin         *time.Time `json:"last_login"`
+	CreatedAt         time.Time  `json:"created_at"`
+	OidcGroups        []string   `json:"oidc_groups"`
+	Inserted          bool       `json:"inserted"`
+}
+
+func (q *Queries) UpsertOIDCUser(ctx context.Context, arg UpsertOIDCUserParams) (UpsertOIDCUserRow, error) {
 	row := q.db.QueryRow(ctx, upsertOIDCUser,
 		arg.Issuer,
 		arg.Subject,
@@ -230,7 +245,7 @@ func (q *Queries) UpsertOIDCUser(ctx context.Context, arg UpsertOIDCUserParams) 
 		arg.DisplayName,
 		arg.Groups,
 	)
-	var i User
+	var i UpsertOIDCUserRow
 	err := row.Scan(
 		&i.ID,
 		&i.OidcIssuer,
@@ -242,6 +257,7 @@ func (q *Queries) UpsertOIDCUser(ctx context.Context, arg UpsertOIDCUserParams) 
 		&i.LastLogin,
 		&i.CreatedAt,
 		&i.OidcGroups,
+		&i.Inserted,
 	)
 	return i, err
 }

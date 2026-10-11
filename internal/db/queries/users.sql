@@ -35,7 +35,7 @@ INSERT INTO users (oidc_issuer, oidc_sub, email, display_name, oidc_groups)
 VALUES (sqlc.arg(issuer)::text, sqlc.arg(subject)::text, sqlc.narg(email), sqlc.arg(display_name)::text, sqlc.arg(groups)::text[])
 ON CONFLICT (oidc_issuer, oidc_sub) DO UPDATE
 SET email = EXCLUDED.email, display_name = EXCLUDED.display_name, oidc_groups = EXCLUDED.oidc_groups
-RETURNING *;
+RETURNING *, (xmax = 0) AS inserted;
 
 -- name: DeleteUser :execrows
 DELETE FROM users WHERE id = $1;

@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
@@ -73,6 +75,11 @@ func (s *Server) PutSettingsSection(ctx context.Context, req gen.PutSettingsSect
 	// malformed caId) is a 422 regardless of which section this is.
 	if err := sec.Validate(raw); err != nil {
 		return nil, &HTTPError{Status: http.StatusUnprocessableEntity, Title: "Invalid settings", Detail: err.Error()}
+	}
+	if sec.Name == authn.SettingsSection {
+		if err := s.checkDefaultOrg(ctx, raw); err != nil {
+			return nil, err
+		}
 	}
 	var before json.RawMessage
 	var secretsChanged []string
@@ -306,4 +313,22 @@ func (s *Server) TestVaultSettings(ctx context.Context, req gen.TestVaultSetting
 		out.Version = &res.Version
 	}
 	return gen.TestVaultSettings200JSONResponse(out), nil
+}
+
+// checkDefaultOrg rejects an authentication section whose default organisation does not exist.
+func (s *Server) checkDefaultOrg(ctx context.Context, raw json.RawMessage) error {
+	var v struct {
+		DefaultOrgID string `json:"defaultOrgId"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil || v.DefaultOrgID == "" {
+		return nil
+	}
+	id, err := uuid.Parse(v.DefaultOrgID)
+	if err == nil {
+		_, err = s.d.Queries.GetOrg(ctx, id)
+	}
+	if err != nil {
+		return &HTTPError{Status: http.StatusUnprocessableEntity, Title: "Invalid settings", Detail: "defaultOrgId: organisation not found"}
+	}
+	return nil
 }
