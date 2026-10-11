@@ -2,6 +2,13 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.18.0](https://github.com/metril/certforge/compare/v0.17.0...v0.18.0) (2026-10-11)
+
+
+### Features
+
+* **deploy:** TrueNAS SCALE deploy target (JSON-RPC over WebSocket) ([87b4060](https://github.com/metril/certforge/commit/87b406096dc4349933768143b8cdbf487c7329d3))
+
 ## [0.17.0](https://github.com/metril/certforge/compare/v0.16.0...v0.17.0) (2026-10-11)
 
 
