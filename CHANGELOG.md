@@ -2,6 +2,32 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.11.0](https://github.com/metril/certforge/compare/v0.10.0...v0.11.0) (2026-10-11)
+
+
+### ⚠ BREAKING CHANGES
+
+* **agents:** the traefik target's defaultCert setting moved to the grant's targetOptions (migration 00026 keeps one default per client). Agents must be upgraded with the server: an old agent ignores grantOptions and drops the default certificate on its next deploy; a new agent cannot parse an old server's target config.
+
+### Features
+
+* **agents:** certsDir on a grant needs delivery:write ([f46d51a](https://github.com/metril/certforge/commit/f46d51a2f178af2b40cec9bd1558f05fbaefa96d))
+* **agents:** validate grant target options ([7b6c3a3](https://github.com/metril/certforge/commit/7b6c3a3cdf25b40c1eb48a34b935e37abca891e3))
+* **api:** grant targetOptions ([2ce0a64](https://github.com/metril/certforge/commit/2ce0a644b883dabe3b91c5eee8902088e3e51ccf))
+* **db:** grant target_options column with defaultCert backfill ([f16e302](https://github.com/metril/certforge/commit/f16e3029288269f1025bc090d31cdd547d30501d))
+* **delivery:** per-grant traefik options ([aace1c4](https://github.com/metril/certforge/commit/aace1c4c651d7f81768ed0fed396165b7c5cda4e))
+* **targets:** grant options interface and agent proto ([eae4b4a](https://github.com/metril/certforge/commit/eae4b4af0ad124d539ca53c723e96a8f19e2dd89))
+* **web:** grant target options form ([c74ff35](https://github.com/metril/certforge/commit/c74ff35e83d3eaeef835bd5e46cc0f6b77228105))
+
+
+### Bug Fixes
+
+* **api:** reject targetOptions on server grants ([6c7936b](https://github.com/metril/certforge/commit/6c7936b4875156e237152cc368936fa3053d6b51))
+* **db:** backfill default certificate on one grant per client ([54965d8](https://github.com/metril/certforge/commit/54965d8dc9708f6e4bbc4346bf37c5321626579d))
+* **db:** key 00026 default-cert backfill on client, dir and stores ([b7982a2](https://github.com/metril/certforge/commit/b7982a2228d301cf4e85d0c81d9949f0b900680b))
+* **db:** treat empty stores as default in 00026 backfill key ([e5a37a9](https://github.com/metril/certforge/commit/e5a37a9c1699cb34b4dd1eefb81fac7050cb7639))
+* **web:** grant options dirty state ([6996999](https://github.com/metril/certforge/commit/6996999bc8bf18d8d910bb731cd116cc030e95e7))
+
 ## [0.10.0](https://github.com/metril/certforge/compare/v0.9.0...v0.10.0) (2026-10-11)
 
 
