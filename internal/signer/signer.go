@@ -9,6 +9,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rsa"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"fmt"
 	"strings"
 	"time"
@@ -105,6 +106,11 @@ type IssueRequest struct {
 	ReuseKeyPKCS8  []byte // nil = generate a fresh key
 	Account        AccountMaterial
 	Challenge      ChallengeSolver
+
+	// CSRExtensions are extra X.509 extensions NewKeyAndCSR copies into the
+	// CSR (as ExtraExtensions). Used by adcs for the certificate template
+	// name; every other kind ignores it.
+	CSRExtensions []pkix.Extension
 
 	// Replaces is the certificate this order renews, when known (ARI,
 	// RFC 9773 §5): non-nil tells the CA which previously-issued

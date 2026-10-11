@@ -36,6 +36,7 @@ import (
 	"github.com/metril/certforge/internal/notify"
 	"github.com/metril/certforge/internal/settings"
 	"github.com/metril/certforge/internal/setup"
+	"github.com/metril/certforge/internal/signer/adcs"
 	"github.com/metril/certforge/internal/signer/localca"
 	"github.com/metril/certforge/internal/signer/vaultpki"
 	"github.com/metril/certforge/internal/targets"
@@ -128,6 +129,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	challenge.AddToMeta(metaReg)
 	localca.AddToMeta(metaReg)
 	vaultpki.AddToMeta(metaReg)
+	adcs.AddToMeta(metaReg)
 	// Later phases register settings sections and other pluggable type schemas here.
 	box := crypto.EnvelopeBox{Env: env}
 	vaultProvider := vault.NewProvider(store, sections, log)
