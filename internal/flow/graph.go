@@ -41,10 +41,10 @@ const (
 
 const (
 	// MaxNodes caps the whole map.
-	MaxNodes = 500
+	MaxNodes = 2000
 	// maxSideNodes is the share of MaxNodes the non-certificate lanes may use
 	// together; certificates fill the rest (at least MaxNodes-maxSideNodes).
-	maxSideNodes = 250
+	maxSideNodes = 1000
 	// MaxEdges caps edges; inferred alert edges are dropped first.
 	MaxEdges = 5000
 	// ExpiringDays matches the web UI's EXPIRING_DAYS.

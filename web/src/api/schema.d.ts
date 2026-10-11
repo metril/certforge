@@ -2073,7 +2073,7 @@ export interface paths {
         };
         /**
          * System map of how certificates connect to issuers, delivery, clients and alerts
-         * @description Needs certs:read. Returns five lanes of nodes (issuers, certificates, delivery, clients, alerts) and the edges between them. A lane whose resource the caller cannot read (cas, accounts or dnscreds:read for issuers, delivery:read, clients:read, alerts:read) comes back hidden with no nodes, and edges touching it are dropped. Alert edges are Channel nodes carry coversCertificates when they would receive this org's certificate events. At most 500 nodes; truncated is true when more existed.
+         * @description Needs certs:read. Returns five lanes of nodes (issuers, certificates, delivery, clients, alerts) and the edges between them. A lane whose resource the caller cannot read (cas, accounts or dnscreds:read for issuers, delivery:read, clients:read, alerts:read) comes back hidden with no nodes, and edges touching it are dropped. Alert edges are Channel nodes carry coversCertificates when they would receive this org's certificate events. At most 2000 nodes; truncated is true when more existed, and each lane reports how many nodes it omitted.
          */
         get: operations["getFlow"];
         put?: never;

@@ -183,11 +183,11 @@ func TestAssembleHiddenLanesDropEdges(t *testing.T) {
 
 func TestAssembleTruncation(t *testing.T) {
 	var certs []Cert
-	for i := 0; i < 600; i++ {
+	for i := 0; i < MaxNodes+100; i++ {
 		certs = append(certs, Cert{ID: id(), Name: fmt.Sprintf("c%03d", i), Status: "active"})
 	}
 	var clients []Client
-	for i := 0; i < 300; i++ {
+	for i := 0; i < maxSideNodes+50; i++ {
 		clients = append(clients, Client{ID: id(), Name: fmt.Sprintf("h%03d", i), Status: "active"})
 	}
 	g := Assemble(Input{OrgSlug: "a", Certs: certs, Clients: clients}, allPerms(), now)
@@ -313,7 +313,7 @@ func TestIssuerAndChannelStatuses(t *testing.T) {
 func TestIssuerUsageBeyondCap(t *testing.T) {
 	caLate, caNone := id(), id()
 	var certs []Cert
-	for i := 0; i < 600; i++ {
+	for i := 0; i < MaxNodes+100; i++ {
 		c := Cert{ID: id(), Name: fmt.Sprintf("c%03d", i), Status: "active"}
 		if i == 599 {
 			c.CAID = &caLate
@@ -429,5 +429,45 @@ func TestAssembleOmittedPerLane(t *testing.T) {
 	g = Assemble(Input{OrgSlug: "a", Certs: certs[:10], CertsMore: true, Uses: uses}, allPerms(), now)
 	if g.Certificates.Omitted != MaxNodes+50-10 {
 		t.Errorf("certs omitted with Uses = %d", g.Certificates.Omitted)
+	}
+}
+
+// BenchmarkAssemble2000 assembles a map at the node cap with about 4000 edges.
+func BenchmarkAssemble2000(b *testing.B) {
+	var in Input
+	in.OrgSlug = "a"
+	var cas []uuid.UUID
+	for i := 0; i < 50; i++ {
+		c := id()
+		cas = append(cas, c)
+		in.CAs = append(in.CAs, Item{ID: c, Name: fmt.Sprintf("ca%d", i), Detail: "localca"})
+	}
+	var layouts, targets, clients []uuid.UUID
+	for i := 0; i < 300; i++ {
+		l, t := id(), id()
+		layouts, targets = append(layouts, l), append(targets, t)
+		in.Layouts = append(in.Layouts, Item{ID: l, Name: fmt.Sprintf("l%d", i)})
+		in.Targets = append(in.Targets, Item{ID: t, Name: fmt.Sprintf("t%d", i)})
+	}
+	for i := 0; i < 350; i++ {
+		c := id()
+		clients = append(clients, c)
+		in.Clients = append(in.Clients, Client{ID: c, Name: fmt.Sprintf("h%d", i), Status: "active"})
+	}
+	for i := 0; i < 1000; i++ {
+		cid, ca := id(), cas[i%len(cas)]
+		cl := clients[i%len(clients)]
+		in.Certs = append(in.Certs, Cert{ID: cid, Name: fmt.Sprintf("c%04d", i), Status: "active", CAID: &ca, NotAfter: tp(now.Add(time.Hour * 24 * 60))})
+		in.Grants = append(in.Grants,
+			Grant{CertID: cid, ClientID: &cl, LayoutID: &layouts[i%300], State: "ok"},
+			Grant{CertID: cid, TargetID: &targets[i%300], State: "ok"})
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		g := Assemble(in, allPerms(), now)
+		if i == 0 && (len(g.Edges) < 3900 || len(g.Certificates.Nodes) != 1000) {
+			b.Fatalf("edges=%d certs=%d", len(g.Edges), len(g.Certificates.Nodes))
+		}
 	}
 }

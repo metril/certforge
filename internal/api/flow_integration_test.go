@@ -11,6 +11,7 @@ import (
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/db/dbtest"
 	"github.com/metril/certforge/internal/db/sqlcgen"
+	"github.com/metril/certforge/internal/flow"
 )
 
 func flowLaneIDs(l gen.FlowLane) map[string]gen.FlowNode {
@@ -128,7 +129,7 @@ func TestGetFlowHiddenLanes(t *testing.T) {
 func TestGetFlowTruncates(t *testing.T) {
 	f := newAgentFixture(t)
 	if _, err := f.pool.Exec(context.Background(),
-		`INSERT INTO certificates (org_id, name, common_name, status) SELECT $1, 'c' || lpad(g::text, 4, '0'), 'c.example.test', 'pending' FROM generate_series(1, 520) g`, f.org); err != nil {
+		`INSERT INTO certificates (org_id, name, common_name, status) SELECT $1, 'c' || lpad(g::text, 4, '0'), 'c.example.test', 'pending' FROM generate_series(1, 2020) g`, f.org); err != nil {
 		t.Fatal(err)
 	}
 	res, err := f.srv.GetFlow(f.as("operator"), gen.GetFlowRequestObject{OrgId: f.org})
@@ -136,7 +137,7 @@ func TestGetFlowTruncates(t *testing.T) {
 		t.Fatal(err)
 	}
 	fl := gen.Flow(res.(gen.GetFlow200JSONResponse))
-	if !fl.Truncated || len(fl.Lanes.Certificates.Nodes) != 500 {
+	if !fl.Truncated || len(fl.Lanes.Certificates.Nodes) != flow.MaxNodes || fl.Lanes.Certificates.Omitted < 20 {
 		t.Fatalf("truncated=%v certs=%d", fl.Truncated, len(fl.Lanes.Certificates.Nodes))
 	}
 }
@@ -156,7 +157,7 @@ func TestGetFlowUsageCountsWholeOrgOnly(t *testing.T) {
 	}
 	late, none := newCA("late"), newCA("none")
 	if _, err := f.pool.Exec(ctx,
-		`INSERT INTO certificates (org_id, name, common_name, status) SELECT $1, 'c' || lpad(g::text, 4, '0'), 'c.example.test', 'pending' FROM generate_series(1, 520) g`, f.org); err != nil {
+		`INSERT INTO certificates (org_id, name, common_name, status) SELECT $1, 'c' || lpad(g::text, 4, '0'), 'c.example.test', 'pending' FROM generate_series(1, 2020) g`, f.org); err != nil {
 		t.Fatal(err)
 	}
 	// Only the last two certificates by name, past the node cap, use "late".
