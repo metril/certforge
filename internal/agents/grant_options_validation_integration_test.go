@@ -118,3 +118,22 @@ func TestTargetPatchDefaultCertConflict(t *testing.T) {
 	_, err = f.svc.Resync(ctx, q, RefTarget, tid)
 	wantKind(t, err, KindConflict, "")
 }
+
+// A removal-pending grant keeps claiming the default certificate until the
+// agent confirms removal.
+func TestRemovalPendingGrantStillClaimsDefaultCert(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+	a, b := f.cert(t, "a"), f.cert(t, "b")
+	tid := f.target(t, "t1", delivery.TraefikConfig{Dir: "/etc/traefik/dynamic"})
+	c := f.client(t, "c1")
+	gid, err := f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: a, Delivery: "pull", TargetID: &tid, TargetOptions: optsJSON(`{"defaultCert":true}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE client_cert_grants SET removed_at = now(), removed_revision = 99 WHERE id = $1`, gid); err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: b, Delivery: "pull", TargetID: &tid, TargetOptions: optsJSON(`{"defaultCert":true}`)})
+	wantKind(t, err, KindConflict, "")
+}

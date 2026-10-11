@@ -535,6 +535,9 @@ func (s *Server) ListTargetGrants(ctx context.Context, r gen.ListTargetGrantsReq
 // updateServerGrant replaces a server grant's layout (its only editable
 // field) and re-renders its current version under it.
 func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequestObject) (gen.UpdateGrantResponseObject, error) {
+	if r.Body != nil && len(r.Body.TargetOptions) > 0 {
+		return nil, unprocessable("targetOptions", "not supported by this target type")
+	}
 	tx, err := s.d.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
