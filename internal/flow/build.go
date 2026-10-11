@@ -230,7 +230,7 @@ func (b *Builder) loadGrants(ctx context.Context, orgID uuid.UUID, in *Input) er
 	for _, g := range rows {
 		in.Grants = append(in.Grants, Grant{CertID: g.CertID, ClientID: g.ClientID, LayoutID: g.OutputSpecID,
 			TargetID: g.DeployTargetID, HookIDs: g.HookIds, State: g.State, Error: g.Error,
-			DeployedAt: agentDeployedAt(g.State, g.ReportedAt), UpdatedAt: &g.DeploymentUpdatedAt})
+			DeployedAt: agentDeployedAt(g.State, g.StateChangedAt), UpdatedAt: &g.DeploymentUpdatedAt})
 	}
 	srows, err := b.Q.ServerGrantViews(ctx, sqlcgen.ServerGrantViewsParams{OrgID: orgID})
 	if err != nil {
@@ -295,10 +295,11 @@ func caExpiry(caType string, notAfter *time.Time) *time.Time {
 	return notAfter
 }
 
-// agentDeployedAt is an agent deployment's report time when it is in sync.
-func agentDeployedAt(state string, reported *time.Time) *time.Time {
+// agentDeployedAt is when an in-sync agent deployment entered that state;
+// reported_at is a heartbeat and would creep forward on every report.
+func agentDeployedAt(state string, changed time.Time) *time.Time {
 	if state != "ok" {
 		return nil
 	}
-	return reported
+	return &changed
 }

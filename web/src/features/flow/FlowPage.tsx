@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useOrg } from '@/lib/org';
 import { useMediaQuery } from '@/lib/useMediaQuery';
-import { LANE_KEYS, PROBLEM_STATUSES, expandFor, filterFlow, highlightSet, linkCounts, parseEdgeKey, visibleNodeIds, type Flow, type FlowNodeData, type FlowStatus } from './flowGraph';
+import { LANE_KEYS, PROBLEM_STATUSES, expandFor, keptNodes, filterFlow, highlightSet, linkCounts, parseEdgeKey, visibleNodeIds, type Flow, type FlowNodeData, type FlowStatus } from './flowGraph';
 import { FLOW_STATUS, KIND_META } from './FlowNode';
 import { FLOW_STATUSES, type FlowSearch } from './search';
 import { FlowConnectors } from './FlowConnectors';
@@ -82,11 +82,9 @@ export function FlowPage() {
   const kinds = search.kind ?? [];
   const issuers = search.issuer ?? [];
   const clients = search.client ?? [];
-  const deferredText = useDeferredValue(text);
-  const visible = useMemo(
-    () => (full ? visibleNodeIds(full, { q: deferredText, kinds: search.kind, statuses, issuers: search.issuer, clients: search.client }) : null),
-    [full, deferredText, search.kind, statuses, search.issuer, search.client],
-  );
+  // Filters apply deferred so typing and chip clicks stay responsive on a large map.
+  const deferredFilters = useDeferredValue({ q: text, kinds: search.kind, statuses, issuers: search.issuer, clients: search.client });
+  const visible = useMemo(() => (full ? visibleNodeIds(full, deferredFilters) : null), [full, deferredFilters]);
   const flow = useMemo(() => (full ? filterFlow(full, visible) : undefined), [full, visible]);
   const activeFilters = (text.trim() ? 1 : 0) + (kinds.length > 0 ? 1 : 0) + (statuses.length > 0 ? 1 : 0) + (issuers.length > 0 ? 1 : 0) + (clients.length > 0 ? 1 : 0);
   const setFilter = useCallback((patch: Partial<FlowSearch>) => void navigate({ search: (s) => ({ ...s, ...patch }), replace: true }), [navigate]);
@@ -177,7 +175,7 @@ export function FlowPage() {
   useEffect(() => {
     if (focusHidden && visible) setFocus(undefined);
   }, [focusHidden, visible, setFocus]);
-  const keep = useMemo(() => new Set([focus, edge?.from, edge?.to].filter((x): x is string => !!x)), [focus, edge]);
+  const keep = useMemo(() => keptNodes(flow, path, [focus, edge?.from, edge?.to]), [flow, path, focus, edge]);
   const detailing = !!selected || !!edge;
   const clearDetail = useCallback(() => (selected ? setFocus(undefined) : setEdge(undefined)), [selected, setFocus, setEdge]);
   const select = useCallback((id: string) => setFocus(id === focus ? undefined : id), [focus, setFocus]);

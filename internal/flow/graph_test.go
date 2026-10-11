@@ -471,3 +471,13 @@ func BenchmarkAssemble2000(b *testing.B) {
 		}
 	}
 }
+
+func TestAgentDeployedAtUsesStateChange(t *testing.T) {
+	changed := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	if got := agentDeployedAt("ok", changed); got == nil || !got.Equal(changed) {
+		t.Fatalf("ok: %v", got)
+	}
+	if got := agentDeployedAt("failed", changed); got != nil {
+		t.Fatalf("failed: %v", got)
+	}
+}

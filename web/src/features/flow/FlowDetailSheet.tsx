@@ -1,5 +1,5 @@
 import { useMemo, useState, type MouseEvent } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
 import { RotateCw, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -204,13 +204,23 @@ function RedeployButton({ node, orgId, path }: { node: FlowNodeData; orgId: stri
   const me = useMe();
   const allowed = can(me, 'clients:write', orgId);
   const rid = rawIdOf(node.id);
-  const q = useQuery({ ...((node.kind === 'target' ? targetGrantsQuery(orgId, rid) : grantsQuery(orgId, rid)) as ReturnType<typeof grantsQuery>), enabled: allowed });
+  const isTarget = node.kind === 'target';
+  const q = useQuery({ ...((isTarget ? targetGrantsQuery(orgId, rid) : grantsQuery(orgId, rid)) as ReturnType<typeof grantsQuery>), enabled: allowed });
+  // A target no server runs is delivered by agents: redeploy the path's clients' grants that use it.
+  const pathClients = useMemo(() => [...path.nodes].filter((id) => id.startsWith('client:')).map(rawIdOf), [path]);
+  const serverEmpty = isTarget && q.isSuccess && (q.data ?? []).length === 0;
+  const agent = useQueries({ queries: pathClients.map((cid) => ({ ...grantsQuery(orgId, cid), enabled: allowed && serverEmpty })) });
+  const agentData = agent.map((a) => a.data);
+  const agentGrants = useMemo(() => agentData.flatMap((d) => (d ?? []).filter((g) => g.deployTargetId === rid)), [agentData, rid]);
+  const agentMode = serverEmpty;
+  const agentPending = agentMode && agent.some((a) => a.isPending);
+  const agentError = agentMode && agent.some((a) => a.isError);
   const redeploy = useRedeployGrant(orgId, true);
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const certs = useMemo(() => new Set([...path.nodes].filter((id) => id.startsWith('certificate:')).map(rawIdOf)), [path]);
   const scoped = certs.size > 0;
-  const grants: Grant[] = useMemo(() => (q.data ?? []).filter((g) => !scoped || certs.has(g.certificateId)), [q.data, scoped, certs]);
+  const grants: Grant[] = useMemo(() => (agentMode ? agentGrants : q.data ?? []).filter((g) => !scoped || certs.has(g.certificateId)), [agentMode, agentGrants, q.data, scoped, certs]);
   const n = grants.length;
   const run = async () => {
     setConfirm(false);
@@ -228,11 +238,15 @@ function RedeployButton({ node, orgId, path }: { node: FlowNodeData; orgId: stri
     if (ok === n) toast.success(`Redeployed ${ok}`);
     else toast.error(`Redeployed ${ok} of ${n}; ${n - ok} failed.`);
   };
-  const none = allowed && !q.isPending && n === 0;
+  const failed = allowed && (q.isError || agentError);
+  const noPath = allowed && agentMode && pathClients.length === 0;
+  const loading = q.isPending || agentPending;
+  const none = allowed && !loading && !failed && n === 0;
+  const reason = failed ? 'Could not load grants' : noPath ? 'Select a client path first' : none ? 'No grants to redeploy' : undefined;
   return (
     <>
-      <PermissionTip allowed={allowed && !none} action="clients:write" reason={none ? 'No grants to redeploy' : undefined}>
-        <Button variant="outline" size="sm" disabled={!allowed || n === 0 || busy} onClick={() => setConfirm(true)}>
+      <PermissionTip allowed={allowed && !reason} action="clients:write" reason={reason}>
+        <Button variant="outline" size="sm" disabled={!allowed || n === 0 || failed || busy} onClick={() => setConfirm(true)}>
           <RotateCw className="size-4" aria-hidden />
           Redeploy
         </Button>

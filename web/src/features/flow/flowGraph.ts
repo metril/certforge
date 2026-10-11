@@ -225,6 +225,36 @@ export function highlightSet(flow: Flow, focusId: string | null | undefined, hov
   return { focus: tracePath(flow, focusId), hover: hoverId && hoverId !== focusId ? tracePath(flow, hoverId) : tracePath(flow, null) };
 }
 
+const traces = new WeakMap<Flow, Map<string, Set<string>>>();
+
+/** Node ids on the path through `id`, memoised per flow so re-filtering never re-traces. */
+function tracedNodes(flow: Flow, id: string): Set<string> {
+  let m = traces.get(flow);
+  if (!m) traces.set(flow, (m = new Map()));
+  let t = m.get(id);
+  if (!t) m.set(id, (t = tracePath(flow, id).nodes));
+  return t;
+}
+
+/** Nodes drawn past a group's cap: `ids` plus the selected path's nodes, at most MAX_KEPT_PER_GROUP path nodes per group. */
+export const MAX_KEPT_PER_GROUP = 50;
+export function keptNodes(flow: Flow | undefined, path: FlowPath | null, ids: (string | undefined)[]): Set<string> {
+  const keep = new Set(ids.filter((x): x is string => !!x));
+  if (!flow || !path) return keep;
+  const count = new Map<string, number>();
+  for (const k of LANE_KEYS) {
+    for (const n of flow.lanes[k].nodes) {
+      if (!path.nodes.has(n.id) || keep.has(n.id)) continue;
+      const g = SUBGROUPS[k]?.find((s) => s.kinds.includes(n.kind))?.id ?? k;
+      const c = count.get(g) ?? 0;
+      if (c >= MAX_KEPT_PER_GROUP) continue;
+      count.set(g, c + 1);
+      keep.add(n.id);
+    }
+  }
+  return keep;
+}
+
 export type FlowFilters = {
   q?: string;
   kinds?: FlowNodeData['kind'][];
@@ -260,7 +290,7 @@ export function visibleNodeIds(flow: Flow, f: FlowFilters): Set<string> | null {
       if (statuses && !statuses.has(n.status) && !touched.has(n.id)) continue;
       if (scope && !scope.has(n.id)) continue;
       keep.add(n.id);
-      for (const id of tracePath(flow, n.id).nodes) if (!scope || scope.has(id)) keep.add(id);
+      for (const id of tracedNodes(flow, n.id)) if (!scope || scope.has(id)) keep.add(id);
     }
   }
   return keep;

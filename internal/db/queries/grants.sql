@@ -40,7 +40,7 @@ SELECT * FROM client_cert_grants WHERE client_id = $1 AND removed_at IS NOT NULL
 -- name: GrantViews :many
 SELECT g.id, g.client_id, c.name AS client_name, g.cert_id, ce.name AS certificate_name, g.delivery,
        g.output_spec_id, g.deploy_target_id, g.hook_ids, g.auto_remediate, g.created_at, g.updated_at,
-       d.state, d.version_id, d.expected, d.installed, d.error, d.reported_at, d.updated_at AS deployment_updated_at
+       d.state, d.version_id, d.expected, d.installed, d.error, d.reported_at, d.state_changed_at, d.updated_at AS deployment_updated_at
 FROM client_cert_grants g
 JOIN clients c ON c.id = g.client_id
 JOIN certificates ce ON ce.id = g.cert_id

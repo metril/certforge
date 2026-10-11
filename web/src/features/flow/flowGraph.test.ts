@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CAP, collapseEdges, linkCounts, sortForLane, parseEdgeKey, edgeKey, expandFor, filterFlow, PROBLEM_STATUSES, highlightSet, isProblem, pairStatus, pathUnion, tracePath, visibleNodeIds, type Flow, type FlowNodeData } from './flowGraph';
+import { MAX_KEPT_PER_GROUP, keptNodes, CAP, collapseEdges, linkCounts, sortForLane, parseEdgeKey, edgeKey, expandFor, filterFlow, PROBLEM_STATUSES, highlightSet, isProblem, pairStatus, pathUnion, tracePath, visibleNodeIds, type Flow, type FlowNodeData } from './flowGraph';
 
 const node = (kind: FlowNodeData['kind'], id: string, extra: Partial<FlowNodeData> = {}): FlowNodeData => ({
   id: `${kind}:${id}`,
@@ -141,6 +141,29 @@ describe('pairStatus', () => {
   });
   it('falls back to the worst status when no duplicate is on the path', () => {
     expect(pairStatus(dup, new Set(['certificate:Z']))).toBe('failed');
+  });
+});
+
+describe('visibleNodeIds memoisation', () => {
+  it('returns the same ids on repeated calls', () => {
+    const a = visibleNodeIds(flow, { q: 'k1' })!;
+    const b = visibleNodeIds(flow, { q: 'k1' })!;
+    expect([...b].sort()).toEqual([...a].sort());
+  });
+});
+
+describe('keptNodes', () => {
+  it('keeps path nodes up to the per-group limit and always the explicit ids', () => {
+    const clients = Array.from({ length: 80 }, (_, i) => ({ id: `client:c${i}`, kind: 'client', name: `c${i}`, status: 'valid', href: '' }) as FlowNodeData);
+    const f: Flow = {
+      ...flow,
+      lanes: { ...flow.lanes, clients: { hidden: false, omitted: 0, nodes: clients } },
+    };
+    const path = { nodes: new Set(clients.map((c) => c.id)), edges: new Set<string>(), synthetic: new Set<string>() };
+    const k = keptNodes(f, path, ['client:c79']);
+    expect(k.has('client:c79')).toBe(true);
+    expect(k.size).toBe(MAX_KEPT_PER_GROUP + 1);
+    expect(keptNodes(f, null, ['x']).has('x')).toBe(true);
   });
 });
 

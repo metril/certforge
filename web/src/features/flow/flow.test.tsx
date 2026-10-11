@@ -202,7 +202,7 @@ it('Problems keeps the unhealthy flow, and an empty result offers Clear filters'
   await user.click(screen.getByRole('button', { name: 'Problems' }));
   await waitFor(() => expect(router.state.location.search).toMatchObject({ status: ['failed', 'expired', 'drift', 'expiring'] }));
   expect(screen.getByRole('button', { name: /Certificate www/ })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /Certificate api/ })).toBeNull();
+  await waitFor(() => expect(screen.queryByRole('button', { name: /Certificate api/ })).toBeNull());
   await user.type(screen.getByRole('textbox', { name: 'Filter by name' }), 'nothing-like-this');
   expect(await screen.findByText('No flows match these filters.')).toBeInTheDocument();
   await user.click(screen.getAllByRole('button', { name: 'Clear filters' })[0]!);
@@ -323,7 +323,7 @@ it('the Status chips keep nodes with that status and their paths', async () => {
   await user.click(screen.getByRole('button', { name: 'Expiring' }));
   await waitFor(() => expect(router.state.location.search).toMatchObject({ status: ['expiring'] }));
   expect(screen.getByRole('button', { name: /Certificate www/ })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /Certificate api/ })).toBeNull();
+  await waitFor(() => expect(screen.queryByRole('button', { name: /Certificate api/ })).toBeNull());
   expect(screen.getByRole('button', { name: 'Expiring' })).toHaveAttribute('aria-pressed', 'true');
 });
 
@@ -345,8 +345,8 @@ it('the Issuer filter keeps only that issuer\'s certificates and their downstrea
   await user.click(await screen.findByRole('option', { name: /two/ }));
   await waitFor(() => expect(router.state.location.search).toMatchObject({ issuer: ['ca:two'] }));
   expect(screen.getByRole('button', { name: /Certificate api/ })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /Certificate www/ })).toBeNull();
-  expect(screen.queryByRole('button', { name: /CA one/ })).toBeNull();
+  await waitFor(() => expect(screen.queryByRole('button', { name: /Certificate www/ })).toBeNull());
+  await waitFor(() => expect(screen.queryByRole('button', { name: /CA one/ })).toBeNull());
 });
 
 it('hovering a node marks its path with data-hover-path', async () => {
@@ -632,4 +632,68 @@ it('a selected connection is drawn thick with an arrowhead', async () => {
   const p = container.querySelector('path[data-selected]')!;
   expect(p).toHaveAttribute('stroke-width', '3');
   expect(p.getAttribute('marker-end')).toMatch(/^url\(#.*flow-arrow-/);
+});
+
+it('selecting a certificate draws its path nodes even when they sort past the lane cap', async () => {
+  setWidth(true);
+  const clients = Array.from({ length: 15 }, (_, i) => node('client', `k${i + 1}`));
+  useFlow(() => ({
+    ...base,
+    lanes: { ...base.lanes, clients: lane(clients) },
+    edges: [e('certificate:www', 'layout:nginx'), e('layout:nginx', 'client:k15', 'www'), e('layout:nginx', 'client:k1', 'api')],
+  }));
+  renderRoute('/o/acme/flow?focus=certificate:www');
+  await screen.findByRole('button', { name: /Client k15,/ });
+  expect(screen.queryByRole('button', { name: /Client k14,/ })).toBeNull();
+});
+
+const agentTargetFlow: Flow = {
+  ...base,
+  lanes: { ...base.lanes, delivery: lane([node('target', 't1')]), certificates: lane([node('certificate', 'www')]), clients: lane([node('client', 'web-1')]) },
+  edges: [e('certificate:www', 'target:t1'), e('target:t1', 'client:web-1', 'www')],
+};
+
+it('Redeploy on an agent-run target redeploys the path clients\' grants that use it', async () => {
+  setWidth(true);
+  useFlow(() => agentTargetFlow);
+  const posted: string[] = [];
+  server.use(
+    http.get(url('/orgs/org-1/clients/web-1/grants'), () =>
+      HttpResponse.json({ items: [makeGrant({ id: 'g1', certificateId: 'www', deployTargetId: 't1' }), makeGrant({ id: 'g2', certificateId: 'www', deployTargetId: 'other' })] }),
+    ),
+    http.post(url('/orgs/org-1/grants/:id/redeploy'), ({ params }) => {
+      posted.push(String(params.id));
+      return HttpResponse.json({});
+    }),
+  );
+  const { user } = renderRoute('/o/acme/flow?focus=target:t1');
+  const aside = await screen.findByRole('complementary', { name: 'Details' });
+  const btn = within(aside).getByRole('button', { name: 'Redeploy' });
+  await waitFor(() => expect(btn).not.toBeDisabled());
+  await user.click(btn);
+  const dlg = await screen.findByRole('dialog');
+  expect(within(dlg).getByText(/Redeploy 1 grant\b/)).toBeInTheDocument();
+  await user.click(within(dlg).getByRole('button', { name: 'Redeploy' }));
+  await waitFor(() => expect(posted).toEqual(['g1']));
+});
+
+it('Redeploy on a target with no server grants and no path client is disabled with a hint', async () => {
+  setWidth(true);
+  useFlow(() => ({ ...agentTargetFlow, edges: [] }));
+  const { user } = renderRoute('/o/acme/flow?focus=target:t1');
+  const aside = await screen.findByRole('complementary', { name: 'Details' });
+  await waitFor(() => expect(within(aside).getByRole('button', { name: 'Redeploy' }).closest('span[tabindex]')).not.toBeNull());
+  await user.hover(within(aside).getByRole('button', { name: 'Redeploy' }).parentElement!);
+  expect((await screen.findAllByText('Select a client path first')).length).toBeGreaterThan(0);
+});
+
+it('Redeploy shows a load error instead of "No grants" when the grants query fails', async () => {
+  setWidth(true);
+  useFlow(() => detailed);
+  server.use(http.get(url('/orgs/org-1/clients/web-1/grants'), () => problem(500, 'boom')));
+  const { user } = renderRoute('/o/acme/flow?focus=client:web-1');
+  const aside = await screen.findByRole('complementary', { name: 'Details' });
+  await waitFor(() => expect(within(aside).getByRole('button', { name: 'Redeploy' }).closest('span[tabindex]')).not.toBeNull());
+  await user.hover(within(aside).getByRole('button', { name: 'Redeploy' }).parentElement!);
+  expect((await screen.findAllByText('Could not load grants')).length).toBeGreaterThan(0);
 });
