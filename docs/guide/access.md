@@ -114,6 +114,10 @@ CertForge signs users in through any OpenID Connect provider. Users are matched 
    | **Client secret** | Leave empty for a public client using PKCE only. Stored sealed; shows as stored with **Replace** | none |
    | **Scopes** | Must include `openid` | `openid profile email groups` |
    | **Groups claim** | The claim that lists the user's groups, read from the ID token or, if absent there, from the provider's userinfo endpoint. A dotted path such as `realm_access.roles` reads a nested claim | `groups` |
+   | **Username claim** | Claim tried first for the display name. If it is missing, CertForge uses `preferred_username`, then `name`, then the email, and only then the subject | `preferred_username` |
+   | **Default organisation** | Organisation a user signing in for the first time is added to. Empty grants nothing automatically | none |
+   | **Default role** | Role granted in the default organisation on first sign-in | `viewer` |
+   | **Allowed email domains** | When set, only first sign-ins with an email in one of these domains receive the default role | any |
    | **Session lifetime (hours)** | How long a sign-in lasts; applies to new sessions | 12 |
    | **Trusted proxies** | Addresses or CIDRs of reverse proxies whose `X-Forwarded-For` header is believed | none |
    | **Login rate limit (per minute)** | Login attempts per client address; `0` disables the limit | 10 |
@@ -134,7 +138,11 @@ Under **Group mappings** on the same page, select **Add mapping**, type the grou
 
 Claims (name, email, groups) are read from the ID token and completed from the provider's userinfo endpoint; the ID token wins on conflict.
 
-**Authentik.** The provider needs the `openid`, `email` and `profile` scope mappings. Groups arrive as `groups` through the profile mapping. **Include claims in ID token** is optional.
+**Authentik.** The provider needs the `openid`, `email` and `profile` scope mappings; attach the profile and email mappings to the provider, or the display name falls back to the subject. The subject may be a long hash and that is fine: it is only the stable identity key, not what people see. Groups arrive as `groups` through the profile mapping. **Include claims in ID token** is optional.
+
+### First sign-in
+
+When **Default organisation** is set, a user who signs in for the first time gets a role binding for **Default role** in that organisation (and an audit event). Existing users are never changed, and group mappings keep working alongside it. If **Allowed email domains** is set and the user's email is outside it, no binding is created and the user lands on a page asking them to contact an administrator.
 
 A user gets the roles of every group listed at their last sign-in. Without any matching group or binding they have no access.
 
