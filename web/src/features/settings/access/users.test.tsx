@@ -192,3 +192,66 @@ it('clears the search with a Clear filters button in the filtered-empty state', 
   expect(await screen.findByRole('table', { name: 'Users' })).toBeInTheDocument();
   expect(screen.getByRole('textbox', { name: 'Search users' })).toHaveValue('');
 });
+
+it('deletes a user after typing their name and removes the row', async () => {
+  let users = [adminUser, annUser];
+  let deleted: string | null = null;
+  server.use(
+    ...authHandlers({ authed: true }),
+    http.get(url('/users'), () => HttpResponse.json({ items: users })),
+    http.delete(url('/users/:id'), ({ params }) => {
+      deleted = String(params.id);
+      users = users.filter((u) => u.id !== params.id);
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  const { user } = renderRoute('/settings/access');
+  const table = await screen.findByRole('table', { name: 'Users' });
+  await user.click(within(table).getByRole('button', { name: 'Delete Ann' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Delete Ann' });
+  await user.type(within(dialog).getByRole('textbox'), 'Ann');
+  await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+  await waitFor(() => expect(deleted).toBe('u-2'));
+  await waitFor(() => expect(within(screen.getByRole('table', { name: 'Users' })).queryByText('Ann')).toBeNull());
+});
+
+it('offers no delete button for the current user or the local admin', async () => {
+  const other = { ...adminUser, id: 'u-9', displayName: 'breakglass' };
+  server.use(...authHandlers({ authed: true }), http.get(url('/users'), () => HttpResponse.json({ items: [adminUser, other, annUser] })));
+  renderRoute('/settings/access');
+  const table = await screen.findByRole('table', { name: 'Users' });
+  expect(within(table).getByRole('button', { name: 'Delete Ann' })).toBeInTheDocument();
+  expect(within(table).queryByRole('button', { name: 'Delete admin' })).toBeNull();
+  expect(within(table).queryByRole('button', { name: 'Delete breakglass' })).toBeNull();
+});
+
+it('disables delete with a users:write tooltip for read-only callers', async () => {
+  const orgAdmin = meWith([{ role: 'org-admin', orgId: org.id }]);
+  server.use(
+    http.get(url('/setup/status'), () => HttpResponse.json({ needsSetup: false })),
+    http.get(url('/auth/me'), () => HttpResponse.json(orgAdmin)),
+    http.get(url('/users'), () => HttpResponse.json({ items: [adminUser, annUser] })),
+  );
+  const { user } = renderRoute('/settings/access');
+  const table = await screen.findByRole('table', { name: 'Users' });
+  const btn = within(table).getByRole('button', { name: 'Delete Ann' });
+  expect(btn).toHaveAttribute('aria-disabled', 'true');
+  await user.hover(btn);
+  expect((await screen.findAllByText('Requires users:write')).length).toBeGreaterThan(0);
+});
+
+it('shows a delete 409 inline and keeps the row', async () => {
+  server.use(
+    ...authHandlers({ authed: true }),
+    http.get(url('/users'), () => HttpResponse.json({ items: [adminUser, annUser] })),
+    http.delete(url('/users/:id'), () => problem(409, 'Cannot delete the last global admin.')),
+  );
+  const { user } = renderRoute('/settings/access');
+  const table = await screen.findByRole('table', { name: 'Users' });
+  await user.click(within(table).getByRole('button', { name: 'Delete Ann' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Delete Ann' });
+  await user.type(within(dialog).getByRole('textbox'), 'Ann');
+  await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('Cannot delete the last global admin.');
+  expect(within(table).getByText('Ann')).toBeInTheDocument();
+});

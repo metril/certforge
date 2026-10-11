@@ -1,10 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { Search } from "lucide-react";
+import { Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { errorMessage } from "@/api/errors";
-import { usersQuery, useUpdateUser } from "@/api/queries/users";
+import { usersQuery, useDeleteUser, useUpdateUser } from "@/api/queries/users";
 import type { UserDetail } from "@/api/types";
 import { ConfirmDestructive } from "@/components/ConfirmDestructive";
 import { columnHelper, DataTable } from '@/components/DataTable';
@@ -14,6 +14,7 @@ import { SavedViews } from "@/components/SavedViews";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { IconButton } from "@/components/IconButton";
 import { Switch } from "@/components/ui/switch";
 import {
   Tooltip,
@@ -59,6 +60,7 @@ function StatusControl({
   pending,
   onDisable,
   onEnable,
+  onDelete,
 }: {
   u: UserDetail;
   canWrite: boolean;
@@ -66,6 +68,7 @@ function StatusControl({
   pending: boolean;
   onDisable: () => void;
   onEnable: () => void;
+  onDelete: () => void;
 }) {
   const control = (
     <Switch
@@ -89,6 +92,21 @@ function StatusControl({
         control
       )}
       <span className="text-sm">{u.disabled ? "Disabled" : "Active"}</span>
+      {!isSelf && !u.localAdmin && (
+        <IconButton
+          variant="ghost"
+          size="icon"
+          label={`Delete ${u.displayName}`}
+          tip={canWrite ? "Delete user" : "Requires users:write"}
+          disabled={!canWrite}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+        >
+          <Trash2 className="size-4" aria-hidden />
+        </IconButton>
+      )}
     </span>
   );
 }
@@ -101,6 +119,7 @@ function UserCard({
   pending,
   onDisable,
   onEnable,
+  onDelete,
 }: {
   u: UserDetail;
   limited: boolean;
@@ -109,6 +128,7 @@ function UserCard({
   pending: boolean;
   onDisable: () => void;
   onEnable: () => void;
+  onDelete: () => void;
 }) {
   return (
     <div className="grid gap-2 rounded-md border border-border bg-panel p-3">
@@ -124,6 +144,7 @@ function UserCard({
           pending={pending}
           onDisable={onDisable}
           onEnable={onEnable}
+          onDelete={onDelete}
         />
       </div>
       <span className="font-mono text-xs text-ink-muted">{u.email ?? "–"}</span>
@@ -152,7 +173,9 @@ export function UsersTab() {
   const me = useMe();
   const q = useQuery({ ...usersQuery, select: (d) => d });
   const update = useUpdateUser();
+  const del = useDeleteUser();
   const [confirm, setConfirm] = useState<UserDetail | null>(null);
+  const [deleting, setDeleting] = useState<UserDetail | null>(null);
   const canWrite = can(me, "users:write");
   const isMdUp = useMediaQuery("(min-width: 768px)");
   const search = useSearch({ from: "/_app/settings/$section" });
@@ -177,6 +200,7 @@ export function UsersTab() {
   };
 
   const runDisable = useCallback((u: UserDetail) => setConfirm(u), []);
+  const runDelete = useCallback((u: UserDetail) => setDeleting(u), []);
   const updateMutate = update.mutate;
   const runEnable = useCallback(
     (u: UserDetail) =>
@@ -258,12 +282,13 @@ export function UsersTab() {
               pending={update.isPending}
               onDisable={() => runDisable(u)}
               onEnable={() => runEnable(u)}
+              onDelete={() => runDelete(u)}
             />
           );
         },
       }),
     ],
-    [limited, me.user.id, canWrite, update.isPending, runDisable, runEnable],
+    [limited, me.user.id, canWrite, update.isPending, runDisable, runEnable, runDelete],
   );
 
   if (q.isPending) return <p className="text-sm text-ink-muted">Loading…</p>;
@@ -332,6 +357,7 @@ export function UsersTab() {
                   pending={update.isPending}
                   onDisable={() => runDisable(u)}
                   onEnable={() => runEnable(u)}
+                  onDelete={() => runDelete(u)}
                 />
               ))}
             </div>
@@ -348,6 +374,15 @@ export function UsersTab() {
         onConfirm={() =>
           update.mutateAsync({ id: confirm!.id, disabled: true })
         }
+      />
+      <ConfirmDestructive
+        open={deleting !== null}
+        onOpenChange={(o) => !o && setDeleting(null)}
+        title={`Delete ${deleting?.displayName ?? ""}`}
+        consequence="Permanently removes the user, their sessions and role bindings, and revokes their API keys. Audit history is kept. They can sign in again later as a new user."
+        confirmText={deleting?.displayName ?? ""}
+        actionLabel="Delete"
+        onConfirm={() => del.mutateAsync(deleting!.id)}
       />
     </>
   );
