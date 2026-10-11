@@ -163,7 +163,7 @@ func (f *fakeAD) cep(w http.ResponseWriter, r *http.Request) {
 	issuer := base64.StdEncoding.EncodeToString(f.issuing.Raw)
 	fmt.Fprintf(w, soapHead+`<GetPoliciesResponse xmlns="http://schemas.microsoft.com/windows/pki/2009/01/enrollmentpolicy">
 <response><policyID/><policies><policy><policyOIDReference>0</policyOIDReference><cAs><cAReference>0</cAReference></cAs>
-<attributes><commonName>%s</commonName><policySchema>2</policySchema><permission><enroll>true</enroll><autoEnroll>false</autoEnroll></permission>
+<attributes><commonName>%s</commonName><enrollmentFlags>2</enrollmentFlags><policySchema>2</policySchema><permission><enroll>true</enroll><autoEnroll>false</autoEnroll></permission>
 <privateKeyAttributes><minimalKeyLength>2048</minimalKeyLength></privateKeyAttributes></attributes></policy></policies></response>
 <oIDs><oID><value>1.3.6.1.4.1.311.21.8.1.2</value><group>9</group><oIDReferenceID>0</oIDReferenceID><defaultName>x</defaultName></oID></oIDs>
 <cAs><cA><uris><cAURI><clientAuthentication>4</clientAuthentication><uri>%s</uri><priority>1</priority><renewalOnly>false</renewalOnly></cAURI>
@@ -268,6 +268,9 @@ func TestPolicies(t *testing.T) {
 	tpl, err := res.Template("certforgeweb")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !tpl.RequiresApproval() {
+		t.Fatalf("flags = %d", tpl.EnrollmentFlags)
 	}
 	if tpl.OID != "1.3.6.1.4.1.311.21.8.1.2" || tpl.MinKeySize != 2048 || !tpl.CanEnroll || len(tpl.CAs) != 1 {
 		t.Fatalf("template = %+v", tpl)

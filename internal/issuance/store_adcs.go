@@ -159,6 +159,9 @@ func (s *Store) resolveADCS(ctx context.Context, cfg adcsConfig, password string
 	if err != nil {
 		return adcsResolved{}, &ValidationError{"config.template", err.Error()}
 	}
+	if tpl.RequiresApproval() {
+		return adcsResolved{}, &ValidationError{"config.template", "template requires CA manager approval; use a template that issues automatically"}
+	}
 	if !tpl.CanEnroll {
 		return adcsResolved{}, &ValidationError{"config.template", "the service account lacks Enroll permission on this template"}
 	}

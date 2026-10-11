@@ -91,6 +91,8 @@ type Template struct {
 	OID string
 	// MinKeySize is the template's minimal key length.
 	MinKeySize int
+	// EnrollmentFlags are the template's msPKI-Enrollment-Flag bits.
+	EnrollmentFlags int
 	// CanEnroll reports whether the authenticated user may enrol.
 	CanEnroll bool
 	// CAs are the authorities that issue the template.
@@ -113,6 +115,14 @@ func (r *PolicyResult) Template(name string) (*Template, error) {
 	}
 	return nil, fmt.Errorf("%w: %q", ErrTemplateUnknown, name)
 }
+
+// FlagPendAllRequests is CT_FLAG_PEND_ALL_REQUESTS: the CA holds every
+// request for manager approval.
+const FlagPendAllRequests = 0x2
+
+// RequiresApproval reports whether the template holds all requests for CA
+// manager approval.
+func (t Template) RequiresApproval() bool { return t.EnrollmentFlags&FlagPendAllRequests != 0 }
 
 // Policies runs XCEP GetPolicies against the CEP URL and returns the
 // published templates and CAs.
@@ -152,7 +162,7 @@ func (s *Signer) Policies(ctx context.Context) (*PolicyResult, error) {
 	for _, p := range gp.Policies {
 		t := Template{
 			Name: strings.TrimSpace(p.Attrs.CommonName), OID: oids[strings.TrimSpace(p.OIDRef)],
-			MinKeySize: p.Attrs.MinKeyLen, CanEnroll: p.Attrs.Enroll,
+			MinKeySize: p.Attrs.MinKeyLen, CanEnroll: p.Attrs.Enroll, EnrollmentFlags: p.Attrs.EnrollFlag,
 		}
 		for _, ref := range p.CARefs {
 			if ci, ok := cas[ref]; ok {

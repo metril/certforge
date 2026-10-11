@@ -145,7 +145,7 @@ An **Active Directory (AD CS)** CA enrols leaf certificates from a Microsoft ent
 2. Bind a valid HTTPS certificate in IIS for those sites. CertForge must trust it: either it chains to a public or system root, or you paste its root into **TLS CA bundle**.
 3. Constrained delegation is needed only when CES is not on the CA host.
 4. Create a low-privilege service account with **Read** and **Enroll** on the template.
-5. Duplicate the **Web Server** template, set **Subject Name** to **Supply in the request**, publish it on the CA and grant the account Read and Enroll. A template that needs manager approval leaves requests pending.
+5. Duplicate the **Web Server** template, set **Subject Name** to **Supply in the request**, publish it on the CA and grant the account Read and Enroll. The template must issue automatically: do not enable **CA certificate manager approval**. CertForge rejects a template that holds requests for approval when you save the CA.
 
 The default URLs are:
 
@@ -165,7 +165,7 @@ CertForge reads the policy at creation with those credentials, so the service mu
 ### Behaviour
 
 - **Revocation is manual.** CES has no revocation call. Revoke in the AD CS console; CertForge refuses with a message saying so.
-- **Pending requests.** If the template requires CA manager approval, the attempt fails with `approve request <id> in AD CS, then renew` and is not retried on its own. Approve the request in AD CS, then use **Renew now**. A denied request fails the same way with the CA's reason.
+- **Automatic issuance only.** A request the CA still holds or denies fails the attempt with the CA's message (for example `request 77 is pending CA manager approval`) and is retried on the usual backoff, so fix the template or permissions in AD CS.
 - **Chain.** The leaf is the returned certificate whose key matches the request; the chain is the rest, ordered leaf to root.
 - **Names.** The issued certificate must cover every requested name; otherwise the issue fails (the template may be overriding the subject alternative names).
 

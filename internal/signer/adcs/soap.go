@@ -149,6 +149,7 @@ type xcepPolicy struct {
 		Schema     int    `xml:"policySchema"`
 		Enroll     bool   `xml:"permission>enroll"`
 		MinKeyLen  int    `xml:"privateKeyAttributes>minimalKeyLength"`
+		EnrollFlag int    `xml:"enrollmentFlags"`
 	} `xml:"attributes"`
 }
 

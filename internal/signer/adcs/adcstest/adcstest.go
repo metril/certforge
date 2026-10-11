@@ -42,6 +42,8 @@ type Fake struct {
 	CAPEM string
 	// Issued counts successful enrolments.
 	Issued atomic.Int32
+	// EnrollmentFlags is published as the template's enrollmentFlags.
+	EnrollmentFlags atomic.Int32
 
 	ca    *x509.Certificate
 	caKey *ecdsa.PrivateKey
@@ -94,8 +96,8 @@ func (f *Fake) cep(w http.ResponseWriter, r *http.Request) {
 	if !authed(w, string(b)) {
 		return
 	}
-	fmt.Fprintf(w, `<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Body><GetPoliciesResponse xmlns="http://schemas.microsoft.com/windows/pki/2009/01/enrollmentpolicy"><response><policies><policy><policyOIDReference>0</policyOIDReference><cAs><cAReference>0</cAReference></cAs><attributes><commonName>%s</commonName><permission><enroll>true</enroll></permission><privateKeyAttributes><minimalKeyLength>2048</minimalKeyLength></privateKeyAttributes></attributes></policy></policies></response><oIDs><oID><value>1.3.6.1.4.1.311.21.8.1.2</value><oIDReferenceID>0</oIDReferenceID></oID></oIDs><cAs><cA><uris><cAURI><clientAuthentication>4</clientAuthentication><uri>%s</uri><priority>1</priority></cAURI></uris><certificate>%s</certificate><cAReferenceID>0</cAReferenceID></cA></cAs></GetPoliciesResponse></s:Body></s:Envelope>`,
-		Template, f.CESURL, base64.StdEncoding.EncodeToString(f.ca.Raw))
+	fmt.Fprintf(w, `<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Body><GetPoliciesResponse xmlns="http://schemas.microsoft.com/windows/pki/2009/01/enrollmentpolicy"><response><policies><policy><policyOIDReference>0</policyOIDReference><cAs><cAReference>0</cAReference></cAs><attributes><commonName>%s</commonName><enrollmentFlags>%d</enrollmentFlags><permission><enroll>true</enroll></permission><privateKeyAttributes><minimalKeyLength>2048</minimalKeyLength></privateKeyAttributes></attributes></policy></policies></response><oIDs><oID><value>1.3.6.1.4.1.311.21.8.1.2</value><oIDReferenceID>0</oIDReferenceID></oID></oIDs><cAs><cA><uris><cAURI><clientAuthentication>4</clientAuthentication><uri>%s</uri><priority>1</priority></cAURI></uris><certificate>%s</certificate><cAReferenceID>0</cAReferenceID></cA></cAs></GetPoliciesResponse></s:Body></s:Envelope>`,
+		Template, f.EnrollmentFlags.Load(), f.CESURL, base64.StdEncoding.EncodeToString(f.ca.Raw))
 }
 
 func (f *Fake) ces(w http.ResponseWriter, r *http.Request) {

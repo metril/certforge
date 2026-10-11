@@ -3,8 +3,6 @@ package issuance
 import (
 	"errors"
 	"testing"
-
-	"github.com/metril/certforge/internal/signer/adcs"
 )
 
 func TestADCSConfigValidation(t *testing.T) {
@@ -30,21 +28,5 @@ func TestADCSConfigValidation(t *testing.T) {
 		if !errors.As(err, &ve) {
 			t.Errorf("case %d: err = %v, want ValidationError", i, err)
 		}
-	}
-}
-
-func TestNonRetryable(t *testing.T) {
-	err := nonRetryable(adcs.ErrPending{RequestID: "77"})
-	var nr *nonRetryableError
-	if !errors.As(err, &nr) || err.Error() != "approve request 77 in AD CS, then renew" {
-		t.Fatalf("pending = %v", err)
-	}
-	err = nonRetryable(adcs.ErrDenied{Disposition: "Denied by Policy Module"})
-	if !errors.As(err, &nr) || err.Error() != "AD CS denied the request: Denied by Policy Module" {
-		t.Fatalf("denied = %v", err)
-	}
-	plain := errors.New("boom")
-	if got := nonRetryable(plain); !errors.Is(got, plain) || errors.As(got, &nr) {
-		t.Fatal("plain error must pass through")
 	}
 }

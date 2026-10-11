@@ -12,6 +12,7 @@ import (
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/signer"
+	"github.com/metril/certforge/internal/signer/adcs"
 	"github.com/metril/certforge/internal/signer/adcs/adcstest"
 )
 
@@ -96,6 +97,11 @@ func TestADCSCreateRejects(t *testing.T) {
 	if _, err := f.store.CreateCA(ctx, f.org, in); !errors.As(err, &ve) || ve.Field != "config.template" {
 		t.Fatalf("unknown template: %v", err)
 	}
+	fk.EnrollmentFlags.Store(adcs.FlagPendAllRequests)
+	if _, err := f.store.CreateCA(ctx, f.org, adcsInput(fk, "x", adcstest.Password)); !errors.As(err, &ve) || ve.Field != "config.template" {
+		t.Fatalf("approval template: %v", err)
+	}
+	fk.EnrollmentFlags.Store(0)
 	in = adcsInput(fk, "x", adcstest.Password)
 	in.ADCSPassword = nil
 	if _, err := f.store.CreateCA(ctx, f.org, in); !errors.As(err, &ve) || ve.Field != "config.password" {

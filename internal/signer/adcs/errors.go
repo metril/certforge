@@ -22,7 +22,7 @@ type ErrPending struct {
 
 // Error implements error.
 func (e ErrPending) Error() string {
-	return fmt.Sprintf("adcs: request %s is pending approval", e.RequestID)
+	return fmt.Sprintf("request %s is pending CA manager approval", e.RequestID)
 }
 
 // ErrDenied means the CA refused the request.
@@ -33,5 +33,5 @@ type ErrDenied struct {
 
 // Error implements error.
 func (e ErrDenied) Error() string {
-	return "adcs: request denied: " + e.Disposition
+	return e.Disposition
 }
