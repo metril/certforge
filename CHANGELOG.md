@@ -2,6 +2,22 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.13.0](https://github.com/metril/certforge/compare/v0.12.0...v0.13.0) (2026-10-11)
+
+
+### Features
+
+* **api:** add authentik, pfsense, truenas, routeros, ssh deploy target types ([639148d](https://github.com/metril/certforge/commit/639148dbf0395fa67968555656f131109d6e296b))
+* **httpx:** per-client MaxBody, DialContext and HTTPClient accessors ([b787c3f](https://github.com/metril/certforge/commit/b787c3fed17cafcc7c08001071c8b9fbcfa1b567))
+* **targets:** add sshx client with pinned host key and atomic WriteFile ([0f9765f](https://github.com/metril/certforge/commit/0f9765f55dffaf07325891bb9afc280644cccefc))
+* **targets:** shared transport for device deploy targets (httpx MaxBody, sshx, WebSocket) ([4be6142](https://github.com/metril/certforge/commit/4be61421282f626addb69b9d7db192a71a17ffa4))
+* **targets:** WebSocket dial options sharing httpx policy ([606a43b](https://github.com/metril/certforge/commit/606a43b37d93f41a4b6f843c0bd6388af82d2762))
+
+
+### Bug Fixes
+
+* **sshx:** host key algorithms, umask, path validation, known_hosts markers ([4d021e2](https://github.com/metril/certforge/commit/4d021e278f8f81987f868465d431b151d4240610))
+
 ## [0.12.0](https://github.com/metril/certforge/compare/v0.11.0...v0.12.0) (2026-10-11)
 
 
