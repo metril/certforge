@@ -4,11 +4,11 @@
 package sshxtest
 
 import (
+	"bufio"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
-	"bufio"
 	"fmt"
 	"io"
 	"net"
@@ -36,9 +36,9 @@ type Server struct {
 	Hang bool
 	// Files holds files uploaded through "scp -t" (name -> data). ScpErr,
 	// when set, is sent as a fatal SCP error reply instead of accepting.
-	Files  map[string][]byte
+	Files map[string][]byte
 	// Pass is the accepted password; empty means "pw".
-	Pass string
+	Pass   string
 	ScpErr string
 }
 
