@@ -104,3 +104,6 @@ ORDER BY
   CASE WHEN NOT sqlc.arg(descending)::bool THEN k.sort_key END,
   CASE WHEN NOT sqlc.arg(descending)::bool THEN k.id END
 LIMIT sqlc.arg(page_limit)::int;
+
+-- name: CountClients :one
+SELECT count(*)::bigint FROM clients WHERE org_id = $1;

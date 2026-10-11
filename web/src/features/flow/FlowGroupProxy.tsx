@@ -3,7 +3,7 @@ import { ToneChip } from '@/components/StatusChip';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { FlowStatus } from './flowGraph';
-import { FLOW_STATUS, laneArrowKeys } from './FlowNode';
+import { CARD, FLOW_STATUS, RAIL, laneArrowKeys } from './FlowNode';
 
 type Props = {
   /** Element id the connectors measure (proxyId of the group). */
@@ -30,17 +30,17 @@ export function FlowGroupProxy({ id, title, count, worst, dimmed, onExpand, regi
           aria-label={`Expand ${title}, ${count} ${count === 1 ? 'item' : 'items'}, ${m.label}`}
           onClick={onExpand}
           onKeyDown={laneArrowKeys}
-          className={cn(
-            'relative z-10 grid w-full min-w-0 gap-1.5 rounded-md border border-border bg-panel px-2.5 py-2 text-left text-sm transition-opacity hover:border-ink-muted focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none',
-            dimmed && 'opacity-40',
-          )}
+          className={cn(CARD, dimmed && 'opacity-40')}
         >
+          <span aria-hidden className={cn('absolute inset-y-0 left-0 w-0.75', RAIL[worst])} />
           <span className="flex min-w-0 items-center gap-2">
-            <ChevronRight className="size-4 shrink-0 text-ink-muted" aria-hidden />
+            <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-sm bg-subtle">
+              <ChevronRight className="size-3.5 text-ink-muted" />
+            </span>
             <span className="truncate font-semibold">{title}</span>
             <span className="ml-auto shrink-0 text-xs text-ink-muted">{count}</span>
           </span>
-          <ToneChip tone={m.tone} icon={m.icon} label={m.label} className="w-fit max-w-full" />
+          {worst !== 'valid' && <ToneChip tone={m.tone} icon={m.icon} label={m.label} className="w-fit max-w-full" />}
         </button>
       </TooltipTrigger>
       <TooltipContent side="top">Click to expand {title}</TooltipContent>

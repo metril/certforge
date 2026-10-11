@@ -11,6 +11,7 @@ import (
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/db/dbtest"
 	"github.com/metril/certforge/internal/db/sqlcgen"
+	"github.com/metril/certforge/internal/flow"
 )
 
 func flowLaneIDs(l gen.FlowLane) map[string]gen.FlowNode {
@@ -53,6 +54,18 @@ func TestGetFlow(t *testing.T) {
 	}
 	if _, ok := flowLaneIDs(fl.Lanes.Clients)["client:"+c.ID.String()]; !ok {
 		t.Fatal("client node missing")
+	}
+	cs := flowLaneIDs(fl.Lanes.Certificates)[certNode].Summary
+	if cs == nil || cs.VersionSerial == nil || *cs.VersionSerial == "" || cs.ExpiresAt == nil ||
+		cs.ClientIds == nil || len(*cs.ClientIds) != 1 || (*cs.ClientIds)[0] != "client:"+c.ID.String() ||
+		cs.Counts == nil || cs.Counts.Grants != 1 {
+		t.Fatalf("certificate summary = %+v", cs)
+	}
+	if ls := flowLaneIDs(fl.Lanes.Delivery)["layout:"+layout.String()].Summary; ls == nil || ls.Counts == nil || ls.Counts.Grants != 1 {
+		t.Fatalf("layout summary = %+v", ls)
+	}
+	if fl.Lanes.Certificates.Omitted != 0 {
+		t.Fatalf("omitted = %d", fl.Lanes.Certificates.Omitted)
 	}
 	var toLayout, toClient bool
 	for _, e := range fl.Edges {
@@ -116,7 +129,7 @@ func TestGetFlowHiddenLanes(t *testing.T) {
 func TestGetFlowTruncates(t *testing.T) {
 	f := newAgentFixture(t)
 	if _, err := f.pool.Exec(context.Background(),
-		`INSERT INTO certificates (org_id, name, common_name, status) SELECT $1, 'c' || lpad(g::text, 4, '0'), 'c.example.test', 'pending' FROM generate_series(1, 520) g`, f.org); err != nil {
+		`INSERT INTO certificates (org_id, name, common_name, status) SELECT $1, 'c' || lpad(g::text, 4, '0'), 'c.example.test', 'pending' FROM generate_series(1, 2020) g`, f.org); err != nil {
 		t.Fatal(err)
 	}
 	res, err := f.srv.GetFlow(f.as("operator"), gen.GetFlowRequestObject{OrgId: f.org})
@@ -124,8 +137,8 @@ func TestGetFlowTruncates(t *testing.T) {
 		t.Fatal(err)
 	}
 	fl := gen.Flow(res.(gen.GetFlow200JSONResponse))
-	if !fl.Truncated || len(fl.Lanes.Certificates.Nodes) != 500 {
-		t.Fatalf("truncated=%v certs=%d", fl.Truncated, len(fl.Lanes.Certificates.Nodes))
+	if !fl.Truncated || len(fl.Lanes.Certificates.Nodes) != flow.MaxNodes || fl.Lanes.Certificates.Omitted < 20 {
+		t.Fatalf("truncated=%v certs=%d omitted=%d", fl.Truncated, len(fl.Lanes.Certificates.Nodes), fl.Lanes.Certificates.Omitted)
 	}
 }
 
@@ -144,11 +157,11 @@ func TestGetFlowUsageCountsWholeOrgOnly(t *testing.T) {
 	}
 	late, none := newCA("late"), newCA("none")
 	if _, err := f.pool.Exec(ctx,
-		`INSERT INTO certificates (org_id, name, common_name, status) SELECT $1, 'c' || lpad(g::text, 4, '0'), 'c.example.test', 'pending' FROM generate_series(1, 520) g`, f.org); err != nil {
+		`INSERT INTO certificates (org_id, name, common_name, status) SELECT $1, 'c' || lpad(g::text, 4, '0'), 'c.example.test', 'pending' FROM generate_series(1, 2020) g`, f.org); err != nil {
 		t.Fatal(err)
 	}
 	// Only the last two certificates by name, past the node cap, use "late".
-	if _, err := f.pool.Exec(ctx, `UPDATE certificates SET overrides = jsonb_build_object('caId', $2::text) WHERE org_id = $1 AND name IN ('c0519', 'c0520')`, f.org, late); err != nil {
+	if _, err := f.pool.Exec(ctx, `UPDATE certificates SET overrides = jsonb_build_object('caId', $2::text) WHERE org_id = $1 AND name IN ('c2019', 'c2020')`, f.org, late); err != nil {
 		t.Fatal(err)
 	}
 	// Another org's certificate pointing at "none" must not count here.

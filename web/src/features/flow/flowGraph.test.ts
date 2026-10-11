@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collapseEdges, edgeKey, expandFor, filterFlow, isProblem, pairStatus, tracePath, visibleNodeIds, type Flow, type FlowNodeData } from './flowGraph';
+import { MAX_KEPT_PER_GROUP, keptNodes, CAP, collapseEdges, linkCounts, sortForLane, parseEdgeKey, edgeKey, expandFor, filterFlow, PROBLEM_STATUSES, highlightSet, isProblem, pairStatus, pathUnion, tracePath, visibleNodeIds, type Flow, type FlowNodeData } from './flowGraph';
 
 const node = (kind: FlowNodeData['kind'], id: string, extra: Partial<FlowNodeData> = {}): FlowNodeData => ({
   id: `${kind}:${id}`,
@@ -9,7 +9,7 @@ const node = (kind: FlowNodeData['kind'], id: string, extra: Partial<FlowNodeDat
   href: `/o/acme/x/${id}`,
   ...extra,
 });
-const lane = (nodes: FlowNodeData[], hidden = false) => ({ hidden, nodes });
+const lane = (nodes: FlowNodeData[], hidden = false) => ({ hidden, omitted: 0, nodes });
 const e = (from: string, to: string, certificateId?: string) => ({ from, to, status: 'valid' as const, certificateId });
 
 // Two certificates share CA1 and layout L1; A reaches client K1, B reaches K2.
@@ -144,14 +144,37 @@ describe('pairStatus', () => {
   });
 });
 
+describe('visibleNodeIds memoisation', () => {
+  it('returns the same ids on repeated calls', () => {
+    const a = visibleNodeIds(flow, { q: 'k1' })!;
+    const b = visibleNodeIds(flow, { q: 'k1' })!;
+    expect([...b].sort()).toEqual([...a].sort());
+  });
+});
+
+describe('keptNodes', () => {
+  it('keeps path nodes up to the per-group limit and always the explicit ids', () => {
+    const clients = Array.from({ length: 80 }, (_, i) => ({ id: `client:c${i}`, kind: 'client', name: `c${i}`, status: 'valid', href: '' }) as FlowNodeData);
+    const f: Flow = {
+      ...flow,
+      lanes: { ...flow.lanes, clients: { hidden: false, omitted: 0, nodes: clients } },
+    };
+    const path = { nodes: new Set(clients.map((c) => c.id)), edges: new Set<string>(), synthetic: new Set<string>() };
+    const k = keptNodes(f, path, ['client:c79']);
+    expect(k.has('client:c79')).toBe(true);
+    expect(k.size).toBe(MAX_KEPT_PER_GROUP + 1);
+    expect(keptNodes(f, null, ['x']).has('x')).toBe(true);
+  });
+});
+
 describe('visibleNodeIds', () => {
   it('shows everything without filters', () => {
-    expect(visibleNodeIds(flow, '  ', undefined)).toBeNull();
+    expect(visibleNodeIds(flow, { q: '  ' })).toBeNull();
     expect(filterFlow(flow, null)).toBe(flow);
   });
 
   it('matches names case-insensitively and keeps the whole path of each match', () => {
-    const v = visibleNodeIds(flow, 'k1', undefined)!;
+    const v = visibleNodeIds(flow, { q: 'k1' })!;
     expect(ids(v)).toEqual(['ca:ca1', 'certificate:A', 'channel:ch1', 'client:K1', 'dnsCredential:dns1', 'layout:L1']);
   });
 
@@ -161,7 +184,7 @@ describe('visibleNodeIds', () => {
       lanes: { ...flow.lanes, certificates: lane([node('certificate', 'A'), node('certificate', 'B'), node('certificate', 'C', { status: 'failed' })]) },
       edges: flow.edges.map((x) => (x.from === 'certificate:B' && x.to === 'ca:ca2' ? { ...x, status: 'failed' as const } : x)),
     };
-    const v = visibleNodeIds(f, undefined, 'problems')!;
+    const v = visibleNodeIds(f, { statuses: PROBLEM_STATUSES })!;
     expect(v.has('certificate:C')).toBe(true);
     expect(v.has('client:K2')).toBe(true);
     expect(v.has('ca:ca2')).toBe(true);
@@ -174,8 +197,53 @@ describe('visibleNodeIds', () => {
   });
 
   it('combines name and problems, and is empty when nothing matches', () => {
-    expect(visibleNodeIds(flow, 'A', 'problems')!.size).toBe(0);
-    expect(visibleNodeIds(flow, 'zzz', undefined)!.size).toBe(0);
+    expect(visibleNodeIds(flow, { q: 'A', statuses: PROBLEM_STATUSES })!.size).toBe(0);
+    expect(visibleNodeIds(flow, { q: 'zzz' })!.size).toBe(0);
+  });
+});
+
+describe('filters', () => {
+  it('kind keeps matching nodes with their paths', () => {
+    const v = visibleNodeIds(flow, { kinds: ['client'] })!;
+    expect(v.has('client:K1')).toBe(true);
+    expect(v.has('certificate:A')).toBe(true);
+    expect(v.has('ca:ca1')).toBe(true);
+    expect(v.has('hook:H1')).toBe(true);
+  });
+  it('statuses match a node status', () => {
+    const f: Flow = { ...flow, lanes: { ...flow.lanes, clients: lane([node('client', 'K1', { status: 'drift' }), node('client', 'K2'), node('client', 'K3')]) } };
+    const v = visibleNodeIds(f, { statuses: ['drift'] })!;
+    expect(v.has('client:K1')).toBe(true);
+    expect(v.has('certificate:A')).toBe(true);
+    expect(v.has('client:K2')).toBe(false);
+  });
+  it('an issuer filter keeps only that issuer\'s certificates and their downstream', () => {
+    const v = visibleNodeIds(flow, { issuers: ['ca:ca2'] })!;
+    expect(ids(v)).toEqual(expect.arrayContaining(['ca:ca2', 'certificate:B', 'layout:L1', 'client:K2', 'hook:H1', 'client:K3']));
+    expect(v.has('certificate:A')).toBe(false);
+    expect(v.has('client:K1')).toBe(false);
+    expect(v.has('ca:ca1')).toBe(false);
+  });
+  it('a client filter keeps only its path', () => {
+    const v = visibleNodeIds(flow, { clients: ['client:K1'] })!;
+    expect(v.has('client:K1')).toBe(true);
+    expect(v.has('certificate:A')).toBe(true);
+    expect(v.has('client:K2')).toBe(false);
+    expect(v.has('certificate:B')).toBe(false);
+  });
+  it('combines kind with issuer', () => {
+    const v = visibleNodeIds(flow, { kinds: ['client'], issuers: ['ca:ca2'] })!;
+    expect(v.has('client:K2')).toBe(true);
+    expect(v.has('client:K1')).toBe(false);
+  });
+  it('pathUnion joins paths and highlightSet separates focus from hover', () => {
+    const u = pathUnion(flow, ['client:K1', 'client:K2']);
+    expect(u.nodes.has('certificate:A') && u.nodes.has('certificate:B')).toBe(true);
+    const h = highlightSet(flow, 'client:K1', 'client:K2');
+    expect(h.focus.nodes.has('certificate:A')).toBe(true);
+    expect(h.hover.nodes.has('certificate:B')).toBe(true);
+    expect(highlightSet(flow, 'client:K1', 'client:K1').hover.nodes.size).toBe(0);
+    expect(highlightSet(flow, null, null).focus.nodes.size).toBe(0);
   });
 });
 
@@ -232,11 +300,57 @@ describe('problems and expandFor', () => {
     expect((['failed', 'expired', 'drift', 'expiring'] as const).every(isProblem)).toBe(true);
     expect((['pending', 'valid', 'idle'] as const).some(isProblem)).toBe(false);
     const f: Flow = { ...flow, lanes: { ...flow.lanes, certificates: lane([node('certificate', 'A', { status: 'pending' }), node('certificate', 'B'), node('certificate', 'C')]) } };
-    expect(visibleNodeIds(f, undefined, 'problems')!.size).toBe(0);
+    expect(visibleNodeIds(f, { statuses: PROBLEM_STATUSES })!.size).toBe(0);
   });
 
   it('removes the lane and sub-group of a kind from the collapsed list', () => {
     expect(expandFor('ca', ['issuers', 'issuers.cas', 'issuers.dns', 'delivery'])).toEqual(['issuers.dns', 'delivery']);
     expect(expandFor('certificate', ['certificates', 'alerts'])).toEqual(['alerts']);
+  });
+});
+
+describe('parseEdgeKey', () => {
+  it('splits from>to', () => {
+    expect(parseEdgeKey('certificate:a>layout:l1')).toEqual({ from: 'certificate:a', to: 'layout:l1' });
+  });
+  it('rejects a key without >, with empty halves, or with extra >', () => {
+    expect(parseEdgeKey('certificate:a')).toBeNull();
+    expect(parseEdgeKey('>layout:l1')).toBeNull();
+    expect(parseEdgeKey('a>b>c')).toBeNull();
+  });
+  it('rejects ids the flow does not hold when a flow is given', () => {
+    expect(parseEdgeKey('certificate:A>layout:L1', flow)).not.toBeNull();
+    expect(parseEdgeKey('certificate:A>layout:nope', flow)).toBeNull();
+  });
+  it('rejects two existing nodes that no edge links', () => {
+    expect(parseEdgeKey('certificate:C>layout:L1', flow)).toBeNull();
+    expect(parseEdgeKey('layout:L1>certificate:A', flow)).toEqual({ from: 'layout:L1', to: 'certificate:A' });
+  });
+});
+
+describe('sortForLane and linkCounts', () => {
+  it('puts failed before expired, drift, expiring, then the rest in server order', () => {
+    const ns = [node('certificate', 'a'), node('certificate', 'b', { status: 'expiring' }), node('certificate', 'c', { status: 'failed' }), node('certificate', 'd', { status: 'pending' }), node('certificate', 'e', { status: 'expired' }), node('certificate', 'f')];
+    expect(sortForLane(ns).map((n) => n.name)).toEqual(['c', 'e', 'b', 'a', 'd', 'f']);
+    expect(ns[0]!.name).toBe('a');
+    expect(CAP).toBe(12);
+  });
+  it('counts distinct neighbours in lower and higher lanes', () => {
+    const f: Flow = {
+      truncated: false,
+      generatedAt: '2026-01-01T00:00:00Z',
+      lanes: {
+        issuers: lane([node('ca', 'c1')]),
+        certificates: lane([node('certificate', 'w')]),
+        delivery: lane([node('layout', 'l1'), node('layout', 'l2')]),
+        clients: lane([]),
+        alerts: lane([]),
+      },
+      edges: [e('certificate:w', 'ca:c1'), e('certificate:w', 'layout:l1'), e('certificate:w', 'layout:l2'), e('certificate:w', 'layout:l2')],
+    };
+    const c = linkCounts(f);
+    expect(c.get('certificate:w')).toEqual({ up: 1, down: 2 });
+    expect(c.get('ca:c1')).toEqual({ up: 0, down: 1 });
+    expect(c.get('layout:l2')).toEqual({ up: 1, down: 0 });
   });
 });

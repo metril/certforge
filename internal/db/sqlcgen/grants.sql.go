@@ -563,7 +563,7 @@ func (q *Queries) GrantSources(ctx context.Context, ids []uuid.UUID) ([]GrantSou
 const grantViews = `-- name: GrantViews :many
 SELECT g.id, g.client_id, c.name AS client_name, g.cert_id, ce.name AS certificate_name, g.delivery,
        g.output_spec_id, g.deploy_target_id, g.hook_ids, g.auto_remediate, g.target_options, g.created_at, g.updated_at,
-       d.state, d.version_id, d.expected, d.installed, d.error, d.reported_at, d.updated_at AS deployment_updated_at
+       d.state, d.version_id, d.expected, d.installed, d.error, d.reported_at, d.state_changed_at, d.updated_at AS deployment_updated_at
 FROM client_cert_grants g
 JOIN clients c ON c.id = g.client_id
 JOIN certificates ce ON ce.id = g.cert_id
@@ -600,6 +600,7 @@ type GrantViewsRow struct {
 	Installed           []byte      `json:"installed"`
 	Error               string      `json:"error"`
 	ReportedAt          *time.Time  `json:"reported_at"`
+	StateChangedAt      time.Time   `json:"state_changed_at"`
 	DeploymentUpdatedAt time.Time   `json:"deployment_updated_at"`
 }
 
@@ -632,6 +633,7 @@ func (q *Queries) GrantViews(ctx context.Context, arg GrantViewsParams) ([]Grant
 			&i.Installed,
 			&i.Error,
 			&i.ReportedAt,
+			&i.StateChangedAt,
 			&i.DeploymentUpdatedAt,
 		); err != nil {
 			return nil, err

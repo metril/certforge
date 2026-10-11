@@ -72,19 +72,31 @@ Two tabs:
 
 **Flow** (`/o/<slug>/flow`) is a read-only map of how one organization makes and uses certificates. Lanes run left to right: Issuers (CAs, ACME accounts, DNS credentials), Certificates, Delivery (layouts, targets, hooks), Clients, and Alerts (channels).
 
-1. Select a node. Its path stays at full strength and everything else dims. Press Escape or select the node again to clear.
+1. Hover a node to highlight its path. Select it to pin the path and open the detail panel. Press Escape or select the node again to clear.
 2. A certificate shows its issuers, its delivery nodes, the clients each delivery reaches, and the channels that would receive its events. An issuer shows every certificate that uses it.
-3. A path panel above the map lists the stages in order, each with an **Open** link to the item.
+3. The detail panel is an aside on wide screens and a bottom sheet on narrow ones. It shows a summary (expiry, version, last deploy, last error and counts), a vertical path stepper with an **Open** link per stage, and actions.
 
 Each node carries one status chip. Issuer nodes read **In use** or **Unused**; a private CA also reads **Expiring** or **Expired**; channels read **Delivering**, **Delivery pending**, **No deliveries yet**, **Disabled** or **Failing**; other nodes read Healthy, Expiring, Expired, Failed, Drift, Pending or Idle.
+
+Detail panel actions:
+
+- **Open** goes to the item.
+- **Renew** (certificates) queues a renewal.
+- **Redeploy** (clients and deploy targets) redeploys only the grants on the current path. The confirmation shows how many.
+
+Edges are clickable and labelled. Select one to highlight that connection; the URL carries `edge=from>to`.
 
 Narrow the map with the toolbar:
 
 - **Search** matches node names.
-- **Show** switches between **All** and **Problems** (failed, expired, in drift or expiring nodes and their paths).
-- Lane headings collapse; **Collapse all** and **Expand all** toggle every lane.
+- **Kind** chips limit the map to node kinds.
+- **Status** chips limit it to statuses. The **Problems** chip selects failed, expired, in drift and expiring at once (the older `?status=problems` link still works).
+- **Issuer** and **Client** multi-selects keep every whole path that runs through the chosen issuers or clients.
+- Lane headings collapse and stay pinned while you scroll; **Collapse all** and **Expand all** toggle every lane.
 
-Filters, the selected node and collapsed lanes are kept in the page URL, so you can share a view. A lane you cannot read shows "No access"; a **Truncated** chip means the server capped the map. Below 1024 pixels the lanes stack and selecting a node filters them to its path.
+Each lane lists problem nodes first and shows 12 per group. **Show N more** reveals the rest (**Show fewer** hides them again). The map holds at most 2000 nodes; a lane that hits the cap shows **+N not shown**.
+
+All state is in the page URL (search, filters, the selected node and edge, expanded groups and collapsed lanes), so you can share a view. A lane you cannot read shows "No access". Below 1024 pixels the lanes stack, each showing its link counts, and selecting a node filters them to its path.
 
 ## Command palette
 

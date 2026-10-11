@@ -2,6 +2,7 @@ package flow
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -182,17 +183,17 @@ func TestAssembleHiddenLanesDropEdges(t *testing.T) {
 
 func TestAssembleTruncation(t *testing.T) {
 	var certs []Cert
-	for i := 0; i < 600; i++ {
+	for i := 0; i < MaxNodes+100; i++ {
 		certs = append(certs, Cert{ID: id(), Name: fmt.Sprintf("c%03d", i), Status: "active"})
 	}
 	var clients []Client
-	for i := 0; i < 300; i++ {
+	for i := 0; i < maxSideNodes+50; i++ {
 		clients = append(clients, Client{ID: id(), Name: fmt.Sprintf("h%03d", i), Status: "active"})
 	}
 	g := Assemble(Input{OrgSlug: "a", Certs: certs, Clients: clients}, allPerms(), now)
 	total := len(g.Certificates.Nodes) + len(g.Clients.Nodes)
 	if total != MaxNodes || !g.Truncated {
-		t.Fatalf("total=%d truncated=%v", total, g.Truncated)
+		t.Fatalf("total=%d truncated=%v omitted=certs:%d clients:%d, want total %d truncated", total, g.Truncated, g.Certificates.Omitted, g.Clients.Omitted, MaxNodes)
 	}
 	if len(g.Clients.Nodes) != maxSideNodes {
 		t.Fatalf("clients = %d, want side cap %d", len(g.Clients.Nodes), maxSideNodes)
@@ -200,12 +201,23 @@ func TestAssembleTruncation(t *testing.T) {
 	// Under the cap: not truncated.
 	g = Assemble(Input{OrgSlug: "a", Certs: certs[:10]}, allPerms(), now)
 	if g.Truncated {
-		t.Fatal("small map truncated")
+		t.Fatal("10 certificates under the cap but Truncated is set")
 	}
 	// The certificate list itself being cut short counts.
 	g = Assemble(Input{OrgSlug: "a", Certs: certs[:10], CertsMore: true}, allPerms(), now)
 	if !g.Truncated {
-		t.Fatal("CertsMore did not set truncated")
+		t.Fatal("CertsMore=true but Truncated is not set")
+	}
+}
+
+func TestAssembleClientsTotalCountsOverflow(t *testing.T) {
+	var clients []Client
+	for i := 0; i < MaxNodes; i++ {
+		clients = append(clients, Client{ID: id(), Name: fmt.Sprintf("h%04d", i), Status: "active"})
+	}
+	g := Assemble(Input{OrgSlug: "a", Clients: clients, ClientsTotal: MaxNodes + 500}, allPerms(), now)
+	if want := MaxNodes - maxSideNodes + 500; g.Clients.Omitted != want || !g.Truncated {
+		t.Fatalf("clients omitted=%d truncated=%v, want omitted %d truncated", g.Clients.Omitted, g.Truncated, want)
 	}
 }
 
@@ -223,7 +235,7 @@ func TestAssembleEdgeCap(t *testing.T) {
 	}
 	g := Assemble(Input{OrgSlug: "a", Certs: certs, DNSCreds: dns}, allPerms(), now)
 	if len(g.Edges) != MaxEdges || !g.Truncated {
-		t.Fatalf("edges=%d truncated=%v", len(g.Edges), g.Truncated)
+		t.Fatalf("edges=%d truncated=%v omitted=certs:%d clients:%d, want %d edges truncated", len(g.Edges), g.Truncated, g.Certificates.Omitted, g.Clients.Omitted, MaxEdges)
 	}
 }
 
@@ -312,9 +324,9 @@ func TestIssuerAndChannelStatuses(t *testing.T) {
 func TestIssuerUsageBeyondCap(t *testing.T) {
 	caLate, caNone := id(), id()
 	var certs []Cert
-	for i := 0; i < 600; i++ {
+	for i := 0; i < MaxNodes+100; i++ {
 		c := Cert{ID: id(), Name: fmt.Sprintf("c%03d", i), Status: "active"}
-		if i == 599 {
+		if i == MaxNodes+99 {
 			c.CAID = &caLate
 		}
 		certs = append(certs, c)
@@ -322,7 +334,7 @@ func TestIssuerUsageBeyondCap(t *testing.T) {
 	in := Input{OrgSlug: "a", CAs: []Item{{ID: caLate, Name: "late", Detail: "acme"}, {ID: caNone, Name: "none", Detail: "acme"}}, Certs: certs}
 	g := Assemble(in, allPerms(), now)
 	if !g.Truncated {
-		t.Fatal("not truncated")
+		t.Fatal("MaxNodes+100 certificates but Truncated is not set")
 	}
 	got := map[string]Node{}
 	for _, n := range g.Issuers.Nodes {
@@ -348,5 +360,135 @@ func TestIssuerUsageBeyondCap(t *testing.T) {
 	}
 	if n := got["ca:"+caNone.String()]; n.Status != StatusIdle || n.StatusDetail != "Not used by any certificate" {
 		t.Errorf("unused CA = %s %q", n.Status, n.StatusDetail)
+	}
+}
+
+func TestAssembleSummaries(t *testing.T) {
+	ca, cert, layout, target, client := id(), id(), id(), id(), id()
+	d1, d2 := now.Add(-2*time.Hour), now.Add(-time.Hour)
+	long := strings.Repeat("é", 600)
+	in := Input{
+		OrgSlug: "a",
+		CAs:     []Item{{ID: ca, Name: "CA", Detail: "localca", NotAfter: tp(now.Add(400 * 24 * time.Hour))}},
+		Certs: []Cert{{ID: cert, Name: "web", Status: "active", CAID: &ca, Serial: "ab12",
+			NotAfter: tp(now.Add(90 * 24 * time.Hour))}},
+		Layouts: []Item{{ID: layout, Name: "pem"}},
+		Targets: []Item{{ID: target, Name: "t"}},
+		Clients: []Client{{ID: client, Name: "h", Status: "active"}},
+		Grants: []Grant{
+			{CertID: cert, ClientID: &client, LayoutID: &layout, State: "ok", DeployedAt: &d1, UpdatedAt: &d1},
+			{CertID: cert, ClientID: &client, TargetID: &target, State: "ok", DeployedAt: &d2, UpdatedAt: &d2},
+			{CertID: cert, ClientID: &client, TargetID: &target, State: "failed", Error: long, UpdatedAt: &d2},
+		},
+	}
+	g := Assemble(in, allPerms(), now)
+	by := map[string]Node{}
+	for _, l := range []Lane{g.Issuers, g.Certificates, g.Delivery, g.Clients} {
+		for _, n := range l.Nodes {
+			by[n.ID] = n
+		}
+	}
+	c := by["certificate:"+cert.String()].Summary
+	if c == nil || c.VersionSerial != "ab12" || c.ExpiresAt == nil || c.IssuerID != "ca:"+ca.String() ||
+		len(c.ClientIDs) != 1 || c.ClientIDs[0] != "client:"+client.String() {
+		t.Fatalf("cert summary: %+v", c)
+	}
+	if c.Counts == nil || c.Counts.Grants != 3 || c.Counts.Deployments != 2 || c.Counts.Problems != 1 {
+		t.Fatalf("cert counts: %+v", c.Counts)
+	}
+	if c.LastDeployedAt == nil || !c.LastDeployedAt.Equal(d2) {
+		t.Fatalf("cert lastDeployedAt: %v", c.LastDeployedAt)
+	}
+	if ca := by["ca:"+ca.String()].Summary; ca == nil || ca.ExpiresAt == nil {
+		t.Fatalf("ca summary: %+v", ca)
+	}
+	tg := by["target:"+target.String()]
+	if tg.Status != StatusFailed || tg.Summary == nil || tg.Summary.Counts.Grants != 2 || tg.Summary.Counts.Problems != 2 || len([]rune(tg.Summary.LastError)) != maxSummaryError {
+		t.Fatalf("target summary: %+v status %s", tg.Summary, tg.Status)
+	}
+	if l := by["layout:"+layout.String()].Summary; l == nil || l.Counts.Grants != 1 || l.Counts.Deployments != 1 || l.Counts.Problems != 0 || l.LastDeployedAt == nil || !l.LastDeployedAt.Equal(d1) {
+		t.Fatalf("layout summary: %+v", l)
+	}
+	cl := by["client:"+client.String()].Summary
+	if cl == nil || cl.Counts.Grants != 3 || cl.Counts.Deployments != 2 || cl.Counts.Problems != 1 {
+		t.Fatalf("client summary: %+v", cl)
+	}
+}
+
+func TestAssembleOmittedPerLane(t *testing.T) {
+	var certs []Cert
+	for i := 0; i < MaxNodes+20; i++ {
+		certs = append(certs, Cert{ID: id(), Name: fmt.Sprintf("c%04d", i), Status: "active"})
+	}
+	var clients []Client
+	for i := 0; i < maxSideNodes+7; i++ {
+		clients = append(clients, Client{ID: id(), Name: fmt.Sprintf("h%04d", i), Status: "active"})
+	}
+	g := Assemble(Input{OrgSlug: "a", Certs: certs, Clients: clients}, allPerms(), now)
+	if g.Clients.Omitted != 7 {
+		t.Errorf("clients omitted = %d, want 7", g.Clients.Omitted)
+	}
+	wantCerts := len(certs) - len(g.Certificates.Nodes)
+	if g.Certificates.Omitted != wantCerts || wantCerts == 0 {
+		t.Errorf("certs omitted = %d, want %d", g.Certificates.Omitted, wantCerts)
+	}
+	if g.Issuers.Omitted != 0 || g.Alerts.Omitted != 0 {
+		t.Errorf("uncapped lanes omitted: %d %d", g.Issuers.Omitted, g.Alerts.Omitted)
+	}
+	// Uses covers the whole org when the cert list was cut short.
+	uses := make([]Use, MaxNodes+50)
+	g = Assemble(Input{OrgSlug: "a", Certs: certs[:10], CertsMore: true, Uses: uses}, allPerms(), now)
+	if g.Certificates.Omitted != MaxNodes+50-10 {
+		t.Errorf("certs omitted with Uses = %d", g.Certificates.Omitted)
+	}
+}
+
+// BenchmarkAssemble2000 assembles a map at the node cap with about 4000 edges.
+func BenchmarkAssemble2000(b *testing.B) {
+	var in Input
+	in.OrgSlug = "a"
+	var cas []uuid.UUID
+	for i := 0; i < 50; i++ {
+		c := id()
+		cas = append(cas, c)
+		in.CAs = append(in.CAs, Item{ID: c, Name: fmt.Sprintf("ca%d", i), Detail: "localca"})
+	}
+	var layouts, targets, clients []uuid.UUID
+	for i := 0; i < 300; i++ {
+		l, t := id(), id()
+		layouts, targets = append(layouts, l), append(targets, t)
+		in.Layouts = append(in.Layouts, Item{ID: l, Name: fmt.Sprintf("l%d", i)})
+		in.Targets = append(in.Targets, Item{ID: t, Name: fmt.Sprintf("t%d", i)})
+	}
+	for i := 0; i < 350; i++ {
+		c := id()
+		clients = append(clients, c)
+		in.Clients = append(in.Clients, Client{ID: c, Name: fmt.Sprintf("h%d", i), Status: "active"})
+	}
+	for i := 0; i < 1000; i++ {
+		cid, ca := id(), cas[i%len(cas)]
+		cl := clients[i%len(clients)]
+		in.Certs = append(in.Certs, Cert{ID: cid, Name: fmt.Sprintf("c%04d", i), Status: "active", CAID: &ca, NotAfter: tp(now.Add(time.Hour * 24 * 60))})
+		in.Grants = append(in.Grants,
+			Grant{CertID: cid, ClientID: &cl, LayoutID: &layouts[i%300], State: "ok"},
+			Grant{CertID: cid, TargetID: &targets[i%300], State: "ok"})
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		g := Assemble(in, allPerms(), now)
+		if i == 0 && (len(g.Edges) < 3900 || len(g.Certificates.Nodes) != 1000) {
+			b.Fatalf("edges=%d certs=%d", len(g.Edges), len(g.Certificates.Nodes))
+		}
+	}
+}
+
+func TestAgentDeployedAtUsesStateChange(t *testing.T) {
+	changed := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	if got := agentDeployedAt("ok", changed); got == nil || !got.Equal(changed) {
+		t.Fatalf("ok: %v", got)
+	}
+	if got := agentDeployedAt("failed", changed); got != nil {
+		t.Fatalf("failed: %v", got)
 	}
 }

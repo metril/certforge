@@ -1856,6 +1856,9 @@ type FlowLane struct {
 
 	// Nodes Nodes in the lane.
 	Nodes []FlowNode `json:"nodes"`
+
+	// Omitted Nodes the size cap dropped from this lane.
+	Omitted int `json:"omitted"`
 }
 
 // FlowLanes The five lanes, left to right.
@@ -1898,10 +1901,46 @@ type FlowNode struct {
 
 	// StatusDetail Short reason for the status; absent when there is nothing to add.
 	StatusDetail *string `json:"statusDetail,omitempty"`
+
+	// Summary Per-node facts for the detail view; every field is present only when it applies.
+	Summary *FlowNodeSummary `json:"summary,omitempty"`
 }
 
 // FlowNodeKind What the node is.
 type FlowNodeKind string
+
+// FlowNodeSummary Per-node facts for the detail view; every field is present only when it applies.
+type FlowNodeSummary struct {
+	// ClientIds Certificate nodes only: node ids of the clients the certificate reaches.
+	ClientIds *[]string `json:"clientIds,omitempty"`
+
+	// Counts Totals over the node's grants and edges.
+	Counts *struct {
+		// Deployments Grants whose deployment is done.
+		Deployments int `json:"deployments"`
+
+		// Grants Grants that involve this node.
+		Grants int `json:"grants"`
+
+		// Problems Failed, drifted, expired or expiring edges at this node.
+		Problems int `json:"problems"`
+	} `json:"counts,omitempty"`
+
+	// ExpiresAt Certificate notAfter, or a private CA's own certificate expiry.
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+
+	// IssuerId Certificate nodes only: node id (ca:uuid or account:uuid) of the issuer.
+	IssuerId *string `json:"issuerId,omitempty"`
+
+	// LastDeployedAt Latest successful deployment among the node's grants.
+	LastDeployedAt *time.Time `json:"lastDeployedAt,omitempty"`
+
+	// LastError Most recent failure reason when the node is failed or drifted.
+	LastError *string `json:"lastError,omitempty"`
+
+	// VersionSerial Serial of the certificate's current version.
+	VersionSerial *string `json:"versionSerial,omitempty"`
+}
 
 // FlowStatus Health of a node or edge.
 type FlowStatus string

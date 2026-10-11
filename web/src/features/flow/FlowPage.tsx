@@ -1,25 +1,60 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { Link2, Search, TriangleAlert } from 'lucide-react';
+import { Link2, Search } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { flowQuery } from '@/api/queries/flow';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
+import { ChipSet } from '@/components/ChipSet';
+import { MultiCombobox } from '@/components/MultiCombobox';
 import { FilterField } from '@/components/FilterToolbar';
 import { PageHeader } from '@/components/PageHeader';
-import { SegmentedControl } from '@/components/SegmentedControl';
 import { ToneChip } from '@/components/StatusChip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useOrg } from '@/lib/org';
 import { useMediaQuery } from '@/lib/useMediaQuery';
-import { LANE_KEYS, expandFor, filterFlow, tracePath, visibleNodeIds, type Flow, type FlowNodeData } from './flowGraph';
+import { cn } from '@/lib/utils';
+import { LANE_KEYS, PROBLEM_STATUSES, expandFor, keptNodes, filterFlow, highlightSet, linkCounts, parseEdgeKey, visibleNodeIds, type Flow, type FlowNodeData, type FlowStatus } from './flowGraph';
+import { FLOW_STATUS, KIND_META } from './FlowNode';
+import { FLOW_STATUSES, type FlowSearch } from './search';
 import { FlowConnectors } from './FlowConnectors';
 import { FlowLane } from './FlowLane';
-import { FlowPathPanel } from './FlowPathPanel';
+import { FlowDetailSheet } from './FlowDetailSheet';
 import { failedWithoutData } from '@/lib/queryState';
+
+type Kind = FlowNodeData['kind'];
+const KIND_GROUPS: { lane: string; kinds: Kind[] }[] = [
+  { lane: 'Issuers', kinds: ['ca', 'account', 'dnsCredential'] },
+  { lane: 'Certificates', kinds: ['certificate'] },
+  { lane: 'Delivery', kinds: ['layout', 'target', 'hook'] },
+  { lane: 'Clients', kinds: ['client'] },
+  { lane: 'Alerts', kinds: ['channel'] },
+];
+const KIND_HINT: Record<Kind, string> = {
+  ca: 'Show certificate authorities and what depends on them.',
+  account: 'Show ACME accounts and what depends on them.',
+  dnsCredential: 'Show DNS credentials and what depends on them.',
+  certificate: 'Show certificates and their paths.',
+  layout: 'Show delivery layouts and their paths.',
+  target: 'Show delivery targets and their paths.',
+  hook: 'Show hooks and their paths.',
+  client: 'Show clients and their paths.',
+  channel: 'Show alert channels and their paths.',
+};
+const STATUS_HINT: Record<FlowStatus, string> = {
+  failed: 'Show failed items and their paths.',
+  expired: 'Show expired certificates and their paths.',
+  drift: 'Show items whose deployed copy differs from the latest version.',
+  expiring: 'Show certificates close to expiry.',
+  pending: 'Show items still in progress.',
+  valid: 'Show healthy items and their paths.',
+  idle: 'Show items with nothing to report.',
+};
+const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
+const orNone = <T,>(v: T[]): T[] | undefined => (v.length > 0 ? v : undefined);
 
 function Skeleton() {
   return (
@@ -44,10 +79,20 @@ export function FlowPage() {
   const full: Flow | undefined = q.data;
   const text = search.q ?? '';
   const status = search.status;
-  const deferredText = useDeferredValue(text);
-  const visible = useMemo(() => (full ? visibleNodeIds(full, deferredText, status) : null), [full, deferredText, status]);
+  const statuses = useMemo(() => (status === 'problems' ? PROBLEM_STATUSES : (status ?? [])), [status]);
+  const kinds = search.kind ?? [];
+  const issuers = search.issuer ?? [];
+  const clients = search.client ?? [];
+  // Filters apply deferred so typing and chip clicks stay responsive on a large map.
+  const deferredFilters = useDeferredValue({ q: text, kinds: search.kind, statuses, issuers: search.issuer, clients: search.client });
+  const visible = useMemo(() => (full ? visibleNodeIds(full, deferredFilters) : null), [full, deferredFilters]);
   const flow = useMemo(() => (full ? filterFlow(full, visible) : undefined), [full, visible]);
-  const activeFilters = (text.trim() ? 1 : 0) + (status ? 1 : 0);
+  const activeFilters = (text.trim() ? 1 : 0) + (kinds.length > 0 ? 1 : 0) + (statuses.length > 0 ? 1 : 0) + (issuers.length > 0 ? 1 : 0) + (clients.length > 0 ? 1 : 0);
+  const setFilter = useCallback((patch: Partial<FlowSearch>) => void navigate({ search: (s) => ({ ...s, ...patch }), replace: true }), [navigate]);
+  const options = useMemo(() => {
+    const of = (k: (typeof LANE_KEYS)[number]) => (full ? full.lanes[k].nodes.map((n) => ({ value: n.id, label: n.name, group: KIND_META[n.kind].label })) : []);
+    return { issuers: of('issuers'), clients: of('clients') };
+  }, [full]);
 
   const els = useRef(new Map<string, HTMLElement>());
   const register = useCallback((id: string, el: HTMLElement | null) => {
@@ -60,7 +105,21 @@ export function FlowPage() {
   const all = useMemo(() => (flow ? LANE_KEYS.flatMap((k) => flow.lanes[k].nodes) : []), [flow]);
   const focus = search.focus && all.some((n) => n.id === search.focus) ? search.focus : undefined;
   const selected: FlowNodeData | undefined = all.find((n) => n.id === focus);
-  const path = useMemo(() => (flow ? tracePath(flow, focus) : null), [flow, focus]);
+  // Hovering (or keyboard-focusing) a node lights its path lighter than a selection; debounced so sweeping across nodes never flickers.
+  const [hoverId, setHoverId] = useState<string | null>(null);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const onHover = useCallback((id: string | null) => {
+    clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => setHoverId(id), 80);
+  }, []);
+  useEffect(() => () => clearTimeout(hoverTimer.current), []);
+  // The focus trace depends only on focus, so hovering never re-traces it or changes `path` identity.
+  const path = useMemo(() => (flow ? highlightSet(flow, focus, null).focus : null), [flow, focus]);
+  const hoverPath = useMemo(() => {
+    if (!flow || !hoverId || hoverId === focus) return undefined;
+    const h = highlightSet(flow, focus, hoverId).hover;
+    return h.nodes.size > 0 ? h : undefined;
+  }, [flow, focus, hoverId]);
 
   const collapsed = useMemo(() => new Set(search.collapsed ?? []), [search.collapsed]);
   const setCollapsed = useCallback(
@@ -71,12 +130,32 @@ export function FlowPage() {
     (id: string) => setCollapsed(collapsed.has(id) ? [...collapsed].filter((g) => g !== id) : [...collapsed, id]),
     [collapsed, setCollapsed],
   );
+  const more = useMemo(() => new Set(search.more ?? []), [search.more]);
+  const toggleMore = useCallback(
+    (id: string) => {
+      const cur = search.more ?? [];
+      const next = cur.includes(id) ? cur.filter((g) => g !== id) : [...cur, id];
+      void navigate({ search: (s) => ({ ...s, more: next.length > 0 ? next : undefined }), replace: true });
+    },
+    [navigate, search.more],
+  );
+  const links = useMemo(() => (flow ? linkCounts(flow) : new Map<string, { up: number; down: number }>()), [flow]);
   const allCollapsed = LANE_KEYS.every((k) => collapsed.has(k));
-  const clearFilters = useCallback(() => void navigate({ search: (s) => ({ ...s, q: undefined, status: undefined }), replace: true }), [navigate]);
+  const clearFilters = useCallback(() => void navigate({ search: (s) => ({ ...s, q: undefined, status: undefined, kind: undefined, issuer: undefined, client: undefined }), replace: true }), [navigate]);
+  // A node and a connection are never selected together.
   const setFocus = useCallback(
-    (id: string | undefined) => void navigate({ search: (s) => ({ ...s, focus: id }), replace: true }),
+    (id: string | undefined) => void navigate({ search: (s) => ({ ...s, focus: id, edge: undefined }), replace: true }),
     [navigate],
   );
+  const setEdge = useCallback(
+    (from: string | undefined, to?: string) => void navigate({ search: (s) => ({ ...s, edge: from && to ? `${from}>${to}` : undefined, focus: undefined }), replace: true }),
+    [navigate],
+  );
+  const edge = useMemo(() => (flow && search.edge ? parseEdgeKey(search.edge, flow) : null), [flow, search.edge]);
+  const edgeHidden = !!search.edge && !!full && !edge;
+  useEffect(() => {
+    if (edgeHidden) setEdge(undefined);
+  }, [edgeHidden, setEdge]);
   // A focused node inside a collapsed group is opened so it is drawn (once per focus value).
   const opened = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -97,6 +176,9 @@ export function FlowPage() {
   useEffect(() => {
     if (focusHidden && visible) setFocus(undefined);
   }, [focusHidden, visible, setFocus]);
+  const keep = useMemo(() => keptNodes(flow, path, [focus, edge?.from, edge?.to]), [flow, path, focus, edge]);
+  const detailing = !!selected || !!edge;
+  const clearDetail = useCallback(() => (selected ? setFocus(undefined) : setEdge(undefined)), [selected, setFocus, setEdge]);
   const select = useCallback((id: string) => setFocus(id === focus ? undefined : id), [focus, setFocus]);
 
   const header = (
@@ -119,16 +201,84 @@ export function FlowPage() {
               />
             </div>
           </FilterField>
-          <FilterField label="Show">
-            <SegmentedControl
-              aria-label="Show"
-              value={status ?? 'all'}
-              onChange={(v) => void navigate({ search: (s) => ({ ...s, status: v === 'problems' ? 'problems' : undefined }), replace: true })}
-              options={[
-                { value: 'all', label: 'All' },
-                { value: 'problems', label: 'Problems' },
-              ]}
-            />
+          <FilterField label="Kind">
+            <div className="flex flex-wrap gap-x-3 gap-y-1.5">
+              {KIND_GROUPS.map((g) => (
+                <ChipSet<Kind>
+                  key={g.lane}
+                  aria-label={`Kind: ${g.lane}`}
+                  value={kinds.filter((k) => g.kinds.includes(k))}
+                  onChange={(v) => setFilter({ kind: orNone([...kinds.filter((k) => !g.kinds.includes(k)), ...v]) })}
+                  options={g.kinds.map((k) => ({ value: k, label: KIND_META[k].label, hint: KIND_HINT[k] }))}
+                />
+              ))}
+            </div>
+          </FilterField>
+          <FilterField label="Status">
+            <div className="flex flex-wrap gap-x-3 gap-y-1.5">
+              <ChipSet<'problems'>
+                aria-label="Quick status"
+                value={sameSet(statuses, PROBLEM_STATUSES) ? ['problems'] : []}
+                onChange={(v) => setFilter({ status: v.length > 0 ? [...PROBLEM_STATUSES] : undefined })}
+                options={[{ value: 'problems', label: 'Problems', hint: 'Show failed, expired, drifted and expiring items with their paths.' }]}
+              />
+              <ChipSet<FlowStatus>
+                aria-label="Status"
+                value={[...statuses]}
+                onChange={(v) => setFilter({ status: orNone(FLOW_STATUSES.filter((x) => v.includes(x))) })}
+                options={FLOW_STATUSES.map((st) => {
+                  const Icon = FLOW_STATUS[st].icon;
+                  return {
+                    value: st,
+                    label: (
+                      <>
+                        <Icon className="size-3.5" aria-hidden />
+                        {FLOW_STATUS[st].label}
+                      </>
+                    ),
+                    hint: STATUS_HINT[st],
+                  };
+                })}
+              />
+            </div>
+          </FilterField>
+          <FilterField label="Issuer">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="w-full md:w-44">
+                  <MultiCombobox
+                    aria-label="Issuer"
+                    hideChips
+                    value={issuers}
+                    onChange={(v) => setFilter({ issuer: orNone(v) })}
+                    options={options.issuers}
+                    placeholder="Any issuer"
+                    emptyText="No issuers."
+                    triggerLabel={(v, labelOf) => (v.length === 1 ? labelOf(v[0]!) : `${v.length} issuers`)}
+                  />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>Keep only certificates from these issuers and everything downstream.</TooltipContent>
+            </Tooltip>
+          </FilterField>
+          <FilterField label="Client">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="w-full md:w-44">
+                  <MultiCombobox
+                    aria-label="Client"
+                    hideChips
+                    value={clients}
+                    onChange={(v) => setFilter({ client: orNone(v) })}
+                    options={options.clients}
+                    placeholder="Any client"
+                    emptyText="No clients."
+                    triggerLabel={(v, labelOf) => (v.length === 1 ? labelOf(v[0]!) : `${v.length} clients`)}
+                  />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>Keep only the paths that reach these clients.</TooltipContent>
+            </Tooltip>
           </FilterField>
         </>
       }
@@ -145,14 +295,6 @@ export function FlowPage() {
                 <ToneChip tone="neutral" icon={Link2} label="Dashed links" tabIndex={0} />
               </TooltipTrigger>
               <TooltipContent>Channels match events by type and severity, not by certificate. Dashed links show which channels would hear about the selected certificates.</TooltipContent>
-            </Tooltip>
-          )}
-          {flow?.truncated && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <ToneChip tone="expiring" icon={TriangleAlert} label="Truncated" tabIndex={0} />
-              </TooltipTrigger>
-              <TooltipContent>The map hit its size limit, so some items are not shown.</TooltipContent>
             </Tooltip>
           )}
         </>
@@ -178,20 +320,18 @@ export function FlowPage() {
   }
 
   const empty = visible !== null && visible.size === 0;
-  const filtering = !wide && !!selected;
   return (
     <div
       onKeyDown={(e) => {
-        if (e.key !== 'Escape' || !focus) return;
+        if (e.key !== 'Escape' || !(focus || edge)) return;
         // Escape inside a text field or an open popover/menu belongs to that control. A node's own
         // tooltip also preventDefaults Escape, so defaultPrevented can't be the test.
         const t = e.target as HTMLElement;
         if (t.closest('input, textarea, select, [role="dialog"], [role="listbox"], [role="menu"], [data-radix-popper-content-wrapper]')) return;
-        setFocus(undefined);
+        clearDetail();
       }}
     >
       {header}
-      {selected && <FlowPathPanel selected={selected} nodes={all} path={path} slug={org.slug} compact={!wide} onClear={() => setFocus(undefined)} />}
       {empty ? (
         <EmptyState message="No flows match these filters.">
           <Button variant="outline" onClick={clearFilters}>
@@ -199,29 +339,38 @@ export function FlowPage() {
           </Button>
         </EmptyState>
       ) : (
-      <div ref={box} className={wide ? 'relative grid grid-cols-5 gap-x-12' : 'grid gap-6'}>
+      <div className={wide ? 'lg:flex lg:items-start lg:gap-6' : undefined}>
+      <div ref={box} className={wide ? cn('relative grid min-w-0 flex-1 grid-cols-5', detailing ? 'gap-x-6' : 'gap-x-12') : 'grid gap-6'}>
         {LANE_KEYS.map((k) => {
           const lane = flow.lanes[k];
-          const nodes = filtering ? lane.nodes.filter((n) => path.nodes.has(n.id)) : lane.nodes;
-          if (filtering && nodes.length === 0) return null;
           return (
             <FlowLane
               key={k}
               laneKey={k}
               org={org.slug}
               hidden={lane.hidden}
-              nodes={nodes}
+              nodes={lane.nodes}
               total={full!.lanes[k].nodes.length}
               selectedId={focus}
-              onPath={selected && !filtering ? path.nodes : undefined}
+              onPath={selected ? path.nodes : undefined}
+              hoverPath={hoverPath?.nodes}
+              onHover={onHover}
               onSelect={select}
               register={register}
               collapsed={collapsed}
               onToggle={toggleGroup}
+              more={more}
+              onMore={toggleMore}
+              keep={keep}
+              omitted={lane.omitted}
+              compact={!wide}
+              links={links}
             />
           );
         })}
-        {wide && <FlowConnectors containerRef={box} getEl={getEl} flow={flow} path={path} selected={!!selected} collapsed={collapsed} />}
+        {wide && <FlowConnectors containerRef={box} getEl={getEl} flow={flow} path={path} hoverPath={hoverPath} selected={!!selected} selectedEdge={edge ?? undefined} onSelectEdge={setEdge} collapsed={collapsed} />}
+      </div>
+      {detailing && <FlowDetailSheet flow={flow} nodes={all} path={path} node={selected} edge={edge ?? undefined} slug={org.slug} orgId={org.id} wide={wide} onClose={clearDetail} onSelectNode={setFocus} onSelectEdge={setEdge} />}
       </div>
       )}
     </div>

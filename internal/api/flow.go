@@ -42,9 +42,10 @@ func flowOut(g flow.Graph) gen.Flow {
 			if n.CoversCertificates {
 				fn.CoversCertificates = ptr(true)
 			}
+			fn.Summary = summaryOut(n.Summary)
 			nodes = append(nodes, fn)
 		}
-		return gen.FlowLane{Hidden: l.Hidden, Nodes: nodes}
+		return gen.FlowLane{Hidden: l.Hidden, Nodes: nodes, Omitted: l.Omitted}
 	}
 	edges := make([]gen.FlowEdge, 0, len(g.Edges))
 	for _, e := range g.Edges {
@@ -61,4 +62,31 @@ func flowOut(g flow.Graph) gen.Flow {
 			Clients: lane(g.Clients), Alerts: lane(g.Alerts)},
 		Edges: edges, Truncated: g.Truncated, GeneratedAt: g.GeneratedAt,
 	}
+}
+
+func summaryOut(s *flow.Summary) *gen.FlowNodeSummary {
+	if s == nil {
+		return nil
+	}
+	out := &gen.FlowNodeSummary{ExpiresAt: s.ExpiresAt, LastDeployedAt: s.LastDeployedAt}
+	if s.VersionSerial != "" {
+		out.VersionSerial = ptr(s.VersionSerial)
+	}
+	if s.LastError != "" {
+		out.LastError = ptr(s.LastError)
+	}
+	if s.IssuerID != "" {
+		out.IssuerId = ptr(s.IssuerID)
+	}
+	if len(s.ClientIDs) > 0 {
+		out.ClientIds = &s.ClientIDs
+	}
+	if s.Counts != nil {
+		out.Counts = &struct {
+			Deployments int `json:"deployments"`
+			Grants      int `json:"grants"`
+			Problems    int `json:"problems"`
+		}{Deployments: s.Counts.Deployments, Grants: s.Counts.Grants, Problems: s.Counts.Problems}
+	}
+	return out
 }

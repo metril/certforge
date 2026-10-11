@@ -41,10 +41,10 @@ const (
 
 const (
 	// MaxNodes caps the whole map.
-	MaxNodes = 500
+	MaxNodes = 2000
 	// maxSideNodes is the share of MaxNodes the non-certificate lanes may use
 	// together; certificates fill the rest (at least MaxNodes-maxSideNodes).
-	maxSideNodes = 250
+	maxSideNodes = 1000
 	// MaxEdges caps edges; inferred alert edges are dropped first.
 	MaxEdges = 5000
 	// ExpiringDays matches the web UI's EXPIRING_DAYS.
@@ -72,12 +72,33 @@ type Node struct {
 	// CoversCertificates is set on channel nodes that would receive this
 	// org's certificate events.
 	CoversCertificates bool
+	// Summary carries per-node facts for the detail view; nil when none apply.
+	Summary *Summary
 }
+
+// Summary is the optional per-node fact sheet. Zero fields are absent.
+type Summary struct {
+	ExpiresAt      *time.Time
+	VersionSerial  string
+	LastDeployedAt *time.Time
+	LastError      string
+	IssuerID       string
+	ClientIDs      []string
+	Counts         *Counts
+}
+
+// Counts are a node's grant, done-deployment and problem-edge totals.
+type Counts struct{ Grants, Deployments, Problems int }
+
+// maxSummaryError caps Summary.LastError (the API's maxLength).
+const maxSummaryError = 500
 
 // Lane is one column.
 type Lane struct {
 	Hidden bool
 	Nodes  []Node
+	// Omitted is how many nodes the size cap dropped from this lane.
+	Omitted int
 }
 
 // Edge connects two node ids.
@@ -126,6 +147,8 @@ type Cert struct {
 	CAID       *uuid.UUID
 	AccountID  *uuid.UUID
 	DNSCredIDs []uuid.UUID
+	// Serial is the current version's serial; empty when there is none.
+	Serial string
 }
 
 // Client is an enrolled agent host.
@@ -146,6 +169,10 @@ type Grant struct {
 	HookIDs  []uuid.UUID
 	State    string
 	Error    string
+	// DeployedAt is when the deployment last succeeded; nil if never.
+	DeployedAt *time.Time
+	// UpdatedAt is when the deployment row last changed; nil if no row.
+	UpdatedAt *time.Time
 }
 
 // Channel is a notification channel of the org.
@@ -175,6 +202,9 @@ type Input struct {
 	Channels []Channel
 	// CertsMore is true when the certificate list itself was cut short.
 	CertsMore bool
+	// ClientsTotal is the org's full client count; above len(Clients) the
+	// difference is added to the clients lane's Omitted. Zero means unknown.
+	ClientsTotal int
 	// Uses is the issuer references of every certificate in the org, for
 	// counting issuer use. Nil means Certs is the whole org.
 	Uses []Use
@@ -263,6 +293,37 @@ func usage(n int) (Status, string) {
 	return StatusValid, fmt.Sprintf("Used by %d certificates", n)
 }
 
+// grantAcc totals the grants touching one node.
+type grantAcc struct {
+	grants, done int
+	deployed     *time.Time
+	lastErr      string
+	errAt        *time.Time
+}
+
+func (a *grantAcc) add(gr Grant, st Status) {
+	a.grants++
+	if st == StatusValid {
+		a.done++
+		if gr.DeployedAt != nil && (a.deployed == nil || gr.DeployedAt.After(*a.deployed)) {
+			t := *gr.DeployedAt
+			a.deployed = &t
+		}
+	}
+	if (st == StatusFailed || st == StatusDrift) && gr.Error != "" &&
+		(a.lastErr == "" || (gr.UpdatedAt != nil && (a.errAt == nil || gr.UpdatedAt.After(*a.errAt)))) {
+		a.lastErr, a.errAt = gr.Error, gr.UpdatedAt
+	}
+}
+
+// truncErr clips s to maxSummaryError characters.
+func truncErr(s string) string {
+	if r := []rune(s); len(r) > maxSummaryError {
+		return string(r[:maxSummaryError])
+	}
+	return s
+}
+
 func nid(kind string, id uuid.UUID) string { return kind + ":" + id.String() }
 
 type builder struct {
@@ -331,7 +392,11 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 					st, d = StatusExpiring, fmt.Sprintf("CA certificate expires in %d days", int(left.Hours()/24))
 				}
 			}
-			issuers = append(issuers, Node{ID: nid(KindCA, c.ID), Kind: KindCA, Name: c.Name, Status: st, StatusDetail: d, Href: b.href("/issuers/cas", q, c.ID.String())})
+			var sum *Summary
+			if c.NotAfter != nil {
+				sum = &Summary{ExpiresAt: c.NotAfter}
+			}
+			issuers = append(issuers, Node{ID: nid(KindCA, c.ID), Kind: KindCA, Name: c.Name, Status: st, StatusDetail: d, Href: b.href("/issuers/cas", q, c.ID.String()), Summary: sum})
 		}
 	}
 	if perms.Accounts {
@@ -400,12 +465,19 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 	// Cap: side lanes share maxSideNodes in lane order; certificates the rest.
 	side := [][]Node{issuers, delivery, clients, alerts}
 	budget := maxSideNodes
+	var omitted [5]int // issuers, certificates, delivery, clients, alerts
+	laneAt := [4]int{0, 2, 3, 4}
 	for i := range side {
 		if len(side[i]) > budget {
+			omitted[laneAt[i]] = len(side[i]) - budget
 			side[i] = side[i][:budget]
 			g.Truncated = true
 		}
 		budget -= len(side[i])
+	}
+	if in.ClientsTotal > len(in.Clients) {
+		omitted[3] += in.ClientsTotal - len(in.Clients)
+		g.Truncated = true
 	}
 	issuers, delivery, clients, alerts = side[0], side[1], side[2], side[3]
 	certBudget := MaxNodes - (maxSideNodes - budget)
@@ -417,11 +489,20 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 	if in.CertsMore {
 		g.Truncated = true
 	}
+	// Uses covers every certificate of the org, so it gives the exact count.
+	omitted[1] = len(in.Certs) - len(certs)
+	if in.Uses != nil && len(in.Uses)-len(certs) > omitted[1] {
+		omitted[1] = len(in.Uses) - len(certs)
+	}
 
 	var certNodes []Node
 	for _, c := range certs {
 		st, d := CertStatus(c, now)
-		certNodes = append(certNodes, Node{ID: nid(KindCertificate, c.ID), Kind: KindCertificate, Name: c.Name, Status: st, StatusDetail: d, Href: b.href("/certificates/", c.ID.String())})
+		sum := &Summary{ExpiresAt: c.NotAfter, VersionSerial: c.Serial}
+		if st == StatusFailed {
+			sum.LastError = truncErr(c.LastError)
+		}
+		certNodes = append(certNodes, Node{ID: nid(KindCertificate, c.ID), Kind: KindCertificate, Name: c.Name, Status: st, StatusDetail: d, Href: b.href("/certificates/", c.ID.String()), Summary: sum})
 	}
 
 	for _, ns := range [][]Node{issuers, certNodes, delivery, clients, alerts} {
@@ -435,6 +516,12 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 	for _, c := range certs {
 		cid := nid(KindCertificate, c.ID)
 		st := b.nodes[cid].Status
+		switch {
+		case c.CAID != nil && b.nodes[nid(KindCA, *c.CAID)] != nil:
+			b.nodes[cid].Summary.IssuerID = nid(KindCA, *c.CAID)
+		case c.AccountID != nil && b.nodes[nid(KindAccount, *c.AccountID)] != nil:
+			b.nodes[cid].Summary.IssuerID = nid(KindAccount, *c.AccountID)
+		}
 		if c.CAID != nil {
 			b.edge(cid, nid(KindCA, *c.CAID), "", st)
 		}
@@ -447,9 +534,43 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 	}
 
 	// Delivery edges: cert -> layout/target/hook -> client.
+	acc := map[string]*grantAcc{}
 	for _, gr := range in.Grants {
 		cid := nid(KindCertificate, gr.CertID)
 		st := GrantStatus(gr.State)
+		if b.nodes[cid] != nil {
+			var ends []string
+			ends = append(ends, cid)
+			if gr.ClientID != nil {
+				ends = append(ends, nid(KindClient, *gr.ClientID))
+			}
+			if gr.LayoutID != nil {
+				ends = append(ends, nid(KindLayout, *gr.LayoutID))
+			}
+			if gr.TargetID != nil {
+				ends = append(ends, nid(KindTarget, *gr.TargetID))
+			}
+			for _, h := range gr.HookIDs {
+				ends = append(ends, nid(KindHook, h))
+			}
+			for _, e := range ends {
+				if b.nodes[e] == nil {
+					continue
+				}
+				a := acc[e]
+				if a == nil {
+					a = &grantAcc{}
+					acc[e] = a
+				}
+				a.add(gr, st)
+			}
+			if gr.ClientID != nil && b.nodes[nid(KindClient, *gr.ClientID)] != nil {
+				cs := b.nodes[cid].Summary
+				if c := nid(KindClient, *gr.ClientID); !slices.Contains(cs.ClientIDs, c) {
+					cs.ClientIDs = append(cs.ClientIDs, c)
+				}
+			}
+		}
 		var mids []string
 		if gr.LayoutID != nil {
 			mids = append(mids, nid(KindLayout, *gr.LayoutID))
@@ -504,19 +625,42 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 		g.Edges = append(g.Edges, *e)
 	}
 
+	// Problem counts: failed, drifted, expired or expiring edges at each node.
+	problems := map[string]int{}
+	for _, e := range g.Edges {
+		switch e.Status {
+		case StatusFailed, StatusDrift, StatusExpired, StatusExpiring:
+			problems[e.From]++
+			problems[e.To]++
+		}
+	}
+	for id, a := range acc {
+		n := b.nodes[id]
+		if n.Summary == nil {
+			n.Summary = &Summary{}
+		}
+		n.Summary.LastDeployedAt = a.deployed
+		n.Summary.Counts = &Counts{Grants: a.grants, Deployments: a.done, Problems: problems[id]}
+		if n.Kind != KindCertificate && (n.Status == StatusFailed || n.Status == StatusDrift) {
+			n.Summary.LastError = truncErr(a.lastErr)
+		} else if n.Kind == KindCertificate && n.Summary.LastError == "" && (n.Status == StatusFailed || n.Status == StatusDrift) {
+			n.Summary.LastError = truncErr(a.lastErr)
+		}
+	}
+
 	// Lanes from the (possibly status-updated) nodes, keeping lane order.
-	fill := func(ns []Node, hidden bool) Lane {
-		l := Lane{Hidden: hidden, Nodes: []Node{}}
+	fill := func(ns []Node, hidden bool, omitted int) Lane {
+		l := Lane{Hidden: hidden, Nodes: []Node{}, Omitted: omitted}
 		for _, n := range ns {
 			l.Nodes = append(l.Nodes, *b.nodes[n.ID])
 		}
 		return l
 	}
-	g.Issuers = fill(issuers, (!perms.CAs && !perms.Accounts && !perms.DNSCreds))
-	g.Certificates = fill(certNodes, false)
-	g.Delivery = fill(delivery, !perms.Delivery)
-	g.Clients = fill(clients, !perms.Clients)
-	g.Alerts = fill(alerts, !perms.Alerts)
+	g.Issuers = fill(issuers, (!perms.CAs && !perms.Accounts && !perms.DNSCreds), omitted[0])
+	g.Certificates = fill(certNodes, false, omitted[1])
+	g.Delivery = fill(delivery, !perms.Delivery, omitted[2])
+	g.Clients = fill(clients, !perms.Clients, omitted[3])
+	g.Alerts = fill(alerts, !perms.Alerts, omitted[4])
 	if g.Edges == nil {
 		g.Edges = []Edge{}
 	}

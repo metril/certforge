@@ -108,6 +108,17 @@ func (q *Queries) ClientCounts(ctx context.Context, ids []uuid.UUID) ([]ClientCo
 	return items, nil
 }
 
+const countClients = `-- name: CountClients :one
+SELECT count(*)::bigint FROM clients WHERE org_id = $1
+`
+
+func (q *Queries) CountClients(ctx context.Context, orgID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countClients, orgID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createClient = `-- name: CreateClient :one
 INSERT INTO clients (org_id, site_id, name) VALUES ($1, $2, $3) RETURNING id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at
 `

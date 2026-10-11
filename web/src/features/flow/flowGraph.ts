@@ -24,6 +24,21 @@ export const laneOf = (kind: FlowNodeData['kind']): LaneKey => KIND_LANE[kind];
 
 export const laneIndex = (kind: FlowNodeData['kind']): number => LANE_KEYS.indexOf(KIND_LANE[kind]);
 
+/** `from>to` of a selected connection (node ids hold ':' but never '>'). With a
+ * flow, both ids must name nodes in it and an edge must join them. */
+export function parseEdgeKey(key: string, flow?: Flow): { from: string; to: string } | null {
+  const parts = key.split('>');
+  const [from, to] = parts;
+  if (parts.length !== 2 || !from || !to) return null;
+  if (flow) {
+    const { nodes } = indexOf(flow);
+    if (!nodes.has(from) || !nodes.has(to)) return null;
+    const k = edgeKey(from, to);
+    if (!flow.edges.some((e) => edgeKey(e.from, e.to) === k)) return null;
+  }
+  return { from, to };
+}
+
 /** Order-independent key for the connection between two nodes. */
 export const edgeKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${a}`);
 
@@ -192,27 +207,92 @@ export function pairStatus(edges: FlowEdgeData[], pathNodes?: Set<string> | null
 /** Needs attention: pending is transitional and healthy/idle are fine. */
 export const isProblem = (s: FlowStatus): boolean => s === 'failed' || s === 'expired' || s === 'drift' || s === 'expiring';
 
-/** Ids of the nodes to draw under the `q` / `problems` filters, or null when
- * no filter is active. A node is kept when it matches or lies on the path of
- * a matching node, so every surviving flow stays whole end to end. */
-export function visibleNodeIds(flow: Flow, q: string | undefined, status: 'problems' | undefined): Set<string> | null {
-  const needle = (q ?? '').trim().toLowerCase();
-  if (!needle && !status) return null;
+/** The four statuses that need attention (`status=problems`). */
+export const PROBLEM_STATUSES: FlowStatus[] = ['failed', 'expired', 'drift', 'expiring'];
+
+/** Union of the paths through several nodes. */
+export function pathUnion(flow: Flow, ids: string[]): FlowPath {
+  const out: FlowPath = { nodes: new Set(), edges: new Set(), synthetic: new Set() };
+  for (const id of ids) {
+    const p = tracePath(flow, id);
+    for (const n of p.nodes) out.nodes.add(n);
+    for (const k of p.edges) out.edges.add(k);
+    for (const k of p.synthetic) out.synthetic.add(k);
+  }
+  return out;
+}
+
+/** Paths lit for the selected node and, lighter, for the hovered one. */
+export function highlightSet(flow: Flow, focusId: string | null | undefined, hoverId: string | null | undefined): { focus: FlowPath; hover: FlowPath } {
+  return { focus: tracePath(flow, focusId), hover: hoverId && hoverId !== focusId ? tracePath(flow, hoverId) : tracePath(flow, null) };
+}
+
+const traces = new WeakMap<Flow, Map<string, Set<string>>>();
+
+/** Node ids on the path through `id`, memoised per flow so re-filtering never re-traces. */
+function tracedNodes(flow: Flow, id: string): Set<string> {
+  let m = traces.get(flow);
+  if (!m) traces.set(flow, (m = new Map()));
+  let t = m.get(id);
+  if (!t) m.set(id, (t = tracePath(flow, id).nodes));
+  return t;
+}
+
+/** Nodes drawn past a group's cap: `ids` plus the selected path's nodes, at most MAX_KEPT_PER_GROUP path nodes per group. */
+export const MAX_KEPT_PER_GROUP = 50;
+export function keptNodes(flow: Flow | undefined, path: FlowPath | null, ids: (string | undefined)[]): Set<string> {
+  const keep = new Set(ids.filter((x): x is string => !!x));
+  if (!flow || !path) return keep;
+  const count = new Map<string, number>();
+  for (const k of LANE_KEYS) {
+    for (const n of flow.lanes[k].nodes) {
+      if (!path.nodes.has(n.id) || keep.has(n.id)) continue;
+      const g = SUBGROUPS[k]?.find((s) => s.kinds.includes(n.kind))?.id ?? k;
+      const c = count.get(g) ?? 0;
+      if (c >= MAX_KEPT_PER_GROUP) continue;
+      count.set(g, c + 1);
+      keep.add(n.id);
+    }
+  }
+  return keep;
+}
+
+export type FlowFilters = {
+  q?: string;
+  kinds?: FlowNodeData['kind'][];
+  statuses?: FlowStatus[];
+  issuers?: string[];
+  clients?: string[];
+};
+
+/** Ids of the nodes to draw under the filters, or null when none is active. A
+ * node is kept when it matches the text, kind and status filters, and (with an
+ * issuer or client filter) lies on a path through one of the chosen nodes. A
+ * matching node keeps its whole path, so every surviving flow stays whole. */
+export function visibleNodeIds(flow: Flow, f: FlowFilters): Set<string> | null {
+  const needle = (f.q ?? '').trim().toLowerCase();
+  const kinds = f.kinds && f.kinds.length > 0 ? new Set(f.kinds) : null;
+  const statuses = f.statuses && f.statuses.length > 0 ? new Set(f.statuses) : null;
+  const anchors = [...(f.issuers ?? []), ...(f.clients ?? [])];
+  if (!needle && !kinds && !statuses && anchors.length === 0) return null;
   const touched = new Set<string>();
-  if (status) {
+  if (statuses) {
     for (const e of flow.edges) {
-      if (!isProblem(e.status)) continue;
+      if (!statuses.has(e.status)) continue;
       touched.add(e.from);
       touched.add(e.to);
     }
   }
+  const scope = anchors.length > 0 ? pathUnion(flow, anchors).nodes : null;
   const keep = new Set<string>();
   for (const k of LANE_KEYS) {
     for (const n of flow.lanes[k].nodes) {
       if (needle && !n.name.toLowerCase().includes(needle)) continue;
-      if (status && !isProblem(n.status) && !touched.has(n.id)) continue;
+      if (kinds && !kinds.has(n.kind)) continue;
+      if (statuses && !statuses.has(n.status) && !touched.has(n.id)) continue;
+      if (scope && !scope.has(n.id)) continue;
       keep.add(n.id);
-      for (const id of tracePath(flow, n.id).nodes) keep.add(id);
+      for (const id of tracedNodes(flow, n.id)) if (!scope || scope.has(id)) keep.add(id);
     }
   }
   return keep;
@@ -328,4 +408,47 @@ export function collapseEdges(flow: Flow, collapsed: Set<string>, synthetic: Ite
     put(a, b, `s:${edgeKey(a, b)}`, k, true);
   }
   return [...out.values()];
+}
+
+/** Most nodes a lane or sub-group draws before "Show N more". */
+export const CAP = 12;
+
+const PROBLEM_RANK: Partial<Record<FlowStatus, number>> = { failed: 0, expired: 1, drift: 2, expiring: 3 };
+
+/** Problems first (failed, expired, drift, expiring), then the rest in server order; stable, input untouched. */
+export function sortForLane(nodes: FlowNodeData[]): FlowNodeData[] {
+  const rank = (n: FlowNodeData) => PROBLEM_RANK[n.status] ?? 4;
+  return nodes
+    .map((n, i) => ({ n, i }))
+    .sort((a, b) => rank(a.n) - rank(b.n) || a.i - b.i)
+    .map((x) => x.n);
+}
+
+/** Distinct neighbours of each node in a lower lane (up) and a higher lane (down). */
+export function linkCounts(flow: Flow): Map<string, { up: number; down: number }> {
+  const { nodes } = indexOf(flow);
+  const seen = new Map<string, Set<string>>();
+  const link = (a: string, b: string) => {
+    let s = seen.get(a);
+    if (!s) seen.set(a, (s = new Set()));
+    s.add(b);
+  };
+  for (const e of flow.edges) {
+    if (!nodes.has(e.from) || !nodes.has(e.to)) continue;
+    link(e.from, e.to);
+    link(e.to, e.from);
+  }
+  const out = new Map<string, { up: number; down: number }>();
+  for (const [id, n] of nodes) {
+    const mine = laneIndex(n.kind);
+    let up = 0;
+    let down = 0;
+    for (const o of seen.get(id) ?? []) {
+      const l = laneIndex(nodes.get(o)!.kind);
+      if (l < mine) up++;
+      else if (l > mine) down++;
+    }
+    out.set(id, { up, down });
+  }
+  return out;
 }
