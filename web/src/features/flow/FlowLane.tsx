@@ -24,6 +24,9 @@ type Props = {
   selectedId?: string;
   /** Ids on the selected path; undefined when nothing is selected. */
   onPath?: Set<string>;
+  /** Ids on the hovered node's path; undefined when nothing is hovered. */
+  hoverPath?: Set<string>;
+  onHover?: (id: string | null) => void;
   onSelect: (id: string) => void;
   register: (id: string, el: HTMLElement | null) => void;
   /** Collapsed group ids (lanes and sub-groups). */
@@ -53,7 +56,7 @@ function GroupHead({ id, title, count, total, problems, open, onToggle, sub }: H
   );
 }
 
-export function FlowLane({ laneKey, org, hidden, nodes, total, selectedId, onPath, onSelect, register, collapsed, onToggle }: Props) {
+export function FlowLane({ laneKey, org, hidden, nodes, total, selectedId, onPath, hoverPath, onHover, onSelect, register, collapsed, onToggle }: Props) {
   const meta = LANE_META[laneKey];
   const section = useRef<HTMLElement>(null);
   // Expanding a proxy unmounts it, so keyboard focus moves to that group's heading.
@@ -66,7 +69,7 @@ export function FlowLane({ laneKey, org, hidden, nodes, total, selectedId, onPat
   }, [collapsed]);
   const item = (n: FlowNodeData) => (
     <li key={n.id} className="min-w-0">
-      <FlowNode node={n} selected={n.id === selectedId} dimmed={!!onPath && !onPath.has(n.id)} onSelect={onSelect} register={register} />
+      <FlowNode node={n} selected={n.id === selectedId} dimmed={!!onPath && !onPath.has(n.id)} hovered={!!hoverPath && hoverPath.has(n.id)} onHover={onHover} onSelect={onSelect} register={register} />
     </li>
   );
   const groups = SUBGROUPS[laneKey];

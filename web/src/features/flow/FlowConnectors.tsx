@@ -11,12 +11,14 @@ const STROKE: Record<FlowStatus, string> = {
   idle: 'stroke-ink-muted',
 };
 
-type Line = { key: string; d: string; cls: string; width: number; opacity: number; dashed: boolean };
+type Line = { key: string; d: string; cls: string; width: number; opacity: number; dashed: boolean; hover: boolean };
 type Props = {
   containerRef: RefObject<HTMLElement | null>;
   getEl: (id: string) => HTMLElement | undefined;
   flow: Flow;
   path: FlowPath;
+  /** Path of the hovered node, lit lighter than the selection. */
+  hoverPath?: FlowPath;
   selected: boolean;
   /** Collapsed group ids; their members are drawn as one proxy row. */
   collapsed: Set<string>;
@@ -24,7 +26,7 @@ type Props = {
 
 /** One SVG overlay behind the nodes: cubic curves from the right edge of the
  * left node to the left edge of the right node, measured from the live DOM. */
-export function FlowConnectors({ containerRef, getEl, flow, path, selected, collapsed }: Props) {
+export function FlowConnectors({ containerRef, getEl, flow, path, hoverPath, selected, collapsed }: Props) {
   const [lines, setLines] = useState<Line[]>([]);
   const raf = useRef(0);
 
@@ -62,26 +64,28 @@ export function FlowConnectors({ containerRef, getEl, flow, path, selected, coll
       const dx = Math.max(24, (x2 - x1) / 2);
       const d = `M${x1} ${y1} C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}`;
       const on = m.synthetic || m.keys.some((k) => path.edges.has(k));
+      const hov = !on && !!hoverPath && (m.synthetic ? m.keys.some((k) => hoverPath.synthetic.has(k)) : m.keys.some((k) => hoverPath.edges.has(k)));
       out.push({
         key: m.key,
+        hover: hov,
         d,
         // Nothing selected: one neutral control-border stroke. A selected path
         // is thicker and status-coloured; every other line is dimmed.
-        cls: !selected || !on ? 'stroke-input' : m.synthetic ? 'stroke-ink-muted' : STROKE[pairStatus(m.edges, path.nodes)],
-        width: !selected ? 1.5 : on ? 2.5 : 1,
-        opacity: !selected ? 1 : on ? 1 : 0.2,
+        cls: hov ? (m.synthetic ? 'stroke-ink-muted' : STROKE[pairStatus(m.edges, hoverPath.nodes)]) : !selected || !on ? 'stroke-input' : m.synthetic ? 'stroke-ink-muted' : STROKE[pairStatus(m.edges, path.nodes)],
+        width: hov ? 2 : !selected ? 1.5 : on ? 2.5 : 1,
+        opacity: hov ? 0.7 : !selected ? 1 : on ? 1 : 0.2,
         dashed: m.synthetic,
       });
     }
     setLines((prev) =>
       prev.length === out.length && prev.every((l, i) => {
         const n = out[i];
-        return l.key === n.key && l.d === n.d && l.cls === n.cls && l.width === n.width && l.opacity === n.opacity && l.dashed === n.dashed;
+        return l.key === n.key && l.d === n.d && l.cls === n.cls && l.width === n.width && l.opacity === n.opacity && l.dashed === n.dashed && l.hover === n.hover;
       })
         ? prev
         : out,
     );
-  }, [containerRef, getEl, kinds, merged, path, selected]);
+  }, [containerRef, getEl, kinds, merged, path, hoverPath, selected]);
 
   const schedule = useCallback(() => {
     cancelAnimationFrame(raf.current);
@@ -120,6 +124,7 @@ export function FlowConnectors({ containerRef, getEl, flow, path, selected, coll
           strokeDasharray={l.dashed ? '4 4' : undefined}
           data-edge={l.key}
           data-dashed={l.dashed || undefined}
+          data-hover-path={l.hover || undefined}
         />
       ))}
     </svg>

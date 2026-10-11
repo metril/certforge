@@ -9,7 +9,7 @@ const node = (kind: FlowNodeData['kind'], id: string, extra: Partial<FlowNodeDat
   href: `/o/acme/x/${id}`,
   ...extra,
 });
-const lane = (nodes: FlowNodeData[], hidden = false) => ({ hidden, nodes });
+const lane = (nodes: FlowNodeData[], hidden = false) => ({ hidden, omitted: 0, nodes });
 const e = (from: string, to: string, certificateId?: string) => ({ from, to, status: 'valid' as const, certificateId });
 
 // Two certificates share CA1 and layout L1; A reaches client K1, B reaches K2.

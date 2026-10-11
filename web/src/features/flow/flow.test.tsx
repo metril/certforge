@@ -14,7 +14,7 @@ const node = (kind: FlowNodeData['kind'], id: string, extra: Partial<FlowNodeDat
   href: `/o/acme/certificates/${id}`,
   ...extra,
 });
-const lane = (nodes: FlowNodeData[], hidden = false) => ({ hidden, nodes });
+const lane = (nodes: FlowNodeData[], hidden = false) => ({ hidden, omitted: 0, nodes });
 const e = (from: string, to: string, certificateId?: string) => ({ from, to, status: 'valid' as const, certificateId });
 
 const base: Flow = {
@@ -194,8 +194,8 @@ it('Problems keeps the unhealthy flow, and an empty result offers Clear filters'
   useFlow(() => base);
   const { user, router } = renderRoute('/o/acme/flow');
   await screen.findByRole('button', { name: /Certificate www/ });
-  await user.click(screen.getByRole('radio', { name: 'Problems' }));
-  await waitFor(() => expect(router.state.location.search).toMatchObject({ status: 'problems' }));
+  await user.click(screen.getByRole('button', { name: 'Problems' }));
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ status: ['failed', 'expired', 'drift', 'expiring'] }));
   expect(screen.getByRole('button', { name: /Certificate www/ })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Certificate api/ })).toBeNull();
   await user.type(screen.getByRole('textbox', { name: 'Filter by name' }), 'nothing-like-this');
@@ -279,4 +279,82 @@ it('does not count a pending channel as a problem', async () => {
   renderRoute('/o/acme/flow');
   const head = within(await screen.findByRole('region', { name: 'Alerts' })).getByRole('button', { name: /Alerts/ });
   expect(head).not.toHaveTextContent('problem');
+});
+
+// Two issuers: cert www uses ca one, cert api uses ca two.
+const twoIssuers: Flow = {
+  ...base,
+  lanes: {
+    ...base.lanes,
+    issuers: lane([node('ca', 'one'), node('ca', 'two')]),
+  },
+  edges: [
+    e('certificate:www', 'ca:one'),
+    e('certificate:api', 'ca:two'),
+    e('certificate:www', 'layout:nginx'),
+    e('certificate:api', 'layout:nginx'),
+    e('layout:nginx', 'client:web-1', 'www'),
+    e('layout:nginx', 'client:web-2', 'api'),
+  ],
+};
+
+it('the Kind chips hide other kinds but keep the paths of the kept ones', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  const { user, router } = renderRoute('/o/acme/flow');
+  await screen.findByRole('button', { name: /Certificate www/ });
+  await user.click(screen.getByRole('button', { name: 'Client' }));
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ kind: ['client'] }));
+  expect(screen.getByRole('button', { name: /Client web-1/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Certificate www/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /CA letsencrypt/ })).toBeInTheDocument();
+});
+
+it('the Status chips keep nodes with that status and their paths', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  const { user, router } = renderRoute('/o/acme/flow');
+  await screen.findByRole('button', { name: /Certificate www/ });
+  await user.click(screen.getByRole('button', { name: 'Expiring' }));
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ status: ['expiring'] }));
+  expect(screen.getByRole('button', { name: /Certificate www/ })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Certificate api/ })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Expiring' })).toHaveAttribute('aria-pressed', 'true');
+});
+
+it('the legacy ?status=problems still filters and lights the Problems chip', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  renderRoute('/o/acme/flow?status=problems');
+  await screen.findByRole('button', { name: /Certificate www/ });
+  expect(screen.queryByRole('button', { name: /Certificate api/ })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Problems' })).toHaveAttribute('aria-pressed', 'true');
+});
+
+it('the Issuer filter keeps only that issuer\'s certificates and their downstream', async () => {
+  setWidth(true);
+  useFlow(() => twoIssuers);
+  const { user, router } = renderRoute('/o/acme/flow');
+  await screen.findByRole('button', { name: /Certificate www/ });
+  await user.click(screen.getByRole('combobox', { name: 'Issuer' }));
+  await user.click(await screen.findByRole('option', { name: /two/ }));
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ issuer: ['ca:two'] }));
+  expect(screen.getByRole('button', { name: /Certificate api/ })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Certificate www/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: /CA one/ })).toBeNull();
+});
+
+it('hovering a node marks its path with data-hover-path', async () => {
+  setWidth(true);
+  useFlow(() => base);
+  const { user, container } = renderRoute('/o/acme/flow');
+  const www = await screen.findByRole('button', { name: /Certificate www/ });
+  expect(container.querySelector('[data-hover-path]')).toBeNull();
+  await user.hover(www);
+  await waitFor(() => expect(screen.getByRole('button', { name: /CA letsencrypt/ })).toHaveAttribute('data-hover-path'));
+  expect(screen.getByRole('button', { name: /Client web-1/ })).toHaveAttribute('data-hover-path');
+  expect(screen.getByRole('button', { name: /Client web-2/ })).not.toHaveAttribute('data-hover-path');
+  await waitFor(() => expect(container.querySelector('[data-flow-connectors] path[data-hover-path]')).not.toBeNull());
+  await user.unhover(www);
+  await waitFor(() => expect(container.querySelector('[data-hover-path]')).toBeNull());
 });

@@ -69,11 +69,14 @@ type Props = {
   node: FlowNodeData;
   selected: boolean;
   dimmed: boolean;
+  /** On the hovered or keyboard-focused node's path (lighter than the selection). */
+  hovered?: boolean;
+  onHover?: (id: string | null) => void;
   onSelect: (id: string) => void;
   register: (id: string, el: HTMLElement | null) => void;
 };
 
-export function FlowNode({ node, selected, dimmed, onSelect, register }: Props) {
+export function FlowNode({ node, selected, dimmed, hovered, onHover, onSelect, register }: Props) {
   const Icon = KIND_META[node.kind].icon;
   return (
     <Tooltip>
@@ -82,6 +85,11 @@ export function FlowNode({ node, selected, dimmed, onSelect, register }: Props) 
           type="button"
           data-flow-node
           data-node-id={node.id}
+          data-hover-path={hovered ? '' : undefined}
+          onPointerEnter={() => onHover?.(node.id)}
+          onPointerLeave={() => onHover?.(null)}
+          onFocus={(e) => e.currentTarget.matches(':focus-visible') && onHover?.(node.id)}
+          onBlur={() => onHover?.(null)}
           ref={(el) => register(node.id, el)}
           aria-pressed={selected}
           aria-label={`${KIND_META[node.kind].label} ${node.name}, ${flowStatusLabel(node.kind, node.status, node.statusDetail)}`}
@@ -90,7 +98,8 @@ export function FlowNode({ node, selected, dimmed, onSelect, register }: Props) 
           className={cn(
             'relative z-10 grid w-full min-w-0 gap-1.5 rounded-md border border-border bg-panel px-2.5 py-2 text-left text-sm transition-opacity hover:border-ink-muted focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none',
             selected && 'border-primary ring-2 ring-primary/40',
-            dimmed && 'opacity-40',
+            hovered && !selected && 'border-ink-muted',
+            dimmed && (hovered ? 'opacity-70' : 'opacity-40'),
           )}
         >
           <span className="flex min-w-0 items-center gap-2">

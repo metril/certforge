@@ -68,3 +68,18 @@ test('flow: collapsing the Certificates lane leaves one proxy row and the connec
   await expect.poll(() => page.locator('[data-flow-connectors] path').count()).toBeGreaterThan(0);
   await snap(page, 'flow-collapsed');
 });
+
+test('flow: filter by client keeps only its path', async ({ page }) => {
+  await page.goto('/login');
+  await signInLocal(page);
+  await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
+  await page.goto(`/o/${E2E.orgSlug}/flow`);
+  await expect(page.getByRole('heading', { level: 1, name: 'Flow' })).toBeVisible();
+  await page.getByRole('combobox', { name: 'Client' }).click();
+  await page.getByRole('option').first().click();
+  await expect(page).toHaveURL(/client=/);
+  await page.keyboard.press('Escape');
+  // Only the chosen client's lane entry and its path remain.
+  await expect(page.getByRole('region', { name: 'Clients' }).locator('[data-flow-node]')).toHaveCount(1);
+  await snap(page, 'flow-client-filter');
+});
