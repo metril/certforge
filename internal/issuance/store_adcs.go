@@ -227,6 +227,10 @@ func (s *Store) createADCSCA(ctx context.Context, orgID uuid.UUID, in CAInput) (
 	return caFromRow(row)
 }
 
+// adcsUpdateHook, when set by a test, runs between updateADCSCA's unlocked
+// read and its row lock, to simulate a concurrent writer.
+var adcsUpdateHook func()
+
 // updateADCSCA replaces an adcs CA's editable fields. A nil or
 // challenge.Unchanged password keeps the stored one; a changed endpoint,
 // template, account, password or TLS bundle re-reads the enrollment policy
@@ -258,8 +262,11 @@ func (s *Store) updateADCSCA(ctx context.Context, orgID, id uuid.UUID, in CAInpu
 		}
 		pw, newPW = *in.ADCSPassword, true
 	}
-	cfg.TemplateOID = old.TemplateOID
-	trust, nb, na := cur.TrustBundlePem, cur.NotBefore, cur.NotAfter
+	var (
+		resolved bool
+		trust    string
+		nb, na   *time.Time
+	)
 	if newPW || cfg.CEPURL != old.CEPURL || cfg.CESURL != old.CESURL || cfg.Template != old.Template ||
 		cfg.Username != old.Username || cfg.CABundlePEM != old.CABundlePEM {
 		r, err := s.resolveADCS(ctx, cfg, pw)
@@ -267,16 +274,16 @@ func (s *Store) updateADCSCA(ctx context.Context, orgID, id uuid.UUID, in CAInpu
 			return CA{}, err
 		}
 		cfg, trust, nb, na = r.cfg, r.trustPEM, &r.notBefore, &r.notAfter
+		resolved = true
 	}
-	cfgRaw, err := json.Marshal(cfg)
-	if err != nil {
-		return CA{}, err
-	}
-	secret := cur.SecretCfg
+	var newSecret []byte
 	if newPW {
-		if secret, err = s.sealJSON(ctx, adcsSecretCfg{Password: pw}); err != nil {
+		if newSecret, err = s.sealJSON(ctx, adcsSecretCfg{Password: pw}); err != nil {
 			return CA{}, err
 		}
+	}
+	if adcsUpdateHook != nil {
+		adcsUpdateHook()
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -287,6 +294,25 @@ func (s *Store) updateADCSCA(ctx context.Context, orgID, id uuid.UUID, in CAInpu
 	locked, err := q.LockCA(ctx, sqlcgen.LockCAParams{ID: id, OrgID: orgID})
 	if err != nil {
 		return CA{}, notFound(err)
+	}
+	// Everything not freshly resolved or sealed comes from the locked row,
+	// never from cur (read before the lock): a concurrent rewrap of
+	// secret_cfg must not be overwritten with a stale blob.
+	secret := locked.SecretCfg
+	if newPW {
+		secret = newSecret
+	}
+	if !resolved {
+		var lockedCfg adcsConfig
+		if err := json.Unmarshal(locked.Config, &lockedCfg); err != nil {
+			return CA{}, err
+		}
+		cfg.TemplateOID = lockedCfg.TemplateOID
+		trust, nb, na = locked.TrustBundlePem, locked.NotBefore, locked.NotAfter
+	}
+	cfgRaw, err := json.Marshal(cfg)
+	if err != nil {
+		return CA{}, err
 	}
 	if _, err := q.UpdateCA(ctx, sqlcgen.UpdateCAParams{ID: id, OrgID: orgID, Name: in.Name, Type: in.Type, Config: cfgRaw,
 		Preset: "", DirectoryUrl: "", TrustBundlePem: trust, EabKid: "", EabHmac: nil, Resolvers: in.Resolvers}); err != nil {

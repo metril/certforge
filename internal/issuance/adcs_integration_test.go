@@ -121,3 +121,31 @@ func mustRow(t *testing.T, f *fixture, id uuid.UUID) sqlcgen.Ca {
 	}
 	return row
 }
+
+// TestADCSUpdateKeepsConcurrentRewrap: a secret_cfg rewritten (as a rewrap
+// does) between updateADCSCA's unlocked read and its lock must survive an
+// update that keeps the password.
+func TestADCSUpdateKeepsConcurrentRewrap(t *testing.T) {
+	f := newFixture(t)
+	f.store.SetADCSLoopback(func(context.Context) bool { return true })
+	fk := adcstest.New(t)
+	ctx := context.Background()
+	ca, err := f.store.CreateCA(ctx, f.org, adcsInput(fk, "Race", adcstest.Password))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rewrapped := []byte("rewrapped-blob")
+	adcsUpdateHook = func() {
+		if _, err := f.pool.Exec(ctx, `UPDATE cas SET secret_cfg = $2 WHERE id = $1`, ca.ID, rewrapped); err != nil {
+			t.Error(err)
+		}
+	}
+	defer func() { adcsUpdateHook = nil }()
+	un := challenge.Unchanged
+	if _, err := f.store.UpdateCA(ctx, f.org, ca.ID, adcsInput(fk, "Race 2", un)); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustRow(t, f, ca.ID).SecretCfg; string(got) != string(rewrapped) {
+		t.Fatalf("secret_cfg = %q, want the concurrently rewrapped blob", got)
+	}
+}
