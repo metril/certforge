@@ -75,7 +75,7 @@ function GroupHead({ id, title, count, total, problems, open, onToggle, sub, hel
         className={cn('flex min-w-0 flex-1 items-center gap-1.5 rounded-sm text-left focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none', sub ? 'text-xs text-ink-muted' : 'text-xs font-semibold tracking-wide text-ink-muted uppercase')}
       >
         <ChevronRight className={cn('size-3.5 shrink-0 transition-transform', open && 'rotate-90')} aria-hidden />
-        <span className="truncate">{title}</span>
+        <span className="min-w-0 break-words">{title}</span>
       </button>
       <Counts count={count} total={total} problems={problems} />
       {help && <HelpTip id={help} label={title} />}
@@ -94,6 +94,15 @@ export function FlowLane({ laneKey, org, hidden, nodes, total, selectedId, onPat
     refocus.current = null;
     section.current?.querySelector<HTMLElement>(`[data-group-head="${id}"]`)?.focus();
   }, [collapsed]);
+  // Collapsing a group via "Show fewer" can unmount its button; focus then falls back to the group (or lane) heading.
+  const refocusMore = useRef<string | null>(null);
+  useEffect(() => {
+    const id = refocusMore.current;
+    if (!id || more.has(id)) return;
+    refocusMore.current = null;
+    const q = (sel: string) => section.current?.querySelector<HTMLElement>(sel);
+    (q(`[data-flow-more="${id}"]`) ?? q(`[data-group-head="${id}"]`) ?? q(`[data-group-head="${laneKey}"]`))?.focus();
+  }, [more, laneKey]);
   const item = (n: FlowNodeData) => (
     <li key={n.id} className="min-w-0">
       <FlowNode node={n} selected={n.id === selectedId} dimmed={!!onPath && !onPath.has(n.id)} hovered={!!hoverPath && hoverPath.has(n.id)} onHover={onHover} onSelect={onSelect} register={register} links={links.get(n.id)} compact={compact} onPath={!!onPath && onPath.has(n.id)} />
@@ -116,7 +125,10 @@ export function FlowLane({ laneKey, org, hidden, nodes, total, selectedId, onPat
                   type="button"
                   data-flow-more={gid}
                   aria-expanded={expanded}
-                  onClick={() => onMore(gid)}
+                  onClick={() => {
+                    if (expanded) refocusMore.current = gid;
+                    onMore(gid);
+                  }}
                   onKeyDown={laneArrowKeys}
                   className="w-full rounded-md border border-dashed border-border px-2.5 py-1.5 text-xs text-ink-muted hover:border-ink-muted hover:text-ink focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none"
                 >
@@ -159,7 +171,7 @@ export function FlowLane({ laneKey, org, hidden, nodes, total, selectedId, onPat
           <GroupHead id={laneKey} title={meta.title} count={countText} total={total} problems={nodes.filter((n) => isProblem(n.status)).length} open={laneOpen} onToggle={() => onToggle(laneKey)} help={`flow.lane.${laneKey}`} />
         ) : (
           <>
-            <span className="min-w-0 flex-1 truncate text-xs font-semibold tracking-wide text-ink-muted uppercase">{meta.title}</span>
+            <span className="min-w-0 flex-1 break-words text-xs font-semibold tracking-wide text-ink-muted uppercase">{meta.title}</span>
             {!hidden && <Counts count={countText} total={total} problems={0} />}
             <HelpTip id={`flow.lane.${laneKey}`} label={meta.title} />
           </>
@@ -199,17 +211,20 @@ export function FlowLane({ laneKey, org, hidden, nodes, total, selectedId, onPat
         capped(laneKey, meta.title, nodes)
       )}
       {!hidden && omitted > 0 && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <p className="text-xs text-ink-muted">
-              +{omitted} not shown ·{' '}
-              <Link to={meta.list} params={{ org }} className="font-semibold text-primary hover:underline">
-                Open {meta.title}
-              </Link>
-            </p>
-          </TooltipTrigger>
-          <TooltipContent>The map hit its size limit</TooltipContent>
-        </Tooltip>
+        <p className="text-xs text-ink-muted">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0} className="rounded-sm focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none">
+                +{omitted} not shown
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>The map hit its size limit</TooltipContent>
+          </Tooltip>{' '}
+          ·{' '}
+          <Link to={meta.list} params={{ org }} className="font-semibold text-primary hover:underline">
+            Open {meta.title}
+          </Link>
+        </p>
       )}
     </section>
   );

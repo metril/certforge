@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useOrg } from '@/lib/org';
 import { useMediaQuery } from '@/lib/useMediaQuery';
+import { cn } from '@/lib/utils';
 import { LANE_KEYS, PROBLEM_STATUSES, expandFor, keptNodes, filterFlow, highlightSet, linkCounts, parseEdgeKey, visibleNodeIds, type Flow, type FlowNodeData, type FlowStatus } from './flowGraph';
 import { FLOW_STATUS, KIND_META } from './FlowNode';
 import { FLOW_STATUSES, type FlowSearch } from './search';
@@ -339,7 +340,7 @@ export function FlowPage() {
         </EmptyState>
       ) : (
       <div className={wide ? 'lg:flex lg:items-start lg:gap-6' : undefined}>
-      <div ref={box} className={wide ? 'relative grid min-w-0 flex-1 grid-cols-5 gap-x-12' : 'grid gap-6'}>
+      <div ref={box} className={wide ? cn('relative grid min-w-0 flex-1 grid-cols-5', detailing ? 'gap-x-6' : 'gap-x-12') : 'grid gap-6'}>
         {LANE_KEYS.map((k) => {
           const lane = flow.lanes[k];
           return (
