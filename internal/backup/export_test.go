@@ -25,3 +25,6 @@ func WriteWithRootForTest(ctx context.Context, tx pgx.Tx, w io.Writer, opts Writ
 func WriteWithTablesForTest(ctx context.Context, tx pgx.Tx, w io.Writer, opts WriteOpts, rootSealed []byte, tables []string) (Summary, error) {
 	return writeTxTables(ctx, tx, w, opts, rootSealed, tables)
 }
+
+// MinMigrationVersion exposes the restore load floor to tests.
+const MinMigrationVersion = minMigrationVersion
