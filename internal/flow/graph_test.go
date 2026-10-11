@@ -315,7 +315,7 @@ func TestIssuerUsageBeyondCap(t *testing.T) {
 	var certs []Cert
 	for i := 0; i < MaxNodes+100; i++ {
 		c := Cert{ID: id(), Name: fmt.Sprintf("c%03d", i), Status: "active"}
-		if i == 599 {
+		if i == MaxNodes+99 {
 			c.CAID = &caLate
 		}
 		certs = append(certs, c)
@@ -382,7 +382,7 @@ func TestAssembleSummaries(t *testing.T) {
 		len(c.ClientIDs) != 1 || c.ClientIDs[0] != "client:"+client.String() {
 		t.Fatalf("cert summary: %+v", c)
 	}
-	if c.Counts == nil || c.Counts.Grants != 3 || c.Counts.Deployments != 2 || c.Counts.Problems == 0 {
+	if c.Counts == nil || c.Counts.Grants != 3 || c.Counts.Deployments != 2 || c.Counts.Problems != 1 {
 		t.Fatalf("cert counts: %+v", c.Counts)
 	}
 	if c.LastDeployedAt == nil || !c.LastDeployedAt.Equal(d2) {
@@ -392,14 +392,14 @@ func TestAssembleSummaries(t *testing.T) {
 		t.Fatalf("ca summary: %+v", ca)
 	}
 	tg := by["target:"+target.String()]
-	if tg.Status != StatusFailed || tg.Summary == nil || tg.Summary.Counts.Grants != 2 || len([]rune(tg.Summary.LastError)) != maxSummaryError {
+	if tg.Status != StatusFailed || tg.Summary == nil || tg.Summary.Counts.Grants != 2 || tg.Summary.Counts.Problems != 2 || len([]rune(tg.Summary.LastError)) != maxSummaryError {
 		t.Fatalf("target summary: %+v status %s", tg.Summary, tg.Status)
 	}
-	if l := by["layout:"+layout.String()].Summary; l == nil || l.Counts.Grants != 1 || l.Counts.Deployments != 1 || l.LastDeployedAt == nil || !l.LastDeployedAt.Equal(d1) {
+	if l := by["layout:"+layout.String()].Summary; l == nil || l.Counts.Grants != 1 || l.Counts.Deployments != 1 || l.Counts.Problems != 0 || l.LastDeployedAt == nil || !l.LastDeployedAt.Equal(d1) {
 		t.Fatalf("layout summary: %+v", l)
 	}
 	cl := by["client:"+client.String()].Summary
-	if cl == nil || cl.Counts.Grants != 3 || cl.Counts.Deployments != 2 {
+	if cl == nil || cl.Counts.Grants != 3 || cl.Counts.Deployments != 2 || cl.Counts.Problems != 1 {
 		t.Fatalf("client summary: %+v", cl)
 	}
 }

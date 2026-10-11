@@ -138,7 +138,7 @@ func TestGetFlowTruncates(t *testing.T) {
 	}
 	fl := gen.Flow(res.(gen.GetFlow200JSONResponse))
 	if !fl.Truncated || len(fl.Lanes.Certificates.Nodes) != flow.MaxNodes || fl.Lanes.Certificates.Omitted < 20 {
-		t.Fatalf("truncated=%v certs=%d", fl.Truncated, len(fl.Lanes.Certificates.Nodes))
+		t.Fatalf("truncated=%v certs=%d omitted=%d", fl.Truncated, len(fl.Lanes.Certificates.Nodes), fl.Lanes.Certificates.Omitted)
 	}
 }
 
@@ -161,7 +161,7 @@ func TestGetFlowUsageCountsWholeOrgOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Only the last two certificates by name, past the node cap, use "late".
-	if _, err := f.pool.Exec(ctx, `UPDATE certificates SET overrides = jsonb_build_object('caId', $2::text) WHERE org_id = $1 AND name IN ('c0519', 'c0520')`, f.org, late); err != nil {
+	if _, err := f.pool.Exec(ctx, `UPDATE certificates SET overrides = jsonb_build_object('caId', $2::text) WHERE org_id = $1 AND name IN ('c2019', 'c2020')`, f.org, late); err != nil {
 		t.Fatal(err)
 	}
 	// Another org's certificate pointing at "none" must not count here.
