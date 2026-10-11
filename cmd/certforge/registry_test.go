@@ -20,11 +20,11 @@ func registryCodes(reg *targets.Registry) []string {
 }
 
 // TestProductRegistriesHaveNoTestTypes guards the server and agent
-// registries against ever holding a targetstest type: exactly {traefik,
-// vault-kv} and {traefik}, respectively.
+// registries against ever holding a targetstest type: exactly {authentik,
+// traefik, vault-kv} and {traefik}, respectively.
 func TestProductRegistriesHaveNoTestTypes(t *testing.T) {
-	if got := registryCodes(newTargetsRegistry(nil)); len(got) != 2 || got[0] != "traefik" || got[1] != "vault-kv" {
-		t.Fatalf("server registry codes = %v, want [traefik vault-kv]", got)
+	if got := registryCodes(newTargetsRegistry(nil)); len(got) != 3 || got[0] != "authentik" || got[1] != "traefik" || got[2] != "vault-kv" {
+		t.Fatalf("server registry codes = %v, want [authentik traefik vault-kv]", got)
 	}
 	if got := registryCodes(agent.NewTargetsRegistry()); len(got) != 1 || got[0] != "traefik" {
 		t.Fatalf("agent registry codes = %v, want [traefik]", got)
@@ -53,6 +53,7 @@ func TestRegistryModesMatrix(t *testing.T) {
 		runsOn    targets.Mode
 		keyPolicy targets.KeyPolicy
 	}{
+		{"authentik", targets.Server, targets.Always},
 		{"traefik", targets.Agent, targets.Always},
 		{"vault-kv", targets.Server, targets.Optional},
 	}
@@ -79,7 +80,7 @@ func TestMetaDeployTargetAttrs(t *testing.T) {
 	targets.AddToMeta(reg, metaReg)
 
 	entries := metaReg.List(meta.KindDeployTarget)
-	if len(entries) != 2 {
+	if len(entries) != 3 {
 		t.Fatalf("entries = %+v", entries)
 	}
 	byCode := map[string]meta.Entry{}
@@ -88,6 +89,9 @@ func TestMetaDeployTargetAttrs(t *testing.T) {
 	}
 	if a := byCode["traefik"].Attrs; a["runsOn"] != "agent" || a["keyPolicy"] != "always" {
 		t.Fatalf("traefik attrs = %+v", a)
+	}
+	if a := byCode["authentik"].Attrs; a["runsOn"] != "server" || a["keyPolicy"] != "always" {
+		t.Fatalf("authentik attrs = %+v", a)
 	}
 	if a := byCode["vault-kv"].Attrs; a["runsOn"] != "server" || a["keyPolicy"] != "optional" {
 		t.Fatalf("vault-kv attrs = %+v", a)

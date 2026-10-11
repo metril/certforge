@@ -458,13 +458,15 @@ func riverRunningJobs(ctx context.Context, c *river.Client[pgx.Tx]) int {
 
 // newTargetsRegistry builds the server's deploy target registry: every
 // built-in type internal/targets ships (traefik) plus vault-kv, wired to
-// vaultProvider — the exact registry runServe wires into both api.Deps and
+// vaultProvider, and authentik (registered here, not in RegisterBuiltins,
+// which the agent also uses, so it stays server-only) — the exact registry runServe wires into both api.Deps and
 // deploy.Dispatcher, and what cmd/certforge's own tests (registry_test.go)
 // check against, rather than reimplementing the wiring themselves.
 func newTargetsRegistry(vaultProvider *vault.Provider) *targets.Registry {
 	reg := targets.NewRegistry()
 	targets.RegisterBuiltins(reg)
 	reg.Register(deploy.VaultKV{Vault: vaultProvider})
+	reg.Register(deploy.Authentik{})
 	return reg
 }
 
