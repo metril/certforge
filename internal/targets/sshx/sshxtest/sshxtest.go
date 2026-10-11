@@ -8,9 +8,12 @@ import (
 	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
+	"bufio"
+	"fmt"
 	"io"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -31,6 +34,12 @@ type Server struct {
 	ExitFor func(cmd string) uint32
 	// Hang makes exec requests never complete.
 	Hang bool
+	// Files holds files uploaded through "scp -t" (name -> data). ScpErr,
+	// when set, is sent as a fatal SCP error reply instead of accepting.
+	Files  map[string][]byte
+	// Pass is the accepted password; empty means "pw".
+	Pass string
+	ScpErr string
 }
 
 // NewSigner returns a fresh ed25519 signer and its private key.
@@ -54,7 +63,11 @@ func Start(t *testing.T, clientPub ssh.PublicKey) *Server {
 	s := &Server{HostPub: hs.PublicKey()}
 	cfg := &ssh.ServerConfig{
 		PasswordCallback: func(_ ssh.ConnMetadata, p []byte) (*ssh.Permissions, error) {
-			if string(p) == "pw" {
+			want := s.Pass
+			if want == "" {
+				want = "pw"
+			}
+			if string(p) == want {
 				return nil, nil
 			}
 			return nil, io.EOF
@@ -117,6 +130,10 @@ func (s *Server) serve(nc net.Conn, cfg *ssh.ServerConfig) {
 				if s.Hang {
 					continue
 				}
+				if strings.HasPrefix(cmd, "scp -t ") {
+					s.scpSink(ch, cmd)
+					continue
+				}
 				in, _ := io.ReadAll(ch)
 				s.Mu.Lock()
 				s.Cmds = append(s.Cmds, cmd)
@@ -147,4 +164,56 @@ func (s *Server) Port(t *testing.T) int {
 		t.Fatal(err)
 	}
 	return n
+}
+
+// scpSink speaks the receiving side of the SCP protocol and records the
+// uploaded file in s.Files.
+func (s *Server) scpSink(ch ssh.Channel, cmd string) {
+	code := uint32(0)
+	defer func() {
+		_, _ = ch.SendRequest("exit-status", false, ssh.Marshal(struct{ C uint32 }{code}))
+		_ = ch.Close()
+	}()
+	s.Mu.Lock()
+	s.Cmds = append(s.Cmds, cmd)
+	s.Stdin = append(s.Stdin, nil)
+	fail := s.ScpErr
+	s.Mu.Unlock()
+	if fail != "" {
+		_, _ = ch.Write([]byte("\x02" + fail + "\n"))
+		code = 1
+		return
+	}
+	_, _ = ch.Write([]byte{0})
+	br := bufio.NewReader(ch)
+	line, err := br.ReadString('\n')
+	if err != nil {
+		code = 1
+		return
+	}
+	var mode string
+	var n int
+	var name string
+	if _, err := fmt.Sscanf(line, "C%s %d %s", &mode, &n, &name); err != nil {
+		code = 1
+		return
+	}
+	_, _ = ch.Write([]byte{0})
+	data := make([]byte, n)
+	if _, err := io.ReadFull(br, data); err != nil {
+		code = 1
+		return
+	}
+	if b, err := br.ReadByte(); err != nil || b != 0 {
+		code = 1
+		return
+	}
+	s.Mu.Lock()
+	if s.Files == nil {
+		s.Files = map[string][]byte{}
+	}
+	s.Files[name] = data
+	s.Mu.Unlock()
+	_, _ = ch.Write([]byte{0})
+	_, _ = io.Copy(io.Discard, br)
 }

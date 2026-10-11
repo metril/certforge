@@ -4,6 +4,7 @@
 package sshx
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -191,6 +192,76 @@ func (c *Client) WriteFile(ctx context.Context, path string, data []byte, mode o
 	}
 	if code != 0 {
 		return fmt.Errorf("sshx: write %s: exit %d: %s", path, code, strings.TrimSpace(string(stderr)))
+	}
+	return nil
+}
+
+// scpAck reads one SCP reply: 0 is success, 1 and 2 carry a message line.
+func scpAck(r *bufio.Reader) error {
+	b, err := r.ReadByte()
+	if err != nil {
+		return fmt.Errorf("sshx: scp: %w", err)
+	}
+	if b == 0 {
+		return nil
+	}
+	msg, _ := r.ReadString('\n')
+	return fmt.Errorf("sshx: scp: remote error: %s", strings.TrimSpace(msg))
+}
+
+// WriteFileSCP uploads data as name in the remote's default directory with
+// the SCP sink protocol ("scp -t"), for devices without a POSIX shell such
+// as RouterOS. name must be a plain file name.
+func (c *Client) WriteFileSCP(ctx context.Context, name string, data []byte, mode os.FileMode) error {
+	if name == "" || strings.ContainsAny(name, "/\n\x00") {
+		return fmt.Errorf("sshx: scp name %q must be a plain file name", name)
+	}
+	s, err := c.c.NewSession()
+	if err != nil {
+		return fmt.Errorf("sshx: session: %w", err)
+	}
+	defer func() { _ = s.Close() }()
+	in, err := s.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("sshx: scp: %w", err)
+	}
+	out, err := s.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("sshx: scp: %w", err)
+	}
+	if err := s.Start("scp -t " + shQuote(name)); err != nil {
+		return fmt.Errorf("sshx: start: %w", err)
+	}
+	stop := context.AfterFunc(ctx, func() { _ = s.Close() })
+	defer stop()
+	r := bufio.NewReader(out)
+	werr := func(err error) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return err
+	}
+	if err := scpAck(r); err != nil {
+		return werr(err)
+	}
+	if _, err := fmt.Fprintf(in, "C%04o %d %s\n", mode.Perm(), len(data), name); err != nil {
+		return werr(fmt.Errorf("sshx: scp: %w", err))
+	}
+	if err := scpAck(r); err != nil {
+		return werr(err)
+	}
+	if _, err := in.Write(append(append([]byte{}, data...), 0)); err != nil {
+		return werr(fmt.Errorf("sshx: scp: %w", err))
+	}
+	if err := scpAck(r); err != nil {
+		return werr(err)
+	}
+	_ = in.Close()
+	if err := s.Wait(); err != nil {
+		var ee *ssh.ExitError
+		if !errors.As(err, &ee) || ee.ExitStatus() != 0 {
+			return werr(fmt.Errorf("sshx: scp: %w", err))
+		}
 	}
 	return nil
 }

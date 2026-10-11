@@ -143,3 +143,30 @@ func TestWriteFilePathValidation(t *testing.T) {
 		t.Fatal("command sent for invalid path")
 	}
 }
+
+func TestWriteFileSCP(t *testing.T) {
+	s := startServer(t, nil)
+	c := dial(t, s, Opts{Password: "pw"})
+	data := []byte("line1\nline2\n\x00bin")
+	if err := c.WriteFileSCP(context.Background(), "cf-1.crt", data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	if string(s.Files["cf-1.crt"]) != string(data) || len(s.Cmds) != 1 || s.Cmds[0] != "scp -t 'cf-1.crt'" {
+		t.Fatalf("files=%q cmds=%q", s.Files, s.Cmds)
+	}
+}
+
+func TestWriteFileSCPRemoteError(t *testing.T) {
+	s := startServer(t, nil)
+	s.ScpErr = "disk full"
+	c := dial(t, s, Opts{Password: "pw"})
+	err := c.WriteFileSCP(context.Background(), "a.crt", []byte("x"), 0o644)
+	if err == nil || !strings.Contains(err.Error(), "disk full") {
+		t.Fatalf("err = %v", err)
+	}
+	if err := c.WriteFileSCP(context.Background(), "../a", nil, 0o644); err == nil {
+		t.Fatal("want bad name error")
+	}
+}
