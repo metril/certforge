@@ -75,7 +75,7 @@ function GroupHead({ id, title, count, total, problems, open, onToggle, sub, hel
         className={cn('flex min-w-0 flex-1 items-center gap-1.5 rounded-sm text-left focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none', sub ? 'text-xs text-ink-muted' : 'text-xs font-semibold tracking-wide text-ink-muted uppercase')}
       >
         <ChevronRight className={cn('size-3.5 shrink-0 transition-transform', open && 'rotate-90')} aria-hidden />
-        <span className="min-w-0 break-words">{title}</span>
+        <span className="truncate">{title}</span>
       </button>
       <Counts count={count} total={total} problems={problems} />
       {help && <HelpTip id={help} label={title} />}
@@ -165,13 +165,13 @@ export function FlowLane({ laneKey, org, hidden, nodes, total, selectedId, onPat
   const countText = nodes.length === total ? String(total) : `${nodes.length}/${total}`;
   const interactive = !hidden && total > 0;
   return (
-    <section ref={section} aria-label={meta.title} data-flow-lane={laneKey} className="relative z-10 grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-2">
-      <h2 className="sticky top-0 z-20 flex items-center gap-2 border-b border-border bg-surface pb-1 pt-2">
+    <section ref={section} aria-label={meta.title} data-flow-lane={laneKey} className="@container relative z-10 grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-2">
+      <h2 className="sticky top-0 z-20 flex items-center gap-2 @max-[11rem]:flex-wrap border-b border-border bg-surface pb-1 pt-2">
         {interactive ? (
           <GroupHead id={laneKey} title={meta.title} count={countText} total={total} problems={nodes.filter((n) => isProblem(n.status)).length} open={laneOpen} onToggle={() => onToggle(laneKey)} help={`flow.lane.${laneKey}`} />
         ) : (
           <>
-            <span className="min-w-0 flex-1 break-words text-xs font-semibold tracking-wide text-ink-muted uppercase">{meta.title}</span>
+            <span className="min-w-0 flex-1 truncate text-xs font-semibold tracking-wide text-ink-muted uppercase">{meta.title}</span>
             {!hidden && <Counts count={countText} total={total} problems={0} />}
             <HelpTip id={`flow.lane.${laneKey}`} label={meta.title} />
           </>
