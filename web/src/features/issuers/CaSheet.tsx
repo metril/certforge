@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
 import type { SchemaFormHandle } from '@/forms/SchemaForm';
-import { KIND_LABEL } from '@/lib/caKinds';
+import { KIND_FULL_LABEL } from '@/lib/caKinds';
 import { help } from '@/lib/help';
 import { settledConfig } from '@/lib/secretForm';
 import { useMe } from '@/lib/org';
@@ -45,7 +45,7 @@ function configFieldError(title: string | undefined, message: string): ErrorSche
   return path.reduceRight<ErrorSchema>((acc, key) => ({ [key]: acc }) as ErrorSchema, { __errors: [message] } as unknown as ErrorSchema);
 }
 
-const KIND_OPTIONS: CaType[] = ['acme', 'localca', 'vaultpki'];
+const KIND_OPTIONS: CaType[] = ['acme', 'localca', 'vaultpki', 'adcs'];
 
 type Props = { orgId: string; open: boolean; ca?: CA; initialKind?: CaType; onOpenChange: (open: boolean) => void };
 
@@ -72,7 +72,7 @@ export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }:
   // rjsf fires onChange on mount once defaults fill, so the kinds' config is
   // compared in its settled form (as TargetSheet does) and the baseline waits
   // for the signer schemas to arrive.
-  const settleKind = (kind: 'localca' | 'vaultpki', config: Record<string, unknown>) => {
+  const settleKind = (kind: 'localca' | 'vaultpki' | 'adcs', config: Record<string, unknown>) => {
     const schema = signers.find((x) => x.code === kind)?.schema as RJSFSchema | undefined;
     return schema ? settledConfig(schema, config, ca?.storedSecrets ?? []) : config;
   };
@@ -81,6 +81,7 @@ export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }:
     // An importing draft's schema drops fields; the switch itself is already an edit.
     localca: { ...draft.localca, config: draft.localca.importing ? draft.localca.config : settleKind('localca', draft.localca.config) },
     vaultpki: { config: settleKind('vaultpki', draft.vaultpki.config) },
+    adcs: { config: settleKind('adcs', draft.adcs.config) },
   });
   const baseline = useRef<string | null>(null);
   if (baseline.current === null && !metaPending) baseline.current = settled;
@@ -155,12 +156,13 @@ export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }:
                 onChange={(kind) => setDraft((d) => ({ ...d, kind }))}
                 options={KIND_OPTIONS.map((k) => ({
                   value: k,
-                  label: KIND_LABEL[k],
+                  label: KIND_FULL_LABEL[k],
                   disabled: !!ca,
                   hint: ca ? help['ca.typeLocked'].text : undefined,
                 }))}
               />
               {draft.kind === 'vaultpki' && <HelpTip id="ca.vaultPki" />}
+              {draft.kind === 'adcs' && <HelpTip id="ca.adcs" />}
             </span>
           </Field>
           <Field id="ca-name" label="Name" error={submitted && !nameOk ? 'Required' : serverError?.field === 'name' ? serverError.message : null}>

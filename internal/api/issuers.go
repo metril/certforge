@@ -32,6 +32,9 @@ func (s *Server) caOut(ctx context.Context, c issuance.CA) gen.CA {
 	for k, v := range c.Config {
 		cfg[k] = v
 	}
+	if c.Type == issuance.CATypeADCS {
+		out.StoredSecrets = []string{"password"}
+	}
 	if c.Type == issuance.CATypeLocalCA {
 		// chainPem is an internal reconstruction aid (every certificate
 		// above the issuing certificate, kept so Issue/CRL can rebuild the
@@ -89,6 +92,21 @@ func caIn(b *gen.CAInput) issuance.CAInput {
 	}
 	if b.Config != nil {
 		in.Config = *b.Config
+		// adcs's write-only password rides in config on the wire (AdcsConfig);
+		// lift it out so it never reaches the stored public config, the same
+		// way eabHmac is a CAInput secret.
+		if pw, ok := in.Config["password"].(string); ok {
+			in.ADCSPassword = &pw
+		}
+		if _, ok := in.Config["password"]; ok {
+			cfg := make(map[string]any, len(in.Config))
+			for k, v := range in.Config {
+				if k != "password" {
+					cfg[k] = v
+				}
+			}
+			in.Config = cfg
+		}
 	}
 	return in
 }
@@ -142,6 +160,29 @@ func (s *Server) checkCADirectoryURL(ctx context.Context, in issuance.CAInput, s
 	return nil
 }
 
+// checkCAADCSURLs applies the notifier SSRF policy to an adcs CA's CEP and
+// CES URLs (422 naming the field), as checkCADirectoryURL does for an ACME
+// directoryUrl. A URL equal to the stored one is not re-checked.
+func (s *Server) checkCAADCSURLs(ctx context.Context, in issuance.CAInput, stored map[string]any) error {
+	if in.Type != issuance.CATypeADCS {
+		return nil
+	}
+	allowLoopback, err := s.monitorAllowLoopback(ctx)
+	if err != nil {
+		return err
+	}
+	for _, f := range []string{"cepUrl", "cesUrl"} {
+		v, _ := in.Config[f].(string)
+		if old, _ := stored[f].(string); v == "" || v == old {
+			continue
+		}
+		if err := challenge.CheckURLResolved(ctx, v, allowLoopback, s.d.HostResolver); err != nil {
+			return unprocessable("config."+f, err.Error())
+		}
+	}
+	return nil
+}
+
 // CreateCa adds a CA to the org.
 func (s *Server) CreateCa(ctx context.Context, r gen.CreateCaRequestObject) (gen.CreateCaResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionCAsWrite, &r.OrgId); err != nil {
@@ -149,6 +190,9 @@ func (s *Server) CreateCa(ctx context.Context, r gen.CreateCaRequestObject) (gen
 	}
 	in := caIn(r.Body)
 	if err := s.checkCADirectoryURL(ctx, in, ""); err != nil {
+		return nil, err
+	}
+	if err := s.checkCAADCSURLs(ctx, in, nil); err != nil {
 		return nil, err
 	}
 	c, err := s.d.Issuance.Store.CreateCA(ctx, r.OrgId, in)
@@ -179,10 +223,14 @@ func (s *Server) UpdateCa(ctx context.Context, r gen.UpdateCaRequestObject) (gen
 	}
 	in := caIn(r.Body)
 	stored := ""
+	var storedCfg map[string]any
 	if cur, err := s.d.Issuance.Store.GetCA(ctx, r.OrgId, r.Id); err == nil {
-		stored = cur.DirectoryURL
+		stored, storedCfg = cur.DirectoryURL, cur.Config
 	}
 	if err := s.checkCADirectoryURL(ctx, in, stored); err != nil {
+		return nil, err
+	}
+	if err := s.checkCAADCSURLs(ctx, in, storedCfg); err != nil {
 		return nil, err
 	}
 	c, err := s.d.Issuance.Store.UpdateCA(ctx, r.OrgId, r.Id, in)

@@ -2688,10 +2688,10 @@ export interface components {
             requiresEab: boolean;
         };
         /**
-         * @description A CA's kind — an external ACME directory, a CertForge-managed private CA, or one backed by Vault's PKI secrets engine.
+         * @description A CA's kind — an external ACME directory, a CertForge-managed private CA, one backed by Vault's PKI secrets engine, or Microsoft Active Directory Certificate Services.
          * @enum {string}
          */
-        CaType: "acme" | "localca" | "vaultpki";
+        CaType: "acme" | "localca" | "vaultpki" | "adcs";
         /** @description Configuration for a localca CA (Deviations R4). Everything here is public except importKeyPem. */
         LocalCaConfig: {
             /** @description Root and issuing certificate subject. */
@@ -2748,6 +2748,34 @@ export interface components {
              */
             ttl?: string;
         };
+        /** @description Configuration for an adcs CA, enrolling through the AD CS Certificate Enrollment Policy and Enrollment web services (MS-XCEP / MS-WSTEP) with username/password authentication. Revocation is manual in AD CS. On create the policy is read with these credentials and the template must exist. */
+        AdcsConfig: {
+            /**
+             * Format: uri
+             * @description Enrollment policy (CEP) https URL, for example https://ca.example.com/ADPolicyProvider_CEP_UsernamePassword/service.svc/CEP.
+             */
+            cepUrl: string;
+            /**
+             * Format: uri
+             * @description Enrollment (CES) https URL; resolved from the policy when empty.
+             */
+            cesUrl?: string;
+            /** @description Certificate template name (the account needs Read and Enroll; the template must supply the subject in the request). */
+            template: string;
+            /** @description Service account */
+            username: string;
+            /** @description Service account password. Required on create; on update omitted or __unchanged__ keeps the stored one. Never returned. */
+            password?: string;
+            /** @description PEM roots trusted for the web services' HTTPS certificate; also used as the chain when CES returns the leaf alone. */
+            caBundlePem?: string;
+            /**
+             * @description Per-request timeout.
+             * @default 30
+             */
+            timeoutSeconds: number;
+            /** @description The template's object identifier */
+            readonly templateOid?: string;
+        };
         /** @description A certificate authority — an external ACME directory, or a private CA CertForge holds the key material for. */
         CA: {
             /**
@@ -2766,7 +2794,7 @@ export interface components {
             preset?: components["schemas"]["CAPresetCode"];
             /** @description ACME directory URL; empty for a private CA. */
             directoryUrl: string;
-            /** @description Extra PEM roots for a private ACME server (acme), or the CA's own trust anchor for a private kind: for localca the root PEM (generated), or for an import the last certificate of importPem; for vaultpki the CA certificate read from Vault at create. */
+            /** @description Extra PEM roots for a private ACME server (acme), or the CA's own trust anchor for a private kind: for localca the root PEM (generated), or for an import the last certificate of importPem; for vaultpki the CA certificate read from Vault at create; for adcs the CA certificate(s) from the enrollment policy. */
             trustBundlePem: string;
             /** @description EAB key id; empty when unused. */
             eabKid: string;
@@ -2777,11 +2805,11 @@ export interface components {
             /** @description Reserved for global CAs shared across organizations. */
             shared: boolean;
             type: components["schemas"]["CaType"];
-            /** @description Kind-specific configuration: {} for acme; LocalCaConfig's fields for localca, plus the read-only imported (bool), issuingPem (string), retired (array of {pem, notAfter, serial, crlUrl?: uri, same conditions as this CA's own crlUrl} for issuing keys retired by a rotation) and revokedCount (int); VaultPkiConfig's fields for vaultpki. */
+            /** @description Kind-specific configuration: {} for acme; LocalCaConfig's fields for localca, plus the read-only imported (bool), issuingPem (string), retired (array of {pem, notAfter, serial, crlUrl?: uri, same conditions as this CA's own crlUrl} for issuing keys retired by a rotation) and revokedCount (int); VaultPkiConfig's fields for vaultpki; AdcsConfig's fields for adcs (the password is never returned). */
             config: {
                 [key: string]: unknown;
             };
-            /** @description Secret config fields held for this CA, for example importKeyPem. */
+            /** @description Secret config fields held for this CA, for example importKeyPem, or password for adcs. */
             storedSecrets: string[];
             /**
              * Format: date-time
@@ -2830,7 +2858,7 @@ export interface components {
             eabHmac?: string | null;
             /** @description DNS resolvers for propagation checks; acme only. */
             resolvers?: string[];
-            /** @description Kind-specific configuration: LocalCaConfig for localca, VaultPkiConfig for vaultpki; omitted or {} for acme. For localca, subject, keyType, the validity years and the import fields are immutable after create (422); maxLeafDays and crl stay editable. */
+            /** @description Kind-specific configuration: LocalCaConfig for localca, VaultPkiConfig for vaultpki, AdcsConfig for adcs; omitted or {} for acme. For localca, subject, keyType, the validity years and the import fields are immutable after create (422); maxLeafDays and crl stay editable. */
             config?: {
                 [key: string]: unknown;
             };

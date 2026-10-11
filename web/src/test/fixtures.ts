@@ -261,6 +261,32 @@ export const caVaultPki: CA = {
   updatedAt: iso(-5),
 };
 
+export const caAdcs: CA = {
+  id: 'ca-adcs-1',
+  orgId: org.id,
+  name: 'Corp AD CS',
+  directoryUrl: '',
+  trustBundlePem: '-----BEGIN CERTIFICATE-----\nMIIBADCSCA\n-----END CERTIFICATE-----\n',
+  eabKid: '',
+  hasEab: false,
+  resolvers: [],
+  shared: false,
+  type: 'adcs',
+  config: {
+    cepUrl: 'https://ca.corp.test/ADPolicyProvider_CEP_UsernamePassword/service.svc/CEP',
+    cesUrl: 'https://ca.corp.test/Corp_CA_CES_UsernamePassword/service.svc/CES',
+    template: 'CertForgeWeb',
+    username: 'CORP\\svc-certforge',
+    timeoutSeconds: 30,
+    templateOid: '1.3.6.1.4.1.311.21.8.1.2',
+  },
+  storedSecrets: ['password'],
+  notBefore: iso(-5),
+  notAfter: iso(3645),
+  createdAt: iso(-5),
+  updatedAt: iso(-5),
+};
+
 export const keysStatic: KeysStatus = {
   kind: 'static',
   kekId: 'static-1',
@@ -425,6 +451,27 @@ export const metaSigners: ProviderSchema[] = [
           type: 'string', title: 'TTL',
           description: "Go duration string for issued leaf validity, 1h to 19800h (825 days); Vault's own role or mount ceiling still applies.",
         },
+      },
+    },
+  },
+  {
+    code: 'adcs',
+    name: 'Active Directory (AD CS)',
+    aliases: [],
+    schema: {
+      type: 'object',
+      title: 'Active Directory Certificate Services',
+      description: 'A private CA backed by Microsoft AD CS through the Certificate Enrollment Policy and Enrollment web services with username/password authentication. Revocation is manual in AD CS.',
+      additionalProperties: false,
+      required: ['cepUrl', 'template', 'username', 'password'],
+      properties: {
+        cepUrl: { type: 'string', format: 'uri', title: 'Policy (CEP) URL', description: 'https://<host>/ADPolicyProvider_CEP_UsernamePassword/service.svc/CEP' },
+        cesUrl: { type: 'string', format: 'uri', title: 'Enrollment (CES) URL', description: 'Optional; resolved from the policy when empty.' },
+        template: { type: 'string', minLength: 1, title: 'Template', description: 'Certificate template name.' },
+        username: { type: 'string', minLength: 1, title: 'Username', description: 'Service account (DOMAIN\\user or UPN).' },
+        password: { type: 'string', secret: true, title: 'Password', description: 'Service account password. Never returned.' },
+        caBundlePem: { type: 'string', format: 'textarea', title: 'TLS CA bundle', description: "PEM roots to trust for the web services' HTTPS certificate." },
+        timeoutSeconds: { type: 'integer', minimum: 5, maximum: 300, default: 30, title: 'Timeout (seconds)' },
       },
     },
   },

@@ -5,6 +5,8 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"net"
 	"testing"
 )
@@ -108,4 +110,26 @@ func TestNewKeyAndCSRRequiresNames(t *testing.T) {
 	if _, _, _, err := NewKeyAndCSR(IssueRequest{KeyType: EC256}); err == nil {
 		t.Fatal("want error for no names")
 	}
+}
+
+// TestNewKeyAndCSRExtensions checks IssueRequest.CSRExtensions reach the CSR.
+func TestNewKeyAndCSRExtensions(t *testing.T) {
+	oid := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 311, 20, 2}
+	_, _, der, err := NewKeyAndCSR(IssueRequest{
+		Names: []string{"example.com"}, KeyType: EC256,
+		CSRExtensions: []pkix.Extension{{Id: oid, Value: []byte{0x1e, 0x00}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	csr, err := x509.ParseCertificateRequest(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range csr.Extensions {
+		if e.Id.Equal(oid) {
+			return
+		}
+	}
+	t.Fatalf("extension %v missing: %v", oid, csr.Extensions)
 }

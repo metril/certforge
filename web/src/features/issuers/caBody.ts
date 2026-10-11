@@ -19,15 +19,17 @@ export type AcmeDraft = {
  * sent itself — it decides which of config's fields `toCaInput` keeps. */
 export type LocalCaDraft = { config: Record<string, unknown>; importing: boolean };
 export type VaultPkiDraft = { config: Record<string, unknown> };
+export type AdcsDraft = { config: Record<string, unknown> };
 
 /** Switching the Type control keeps each kind's own draft (task-2-brief:
  * "Switching kind keeps each body's draft"), so every kind's draft lives in
  * this one object at once. */
-export type CaDraft = { kind: CaType; name: string; acme: AcmeDraft; localca: LocalCaDraft; vaultpki: VaultPkiDraft };
+export type CaDraft = { kind: CaType; name: string; acme: AcmeDraft; localca: LocalCaDraft; vaultpki: VaultPkiDraft; adcs: AdcsDraft };
 
 export const emptyAcme: AcmeDraft = { preset: '', directoryUrl: '', trustBundlePem: '', eabKid: '', eabHmac: undefined, resolvers: [] };
 export const emptyLocalCa: LocalCaDraft = { config: {}, importing: false };
 export const emptyVaultPki: VaultPkiDraft = { config: {} };
+export const emptyAdcs: AdcsDraft = { config: {} };
 
 function acmeFromCa(ca: CA): AcmeDraft {
   return {
@@ -51,6 +53,15 @@ function acmeFromCa(ca: CA): AcmeDraft {
 // existing localca CA to edit it.
 const LOCALCA_READONLY_KEYS = ['imported', 'issuingPem', 'retired', 'revokedCount'];
 
+// AdcsConfig's templateOid is read-only (set from the policy) and the
+// signers[adcs] schema has additionalProperties: false, so the edit draft
+// drops it; the stored password is seeded with the unchanged sentinel.
+function adcsConfigFromCa(config: Record<string, unknown>): Record<string, unknown> {
+  const rest: Record<string, unknown> = { ...config };
+  delete rest.templateOid;
+  return { ...rest, password: UNCHANGED };
+}
+
 function localCaConfigFromCa(config: Record<string, unknown>): Record<string, unknown> {
   const c = { ...config };
   for (const k of LOCALCA_READONLY_KEYS) delete c[k];
@@ -60,7 +71,7 @@ function localCaConfigFromCa(config: Record<string, unknown>): Record<string, un
 /** Builds a fresh draft: every kind starts blank except the one the CA
  * already is (editing) or `initialKind` names (create, from `?kind=`). */
 export function initialDraft(ca: CA | undefined, initialKind: CaType): CaDraft {
-  if (!ca) return { kind: initialKind, name: '', acme: emptyAcme, localca: emptyLocalCa, vaultpki: emptyVaultPki };
+  if (!ca) return { kind: initialKind, name: '', acme: emptyAcme, localca: emptyLocalCa, vaultpki: emptyVaultPki, adcs: emptyAdcs };
   return {
     kind: ca.type,
     name: ca.name,
@@ -69,6 +80,7 @@ export function initialDraft(ca: CA | undefined, initialKind: CaType): CaDraft {
     // `importing` starts false regardless of whether this CA was imported.
     localca: ca.type === 'localca' ? { config: localCaConfigFromCa(ca.config as Record<string, unknown>), importing: false } : emptyLocalCa,
     vaultpki: ca.type === 'vaultpki' ? { config: ca.config } : emptyVaultPki,
+    adcs: ca.type === 'adcs' ? { config: adcsConfigFromCa(ca.config as Record<string, unknown>) } : emptyAdcs,
   };
 }
 
@@ -116,6 +128,11 @@ export function toCaInput(draft: CaDraft, ctx: { presets: CAPreset[]; ca?: CA })
       eabHmac: showEab ? (kid ? a.eabHmac : ctx.ca?.hasEab ? '' : undefined) : undefined,
       resolvers: a.resolvers,
     };
+  }
+  if (draft.kind === 'adcs') {
+    // An emptied password on edit means "keep the stored one": leave it out.
+    const { password, ...rest } = draft.adcs.config;
+    return { name, type: 'adcs', config: password === '' || password === undefined ? rest : { ...rest, password } };
   }
   const config = draft.kind === 'localca' ? localCaConfig(draft.localca, !!ctx.ca) : draft.vaultpki.config;
   return { name, type: draft.kind, config };

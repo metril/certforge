@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { UNCHANGED } from '@/api/types';
-import { caLocal, presets } from '@/test/fixtures';
-import { emptyAcme, emptyLocalCa, emptyVaultPki, initialDraft, toCaInput, type CaDraft } from './caBody';
+import { caAdcs, caLocal, presets } from '@/test/fixtures';
+import { emptyAcme, emptyLocalCa, emptyAdcs, emptyVaultPki, initialDraft, toCaInput, type CaDraft } from './caBody';
 
 it('acme body unchanged', () => {
   const draft: CaDraft = {
@@ -10,6 +10,7 @@ it('acme body unchanged', () => {
     acme: { preset: 'zerossl', directoryUrl: presets[2]!.directoryUrl, trustBundlePem: '', eabKid: 'kid-1', eabHmac: 'secret-hmac', resolvers: [] },
     localca: emptyLocalCa,
     vaultpki: emptyVaultPki,
+    adcs: emptyAdcs,
   };
   expect(toCaInput(draft, { presets })).toEqual({
     name: 'ZeroSSL prod',
@@ -30,6 +31,7 @@ it('acme body drops eab fields for a preset that does not use it', () => {
     acme: { preset: 'letsencrypt', directoryUrl: presets[0]!.directoryUrl, trustBundlePem: '', eabKid: '', eabHmac: undefined, resolvers: [] },
     localca: emptyLocalCa,
     vaultpki: emptyVaultPki,
+    adcs: emptyAdcs,
   };
   const body = toCaInput(draft, { presets });
   expect(body.eabKid).toBeUndefined();
@@ -55,6 +57,7 @@ it('localca generate body', () => {
       },
     },
     vaultpki: emptyVaultPki,
+    adcs: emptyAdcs,
   };
   expect(toCaInput(draft, { presets })).toEqual({
     name: 'Internal CA',
@@ -89,6 +92,7 @@ it('localca import drops generated fields', () => {
       },
     },
     vaultpki: emptyVaultPki,
+    adcs: emptyAdcs,
   };
   expect(toCaInput(draft, { presets })).toEqual({
     name: 'Imported CA',
@@ -105,7 +109,7 @@ it('edit sends only mutable config', () => {
 });
 
 it('vaultpki sends every field, create and edit alike', () => {
-  const draft: CaDraft = { kind: 'vaultpki', name: 'Vault PKI', acme: emptyAcme, localca: emptyLocalCa, vaultpki: { config: { mount: 'pki', role: 'certforge', ttl: '2160h' } } };
+  const draft: CaDraft = { kind: 'vaultpki', name: 'Vault PKI', acme: emptyAcme, localca: emptyLocalCa, vaultpki: { config: { mount: 'pki', role: 'certforge', ttl: '2160h' } }, adcs: emptyAdcs };
   expect(toCaInput(draft, { presets })).toEqual({ name: 'Vault PKI', type: 'vaultpki', config: { mount: 'pki', role: 'certforge', ttl: '2160h' } });
 });
 
@@ -113,4 +117,19 @@ it('initialDraft seeds the stored EAB sentinel for an acme CA', () => {
   const withEab = { ...caLocal, type: 'acme' as const, hasEab: true, eabKid: 'kid-1', preset: 'zerossl' as const };
   const draft = initialDraft(withEab, 'acme');
   expect(draft.acme.eabHmac).toBe(UNCHANGED);
+});
+
+it('adcs create sends the config with its password', () => {
+  const config = { cepUrl: 'https://ca.test/cep', template: 'Web', username: 'svc', password: 'pw' };
+  const draft: CaDraft = { kind: 'adcs', name: 'AD', acme: emptyAcme, localca: emptyLocalCa, vaultpki: emptyVaultPki, adcs: { config } };
+  expect(toCaInput(draft, { presets })).toEqual({ name: 'AD', type: 'adcs', config });
+});
+
+it('adcs edit seeds the unchanged sentinel and drops the read-only templateOid', () => {
+  const draft = initialDraft(caAdcs, 'adcs');
+  expect(draft.adcs.config.password).toBe(UNCHANGED);
+  expect(draft.adcs.config).not.toHaveProperty('templateOid');
+  expect(toCaInput(draft, { presets, ca: caAdcs }).config).toMatchObject({ template: 'CertForgeWeb', password: UNCHANGED });
+  draft.adcs.config = { ...draft.adcs.config, password: '' };
+  expect(toCaInput(draft, { presets, ca: caAdcs }).config).not.toHaveProperty('password');
 });

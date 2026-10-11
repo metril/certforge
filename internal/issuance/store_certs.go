@@ -369,7 +369,7 @@ func checkMustStaple(ctx context.Context, q *sqlcgen.Queries, d Defaults, stored
 		}
 		return err
 	}
-	if row.Type == CATypeLocalCA || row.Type == CATypeVaultPKI {
+	if row.Type != CATypeACME {
 		return &ValidationError{"mustStaple", "only applies to ACME CAs; a private CA does not support OCSP Must-Staple"}
 	}
 	return nil

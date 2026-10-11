@@ -4,7 +4,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import type { CA } from '@/api/types';
 import { help } from '@/lib/help';
 import { server } from '@/test/server';
-import { authHandlers, ca, caLocal, caLocalImported, caLocalNeverRotated, caVaultPki, meWith, url } from '@/test/fixtures';
+import { authHandlers, ca, caLocal, caLocalImported, caAdcs, caLocalNeverRotated, caVaultPki, meWith, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let cas: CA[];
@@ -66,6 +66,16 @@ it('validity bar for both kinds', async () => {
   renderRoute('/o/acme/issuers/cas?view=ca-vault-1');
   const vaultSheet = await screen.findByRole('dialog', { name: 'Vault PKI' });
   expect(within(vaultSheet).getByRole('img')).toHaveAccessibleName(new RegExp(caVaultPki.notBefore!.slice(0, 4)));
+});
+
+it('adcs details show template, CES URL and manual revocation', async () => {
+  cas = [caAdcs];
+  renderRoute('/o/acme/issuers/cas?view=ca-adcs-1');
+  const sheet = await screen.findByRole('dialog', { name: 'Corp AD CS' });
+  expect(within(sheet).getByText('AD CS')).toBeInTheDocument();
+  expect(within(sheet).getByText('CertForgeWeb')).toBeInTheDocument();
+  expect(within(sheet).getByText(/Corp_CA_CES_UsernamePassword/)).toBeInTheDocument();
+  expect(within(sheet).getByText('Manual in AD CS')).toBeInTheDocument();
 });
 
 it('trust bundle download', async () => {

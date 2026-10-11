@@ -7,7 +7,7 @@ import { renderRoute } from '@/test/render';
 
 // W10: rjsf fills defaults through onChange on mount; a pristine create sheet
 // for a form-driven CA kind must not report dirty (Escape closes at once).
-it.each(['localca', 'vaultpki'] as const)('a pristine %s create sheet closes without a discard prompt', async (kind) => {
+it.each(['localca', 'vaultpki', 'adcs'] as const)('a pristine %s create sheet closes without a discard prompt', async (kind) => {
   server.use(
     ...authHandlers({ authed: true }),
     http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [], notifiers: [], signers: metaSigners })),

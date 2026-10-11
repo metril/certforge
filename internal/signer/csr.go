@@ -82,6 +82,8 @@ func NewKeyAndCSR(req IssueRequest) (key crypto.Signer, pkcs8, csrDER []byte, er
 		Subject:     pkix.Name{CommonName: req.Names[0]},
 		DNSNames:    dns,
 		IPAddresses: ips,
+
+		ExtraExtensions: req.CSRExtensions,
 	}
 	csrDER, err = x509.CreateCertificateRequest(rand.Reader, tmpl, key)
 	if err != nil {

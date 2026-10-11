@@ -66,6 +66,9 @@ export function CaKindBody({ draft, setDraft, ca, presets, signers, submitted, s
   if (draft.kind === 'localca') {
     return <LocalCaBody draft={draft} setDraft={setDraft} ca={ca} signers={signers} extraErrors={extraErrors} formRef={formRef} />;
   }
+  if (draft.kind === 'adcs') {
+    return <AdcsBody draft={draft} setDraft={setDraft} ca={ca} signers={signers} extraErrors={extraErrors} formRef={formRef} />;
+  }
   return <VaultPkiBody draft={draft} setDraft={setDraft} signers={signers} extraErrors={extraErrors} formRef={formRef} />;
 }
 
@@ -308,6 +311,34 @@ function LocalCaBody({
         uiSchemaOverrides={uiSchemaOverrides}
       />
     </>
+  );
+}
+
+function AdcsBody({
+  draft,
+  setDraft,
+  ca,
+  signers,
+  extraErrors,
+  formRef,
+}: {
+  draft: CaDraft;
+  setDraft: Dispatch<SetStateAction<CaDraft>>;
+  ca?: CA;
+  signers: ProviderSchema[];
+  extraErrors?: ErrorSchema;
+  formRef: RefObject<SchemaFormHandle | null>;
+}) {
+  const schema = useMemo(() => schemaOf(signers, 'adcs'), [signers]);
+  return (
+    <SchemaForm
+      ref={formRef}
+      schema={schema}
+      value={draft.adcs.config}
+      onChange={(v) => setDraft((d) => ({ ...d, adcs: { config: v } }))}
+      storedSecrets={ca?.storedSecrets}
+      extraErrors={extraErrors}
+    />
   );
 }
 

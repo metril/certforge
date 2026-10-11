@@ -1,0 +1,71 @@
+//go:build integration
+
+package api
+
+import (
+	"context"
+	"net/http"
+	"testing"
+
+	"github.com/metril/certforge/internal/api/gen"
+	"github.com/metril/certforge/internal/signer/adcs/adcstest"
+)
+
+// TestADCSCACreateUpdate covers adcs CA create/update over a fake AD CS: the
+// loopback URL policy applies, create reads the policy (template OID, CES
+// URL, trust bundle), the password is never returned and is kept by omitting
+// it or sending __unchanged__.
+func TestADCSCACreateUpdate(t *testing.T) {
+	f := newAPIFixture(t)
+	fk := adcstest.New(t)
+	cfg := func(pw any) *map[string]interface{} {
+		m := map[string]interface{}{"cepUrl": fk.CEPURL, "template": adcstest.Template, "username": adcstest.Username,
+			"caBundlePem": fk.TLSCAPEM}
+		if pw != nil {
+			m["password"] = pw
+		}
+		return &m
+	}
+	create := func(name string, pw any) (gen.CreateCaResponseObject, error) {
+		return f.srv.CreateCa(f.as("admin"), gen.CreateCaRequestObject{OrgId: f.org,
+			Body: &gen.CAInput{Name: name, Type: ptrT(gen.Adcs), Config: cfg(pw)}})
+	}
+
+	// Loopback is refused until the notifications setting allows it.
+	_, err := create("Corp", adcstest.Password)
+	wantStatus(t, err, http.StatusUnprocessableEntity)
+	if err := f.settingsStore.Set(context.Background(), "section.notifications", map[string]any{"allowLoopbackUrls": true}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = create("Corp", nil)
+	wantStatus(t, err, http.StatusUnprocessableEntity)
+	_, err = create("Corp", "wrong")
+	wantStatus(t, err, http.StatusUnprocessableEntity)
+
+	res, err := create("Corp", adcstest.Password)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	ca := gen.CA(res.(gen.CreateCa201JSONResponse))
+	if ca.Type != gen.Adcs || ca.Config["templateOid"] != "1.3.6.1.4.1.311.21.8.1.2" || ca.Config["cesUrl"] != fk.CESURL ||
+		ca.TrustBundlePem == "" || len(ca.StoredSecrets) != 1 || ca.StoredSecrets[0] != "password" {
+		t.Fatalf("ca = %+v", ca)
+	}
+	if _, ok := ca.Config["password"]; ok {
+		t.Fatal("password returned in config")
+	}
+
+	update := func(name string, pw any) error {
+		_, err := f.srv.UpdateCa(f.as("admin"), gen.UpdateCaRequestObject{OrgId: f.org, Id: ca.Id,
+			Body: &gen.CAInput{Name: name, Type: ptrT(gen.Adcs), Config: cfg(pw)}})
+		return err
+	}
+	if err := update("Corp renamed", "__unchanged__"); err != nil {
+		t.Fatalf("update sentinel: %v", err)
+	}
+	if err := update("Corp renamed 2", nil); err != nil {
+		t.Fatalf("update omitted: %v", err)
+	}
+	wantStatus(t, update("Corp renamed 3", "wrong"), http.StatusUnprocessableEntity)
+}

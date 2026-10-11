@@ -20,11 +20,12 @@ type GlobalSettings interface {
 // Store is the issuance data layer: CAs, accounts, DNS credentials,
 // defaults, certificates, attempts and manual-dns records.
 type Store struct {
-	pool   *pgxpool.Pool
-	q      *sqlcgen.Queries
-	box    crypto.Box
-	global GlobalSettings
-	vault  *vault.Provider // set by SetVault; nil until wired (a vaultpki CA create/update then 422s)
+	pool         *pgxpool.Pool
+	q            *sqlcgen.Queries
+	box          crypto.Box
+	global       GlobalSettings
+	adcsLoopback func(ctx context.Context) bool // set by SetADCSLoopback; nil = loopback refused
+	vault        *vault.Provider                // set by SetVault; nil until wired (a vaultpki CA create/update then 422s)
 }
 
 // NewStore returns a Store. global may be nil (built-in defaults only).

@@ -261,6 +261,8 @@ func (f *SignerFactory) New(ctx context.Context, ca CA) (signer.Signer, error) {
 		return f.Store.localCASignerCurrent(ctx, ca, f.baseURL(ctx))
 	case CATypeVaultPKI:
 		return f.newVaultPKISigner(ctx, ca)
+	case CATypeADCS:
+		return f.Store.adcsSigner(ctx, ca)
 	case CATypeACME:
 		return acmesigner.New(acmesigner.Config{DirectoryURL: ca.DirectoryURL, TrustBundlePEM: ca.TrustBundlePEM}), nil
 	default:

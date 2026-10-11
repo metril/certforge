@@ -36,6 +36,7 @@ import (
 	"github.com/metril/certforge/internal/notify"
 	"github.com/metril/certforge/internal/settings"
 	"github.com/metril/certforge/internal/setup"
+	"github.com/metril/certforge/internal/signer/adcs"
 	"github.com/metril/certforge/internal/signer/localca"
 	"github.com/metril/certforge/internal/signer/vaultpki"
 	"github.com/metril/certforge/internal/targets"
@@ -128,6 +129,7 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	challenge.AddToMeta(metaReg)
 	localca.AddToMeta(metaReg)
 	vaultpki.AddToMeta(metaReg)
+	adcs.AddToMeta(metaReg)
 	// Later phases register settings sections and other pluggable type schemas here.
 	box := crypto.EnvelopeBox{Env: env}
 	vaultProvider := vault.NewProvider(store, sections, log)
@@ -161,6 +163,12 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	monitorSvc := &monitor.Service{Store: &monitor.Store{Pool: pool, Q: q}, Emitter: notifyEmitter, Settings: store}
 	issuanceStore := issuance.NewStore(pool, box, store)
 	issuanceStore.SetVault(vaultProvider)
+	// An AD CS CA's web services follow the notifier URL policy: loopback
+	// only when the notifications allowLoopbackUrls setting says so.
+	issuanceStore.SetADCSLoopback(func(ctx context.Context) bool {
+		set, err := notify.Current(ctx, store)
+		return err == nil && set.AllowLoopbackURLs
+	})
 	certStore := certstore.New(pool, box)
 	// dispatcher.River is set right after riverClient exists below (same
 	// construct-then-wire order as keysSvc): RegisterRiver only needs the

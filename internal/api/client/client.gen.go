@@ -93,6 +93,7 @@ const (
 // Defines values for CaType.
 const (
 	Acme     CaType = "acme"
+	Adcs     CaType = "adcs"
 	Localca  CaType = "localca"
 	Vaultpki CaType = "vaultpki"
 )
@@ -492,6 +493,33 @@ type AcmeAccountInput struct {
 	Email string `json:"email"`
 }
 
+// AdcsConfig Configuration for an adcs CA, enrolling through the AD CS Certificate Enrollment Policy and Enrollment web services (MS-XCEP / MS-WSTEP) with username/password authentication. Revocation is manual in AD CS. On create the policy is read with these credentials and the template must exist.
+type AdcsConfig struct {
+	// CaBundlePem PEM roots trusted for the web services' HTTPS certificate; also used as the chain when CES returns the leaf alone.
+	CaBundlePem *string `json:"caBundlePem,omitempty"`
+
+	// CepUrl Enrollment policy (CEP) https URL, for example https://ca.example.com/ADPolicyProvider_CEP_UsernamePassword/service.svc/CEP.
+	CepUrl string `json:"cepUrl"`
+
+	// CesUrl Enrollment (CES) https URL; resolved from the policy when empty.
+	CesUrl *string `json:"cesUrl,omitempty"`
+
+	// Password Service account password. Required on create; on update omitted or __unchanged__ keeps the stored one. Never returned.
+	Password *string `json:"password,omitempty"`
+
+	// Template Certificate template name (the account needs Read and Enroll; the template must supply the subject in the request).
+	Template string `json:"template"`
+
+	// TemplateOid The template's object identifier
+	TemplateOid *string `json:"templateOid,omitempty"`
+
+	// TimeoutSeconds Per-request timeout.
+	TimeoutSeconds *int `json:"timeoutSeconds,omitempty"`
+
+	// Username Service account
+	Username string `json:"username"`
+}
+
 // AgentCA One internal agent CA.
 type AgentCA struct {
 	// ActiveClientCerts Unexpired certificates of active clients issued by this CA.
@@ -800,7 +828,7 @@ type BackupStatus struct {
 
 // CA A certificate authority — an external ACME directory, or a private CA CertForge holds the key material for.
 type CA struct {
-	// Config Kind-specific configuration: {} for acme; LocalCaConfig's fields for localca, plus the read-only imported (bool), issuingPem (string), retired (array of {pem, notAfter, serial, crlUrl?: uri, same conditions as this CA's own crlUrl} for issuing keys retired by a rotation) and revokedCount (int); VaultPkiConfig's fields for vaultpki.
+	// Config Kind-specific configuration: {} for acme; LocalCaConfig's fields for localca, plus the read-only imported (bool), issuingPem (string), retired (array of {pem, notAfter, serial, crlUrl?: uri, same conditions as this CA's own crlUrl} for issuing keys retired by a rotation) and revokedCount (int); VaultPkiConfig's fields for vaultpki; AdcsConfig's fields for adcs (the password is never returned).
 	Config map[string]interface{} `json:"config"`
 
 	// CreatedAt Creation time.
@@ -842,13 +870,13 @@ type CA struct {
 	// Shared Reserved for global CAs shared across organizations.
 	Shared bool `json:"shared"`
 
-	// StoredSecrets Secret config fields held for this CA, for example importKeyPem.
+	// StoredSecrets Secret config fields held for this CA, for example importKeyPem, or password for adcs.
 	StoredSecrets []string `json:"storedSecrets"`
 
-	// TrustBundlePem Extra PEM roots for a private ACME server (acme), or the CA's own trust anchor for a private kind: for localca the root PEM (generated), or for an import the last certificate of importPem; for vaultpki the CA certificate read from Vault at create.
+	// TrustBundlePem Extra PEM roots for a private ACME server (acme), or the CA's own trust anchor for a private kind: for localca the root PEM (generated), or for an import the last certificate of importPem; for vaultpki the CA certificate read from Vault at create; for adcs the CA certificate(s) from the enrollment policy.
 	TrustBundlePem string `json:"trustBundlePem"`
 
-	// Type A CA's kind — an external ACME directory, a CertForge-managed private CA, or one backed by Vault's PKI secrets engine.
+	// Type A CA's kind — an external ACME directory, a CertForge-managed private CA, one backed by Vault's PKI secrets engine, or Microsoft Active Directory Certificate Services.
 	Type CaType `json:"type"`
 
 	// UpdatedAt Last change.
@@ -857,7 +885,7 @@ type CA struct {
 
 // CAInput Fields to create or replace a CA.
 type CAInput struct {
-	// Config Kind-specific configuration: LocalCaConfig for localca, VaultPkiConfig for vaultpki; omitted or {} for acme. For localca, subject, keyType, the validity years and the import fields are immutable after create (422); maxLeafDays and crl stay editable.
+	// Config Kind-specific configuration: LocalCaConfig for localca, VaultPkiConfig for vaultpki, AdcsConfig for adcs; omitted or {} for acme. For localca, subject, keyType, the validity years and the import fields are immutable after create (422); maxLeafDays and crl stay editable.
 	Config *map[string]interface{} `json:"config,omitempty"`
 
 	// DirectoryUrl Required for a custom acme preset; defaults to the preset URL. Ignored for a private kind.
@@ -903,7 +931,7 @@ type CAPreset struct {
 // CAPresetCode CA preset code; custom takes any directory URL.
 type CAPresetCode string
 
-// CaType A CA's kind — an external ACME directory, a CertForge-managed private CA, or one backed by Vault's PKI secrets engine.
+// CaType A CA's kind — an external ACME directory, a CertForge-managed private CA, one backed by Vault's PKI secrets engine, or Microsoft Active Directory Certificate Services.
 type CaType string
 
 // Certificate A certificate, managed (issued and renewed by CertForge) or unmanaged (imported or uploaded); see managed.

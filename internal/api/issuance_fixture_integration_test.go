@@ -148,6 +148,9 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	targetsReg.Register(deploy.VaultKV{Vault: vaultProvider})
 	store := issuance.NewStore(pool, box, settingsStore)
 	store.SetVault(vaultProvider)
+	// The API layer applies the real allowLoopbackUrls policy; the store's
+	// own dial policy is opened so fake AD CS servers on loopback work.
+	store.SetADCSLoopback(func(context.Context) bool { return true })
 	certs := certstore.New(pool, box)
 	aud := audit.New(pool, bytes.Repeat([]byte{5}, 32))
 	svc := issuance.NewService(store, certs, &fakeJobs{queued: map[uuid.UUID]bool{}})
