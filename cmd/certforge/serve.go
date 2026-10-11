@@ -468,6 +468,7 @@ func newTargetsRegistry(vaultProvider *vault.Provider) *targets.Registry {
 	reg.Register(deploy.VaultKV{Vault: vaultProvider})
 	reg.Register(deploy.Authentik{})
 	reg.Register(deploy.SSH{})
+	reg.Register(deploy.PfSense{})
 	return reg
 }
 

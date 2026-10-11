@@ -10,6 +10,7 @@ Three target types ship with CertForge:
 | Vault KV (`vault-kv`) | The server | Only if you switch on **Include private key** |
 | Authentik (`authentik`) | The server | Always sent |
 | SSH (`ssh`) | The server | Only when a file uses `key` or `bundle` |
+| pfSense Plus (`pfsense`) | The server | Always sent |
 
 ## Before you start
 
@@ -229,6 +230,21 @@ Get the host key with `ssh-keyscan -t ed25519 <host>` and paste the key line it 
 The private key is sent only when a file asks for `key` or `bundle` (or a layout file, which may hold it), and needs the `keys:export` permission. Files are written atomically with a restrictive umask, then set to the chosen mode.
 
 **PiKVM and GL.iNet Comet.** Their root filesystem is read-only, so the **PiKVM / GL.iNet Comet** preset wraps the write: `rw` before, then `ro; systemctl restart kvmd-nginx` after. It writes `/etc/kvmd/user/ssl/server.crt` and `server.key`. Older PiKVM images use `/etc/kvmd/nginx/ssl/`: pick **PiKVM (legacy paths)**. Log in as `root`.
+
+## pfSense Plus
+
+A pfSense Plus target pushes a certificate into pfSense through Netgate's built-in REST API (pfSense Plus 25.03 or later). It runs on the server, so its grants have no client. The API is new and its details may change between releases.
+
+| Field | What it does | Default |
+|---|---|---|
+| **API URL** (`url`) | https URL of the API including its prefix, for example `https://fw.example.net/api/v2`. | None |
+| **Username**, **Password** (`username`, `password`) | A pfSense user allowed to manage certificates. The password is stored encrypted. | None |
+| **Certificate name** (`certName`) | Description of the certificate in pfSense, letters, digits, space, `.`, `_` and `-`. | The certificate's name |
+| **Use for the WebGUI** (`setWebGuiCert`) | Also select this certificate for the web interface. | Off |
+| **CA certificate** (`caPem`) | PEM to trust for pfSense's TLS certificate, on top of the system roots. | None |
+| **Timeout** (`timeoutSeconds`) | Seconds per request, 5 to 120. | 30 |
+
+Each deploy logs in, then looks the certificate up by its description. If it exists it is updated in place, so WebGUI, OpenVPN and HAProxy references keep pointing at it. Otherwise it is created. If two certificates share the name the deploy fails. When pfSense already holds the same certificate, nothing is written.
 
 ## Grant a certificate to a server target
 
