@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/metril/certforge/internal/db/sqlcgen"
 
 	"github.com/metril/certforge/internal/challenge"
+	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/signer"
 	"github.com/metril/certforge/internal/signer/adcs/adcstest"
 )

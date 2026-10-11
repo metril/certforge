@@ -44,7 +44,7 @@ func TestNonRetryable(t *testing.T) {
 		t.Fatalf("denied = %v", err)
 	}
 	plain := errors.New("boom")
-	if nonRetryable(plain) != plain {
+	if got := nonRetryable(plain); !errors.Is(got, plain) || errors.As(got, &nr) {
 		t.Fatal("plain error must pass through")
 	}
 }

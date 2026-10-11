@@ -197,7 +197,7 @@ func (f *fakeAD) ces(w http.ResponseWriter, r *http.Request) {
 		f.t.Error(err)
 		return
 	}
-	var pub any = csr.PublicKey
+	pub := any(csr.PublicKey)
 	if f.mode == "wrongkey" {
 		k, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		pub = &k.PublicKey

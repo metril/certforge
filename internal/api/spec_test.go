@@ -173,8 +173,8 @@ func TestPhase5OperationsDeclared(t *testing.T) {
 			t.Errorf("operation %s missing", id)
 		}
 	}
-	if got := len(sw.Components.Schemas["CaType"].Value.Enum); got != 3 {
-		t.Errorf("CaType has %d values, want 3", got)
+	if got := len(sw.Components.Schemas["CaType"].Value.Enum); got != 4 {
+		t.Errorf("CaType has %d values, want 4", got)
 	}
 	if !slices.Contains(sw.Components.Schemas["RunsOn"].Value.Enum, "server") {
 		t.Error("RunsOn missing server")
