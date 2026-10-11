@@ -23,6 +23,9 @@ function TestResult({ result }: { result: AuthenticationTestResult }) {
   );
 }
 
+// defaultOrgId is a uuid on the wire; show an organization picker instead.
+const authUiSchema = { defaultOrgId: { 'ui:widget': 'orgSelect' } };
+
 export function AuthenticationSection() {
   // Controller ruling B4: the redirect URI is the server's own effective
   // base URL (general.baseUrl, else CF_BASE_URL) plus the callback path,
@@ -60,6 +63,7 @@ export function AuthenticationSection() {
       )}
       <SchemaSection
         section="authentication"
+        uiSchemaOverrides={authUiSchema}
         actions={(value) =>
           canWrite ? (
             <Button type="button" variant="outline" disabled={!value.issuer || test.isPending} onClick={() => void runTest(String(value.issuer))}>

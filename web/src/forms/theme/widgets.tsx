@@ -1,4 +1,6 @@
 import { enumOptionsIndexForValue, enumOptionsValueForIndex, type RegistryWidgetsType, type WidgetProps } from '@rjsf/utils';
+import { useQuery } from '@tanstack/react-query';
+import { orgsQuery } from '@/api/queries/orgs';
 import { ChipSet } from '@/components/ChipSet';
 import { Combobox } from '@/components/Combobox';
 import { PermissionTip } from '@/components/PermissionTip';
@@ -122,7 +124,28 @@ function SecretWidget({ id, value, onChange, options, label, placeholder, disabl
   );
 }
 
+// `ui:widget: 'orgSelect'` (Authentication's defaultOrgId): picks one of the
+// existing organizations; the stored value is the org id. Clearable, since an
+// empty value means "grant nothing automatically".
+function OrgSelectWidget({ id, value, onChange, disabled, readonly, label }: WidgetProps) {
+  const orgs = useQuery(orgsQuery);
+  return (
+    <Combobox
+      id={id}
+      aria-label={label}
+      value={value || undefined}
+      onChange={(v) => onChange(v ?? '')}
+      clearable
+      options={(orgs.data ?? []).map((o) => ({ value: o.id, label: o.name, hint: o.slug, keywords: [o.slug] }))}
+      placeholder="No default organization"
+      emptyText="No match"
+      disabled={disabled || readonly}
+    />
+  );
+}
+
 export const widgets: RegistryWidgetsType = {
+  orgSelect: OrgSelectWidget,
   CheckboxWidget: SwitchWidget,
   CheckboxesWidget: (p: WidgetProps) => <SelectWidget {...p} multiple />,
   RadioWidget: (p: WidgetProps) => <SelectWidget {...p} multiple={false} />,
