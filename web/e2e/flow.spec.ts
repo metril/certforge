@@ -134,7 +134,12 @@ test('flow: lane headers are sticky and stay visible after scrolling', async ({ 
   await expect(page.getByRole('heading', { level: 1, name: 'Flow' })).toBeVisible();
   const header = page.getByRole('region', { name: 'Certificates' }).locator('h2');
   await expect(header).toHaveCSS('position', 'sticky');
-  await page.evaluate(() => window.scrollTo(0, 2000));
+  // Pad the document so it can scroll far enough, then stop just inside the lane's own section (the sticky h2 pins only while its section is in view).
+  await page.evaluate(() => {
+    document.querySelector('main')!.style.paddingBottom = '3000px';
+    const top = document.querySelector('section[data-flow-lane="certificates"]')!.getBoundingClientRect().top + window.scrollY;
+    window.scrollTo(0, top + 40);
+  });
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
   await expect(header).toBeInViewport();
   expect((await header.boundingBox())!.y).toBeLessThanOrEqual(8);
