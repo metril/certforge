@@ -2,6 +2,15 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.14.0](https://github.com/metril/certforge/compare/v0.13.0...v0.14.0) (2026-10-11)
+
+
+### Features
+
+* **authentik:** register server-only target, docs and help ([f70d3a1](https://github.com/metril/certforge/commit/f70d3a120871c4a506f98c2b354150bfc484e007))
+* **deploy:** Authentik certificate-keypair deploy target ([766cd15](https://github.com/metril/certforge/commit/766cd1560ab518968c8eb0c9f0656e7c271a277b))
+* **deploy:** authentik certificate-keypair target ([376938c](https://github.com/metril/certforge/commit/376938c5c26349254888603516b34e1f91bdcc87))
+
 ## [0.13.0](https://github.com/metril/certforge/compare/v0.12.0...v0.13.0) (2026-10-11)
 
 
