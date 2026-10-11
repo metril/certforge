@@ -30,6 +30,7 @@ const (
 	CATypeACME     = "acme"
 	CATypeLocalCA  = "localca"
 	CATypeVaultPKI = "vaultpki"
+	CATypeADCS     = "adcs"
 )
 
 // CA is an ACME directory, or (from Phase 5A) a private CA. Shared is
@@ -60,6 +61,10 @@ type CAInput struct {
 	Resolvers                                          []string
 	Type                                               string
 	Config                                             map[string]any
+	// ADCSPassword is an adcs CA's write-only service-account password: on
+	// create it is required; on update nil or challenge.Unchanged keeps the
+	// stored one.
+	ADCSPassword *string
 }
 
 // Account is a registered ACME account (key never leaves the store).
@@ -81,12 +86,12 @@ func (ca CA) Staging() bool {
 	return ok && p.Staging
 }
 
-// Private reports whether ca is a private CA (localca or vaultpki): a
+// Private reports whether ca is a private CA (localca, vaultpki or adcs): a
 // private CA has no ACME account, publishes no caaIdentities, is not itself
 // rate-ledger tracked, and has no ARI to poll — issuance for it (Task 9's
 // run/runPrivate) skips every ACME-only step accordingly.
 func (ca CA) Private() bool {
-	return ca.Type == CATypeLocalCA || ca.Type == CATypeVaultPKI
+	return ca.Type == CATypeLocalCA || ca.Type == CATypeVaultPKI || ca.Type == CATypeADCS
 }
 
 func caFromRow(r sqlcgen.Ca) (CA, error) {
@@ -117,7 +122,7 @@ func (in *CAInput) normalize(stored []string) (acmesigner.Preset, error) {
 		in.Type = CATypeACME
 	}
 	switch in.Type {
-	case CATypeLocalCA, CATypeVaultPKI:
+	case CATypeLocalCA, CATypeVaultPKI, CATypeADCS:
 		if in.EABKid != "" || (in.EABHmac != nil && *in.EABHmac != "") {
 			return acmesigner.Preset{}, &ValidationError{"eabKid", "not applicable to a private CA"}
 		}
@@ -220,6 +225,9 @@ func (s *Store) CreateCA(ctx context.Context, orgID uuid.UUID, in CAInput) (CA, 
 	if in.Type == CATypeVaultPKI {
 		return s.createVaultPKICA(ctx, orgID, in)
 	}
+	if in.Type == CATypeADCS {
+		return s.createADCSCA(ctx, orgID, in)
+	}
 	hmac := ""
 	if in.EABHmac != nil {
 		hmac = *in.EABHmac
@@ -270,6 +278,9 @@ func (s *Store) UpdateCA(ctx context.Context, orgID, id uuid.UUID, in CAInput) (
 	}
 	if in.Type == CATypeVaultPKI {
 		return s.updateVaultPKICA(ctx, orgID, id, in)
+	}
+	if in.Type == CATypeADCS {
+		return s.updateADCSCA(ctx, orgID, id, in)
 	}
 
 	tx, err := s.pool.Begin(ctx)
@@ -947,6 +958,8 @@ func (s *Store) revokeSigner(ctx context.Context, q *sqlcgen.Queries, caRow sqlc
 			return nil, &ValidationError{"versionId", "issuing certificate no longer available"}
 		}
 		return s.localCASignerFromRow(ctx, q, caRow, baseURL(ctx), issuerSerial)
+	case CATypeADCS:
+		return nil, &ValidationError{"versionId", "revoke this certificate in the AD CS console; CES has no revocation"}
 	case CATypeVaultPKI:
 		ca, err := caFromRow(caRow)
 		if err != nil {

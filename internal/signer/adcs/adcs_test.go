@@ -299,7 +299,10 @@ func TestIssue(t *testing.T) {
 		{"issued", nil, 2},
 		{"leafonly", nil, 2},
 		{"pending", func(e error) bool { var p ErrPending; return errors.As(e, &p) && p.RequestID == "77" }, 0},
-		{"denied", func(e error) bool { var d ErrDenied; return errors.As(e, &d) && strings.Contains(d.Disposition, "Denied") }, 0},
+		{"denied", func(e error) bool {
+			var d ErrDenied
+			return errors.As(e, &d) && strings.Contains(d.Disposition, "Denied")
+		}, 0},
 		{"401", func(e error) bool { return errors.Is(e, ErrAuth) }, 0},
 		{"fault", func(e error) bool { var f *Fault; return errors.As(e, &f) && f.Subcode == "a:InternalServiceFault" }, 0},
 		{"wrongkey", func(e error) bool { return e != nil && strings.Contains(e.Error(), "public key") }, 0},

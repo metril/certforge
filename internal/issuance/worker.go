@@ -22,6 +22,7 @@ import (
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/metrics"
 	"github.com/metril/certforge/internal/signer"
+	"github.com/metril/certforge/internal/signer/adcs"
 )
 
 // IssueArgs is the river job issuing one certificate.
@@ -368,7 +369,7 @@ func (w *IssueWorker) runPrivate(ctx context.Context, cert Certificate, ca CA, s
 	tl.Step("order", challenge.StepRunning, strings.Join(req.Names, ", "))
 	iss, err := sig.Issue(ctx, req)
 	if err != nil {
-		return nil, eff, err
+		return nil, eff, nonRetryable(err)
 	}
 	if iss == nil {
 		return nil, eff, fmt.Errorf("signer %s returned no certificate and no error", ca.Name)
@@ -376,6 +377,35 @@ func (w *IssueWorker) runPrivate(ctx context.Context, cert Certificate, ca CA, s
 	tl.Finish(challenge.StepSuccess, "")
 	tl.Step("finalize", challenge.StepSuccess, "serial "+iss.Serial)
 	return iss, eff, nil
+}
+
+// noRetryDelay is how far fail pushes next_renew_at after a failure that
+// retrying cannot fix on its own (an AD CS request awaiting manager approval,
+// or denied): the operator acts in AD CS, then renews by hand.
+const noRetryDelay = 10 * 365 * 24 * time.Hour
+
+// nonRetryableError marks a failure fail must not retry on the usual backoff.
+type nonRetryableError struct {
+	msg string
+	err error
+}
+
+func (e *nonRetryableError) Error() string { return e.msg }
+func (e *nonRetryableError) Unwrap() error { return e.err }
+
+// nonRetryable wraps an AD CS pending or denied disposition in a
+// nonRetryableError carrying the operator-facing message; any other error is
+// returned as is.
+func nonRetryable(err error) error {
+	var p adcs.ErrPending
+	var d adcs.ErrDenied
+	switch {
+	case errors.As(err, &p):
+		return &nonRetryableError{msg: fmt.Sprintf("approve request %s in AD CS, then renew", p.RequestID), err: err}
+	case errors.As(err, &d):
+		return &nonRetryableError{msg: "AD CS denied the request: " + d.Disposition, err: err}
+	}
+	return err
 }
 
 // reuseKeyPKCS8 returns the current version's stored private key when
@@ -847,8 +877,11 @@ func (w *IssueWorker) fail(ctx context.Context, cert Certificate, attemptID uuid
 	// a shorter one would just fail again — but a later CA Retry-After (rare
 	// here: the ledger check never contacts the CA) still wins.
 	var le *LedgerExceeded
+	var nr *nonRetryableError
 	var next time.Time
-	if errors.As(cause, &le) {
+	if errors.As(cause, &nr) {
+		next = now.Add(noRetryDelay)
+	} else if errors.As(cause, &le) {
 		next = le.RetryAt
 		if alt := now.Add(retryAfter); alt.After(next) {
 			next = alt
