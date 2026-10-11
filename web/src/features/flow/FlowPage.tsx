@@ -114,9 +114,13 @@ export function FlowPage() {
     hoverTimer.current = setTimeout(() => setHoverId(id), 80);
   }, []);
   useEffect(() => () => clearTimeout(hoverTimer.current), []);
-  const lit = useMemo(() => (flow ? highlightSet(flow, focus, hoverId) : null), [flow, focus, hoverId]);
-  const path = lit?.focus ?? null;
-  const hoverPath = lit && lit.hover.nodes.size > 0 ? lit.hover : undefined;
+  // The focus trace depends only on focus, so hovering never re-traces it or changes `path` identity.
+  const path = useMemo(() => (flow ? highlightSet(flow, focus, null).focus : null), [flow, focus]);
+  const hoverPath = useMemo(() => {
+    if (!flow || !hoverId || hoverId === focus) return undefined;
+    const h = highlightSet(flow, focus, hoverId).hover;
+    return h.nodes.size > 0 ? h : undefined;
+  }, [flow, focus, hoverId]);
 
   const collapsed = useMemo(() => new Set(search.collapsed ?? []), [search.collapsed]);
   const setCollapsed = useCallback(

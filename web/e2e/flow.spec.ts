@@ -1,4 +1,4 @@
-import { expect, signInLocal, test } from './auth';
+import { adminApi, expect, signInLocal, test } from './auth';
 import { E2E } from './env';
 import { snap } from './screens';
 
@@ -71,18 +71,32 @@ test('flow: collapsing the Certificates lane leaves one proxy row and the connec
 });
 
 test('flow: filter by client keeps only its path', async ({ page }) => {
-  await page.goto('/login');
-  await signInLocal(page);
-  await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
-  await page.goto(`/o/${E2E.orgSlug}/flow`);
-  await expect(page.getByRole('heading', { level: 1, name: 'Flow' })).toBeVisible();
-  await page.getByRole('combobox', { name: 'Client' }).click();
-  await page.getByRole('option').first().click();
-  await expect(page).toHaveURL(/client=/);
-  await page.keyboard.press('Escape');
-  // Only the chosen client's lane entry and its path remain.
-  await expect(page.getByRole('region', { name: 'Clients' }).locator('[data-flow-node]')).toHaveCount(1);
-  await snap(page, 'flow-client-filter');
+  // Self-seeded: a pending client of its own, so the test does not depend on spec order.
+  const name = `flow-filter-${Date.now()}`;
+  const { api, headers } = await adminApi();
+  const me = (await (await api.get('/api/v1/auth/me', { headers })).json()) as { orgs: { id: string; slug: string }[] };
+  const orgId = me.orgs.find((o) => o.slug === E2E.orgSlug)?.id;
+  if (!orgId) throw new Error(`org slug ${E2E.orgSlug} not found`);
+  const created = await api.post(`/api/v1/orgs/${orgId}/clients`, { headers, data: { name } });
+  if (!created.ok()) throw new Error(`create client: ${created.status()} ${await created.text()}`);
+  const clientId = ((await created.json()) as { client: { id: string } }).client.id;
+  try {
+    await page.goto('/login');
+    await signInLocal(page);
+    await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
+    await page.goto(`/o/${E2E.orgSlug}/flow`);
+    await expect(page.getByRole('heading', { level: 1, name: 'Flow' })).toBeVisible();
+    await page.getByRole('combobox', { name: 'Client' }).click();
+    await page.getByRole('option', { name }).click();
+    await expect(page).toHaveURL(/client=/);
+    await page.keyboard.press('Escape');
+    // Only the chosen client's lane entry and its path remain.
+    await expect(page.getByRole('region', { name: 'Clients' }).locator('[data-flow-node]')).toHaveCount(1);
+    await snap(page, 'flow-client-filter');
+  } finally {
+    await api.delete(`/api/v1/orgs/${orgId}/clients/${clientId}`, { headers });
+    await api.dispose();
+  }
 });
 
 test('flow: select the seeded certificate, Renew is offered and Open navigates to it', async ({ page }) => {
