@@ -77,6 +77,12 @@ func TestMigration00026GrantTargetOptions(t *testing.T) {
 	dupClient := cl("c7")
 	gDup1 := grant(dupClient, tr, false)
 	gDup2 := grantC(dupClient, mkCert("dup2"), trB, false)
+	// stores [] and a missing stores key are both ["default"] (409 rule).
+	trE := target("tr-e", "traefik", `{"dir":"/s","stores":[],"defaultCert":true}`)
+	trF := target("tr-f", "traefik", `{"dir":"/s","defaultCert":true}`)
+	storesClient := cl("c9")
+	gSt1 := grantC(storesClient, mkCert("st1"), trE, false)
+	gSt2 := grantC(storesClient, mkCert("st2"), trF, false)
 	// Different dirs: one default each.
 	trC := target("tr-c", "traefik", `{"dir":"/e","defaultCert":true}`)
 	diffClient := cl("c8")
@@ -104,6 +110,9 @@ func TestMigration00026GrantTargetOptions(t *testing.T) {
 	}
 	if a, b := opts(gDup1), opts(gDup2); (a == `{"defaultCert": true}`) == (b == `{"defaultCert": true}`) {
 		t.Errorf("same-dir targets: want exactly one default, got %s and %s", a, b)
+	}
+	if a, b := opts(gSt1), opts(gSt2); (a == `{"defaultCert": true}`) == (b == `{"defaultCert": true}`) {
+		t.Errorf("empty vs missing stores: want exactly one default, got %s and %s", a, b)
 	}
 	has := func(id uuid.UUID) bool {
 		var b bool

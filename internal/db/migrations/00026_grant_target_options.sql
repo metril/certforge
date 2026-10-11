@@ -9,12 +9,12 @@ ALTER TABLE client_cert_grants ADD COLUMN target_options jsonb NOT NULL DEFAULT 
 
 UPDATE client_cert_grants g SET target_options = '{"defaultCert":true}'::jsonb
 FROM (
-    SELECT DISTINCT ON (g2.client_id, rtrim(t.config->>'dir', '/'), coalesce(t.config->'stores', '["default"]'::jsonb)) g2.id
+    SELECT DISTINCT ON (g2.client_id, rtrim(t.config->>'dir', '/'), CASE WHEN jsonb_array_length(coalesce(t.config->'stores', '[]'::jsonb)) = 0 THEN '["default"]'::jsonb ELSE t.config->'stores' END) g2.id
     FROM client_cert_grants g2
     JOIN deploy_targets t ON t.id = g2.deploy_target_id
     JOIN certificates c ON c.id = g2.cert_id
     WHERE g2.removed_at IS NULL AND t.type = 'traefik' AND t.config->>'defaultCert' = 'true'
-    ORDER BY g2.client_id, rtrim(t.config->>'dir', '/'), coalesce(t.config->'stores', '["default"]'::jsonb), lower(c.name), c.name, g2.id
+    ORDER BY g2.client_id, rtrim(t.config->>'dir', '/'), CASE WHEN jsonb_array_length(coalesce(t.config->'stores', '[]'::jsonb)) = 0 THEN '["default"]'::jsonb ELSE t.config->'stores' END, lower(c.name), c.name, g2.id
 ) pick
 WHERE g.id = pick.id;
 
