@@ -25,6 +25,9 @@ func TestHelloCapabilities(t *testing.T) {
 	if got := capabilities(Config{HookAllow: []string{"/bin/sh"}}); !slices.Equal(got, []string{"traefik", "hooks"}) {
 		t.Fatalf("hooks %v", got)
 	}
+	if got := capabilities(Config{RestartAllow: map[string]bool{"docker:nginx": true}}); !slices.Equal(got, []string{"traefik", "restart"}) {
+		t.Fatalf("restart %v", got)
+	}
 	if got := capabilities(Config{HTTP01Listen: ":8080", TLSALPNListen: ":5001"}); !slices.Equal(got, []string{"traefik", "http-01", "tls-alpn-01"}) {
 		t.Fatalf("challenge listeners %v", got)
 	}

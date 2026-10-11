@@ -16,15 +16,16 @@ import (
 
 // Config is read from CF_AGENT_*, CF_HOOK_ALLOW and CF_WRITE_ALLOW.
 type Config struct {
-	DataDir       string        // CF_AGENT_DATA, default /data
-	Token         string        // CF_AGENT_TOKEN
-	TokenFile     string        // CF_AGENT_TOKEN_FILE
-	HookAllow     []string      // CF_HOOK_ALLOW, colon-separated absolute paths; empty disables hooks
-	WriteAllow    []string      // CF_WRITE_ALLOW, colon-separated absolute directory prefixes; empty disables every write
-	PullInterval  time.Duration // CF_AGENT_PULL_INTERVAL, 0 = socket only
-	HTTP01Listen  string        // CF_AGENT_HTTP01_LISTEN, host:port; empty disables serving http-01
-	TLSALPNListen string        // CF_AGENT_TLSALPN_LISTEN, host:port; empty disables serving tls-alpn-01
-	Transport     string        // CF_AGENT_TRANSPORT: auto (default), mtls or proxy; only chooses which TLS roots are trusted
+	DataDir       string          // CF_AGENT_DATA, default /data
+	Token         string          // CF_AGENT_TOKEN
+	TokenFile     string          // CF_AGENT_TOKEN_FILE
+	HookAllow     []string        // CF_HOOK_ALLOW, colon-separated absolute paths; empty disables hooks
+	RestartAllow  map[string]bool // CF_RESTART_ALLOW, comma-separated docker:<name>/systemd:<unit>; empty disables restart hooks
+	WriteAllow    []string        // CF_WRITE_ALLOW, colon-separated absolute directory prefixes; empty disables every write
+	PullInterval  time.Duration   // CF_AGENT_PULL_INTERVAL, 0 = socket only
+	HTTP01Listen  string          // CF_AGENT_HTTP01_LISTEN, host:port; empty disables serving http-01
+	TLSALPNListen string          // CF_AGENT_TLSALPN_LISTEN, host:port; empty disables serving tls-alpn-01
+	Transport     string          // CF_AGENT_TRANSPORT: auto (default), mtls or proxy; only chooses which TLS roots are trusted
 	Version       string
 }
 
@@ -98,6 +99,9 @@ func LoadConfig(getenv func(string) string, version string) (Config, error) {
 		return c, err
 	}
 	c.HookAllow = hookAllow
+	if c.RestartAllow, err = ParseRestartAllow(getenv("CF_RESTART_ALLOW")); err != nil {
+		return c, err
+	}
 	writeAllow, err := parseColonPaths("CF_WRITE_ALLOW", getenv("CF_WRITE_ALLOW"))
 	if err != nil {
 		return c, err

@@ -1,8 +1,8 @@
 package delivery
 
 import (
-	"regexp"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 )
