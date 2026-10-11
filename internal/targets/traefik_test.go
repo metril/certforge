@@ -27,15 +27,17 @@ func TestTraefikRegistryGolden(t *testing.T) {
 		t.Fatal("traefik is not a FileTarget")
 	}
 
-	rawCfg := json.RawMessage(`{"dir":"/data/traefik","pathPrefix":"/etc/traefik/dynamic","defaultCert":true,"stores":["default","internal"]}`)
+	rawCfg := json.RawMessage(`{"dir":"/data/traefik","pathPrefix":"/etc/traefik/dynamic","stores":["default","internal"]}`)
 	cfg, err := target.Parse(rawCfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	m := &render.Material{LeafDER: []byte("leaf"), ChainDER: [][]byte{[]byte("int")}, PrivateKeyPKCS8: []byte("key")}
 	names := []string{"api.example.test"}
+	opts := json.RawMessage(`{"defaultCert":true,"certsDir":"/data/traefik/tls/api"}`)
+	wopts := delivery.TraefikGrantOptions{DefaultCert: true, CertsDir: "/data/traefik/tls/api"}
 
-	got, err := ft.Files(Request{CertName: "api.example.test", Names: names, Material: m, Config: cfg.Public})
+	got, err := ft.Files(Request{CertName: "api.example.test", Names: names, Material: m, Config: cfg.Public, GrantOptions: opts})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +50,7 @@ func TestTraefikRegistryGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := delivery.RenderTraefik("api.example.test", names, tc, mat.Fullchain, mat.Key)
+	want := delivery.RenderTraefik("api.example.test", names, tc, wopts, mat.Fullchain, mat.Key)
 	if len(got) != len(want) {
 		t.Fatalf("%d files, want %d", len(got), len(want))
 	}
@@ -58,11 +60,11 @@ func TestTraefikRegistryGolden(t *testing.T) {
 		}
 	}
 
-	paths, err := ft.Paths(cfg.Public, "api.example.test")
+	paths, err := ft.Paths(cfg.Public, opts, "api.example.test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantPaths := delivery.RenderTraefik("api.example.test", nil, tc, nil, nil)
+	wantPaths := delivery.RenderTraefik("api.example.test", nil, tc, wopts, nil, nil)
 	if len(paths) != len(wantPaths) {
 		t.Fatalf("%d paths, want %d", len(paths), len(wantPaths))
 	}
@@ -107,5 +109,32 @@ func TestTraefikFilesNoMaterial(t *testing.T) {
 	noACME := json.RawMessage(`{"dir":"/etc/traefik/dynamic"}`)
 	if files, err := tr.Files(Request{CertName: "Web", Names: []string{"web.example.test"}, Config: noACME}); err != nil || len(files) != 0 {
 		t.Fatalf("without acmeServiceUrl: files %+v err %v", files, err)
+	}
+}
+
+// TestTraefikGrantOptions covers the GrantOptions interface: schema, parse,
+// invalid options surfacing from Files and Paths, and that the stale
+// defaultCert key no longer parses on the target.
+func TestTraefikGrantOptions(t *testing.T) {
+	var g GrantOptions = Traefik{}
+	if !json.Valid(g.GrantSchema()) {
+		t.Fatal("GrantSchema is not valid JSON")
+	}
+	v, err := g.ParseGrantOptions(json.RawMessage(`{"defaultCert":true}`))
+	if err != nil || !v.(delivery.TraefikGrantOptions).DefaultCert {
+		t.Fatalf("%v %v", v, err)
+	}
+	if _, err := g.ParseGrantOptions(json.RawMessage(`{"certsDir":"rel"}`)); err == nil {
+		t.Fatal("relative certsDir accepted")
+	}
+	if _, err := (Traefik{}).Paths(json.RawMessage(`{"dir":"/d"}`), json.RawMessage(`{"certsDir":"rel"}`), "x"); err == nil {
+		t.Fatal("Paths accepted a bad option")
+	}
+	paths, err := (Traefik{}).Paths(json.RawMessage(`{"dir":"/d"}`), nil, "x")
+	if err != nil || paths[0] != "/d/certs/x/fullchain.pem" {
+		t.Fatalf("%v %v", paths, err)
+	}
+	if _, err := (Traefik{}).Parse(json.RawMessage(`{"dir":"/d","defaultCert":true}`)); err == nil {
+		t.Fatal("stale defaultCert accepted on the target")
 	}
 }

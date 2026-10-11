@@ -2826,6 +2826,9 @@ type SchemaEntry struct {
 	// Code Stable type code, for example cloudflare.
 	Code string `json:"code"`
 
+	// GrantSchema JSON Schema for a grant's targetOptions; absent when the type has none.
+	GrantSchema *map[string]interface{} `json:"grantSchema,omitempty"`
+
 	// KeyPolicy Whether this type ever needs the certificate's private key; deploy targets only.
 	KeyPolicy *KeyPolicy `json:"keyPolicy,omitempty"`
 

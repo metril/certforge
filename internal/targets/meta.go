@@ -8,11 +8,15 @@ import "github.com/metril/certforge/internal/meta"
 // unread before that).
 func AddToMeta(reg *Registry, metaReg *meta.Registry) {
 	reg.Each(func(t Target) {
-		metaReg.Add(meta.KindDeployTarget, meta.Entry{
+		e := meta.Entry{
 			Code:   t.Type(),
 			Name:   t.Name(),
 			Schema: t.Schema(),
 			Attrs:  map[string]string{"runsOn": string(t.RunsOn()), "keyPolicy": string(t.KeyPolicy())},
-		})
+		}
+		if g, ok := t.(GrantOptions); ok {
+			e.GrantSchema = g.GrantSchema()
+		}
+		metaReg.Add(meta.KindDeployTarget, e)
 	})
 }

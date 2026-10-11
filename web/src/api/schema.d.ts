@@ -2410,6 +2410,10 @@ export interface components {
             };
             /** @description Other codes that select this type; used by search. */
             aliases?: string[];
+            /** @description JSON Schema for a grant's targetOptions; absent when the type has none. */
+            grantSchema?: {
+                [key: string]: unknown;
+            };
             /** @description Where this type runs; deploy targets only. */
             runsOn?: components["schemas"]["TargetRunsOn"];
             /** @description Whether this type ever needs the certificate's private key; deploy targets only. */

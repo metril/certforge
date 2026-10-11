@@ -344,7 +344,7 @@ func grantPaths(reg *targets.Registry, layoutFiles []byte, typ *string, cfg []by
 		if !ok {
 			return nil, fmt.Errorf("agents: target type %q writes no agent files (a server-run target reached a client-only path)", *typ)
 		}
-		paths, err := ft.Paths(cfg, certName)
+		paths, err := ft.Paths(cfg, nil, certName)
 		if err != nil {
 			return nil, err
 		}

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path"
 	"strings"
 
 	"github.com/google/uuid"
@@ -72,7 +71,7 @@ func (d *Deployer) resolveFileTarget(typ string) (targets.Target, targets.FileTa
 // always Agent and HTTP is d.HTTP (Deviations R2).
 func (d *Deployer) targetRequest(a agentproto.Assignment) targets.Request {
 	return targets.Request{GrantID: a.ID.String(), CertID: a.CertificateID.String(), CertName: a.CertificateName,
-		Names: a.CertificateNames, Fingerprint: a.Fingerprint, Config: a.Target.Config, Side: targets.Agent, HTTP: d.HTTP}
+		Names: a.CertificateNames, Fingerprint: a.Fingerprint, Config: a.Target.Config, GrantOptions: a.Target.GrantOptions, Side: targets.Agent, HTTP: d.HTTP}
 }
 
 // redactTargetError runs err through targets.Redact using t's own secret
@@ -249,8 +248,10 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 		// FileTarget equivalent; every other file target simply has nothing
 		// pruned here.
 		if a.Target.Type == "traefik" {
-			if cfg, err := delivery.ParseTraefik(a.Target.Config); err == nil {
-				certsDir = path.Join(cfg.Dir, "certs", delivery.SafeName(a.CertificateName))
+			cfg, cerr := delivery.ParseTraefik(a.Target.Config)
+			opts, oerr := delivery.ParseTraefikGrantOptions(a.Target.GrantOptions)
+			if cerr == nil && oerr == nil {
+				certsDir = delivery.TraefikCertsDir(a.CertificateName, cfg, opts)
 			}
 		}
 	}

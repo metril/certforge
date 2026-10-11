@@ -3159,6 +3159,10 @@ components:
           description: Other codes that select this type; used by search.
           items:
             type: string
+        grantSchema:
+          type: object
+          additionalProperties: true
+          description: JSON Schema for a grant's targetOptions; absent when the type has none.
         runsOn: {allOf: [{$ref: "#/components/schemas/TargetRunsOn"}], description: "Where this type runs; deploy targets only."}
         keyPolicy: {allOf: [{$ref: "#/components/schemas/KeyPolicy"}], description: "Whether this type ever needs the certificate's private key; deploy targets only."}
     MetaSchemas:

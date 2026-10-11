@@ -1,8 +1,10 @@
 package agentproto
 
 import (
+	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -88,5 +90,21 @@ func TestRenewDue(t *testing.T) {
 	}
 	if !RenewDue(nb, na, nb.Add(60*24*time.Hour)) {
 		t.Fatal("not due at two thirds")
+	}
+}
+
+func TestTargetGrantOptionsRoundTrip(t *testing.T) {
+	in := Target{Type: "traefik", Config: json.RawMessage(`{"dir":"/d"}`), GrantOptions: json.RawMessage(`{"defaultCert":true}`)}
+	b, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out Target
+	if err := json.Unmarshal(b, &out); err != nil || string(out.GrantOptions) != `{"defaultCert":true}` {
+		t.Fatalf("%s %v", b, err)
+	}
+	b, _ = json.Marshal(Target{Type: "vault-kv", Config: json.RawMessage(`{}`)})
+	if strings.Contains(string(b), "grantOptions") {
+		t.Fatalf("empty options serialized: %s", b)
 	}
 }

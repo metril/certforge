@@ -46,3 +46,26 @@ func TestMetaDeployTargetAttrs(t *testing.T) {
 		t.Fatalf("test-either-optional attrs = %+v", a)
 	}
 }
+
+// TestMetaGrantSchema: a type implementing GrantOptions publishes its grant
+// schema; one that does not (vault-kv style) has none.
+func TestMetaGrantSchema(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register(Traefik{})
+	reg.Register(fakeEitherTarget{})
+	metaReg := meta.NewRegistry()
+	AddToMeta(reg, metaReg)
+	byCode := map[string]meta.Entry{}
+	for _, e := range metaReg.List(meta.KindDeployTarget) {
+		byCode[e.Code] = e
+	}
+	if len(byCode["traefik"].GrantSchema) == 0 || len(byCode["test-either-optional"].GrantSchema) != 0 {
+		t.Fatalf("grant schemas: traefik %q other %q", byCode["traefik"].GrantSchema, byCode["test-either-optional"].GrantSchema)
+	}
+	if s, ok := reg.GrantSchema("traefik"); !ok || len(s) == 0 {
+		t.Fatal("Registry.GrantSchema(traefik)")
+	}
+	if _, ok := reg.GrantSchema("test-either-optional"); ok {
+		t.Fatal("Registry.GrantSchema for a type without options")
+	}
+}
