@@ -30,6 +30,7 @@ type fakePF struct {
 	list     string // JSON body for GET /system/certificates
 	webRef   string // current sslcertref
 	loginBad bool
+	webWrap  bool
 }
 
 func (f *fakePF) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -59,7 +60,11 @@ func (f *fakePF) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(r.URL.Path, "/api/v2/system/certificates/") && r.Method == "POST":
 		_, _ = io.WriteString(w, `{"refid":"ok"}`)
 	case r.URL.Path == "/api/v2/system/advanced/admin" && r.Method == "GET":
-		_, _ = io.WriteString(w, `{"webguiproto":"https","sslcertref":"`+f.webRef+`"}`)
+		inner := `{"webguiproto":"https","sslcertref":"` + f.webRef + `"}`
+		if f.webWrap {
+			inner = `{"code":200,"status":"ok","data":` + inner + `}`
+		}
+		_, _ = io.WriteString(w, inner)
 	case r.URL.Path == "/api/v2/system/advanced/admin" && r.Method == "POST":
 		_, _ = io.WriteString(w, `{}`)
 	default:
@@ -208,5 +213,19 @@ func TestPfSenseParse(t *testing.T) {
 		if _, err := (PfSense{}).Parse(json.RawMessage(bad)); err == nil {
 			t.Errorf("accepted %s", bad)
 		}
+	}
+}
+
+func TestPfSenseWebGUIWrappedPostsInner(t *testing.T) {
+	f := &fakePF{list: `[{"refid":"abc","descr":"web"}]`, webRef: "old", webWrap: true}
+	srv := httptest.NewServer(f)
+	defer srv.Close()
+	m, _ := akMaterial(t)
+	if _, err := (PfSense{}).Deploy(context.Background(), pfRequest(t, srv.URL, "", true, m)); err != nil {
+		t.Fatal(err)
+	}
+	b := f.calls[len(f.calls)-1].Body
+	if b["sslcertref"] != "abc" || b["webguiproto"] != "https" || b["code"] != nil || b["status"] != nil || b["data"] != nil {
+		t.Fatalf("post body = %+v", b)
 	}
 }

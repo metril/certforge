@@ -337,7 +337,7 @@ func (PfSense) Deploy(ctx context.Context, req targets.Request) (targets.Result,
 		}
 		if cur, _ := target["sslcertref"].(string); cur != refid {
 			target["sslcertref"] = refid
-			if _, err := call(http.MethodPost, pfAdmin, obj); err != nil {
+			if _, err := call(http.MethodPost, pfAdmin, target); err != nil {
 				return fail(err)
 			}
 			detail += ", webgui cert set"
