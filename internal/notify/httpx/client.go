@@ -49,6 +49,9 @@ type Options struct {
 	AllowLoopback bool
 	// Timeout bounds each individual attempt. Zero uses Timeout.
 	Timeout time.Duration
+	// MaxBody bounds how much of a response body is read. Zero uses
+	// MaxBody (64 KiB).
+	MaxBody int64
 }
 
 // Client is a *http.Client wired for outbound notifier and monitor
@@ -57,6 +60,7 @@ type Options struct {
 type Client struct {
 	http          *http.Client
 	allowLoopback bool
+	maxBody       int64
 	// dialer is kept (not just handed to http.Transport and dropped) so a
 	// same-package test can redirect DNS resolution through a stub server
 	// via dialer.Resolver — batch-1 review finding 6:
@@ -80,6 +84,10 @@ func New(opts Options) (*Client, error) {
 	if timeout <= 0 {
 		timeout = Timeout
 	}
+	maxBody := opts.MaxBody
+	if maxBody <= 0 {
+		maxBody = MaxBody
+	}
 	dialer := &net.Dialer{
 		Timeout: timeout,
 		Control: DialControl(opts.AllowLoopback),
@@ -95,6 +103,7 @@ func New(opts Options) (*Client, error) {
 	}
 	return &Client{
 		allowLoopback: opts.AllowLoopback,
+		maxBody:       maxBody,
 		dialer:        dialer,
 		http: &http.Client{
 			Transport: transport,
@@ -108,6 +117,17 @@ func New(opts Options) (*Client, error) {
 		},
 	}, nil
 }
+
+// DialContext dials network/addr with the client's SSRF policy (blocked
+// hosts are refused at connect time, after DNS resolution), for non-HTTP
+// transports such as SSH that must share the same dial policy.
+func (c *Client) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	return c.dialer.DialContext(ctx, network, addr)
+}
+
+// HTTPClient returns the underlying *http.Client (no redirects, no proxy,
+// SSRF-checked dialer) for transports that need one, such as WebSocket.
+func (c *Client) HTTPClient() *http.Client { return c.http }
 
 // Do sends one logical request, retrying a connection error, a 5xx or a
 // 429 response up to Attempts times with 200ms*2^n backoff capped by ctx.
@@ -197,7 +217,7 @@ func (c *Client) attempt(ctx context.Context, method, rawURL, host string, h htt
 	if resp.StatusCode == http.StatusTooManyRequests {
 		*retryAfter = parseRetryAfter(resp.Header.Get("Retry-After"), time.Now())
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxBody))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, c.maxBody))
 	if err != nil {
 		return 0, nil, fmt.Errorf("httpx: read response: %w", err)
 	}

@@ -153,8 +153,13 @@ const (
 
 // Defines values for DeployTargetType.
 const (
-	Traefik DeployTargetType = "traefik"
-	VaultKv DeployTargetType = "vault-kv"
+	Authentik DeployTargetType = "authentik"
+	Pfsense   DeployTargetType = "pfsense"
+	Routeros  DeployTargetType = "routeros"
+	Ssh       DeployTargetType = "ssh"
+	Traefik   DeployTargetType = "traefik"
+	Truenas   DeployTargetType = "truenas"
+	VaultKv   DeployTargetType = "vault-kv"
 )
 
 // Defines values for DeploymentState.

@@ -1,6 +1,10 @@
 package targets
 
-import "github.com/metril/certforge/internal/notify/httpx"
+import (
+	"github.com/coder/websocket"
+
+	"github.com/metril/certforge/internal/notify/httpx"
+)
 
 // HTTPFactory builds an outbound httpx.Client for a target's own network
 // calls, forcing the loopback policy the caller has already decided:
@@ -15,4 +19,14 @@ type HTTPFactory struct {
 func (f HTTPFactory) New(o httpx.Options) (*httpx.Client, error) {
 	o.AllowLoopback = f.AllowLoopback
 	return httpx.New(o)
+}
+
+// WebSocket builds websocket.DialOptions whose HTTP client carries the same
+// SSRF-safe dial policy, CA bundle and no-redirect rule as New.
+func (f HTTPFactory) WebSocket(o httpx.Options) (*websocket.DialOptions, error) {
+	c, err := f.New(o)
+	if err != nil {
+		return nil, err
+	}
+	return &websocket.DialOptions{HTTPClient: c.HTTPClient()}, nil
 }
