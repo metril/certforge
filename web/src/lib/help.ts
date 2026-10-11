@@ -327,6 +327,7 @@ export const help = {
   'target.runsOnLocked': { text: 'Fixed once the target exists. Create a new target to change it.', learnMore: 'guide/delivery.md#runs-on' },
   'target.secrets': { text: 'Secret fields are stored encrypted and never shown again. Leave one untouched to keep it.', learnMore: 'guide/delivery.md#secrets' },
   'target.vaultKv': { text: 'CertForge writes the files to Vault KV itself. No client is involved.', learnMore: 'guide/delivery.md#vault-kv' },
+  'target.authentik': { text: 'CertForge pushes the certificate and key into Authentik’s keypair store itself. No client is involved.', learnMore: 'guide/delivery.md#authentik' },
   'target.includeKey': { text: 'Also send the private key. On the server this needs the keys:export permission.', learnMore: 'guide/delivery.md#vault-kv' },
   'target.usedBy': { text: 'Grants that use it. Remove those grants before deleting.' },
   // Task 9: the deploy-target detail sheet's own Grants section and its

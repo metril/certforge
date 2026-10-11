@@ -2,12 +2,13 @@
 
 Delivery is how a certificate reaches the place that uses it. A **deploy target** says what to do with a certificate besides writing files, such as updating Traefik or storing the files in Vault. A **grant** links one certificate to one target or client. Open **Delivery** in the sidebar to manage targets, file layouts and hooks.
 
-Two target types ship with CertForge:
+Three target types ship with CertForge:
 
 | Type | Runs on | Private key |
 |---|---|---|
 | Traefik (`traefik`) | An agent | Always sent |
 | Vault KV (`vault-kv`) | The server | Only if you switch on **Include private key** |
+| Authentik (`authentik`) | The server | Always sent |
 
 ## Before you start
 
@@ -192,6 +193,20 @@ Each deploy replaces the whole document at `<mount>/data/<path>`. Nothing is mer
 **Two grants cannot share one path.** If two grants of a target would render the same mount and path, the second is refused. Names that clean to the same string collide, such as `Web.One` and `web.one`. A path with neither `{name}` nor `{cert}` allows one grant per target.
 
 **Org isolation.** One Vault serves every org. Without the global `delivery:write` permission, you can only use a path that starts with `certforge/<your org slug>/`, and **Mount** must be a single segment with no `/`. A global admin can use any path.
+
+## Authentik
+
+An Authentik target pushes a certificate and its private key into Authentik's certificate-keypair store, so Authentik's own TLS or signing uses it. It runs on the server, so its grants have no client.
+
+| Field | What it does | Default |
+|---|---|---|
+| **URL** (`url`) | The `https` URL of the Authentik instance. | None |
+| **API token** (`token`) | An Authentik API token that can view, add and change certificate-key pairs. Stored encrypted. | None |
+| **Keypair name** (`name`) | Name of the keypair in Authentik, letters, digits, space, `.`, `_` and `-`. | The certificate's name |
+| **CA certificate** (`caPem`) | PEM to trust for Authentik's TLS certificate, on top of the system roots. | None |
+| **Timeout** (`timeoutSeconds`) | Seconds per request, 5 to 120. | 30 |
+
+Each deploy looks the keypair up by exact name. If it exists it is updated in place, so brands, providers and outposts keep pointing at it. Otherwise it is created. If two keypairs share the name the deploy fails. When Authentik already holds the same certificate, nothing is written.
 
 ## Grant a certificate to a server target
 
