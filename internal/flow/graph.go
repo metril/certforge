@@ -202,8 +202,9 @@ type Input struct {
 	Channels []Channel
 	// CertsMore is true when the certificate list itself was cut short.
 	CertsMore bool
-	// ClientsMore is true when the org has more clients than were loaded.
-	ClientsMore bool
+	// ClientsTotal is the org's full client count; above len(Clients) the
+	// difference is added to the clients lane's Omitted. Zero means unknown.
+	ClientsTotal int
 	// Uses is the issuer references of every certificate in the org, for
 	// counting issuer use. Nil means Certs is the whole org.
 	Uses []Use
@@ -474,8 +475,8 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 		}
 		budget -= len(side[i])
 	}
-	if in.ClientsMore {
-		omitted[3]++
+	if in.ClientsTotal > len(in.Clients) {
+		omitted[3] += in.ClientsTotal - len(in.Clients)
 		g.Truncated = true
 	}
 	issuers, delivery, clients, alerts = side[0], side[1], side[2], side[3]

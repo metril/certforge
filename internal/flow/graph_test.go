@@ -210,13 +210,13 @@ func TestAssembleTruncation(t *testing.T) {
 	}
 }
 
-func TestAssembleClientsMoreCountsOverflow(t *testing.T) {
+func TestAssembleClientsTotalCountsOverflow(t *testing.T) {
 	var clients []Client
 	for i := 0; i < MaxNodes; i++ {
 		clients = append(clients, Client{ID: id(), Name: fmt.Sprintf("h%04d", i), Status: "active"})
 	}
-	g := Assemble(Input{OrgSlug: "a", Clients: clients, ClientsMore: true}, allPerms(), now)
-	if want := MaxNodes - maxSideNodes + 1; g.Clients.Omitted != want || !g.Truncated {
+	g := Assemble(Input{OrgSlug: "a", Clients: clients, ClientsTotal: MaxNodes + 500}, allPerms(), now)
+	if want := MaxNodes - maxSideNodes + 500; g.Clients.Omitted != want || !g.Truncated {
 		t.Fatalf("clients omitted=%d truncated=%v, want omitted %d truncated", g.Clients.Omitted, g.Truncated, want)
 	}
 }

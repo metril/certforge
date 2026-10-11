@@ -94,13 +94,15 @@ func (b *Builder) build(ctx context.Context, orgID uuid.UUID, perms Perms) (Grap
 		}
 	}
 	if perms.Clients {
-		rows, err := b.Q.ListClients(ctx, sqlcgen.ListClientsParams{OrgIds: []uuid.UUID{orgID}, Sort: "name", PageLimit: MaxNodes + 1})
+		rows, err := b.Q.ListClients(ctx, sqlcgen.ListClientsParams{OrgIds: []uuid.UUID{orgID}, Sort: "name", PageLimit: MaxNodes})
 		if err != nil {
 			return Graph{}, err
 		}
-		if len(rows) > MaxNodes {
-			rows, in.ClientsMore = rows[:MaxNodes], true
+		total, err := b.Q.CountClients(ctx, orgID)
+		if err != nil {
+			return Graph{}, err
 		}
+		in.ClientsTotal = int(total)
 		for _, c := range rows {
 			in.Clients = append(in.Clients, Client{ID: c.ID, Name: c.Name, Status: c.Status})
 		}
