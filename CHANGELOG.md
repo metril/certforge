@@ -2,6 +2,24 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.10.0](https://github.com/metril/certforge/compare/v0.9.0...v0.10.0) (2026-10-11)
+
+
+### Features
+
+* **api:** DELETE /users/{id} with orphaned API key handling ([8328643](https://github.com/metril/certforge/commit/8328643f802653a6464a172200e8e158e8d07e2a))
+* **authn:** reject API keys whose creator was deleted ([3c98745](https://github.com/metril/certforge/commit/3c9874525c057f0a0c91c66aa446bf85f94df5b2))
+* **db:** allow orphaned API keys and add user delete queries ([5fbbf5a](https://github.com/metril/certforge/commit/5fbbf5ac0bf9b61cbc4a2afefe0950a2c0e0c1f8))
+* **db:** migration 00025 for user deletion ([bcbd901](https://github.com/metril/certforge/commit/bcbd9019896f5884160ca602ebebd7070b048699))
+* **web:** delete user from the Users tab ([a52de86](https://github.com/metril/certforge/commit/a52de86ecec8639e2c74f67572eb3b21b43551ce))
+* **web:** useDeleteUser mutation and deleted-creator key test ([a1953ee](https://github.com/metril/certforge/commit/a1953ee852de1e3035ae0fcd8a6a92c1ffdabe4d))
+
+
+### Bug Fixes
+
+* **authn:** merge userinfo claims into OIDC login ([d405ecd](https://github.com/metril/certforge/commit/d405ecd29d0522ecc71a09d7e73a790f58594d93))
+* **authn:** read OIDC claims from userinfo; feat: delete users ([93f5421](https://github.com/metril/certforge/commit/93f5421dc9e9964920867b06937827e07db074e2))
+
 ## [0.9.0](https://github.com/metril/certforge/compare/v0.8.0...v0.9.0) (2026-10-10)
 
 
