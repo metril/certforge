@@ -245,9 +245,8 @@ it('shows target options only once a target with a grant schema is picked', asyn
   await pick(user, 'Deploy target', /^edge traefik/);
   expect(await within(sheet).findByText('Target options')).toBeInTheDocument();
   expect(within(sheet).getByRole('switch', { name: 'Default certificate' })).toBeInTheDocument();
-  const tips = within(sheet).getAllByRole('button', { name: 'Help' });
-  await user.hover(tips[tips.length - 1]!);
-  expect(await screen.findByRole('tooltip')).toHaveTextContent(/Absolute directory|Serve this certificate|Overrides the target|The same directory/);
+  await user.hover(within(sheet).getByRole('button', { name: 'Help: Default certificate' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(/One grant per client, directory and store/);
   expect(within(sheet).queryByRole('checkbox')).not.toBeInTheDocument();
 });
 
