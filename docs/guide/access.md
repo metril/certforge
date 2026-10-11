@@ -38,7 +38,9 @@ An organization separates certificates, credentials and access. Sites are labels
 
 CertForge never creates users by hand. A person appears after their first single sign-on, or as the local admin created by the setup wizard. A new single sign-on user has no access until a role binding or group mapping gives them a role.
 
-To disable a user, turn off their status switch and type their name to confirm. Their sessions end at once and the API keys they created stop working. Turn the switch back on to re-enable them. Your own switch is locked, and users are never deleted. The page offers a search box; on a narrow screen the table becomes cards.
+To disable a user, turn off their status switch and type their name to confirm. Their sessions end at once and the API keys they created stop working. Turn the switch back on to re-enable them. Your own switch is locked. The page offers a search box; on a narrow screen the table becomes cards.
+
+Disabling is reversible. To remove someone for good, use the trash button on their row and type their name to confirm. Deletion needs the user-write permission and is permanent: it ends their sessions, removes their direct role bindings and revokes the API keys they created. Those keys stay listed as revoked, with the creator shown as "(deleted user)", and the audit log keeps the user's past events. You cannot delete yourself, the local admin or the last global administrator (the server answers 409). A deleted OIDC user who signs in again is created as a new user with no access until a binding or group mapping grants one.
 
 If you hold the user-read permission only in one organization (an **Org admin**), you see other users' name, email, status and creation time, but not their groups, source or last sign-in.
 
