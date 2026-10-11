@@ -1,6 +1,7 @@
 import { http, HttpResponse } from 'msw';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { server } from '@/test/server';
 import { authHandlers, makeGrant, meWith, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
@@ -442,6 +443,27 @@ it('Redeploy on a client confirms the count and redeploys only the path\'s grant
   expect(within(dlg).getByText(/Redeploy 1 grant\b/)).toBeInTheDocument();
   await user.click(within(dlg).getByRole('button', { name: 'Redeploy' }));
   await waitFor(() => expect(posted).toEqual(['g1']));
+});
+
+it('Redeploy lists the first two failures in the toast description', async () => {
+  setWidth(true);
+  useFlow(() => detailed);
+  const err = vi.spyOn(toast, 'error').mockImplementation(() => 1);
+  server.use(
+    http.get(url('/orgs/org-1/clients/web-1/grants'), () =>
+      HttpResponse.json({ items: ['a', 'b', 'c'].map((n) => makeGrant({ id: `g-${n}`, certificateId: 'www', certificateName: `cert-${n}` })) }),
+    ),
+    http.post(url('/orgs/org-1/grants/:id/redeploy'), ({ params }) => problem(500, `boom ${String(params.id)}`)),
+  );
+  const { user } = renderRoute('/o/acme/flow?focus=client:web-1');
+  const aside = await screen.findByRole('complementary', { name: 'Details' });
+  const btn = within(aside).getByRole('button', { name: 'Redeploy' });
+  await waitFor(() => expect(btn).not.toBeDisabled());
+  await user.click(btn);
+  await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Redeploy' }));
+  await waitFor(() => expect(err).toHaveBeenCalled());
+  expect(err).toHaveBeenCalledWith('Redeployed 0 of 3; 3 failed.', { description: 'cert-a: boom g-a\ncert-b: boom g-b' });
+  err.mockRestore();
 });
 
 it('Redeploy is disabled when the client has no grants', async () => {

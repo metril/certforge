@@ -322,6 +322,10 @@ describe('parseEdgeKey', () => {
     expect(parseEdgeKey('certificate:A>layout:L1', flow)).not.toBeNull();
     expect(parseEdgeKey('certificate:A>layout:nope', flow)).toBeNull();
   });
+  it('rejects two existing nodes that no edge links', () => {
+    expect(parseEdgeKey('certificate:C>layout:L1', flow)).toBeNull();
+    expect(parseEdgeKey('layout:L1>certificate:A', flow)).toEqual({ from: 'layout:L1', to: 'certificate:A' });
+  });
 });
 
 describe('sortForLane and linkCounts', () => {

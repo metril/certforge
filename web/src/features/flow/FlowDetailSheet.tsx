@@ -5,6 +5,7 @@ import { RotateCw, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { grantsQuery, targetGrantsQuery, useRedeployGrant } from '@/api/queries/grants';
 import { useRenewCertificates } from '@/api/queries/certificates';
+import { errorMessage } from '@/api/errors';
 import type { Grant } from '@/api/types';
 import { IconButton } from '@/components/IconButton';
 import { PermissionTip } from '@/components/PermissionTip';
@@ -210,8 +211,7 @@ function RedeployButton({ node, orgId, path }: { node: FlowNodeData; orgId: stri
   const pathClients = useMemo(() => [...path.nodes].filter((id) => id.startsWith('client:')).map(rawIdOf), [path]);
   const serverEmpty = isTarget && q.isSuccess && (q.data ?? []).length === 0;
   const agent = useQueries({ queries: pathClients.map((cid) => ({ ...grantsQuery(orgId, cid), enabled: allowed && serverEmpty })) });
-  const agentData = agent.map((a) => a.data);
-  const agentGrants = useMemo(() => agentData.flatMap((d) => (d ?? []).filter((g) => g.deployTargetId === rid)), [agentData, rid]);
+  const agentGrants = agent.flatMap((a) => (a.data ?? []).filter((g) => g.deployTargetId === rid));
   const agentMode = serverEmpty;
   const agentPending = agentMode && agent.some((a) => a.isPending);
   const agentError = agentMode && agent.some((a) => a.isError);
@@ -220,23 +220,24 @@ function RedeployButton({ node, orgId, path }: { node: FlowNodeData; orgId: stri
   const [busy, setBusy] = useState(false);
   const certs = useMemo(() => new Set([...path.nodes].filter((id) => id.startsWith('certificate:')).map(rawIdOf)), [path]);
   const scoped = certs.size > 0;
-  const grants: Grant[] = useMemo(() => (agentMode ? agentGrants : q.data ?? []).filter((g) => !scoped || certs.has(g.certificateId)), [agentMode, agentGrants, q.data, scoped, certs]);
+  const grants: Grant[] = (agentMode ? agentGrants : q.data ?? []).filter((g) => !scoped || certs.has(g.certificateId));
   const n = grants.length;
   const run = async () => {
     setConfirm(false);
     setBusy(true);
     let ok = 0;
+    const errors: string[] = [];
     for (const g of grants) {
       try {
         await redeploy.mutateAsync(g.id);
         ok++;
-      } catch {
-        // counted below
+      } catch (e) {
+        errors.push(`${g.certificateName}: ${errorMessage(e)}`);
       }
     }
     setBusy(false);
     if (ok === n) toast.success(`Redeployed ${ok}`);
-    else toast.error(`Redeployed ${ok} of ${n}; ${n - ok} failed.`);
+    else toast.error(`Redeployed ${ok} of ${n}; ${n - ok} failed.`, { description: errors.slice(0, 2).join('\n') });
   };
   const failed = allowed && (q.isError || agentError);
   const noPath = allowed && agentMode && pathClients.length === 0;
@@ -283,13 +284,12 @@ function Name({ node, onSelectNode }: { node: FlowNodeData; onSelectNode: (id: s
 function EdgeBody({ flow, byId, edge, slug, onSelectNode }: { flow: Flow; byId: Map<string, FlowNodeData>; edge: { from: string; to: string }; slug: string; onSelectNode: (id: string) => void }) {
   const from = byId.get(edge.from);
   const to = byId.get(edge.to);
-  const es = flow.edges.filter((e) => edgeKey(e.from, e.to) === edgeKey(edge.from, edge.to));
-  const carried = useMemo(() => {
-    const ids = new Set<string>();
-    for (const n of [from, to]) if (n?.kind === 'certificate') ids.add(n.id);
-    if (ids.size === 0) for (const e of es) if (e.certificateId) ids.add(`certificate:${e.certificateId}`);
-    return [...ids].flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
-  }, [from, to, es, byId]);
+  const ek = edgeKey(edge.from, edge.to);
+  const es = flow.edges.filter((e) => edgeKey(e.from, e.to) === ek);
+  const carriedIds = new Set<string>();
+  for (const n of [from, to]) if (n?.kind === 'certificate') carriedIds.add(n.id);
+  if (carriedIds.size === 0) for (const e of es) if (e.certificateId) carriedIds.add(`certificate:${e.certificateId}`);
+  const carried = [...carriedIds].flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
   if (!from || !to) return null;
   const status = es.length > 0 ? pairStatus(es) : 'idle';
   const m = FLOW_STATUS[status];

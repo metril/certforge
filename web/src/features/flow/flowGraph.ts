@@ -25,7 +25,7 @@ export const laneOf = (kind: FlowNodeData['kind']): LaneKey => KIND_LANE[kind];
 export const laneIndex = (kind: FlowNodeData['kind']): number => LANE_KEYS.indexOf(KIND_LANE[kind]);
 
 /** `from>to` of a selected connection (node ids hold ':' but never '>'). With a
- * flow, both ids must name nodes in it. */
+ * flow, both ids must name nodes in it and an edge must join them. */
 export function parseEdgeKey(key: string, flow?: Flow): { from: string; to: string } | null {
   const parts = key.split('>');
   const [from, to] = parts;
@@ -33,6 +33,8 @@ export function parseEdgeKey(key: string, flow?: Flow): { from: string; to: stri
   if (flow) {
     const { nodes } = indexOf(flow);
     if (!nodes.has(from) || !nodes.has(to)) return null;
+    const k = edgeKey(from, to);
+    if (!flow.edges.some((e) => edgeKey(e.from, e.to) === k)) return null;
   }
   return { from, to };
 }
