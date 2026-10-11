@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { flowStatusLabel } from './flowLabels';
+import { edgeRelation, flowStatusLabel } from './flowLabels';
 
 describe('flowStatusLabel', () => {
   it('words issuers by use', () => {
@@ -24,5 +24,17 @@ describe('flowStatusLabel', () => {
     expect(flowStatusLabel('certificate', 'valid')).toBe('Healthy');
     expect(flowStatusLabel('layout', 'idle')).toBe('Idle');
     expect(flowStatusLabel('client', 'pending')).toBe('Pending');
+  });
+});
+
+describe('edgeRelation', () => {
+  it('names the link by lane pair, in either order', () => {
+    expect(edgeRelation('ca', 'certificate')).toBe('issues');
+    expect(edgeRelation('certificate', 'account')).toBe('issues');
+    expect(edgeRelation('certificate', 'layout')).toBe('delivered by');
+    expect(edgeRelation('layout', 'client')).toBe('grant');
+    expect(edgeRelation('client', 'certificate')).toBe('grant');
+    expect(edgeRelation('certificate', 'channel')).toBe('alerts');
+    expect(edgeRelation('ca', 'client')).toBe('link');
   });
 });

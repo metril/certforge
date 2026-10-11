@@ -16,12 +16,12 @@ import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useOrg } from '@/lib/org';
 import { useMediaQuery } from '@/lib/useMediaQuery';
-import { LANE_KEYS, PROBLEM_STATUSES, expandFor, filterFlow, highlightSet, visibleNodeIds, type Flow, type FlowNodeData, type FlowStatus } from './flowGraph';
+import { LANE_KEYS, PROBLEM_STATUSES, expandFor, filterFlow, highlightSet, parseEdgeKey, visibleNodeIds, type Flow, type FlowNodeData, type FlowStatus } from './flowGraph';
 import { FLOW_STATUS, KIND_META } from './FlowNode';
 import { FLOW_STATUSES, type FlowSearch } from './search';
 import { FlowConnectors } from './FlowConnectors';
 import { FlowLane } from './FlowLane';
-import { FlowPathPanel } from './FlowPathPanel';
+import { FlowDetailSheet } from './FlowDetailSheet';
 import { failedWithoutData } from '@/lib/queryState';
 
 type Kind = FlowNodeData['kind'];
@@ -129,10 +129,20 @@ export function FlowPage() {
   );
   const allCollapsed = LANE_KEYS.every((k) => collapsed.has(k));
   const clearFilters = useCallback(() => void navigate({ search: (s) => ({ ...s, q: undefined, status: undefined, kind: undefined, issuer: undefined, client: undefined }), replace: true }), [navigate]);
+  // A node and a connection are never selected together.
   const setFocus = useCallback(
-    (id: string | undefined) => void navigate({ search: (s) => ({ ...s, focus: id }), replace: true }),
+    (id: string | undefined) => void navigate({ search: (s) => ({ ...s, focus: id, edge: undefined }), replace: true }),
     [navigate],
   );
+  const setEdge = useCallback(
+    (from: string | undefined, to?: string) => void navigate({ search: (s) => ({ ...s, edge: from && to ? `${from}>${to}` : undefined, focus: undefined }), replace: true }),
+    [navigate],
+  );
+  const edge = useMemo(() => (flow && search.edge ? parseEdgeKey(search.edge, flow) : null), [flow, search.edge]);
+  const edgeHidden = !!search.edge && !!full && !edge;
+  useEffect(() => {
+    if (edgeHidden) setEdge(undefined);
+  }, [edgeHidden, setEdge]);
   // A focused node inside a collapsed group is opened so it is drawn (once per focus value).
   const opened = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -153,6 +163,8 @@ export function FlowPage() {
   useEffect(() => {
     if (focusHidden && visible) setFocus(undefined);
   }, [focusHidden, visible, setFocus]);
+  const detailing = !!selected || !!edge;
+  const clearDetail = useCallback(() => (selected ? setFocus(undefined) : setEdge(undefined)), [selected, setFocus, setEdge]);
   const select = useCallback((id: string) => setFocus(id === focus ? undefined : id), [focus, setFocus]);
 
   const header = (
@@ -302,20 +314,18 @@ export function FlowPage() {
   }
 
   const empty = visible !== null && visible.size === 0;
-  const filtering = !wide && !!selected;
   return (
     <div
       onKeyDown={(e) => {
-        if (e.key !== 'Escape' || !focus) return;
+        if (e.key !== 'Escape' || !(focus || edge)) return;
         // Escape inside a text field or an open popover/menu belongs to that control. A node's own
         // tooltip also preventDefaults Escape, so defaultPrevented can't be the test.
         const t = e.target as HTMLElement;
         if (t.closest('input, textarea, select, [role="dialog"], [role="listbox"], [role="menu"], [data-radix-popper-content-wrapper]')) return;
-        setFocus(undefined);
+        clearDetail();
       }}
     >
       {header}
-      {selected && <FlowPathPanel selected={selected} nodes={all} path={path} slug={org.slug} compact={!wide} onClear={() => setFocus(undefined)} />}
       {empty ? (
         <EmptyState message="No flows match these filters.">
           <Button variant="outline" onClick={clearFilters}>
@@ -323,21 +333,20 @@ export function FlowPage() {
           </Button>
         </EmptyState>
       ) : (
-      <div ref={box} className={wide ? 'relative grid grid-cols-5 gap-x-12' : 'grid gap-6'}>
+      <div className={wide ? 'lg:flex lg:items-start lg:gap-6' : undefined}>
+      <div ref={box} className={wide ? 'relative grid min-w-0 flex-1 grid-cols-5 gap-x-12' : 'grid gap-6'}>
         {LANE_KEYS.map((k) => {
           const lane = flow.lanes[k];
-          const nodes = filtering ? lane.nodes.filter((n) => path.nodes.has(n.id)) : lane.nodes;
-          if (filtering && nodes.length === 0) return null;
           return (
             <FlowLane
               key={k}
               laneKey={k}
               org={org.slug}
               hidden={lane.hidden}
-              nodes={nodes}
+              nodes={lane.nodes}
               total={full!.lanes[k].nodes.length}
               selectedId={focus}
-              onPath={selected && !filtering ? path.nodes : undefined}
+              onPath={selected ? path.nodes : undefined}
               hoverPath={hoverPath?.nodes}
               onHover={onHover}
               onSelect={select}
@@ -348,6 +357,8 @@ export function FlowPage() {
           );
         })}
         {wide && <FlowConnectors containerRef={box} getEl={getEl} flow={flow} path={path} hoverPath={hoverPath} selected={!!selected} collapsed={collapsed} />}
+      </div>
+      {detailing && <FlowDetailSheet flow={flow} nodes={all} path={path} node={selected} edge={edge ?? undefined} slug={org.slug} orgId={org.id} wide={wide} onClose={clearDetail} onSelectNode={setFocus} onSelectEdge={setEdge} />}
       </div>
       )}
     </div>

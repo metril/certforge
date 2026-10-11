@@ -114,11 +114,11 @@ export function useDeleteGrant(orgId: string) {
   });
 }
 
-export function useRedeployGrant(orgId: string) {
+export function useRedeployGrant(orgId: string, quiet = false) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => call(api.POST('/orgs/{orgId}/grants/{id}/redeploy', { params: { path: { orgId, id } } })),
-    meta: { success: 'Redeploy queued' },
+    meta: quiet ? { silent: true } : { success: 'Redeploy queued' },
     onSuccess: () => invalidateGrants(qc, orgId),
   });
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collapseEdges, edgeKey, expandFor, filterFlow, PROBLEM_STATUSES, highlightSet, isProblem, pairStatus, pathUnion, tracePath, visibleNodeIds, type Flow, type FlowNodeData } from './flowGraph';
+import { collapseEdges, parseEdgeKey, edgeKey, expandFor, filterFlow, PROBLEM_STATUSES, highlightSet, isProblem, pairStatus, pathUnion, tracePath, visibleNodeIds, type Flow, type FlowNodeData } from './flowGraph';
 
 const node = (kind: FlowNodeData['kind'], id: string, extra: Partial<FlowNodeData> = {}): FlowNodeData => ({
   id: `${kind}:${id}`,
@@ -283,5 +283,20 @@ describe('problems and expandFor', () => {
   it('removes the lane and sub-group of a kind from the collapsed list', () => {
     expect(expandFor('ca', ['issuers', 'issuers.cas', 'issuers.dns', 'delivery'])).toEqual(['issuers.dns', 'delivery']);
     expect(expandFor('certificate', ['certificates', 'alerts'])).toEqual(['alerts']);
+  });
+});
+
+describe('parseEdgeKey', () => {
+  it('splits from>to', () => {
+    expect(parseEdgeKey('certificate:a>layout:l1')).toEqual({ from: 'certificate:a', to: 'layout:l1' });
+  });
+  it('rejects a key without >, with empty halves, or with extra >', () => {
+    expect(parseEdgeKey('certificate:a')).toBeNull();
+    expect(parseEdgeKey('>layout:l1')).toBeNull();
+    expect(parseEdgeKey('a>b>c')).toBeNull();
+  });
+  it('rejects ids the flow does not hold when a flow is given', () => {
+    expect(parseEdgeKey('certificate:A>layout:L1', flow)).not.toBeNull();
+    expect(parseEdgeKey('certificate:A>layout:nope', flow)).toBeNull();
   });
 });

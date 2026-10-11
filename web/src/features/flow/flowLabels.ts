@@ -1,4 +1,4 @@
-import type { FlowNodeData, FlowStatus } from './flowGraph';
+import { laneOf, type FlowNodeData, type FlowStatus } from './flowGraph';
 
 const DEFAULT: Record<FlowStatus, string> = {
   valid: 'Healthy',
@@ -28,4 +28,22 @@ export function flowStatusLabel(kind: FlowNodeData['kind'], status: FlowStatus, 
     if (status === 'idle') return detail === 'Disabled' ? 'Disabled' : 'No deliveries yet';
   }
   return DEFAULT[status];
+}
+
+/** Word for the link between two kinds, by lane pair (order-independent). */
+export function edgeRelation(a: FlowNodeData['kind'], b: FlowNodeData['kind']): string {
+  const lanes = [laneOf(a), laneOf(b)].sort().join('+');
+  switch (lanes) {
+    case 'certificates+issuers':
+      return 'issues';
+    case 'certificates+delivery':
+      return 'delivered by';
+    case 'clients+delivery':
+    case 'certificates+clients':
+      return 'grant';
+    case 'alerts+certificates':
+      return 'alerts';
+    default:
+      return laneOf(a) === 'alerts' || laneOf(b) === 'alerts' ? 'alerts' : 'link';
+  }
 }
