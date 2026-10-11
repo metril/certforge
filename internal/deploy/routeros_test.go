@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/metril/certforge/internal/render"
 	"github.com/metril/certforge/internal/targets"
@@ -31,6 +32,7 @@ type fakeRO struct {
 	fp      string // fingerprint given to the imported certificate
 	noKey   bool   // imported certificate lacks its private key
 	noAuth  bool
+	importF bool // import fails
 	removeF bool // cert remove fails
 }
 
@@ -52,6 +54,11 @@ func (f *fakeRO) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/rest/certificate":
 		_ = json.NewEncoder(w).Encode(f.certs)
 	case "/rest/certificate/import":
+		if f.importF {
+			w.WriteHeader(400)
+			_, _ = io.WriteString(w, `{"message":"bad file"}`)
+			return
+		}
 		if strings.HasSuffix(c.Body["file-name"].(string), ".key") {
 			pk := "true"
 			if f.noKey {
@@ -250,5 +257,33 @@ func TestRouterOSParse(t *testing.T) {
 	}
 	if strings.Contains(string(cfg.Public), `"p"`) || cfg.Secrets == nil {
 		t.Fatalf("password leaked into public: %s", cfg.Public)
+	}
+}
+
+func TestRouterOSImportFailureRemovesUploads(t *testing.T) {
+	f, srv, ssh, m := roSetup(t)
+	f.importF = true
+	_, err := RouterOS{}.Deploy(context.Background(), roReq(t, srv.URL, ssh, m, nil))
+	if err == nil {
+		t.Fatal("want error")
+	}
+	n := 0
+	for _, c := range f.calls {
+		if c.Path == "/rest/file/remove" {
+			n++
+		}
+	}
+	if n != 2 {
+		t.Fatalf("file removes = %d, calls = %s", n, f.paths())
+	}
+}
+
+func TestRouterOSHangingSCPHonoursTimeout(t *testing.T) {
+	_, srv, ssh, m := roSetup(t)
+	ssh.ScpHang = true
+	start := time.Now()
+	_, err := RouterOS{}.Deploy(context.Background(), roReq(t, srv.URL, ssh, m, func(c map[string]any) { c["timeoutSeconds"] = 10 }))
+	if err == nil || time.Since(start) > 15*time.Second {
+		t.Fatalf("err=%v after %v", err, time.Since(start))
 	}
 }

@@ -208,6 +208,8 @@ func (RouterOS) Deploy(ctx context.Context, req targets.Request) (targets.Result
 	if cfg.TimeoutSeconds == 0 {
 		timeout = 90 * time.Second
 	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	sum := sha256.Sum256(req.Material.LeafDER)
 	fp := hex.EncodeToString(sum[:])
 	fp8 := fp[:8]
@@ -219,7 +221,7 @@ func (RouterOS) Deploy(ctx context.Context, req targets.Request) (targets.Result
 		return fail(err)
 	}
 	base := strings.TrimRight(cfg.URL, "/")
-	call := func(method, path string, body any) ([]byte, error) {
+	callCtx := func(ctx context.Context, method, path string, body any) ([]byte, error) {
 		full := base + path
 		if err := httpx.CheckURL(full, req.HTTP.AllowLoopback); err != nil {
 			return nil, err
@@ -260,6 +262,9 @@ func (RouterOS) Deploy(ctx context.Context, req targets.Request) (targets.Result
 			}, string(snippet)))
 		}
 		return b, nil
+	}
+	call := func(method, path string, body any) ([]byte, error) {
+		return callCtx(ctx, method, path, body)
 	}
 	list := func() ([]roCert, error) {
 		b, err := call(http.MethodGet, roCerts, nil)
@@ -314,6 +319,22 @@ func (RouterOS) Deploy(ctx context.Context, req targets.Request) (targets.Result
 			return fail(err)
 		}
 		defer func() { _ = cl.Close() }()
+		uploaded := true
+		cleaned := false
+		removeFiles := func() {
+			rctx, rcancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+			defer rcancel()
+			for _, f := range files {
+				if _, err := callCtx(rctx, http.MethodPost, roFileRemove, map[string]string{roFileIDKey: f}); err != nil {
+					warns = append(warns, "remove file "+f+": "+err.Error())
+				}
+			}
+		}
+		defer func() {
+			if uploaded && !cleaned {
+				removeFiles()
+			}
+		}()
 		if err := cl.WriteFileSCP(ctx, files[0], mat.Fullchain, os.FileMode(0o644)); err != nil {
 			return fail(fmt.Errorf("upload %s: %w", files[0], err))
 		}
@@ -334,11 +355,8 @@ func (RouterOS) Deploy(ctx context.Context, req targets.Request) (targets.Result
 		if !cur.HasKey {
 			return fail(errors.New("imported certificate has no private key"))
 		}
-		for _, f := range files {
-			if _, err := call(http.MethodPost, roFileRemove, map[string]string{roFileIDKey: f}); err != nil {
-				warns = append(warns, "remove file "+f+": "+err.Error())
-			}
-		}
+		cleaned = true
+		removeFiles()
 	} else if !cur.HasKey {
 		return fail(errors.New("existing certificate has no private key"))
 	}

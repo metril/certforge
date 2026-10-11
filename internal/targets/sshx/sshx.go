@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -196,6 +197,8 @@ func (c *Client) WriteFile(ctx context.Context, path string, data []byte, mode o
 	return nil
 }
 
+var scpNameRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+
 // scpAck reads one SCP reply: 0 is success, 1 and 2 carry a message line.
 func scpAck(r *bufio.Reader) error {
 	b, err := r.ReadByte()
@@ -211,10 +214,11 @@ func scpAck(r *bufio.Reader) error {
 
 // WriteFileSCP uploads data as name in the remote's default directory with
 // the SCP sink protocol ("scp -t"), for devices without a POSIX shell such
-// as RouterOS. name must be a plain file name.
+// as RouterOS. name must match ^[A-Za-z0-9._-]{1,64}$ and is passed to the
+// remote command unquoted, since such devices may keep quotes in the name.
 func (c *Client) WriteFileSCP(ctx context.Context, name string, data []byte, mode os.FileMode) error {
-	if name == "" || strings.ContainsAny(name, "/\n\x00") {
-		return fmt.Errorf("sshx: scp name %q must be a plain file name", name)
+	if !scpNameRe.MatchString(name) {
+		return fmt.Errorf("sshx: scp name %q must match %s", name, scpNameRe)
 	}
 	s, err := c.c.NewSession()
 	if err != nil {
@@ -229,7 +233,7 @@ func (c *Client) WriteFileSCP(ctx context.Context, name string, data []byte, mod
 	if err != nil {
 		return fmt.Errorf("sshx: scp: %w", err)
 	}
-	if err := s.Start("scp -t " + shQuote(name)); err != nil {
+	if err := s.Start("scp -t " + name); err != nil {
 		return fmt.Errorf("sshx: start: %w", err)
 	}
 	stop := context.AfterFunc(ctx, func() { _ = s.Close() })

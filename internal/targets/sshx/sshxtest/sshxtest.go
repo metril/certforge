@@ -40,6 +40,8 @@ type Server struct {
 	// Pass is the accepted password; empty means "pw".
 	Pass   string
 	ScpErr string
+	// ScpHang makes the SCP sink never acknowledge.
+	ScpHang bool
 }
 
 // NewSigner returns a fresh ed25519 signer and its private key.
@@ -178,7 +180,12 @@ func (s *Server) scpSink(ch ssh.Channel, cmd string) {
 	s.Cmds = append(s.Cmds, cmd)
 	s.Stdin = append(s.Stdin, nil)
 	fail := s.ScpErr
+	hang := s.ScpHang
 	s.Mu.Unlock()
+	if hang {
+		_, _ = io.Copy(io.Discard, ch)
+		return
+	}
 	if fail != "" {
 		_, _ = ch.Write([]byte("\x02" + fail + "\n"))
 		code = 1
