@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -88,5 +89,39 @@ func TestParseRetryAfter(t *testing.T) {
 		if got := parseRetryAfter(c.in, now); got != c.want {
 			t.Errorf("parseRetryAfter(%q) = %v, want %v", c.in, got, c.want)
 		}
+	}
+}
+
+func TestMaxBodyHonoured(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(strings.Repeat("x", 1000)))
+	}))
+	defer srv.Close()
+	for _, tc := range []struct {
+		max  int64
+		want int
+	}{{0, 1000}, {100, 100}} {
+		c, err := New(Options{AllowLoopback: true, MaxBody: tc.max})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, body, err := c.attempt(context.Background(), "GET", srv.URL, "h", nil, nil, new(time.Duration))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(body) != tc.want {
+			t.Fatalf("max %d: got %d bytes, want %d", tc.max, len(body), tc.want)
+		}
+	}
+}
+
+func TestDialContextRefusesBlockedHost(t *testing.T) {
+	c, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if conn, err := c.DialContext(context.Background(), "tcp", "127.0.0.1:1"); err == nil {
+		_ = conn.Close()
+		t.Fatal("loopback dial should be refused")
 	}
 }
