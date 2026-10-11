@@ -9,6 +9,7 @@ Three target types ship with CertForge:
 | Traefik (`traefik`) | An agent | Always sent |
 | Vault KV (`vault-kv`) | The server | Only if you switch on **Include private key** |
 | Authentik (`authentik`) | The server | Always sent |
+| SSH (`ssh`) | The server | Only when a file uses `key` or `bundle` |
 
 ## Before you start
 
@@ -207,6 +208,27 @@ An Authentik target pushes a certificate and its private key into Authentik's ce
 | **Timeout** (`timeoutSeconds`) | Seconds per request, 5 to 120. | 30 |
 
 Each deploy looks the keypair up by exact name. If it exists it is updated in place, so brands, providers and outposts keep pointing at it. Otherwise it is created. If two keypairs share the name the deploy fails. When Authentik already holds the same certificate, nothing is written.
+
+## SSH
+
+An SSH target writes certificate files to a remote host and runs optional commands before and after. Use it for devices with no certificate API, such as PiKVM and the GL.iNet Comet KVM. It runs on the server, so its grants have no client.
+
+| Field | What it does | Default |
+|---|---|---|
+| **Host**, **Port** (`host`, `port`) | The SSH server. | Port 22 |
+| **Username** (`username`) | Login name. | None |
+| **Password**, **Private key** (`password`, `privateKey`) | At least one. The key is PEM and must not have a passphrase. Stored encrypted. | None |
+| **Host key** (`hostKey`) | The pinned server key, a `known_hosts` line or `<type> <base64>`. Required: there is no trust on first use, and a mismatch fails before anything runs. | None |
+| **Files** (`files`) | 1 to 16 entries of `path` (absolute), `content` and `mode`. `content` is `fullchain`, `cert`, `chain`, `key`, `bundle` (fullchain plus key, as HAProxy and lighttpd want) or the name of a file from the grant's layout. | Mode `0644` |
+| **Command before writing** (`preCommand`) | Run first. A non-zero exit aborts the deploy. | None |
+| **Command after writing** (`postCommand`) | Always run when set, even after a failed write, so state is restored. | None |
+| **Timeout** (`timeoutSeconds`) | Seconds for the whole deploy, 5 to 300. | 60 |
+
+Get the host key with `ssh-keyscan -t ed25519 <host>` and paste the key line it prints. Compare it with the device's own fingerprint if you can.
+
+The private key is sent only when a file asks for `key` or `bundle` (or a layout file, which may hold it), and needs the `keys:export` permission. Files are written atomically with a restrictive umask, then set to the chosen mode.
+
+**PiKVM and GL.iNet Comet.** Their root filesystem is read-only, so the **PiKVM / GL.iNet Comet** preset wraps the write: `rw` before, then `ro; systemctl restart kvmd-nginx` after. It writes `/etc/kvmd/user/ssl/server.crt` and `server.key`. Older PiKVM images use `/etc/kvmd/nginx/ssl/`: pick **PiKVM (legacy paths)**. Log in as `root`.
 
 ## Grant a certificate to a server target
 

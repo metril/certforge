@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, makeTarget, meWith, org, targetTestSecret, targetVaultKv, testSecretSchema, traefikSchema, url, vaultKvSchema } from '@/test/fixtures';
+import { authHandlers, makeTarget, meWith, org, sshSchema, targetTestSecret, targetVaultKv, testSecretSchema, traefikSchema, url, vaultKvSchema } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let posted: unknown;
@@ -223,4 +223,19 @@ it('target secrets not cached', async () => {
   expect(queryClient.getMutationCache().getAll()).toHaveLength(0);
   const cached = JSON.stringify(queryClient.getQueryCache().getAll().map((q) => q.state.data));
   expect(cached).not.toContain('s3cr3t-token');
+});
+
+it('ssh preset fills files and commands; custom clears them', async () => {
+  server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, sshSchema], notifiers: [], signers: [] })));
+  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  expect(within(sheet).queryByRole('radio', { name: 'PiKVM / GL.iNet Comet' })).not.toBeInTheDocument();
+  await user.click(within(sheet).getByRole('radio', { name: /^SSH/ }));
+  await user.click(within(sheet).getByRole('radio', { name: 'PiKVM / GL.iNet Comet' }));
+  expect(await within(sheet).findByDisplayValue('/etc/kvmd/user/ssl/server.crt')).toBeInTheDocument();
+  expect(within(sheet).getByDisplayValue('ro; systemctl restart kvmd-nginx')).toBeInTheDocument();
+  await user.click(within(sheet).getByRole('radio', { name: 'PiKVM (legacy paths)' }));
+  expect(await within(sheet).findByDisplayValue('/etc/kvmd/nginx/ssl/server.key')).toBeInTheDocument();
+  await user.click(within(sheet).getByRole('radio', { name: 'Custom' }));
+  await waitFor(() => expect(within(sheet).queryByDisplayValue('rw')).not.toBeInTheDocument());
 });

@@ -67,8 +67,8 @@ const sshSchema = `{
     "port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 22, "title": "Port"},
     "username": {"type": "string", "title": "Username"},
     "password": {"type": "string", "secret": true, "title": "Password", "description": "Password login. Provide a password, a private key, or both."},
-    "privateKey": {"type": "string", "secret": true, "title": "Private key", "description": "PEM private key (not passphrase-protected)."},
-    "hostKey": {"type": "string", "title": "Host key", "description": "Pinned server key: a known_hosts line or '<type> <base64>'. Get it with: ssh-keyscan -t ed25519 <host>"},
+    "privateKey": {"type": "string", "secret": true, "maxLength": 8192, "title": "Private key", "description": "PEM private key (not passphrase-protected)."},
+    "hostKey": {"type": "string", "maxLength": 2048, "title": "Host key", "description": "Pinned server key: a known_hosts line or '<type> <base64>'. Get it with: ssh-keyscan -t ed25519 <host>"},
     "files": {
       "type": "array", "minItems": 1, "maxItems": 16, "title": "Files",
       "items": {

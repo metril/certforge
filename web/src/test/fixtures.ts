@@ -946,3 +946,41 @@ export function overviewOf(certs: Certificate[]): CertificateOverview {
 }
 
 export const emptyOverview: CertificateOverview = { counts: { active: 0, pending: 0, failed: 0, expired: 0, revoked: 0, total: 0 }, items: [], beyond: 0, truncated: false };
+
+// internal/deploy/ssh.go: server-run, keyPolicy optional.
+export const sshSchema = {
+  code: 'ssh',
+  name: 'SSH (files + commands)',
+  aliases: [],
+  runsOn: 'server',
+  keyPolicy: 'optional',
+  schema: {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    title: 'SSH (files + commands)',
+    type: 'object',
+    additionalProperties: false,
+    required: ['host', 'username', 'hostKey', 'files'],
+    properties: {
+      host: { type: 'string', title: 'Host' },
+      port: { type: 'integer', minimum: 1, maximum: 65535, default: 22, title: 'Port' },
+      username: { type: 'string', title: 'Username' },
+      password: { type: 'string', secret: true, title: 'Password' },
+      privateKey: { type: 'string', secret: true, maxLength: 8192, title: 'Private key' },
+      hostKey: { type: 'string', maxLength: 2048, title: 'Host key' },
+      files: {
+        type: 'array', minItems: 1, maxItems: 16, title: 'Files',
+        items: {
+          type: 'object', additionalProperties: false, required: ['path', 'content'],
+          properties: {
+            path: { type: 'string', title: 'Remote path' },
+            content: { type: 'string', title: 'Content' },
+            mode: { type: 'string', pattern: '^0[0-7]{3}$', default: '0644', title: 'Mode' },
+          },
+        },
+      },
+      preCommand: { type: 'string', maxLength: 512, title: 'Command before writing' },
+      postCommand: { type: 'string', maxLength: 512, title: 'Command after writing' },
+      timeoutSeconds: { type: 'integer', minimum: 5, maximum: 300, default: 60, title: 'Timeout (seconds)' },
+    },
+  },
+};
