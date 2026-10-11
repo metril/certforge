@@ -356,7 +356,7 @@ export function FlowPage() {
             />
           );
         })}
-        {wide && <FlowConnectors containerRef={box} getEl={getEl} flow={flow} path={path} hoverPath={hoverPath} selected={!!selected} collapsed={collapsed} />}
+        {wide && <FlowConnectors containerRef={box} getEl={getEl} flow={flow} path={path} hoverPath={hoverPath} selected={!!selected} selectedEdge={edge ?? undefined} onSelectEdge={setEdge} collapsed={collapsed} />}
       </div>
       {detailing && <FlowDetailSheet flow={flow} nodes={all} path={path} node={selected} edge={edge ?? undefined} slug={org.slug} orgId={org.id} wide={wide} onClose={clearDetail} onSelectNode={setFocus} onSelectEdge={setEdge} />}
       </div>

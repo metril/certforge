@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { server } from '@/test/server';
 import { authHandlers, makeGrant, meWith, problem, url } from '@/test/fixtures';
@@ -502,4 +502,17 @@ it('the Links buttons in node mode switch to edge mode', async () => {
   await user.click(within(aside).getByRole('button', { name: /^→ nginx/ }));
   await waitFor(() => expect(router.state.location.search).toMatchObject({ edge: 'layout:nginx>client:web-1' }));
   expect(router.state.location.search).not.toHaveProperty('focus');
+});
+
+it('clicking an edge hit path selects the edge and hovering shows the labelled chip', async () => {
+  setWidth(true);
+  useFlow(() => detailed);
+  const { router, container } = renderRoute('/o/acme/flow');
+  await screen.findByRole('button', { name: /Certificate www/ });
+  await waitFor(() => expect(container.querySelector('[data-edge-hit="client:web-1|layout:nginx"]')).not.toBeNull());
+  const hit = container.querySelector('[data-edge-hit="client:web-1|layout:nginx"]')!;
+  fireEvent.pointerEnter(hit);
+  expect(await screen.findByText(/^grant · /)).toBeInTheDocument();
+  fireEvent.click(hit);
+  await waitFor(() => expect(router.state.location.search).toMatchObject({ edge: 'layout:nginx>client:web-1' }));
 });
