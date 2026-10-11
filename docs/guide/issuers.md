@@ -1,12 +1,13 @@
 # Issuers
 
-An issuer is whatever signs your certificates. CertForge supports three kinds of certificate authority (CA): **ACME** (Let's Encrypt, ZeroSSL and others), a **Built-in CA** that CertForge runs itself, and **Vault PKI**, which signs through your Vault or OpenBao. **Issuers** has three tabs: **CAs**, **ACME accounts** and **DNS credentials** (see [Challenges](challenges.md#dns-01)).
+An issuer is whatever signs your certificates. CertForge supports four kinds of certificate authority (CA): **ACME** (Let's Encrypt, ZeroSSL and others), a **Built-in CA** that CertForge runs itself, **Vault PKI**, which signs through your Vault or OpenBao, and **Active Directory (AD CS)**, which enrols from Microsoft Certificate Services. **Issuers** has three tabs: **CAs**, **ACME accounts** and **DNS credentials** (see [Challenges](challenges.md#dns-01)).
 
 ## Before you start
 
 - Adding, editing, rotating and deleting CAs needs `cas:write`, which only global admins have. Everyone with `cas:read` can view them.
 - Registering and deleting ACME accounts needs `accounts:write` (operators and org admins).
 - Vault PKI needs the Vault integration first: [Vault](vault.md).
+- AD CS needs its enrollment web services set up first: [Active Directory Certificate Services](#active-directory-certificate-services).
 
 ## Add an ACME CA
 
@@ -127,6 +128,46 @@ A **Vault PKI** CA signs leaves through a PKI secrets engine in Vault or OpenBao
 5. Select **Save CA**.
 
 CertForge reads the CA certificate from Vault at creation, so Vault must be reachable.
+
+## Active Directory Certificate Services
+
+An **Active Directory (AD CS)** CA enrols leaf certificates from a Microsoft enterprise CA through the Certificate Enrollment Policy Web Service (CEP, MS-XCEP) and Certificate Enrollment Web Service (CES, MS-WSTEP) with username and password authentication over HTTPS. CertForge is not an intermediate CA: it submits a certificate request, then stores the leaf, chain and key like any other issued certificate.
+
+### Prerequisites on the Windows side
+
+1. Install the CEP and CES role services with Username authentication. Run these on the CA host (or a separate web server for CES):
+
+   ```powershell
+   Install-AdcsEnrollmentPolicyWebService -AuthenticationType Username -SSLCertThumbprint <thumbprint>
+   Install-AdcsEnrollmentWebService -CAConfig "<host>\<CA Name>" -AuthenticationType Username -SSLCertThumbprint <thumbprint>
+   ```
+
+2. Bind a valid HTTPS certificate in IIS for those sites. CertForge must trust it: either it chains to a public or system root, or you paste its root into **TLS CA bundle**.
+3. Constrained delegation is needed only when CES is not on the CA host.
+4. Create a low-privilege service account with **Read** and **Enroll** on the template.
+5. Duplicate the **Web Server** template, set **Subject Name** to **Supply in the request**, publish it on the CA and grant the account Read and Enroll. A template that needs manager approval leaves requests pending.
+
+The default URLs are:
+
+- Policy: `https://<host>/ADPolicyProvider_CEP_UsernamePassword/service.svc/CEP`
+- Enrollment: `https://<host>/<CA_Name_underscored>_CES_UsernamePassword/service.svc/CES` (spaces in the CA name become underscores)
+
+### Add the CA
+
+1. On **CAs**, select **Add CA** and set **Type** to **Active Directory (AD CS)**.
+2. Enter a **Name**, the **Policy (CEP) URL**, the **Template** name, the **Username** (`DOMAIN\user` or a UPN) and the **Password**.
+3. Leave **Enrollment (CES) URL** empty to use the one the policy publishes, or set it when CES sits behind another name.
+4. Paste a **TLS CA bundle** if the web services use a private certificate. It is also used as the chain when CES returns only the leaf.
+5. Select **Save CA**.
+
+CertForge reads the policy at creation with those credentials, so the service must be reachable and the template must exist and allow the account to enrol. It stores the template's OID, takes the CA certificate from the policy as the trust bundle, and seals the password. When you edit the CA, leave **Password** untouched to keep the stored one; a changed URL, template, account or password reads the policy again.
+
+### Behaviour
+
+- **Revocation is manual.** CES has no revocation call. Revoke in the AD CS console; CertForge refuses with a message saying so.
+- **Pending requests.** If the template requires CA manager approval, the attempt fails with `approve request <id> in AD CS, then renew` and is not retried on its own. Approve the request in AD CS, then use **Renew now**. A denied request fails the same way with the CA's reason.
+- **Chain.** The leaf is the returned certificate whose key matches the request; the chain is the rest, ordered leaf to root.
+- **Names.** The issued certificate must cover every requested name; otherwise the issue fails (the template may be overriding the subject alternative names).
 
 ## Options
 
