@@ -2,6 +2,13 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.16.0](https://github.com/metril/certforge/compare/v0.15.0...v0.16.0) (2026-10-11)
+
+
+### Features
+
+* **deploy:** pfSense Plus deploy target (Netgate built-in REST API) ([d96657e](https://github.com/metril/certforge/commit/d96657e56e064c65a0bbcbb9be839ec86b67b456))
+
 ## [0.15.0](https://github.com/metril/certforge/compare/v0.14.0...v0.15.0) (2026-10-11)
 
 
