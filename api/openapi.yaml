@@ -4446,7 +4446,7 @@ components:
         items: {type: array, items: {$ref: "#/components/schemas/Layout"}, description: Layouts sorted by name.}
     DeployTargetType:
       type: string
-      enum: [traefik, vault-kv]
+      enum: [traefik, vault-kv, authentik, pfsense, truenas, routeros, ssh]
       description: Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today.
     RunsOn:
       type: string
