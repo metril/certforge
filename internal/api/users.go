@@ -121,3 +121,64 @@ func (s *Server) UpdateUser(ctx context.Context, req gen.UpdateUserRequestObject
 	}
 	return gen.UpdateUser200JSONResponse(userDetail(u)), nil
 }
+
+// DeleteUser permanently removes a user. Their sessions and role bindings go
+// with them and the API keys they created are revoked (and keep no creator).
+// Refused for oneself, for a local admin account, and for the last enabled
+// global admin.
+func (s *Server) DeleteUser(ctx context.Context, req gen.DeleteUserRequestObject) (gen.DeleteUserResponseObject, error) {
+	p, err := authorize(ctx, authz.ActionUsersWrite, nil)
+	if err != nil {
+		return nil, err
+	}
+	if p.Kind == authn.KindUser && req.Id == p.UserID {
+		return nil, conflict("You cannot delete your own account.")
+	}
+
+	tx, err := s.d.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.d.Queries.WithTx(tx)
+
+	if _, err := q.GetUser(ctx, req.Id); errors.Is(err, pgx.ErrNoRows) {
+		return nil, notFound("user %s", req.Id)
+	} else if err != nil {
+		return nil, err
+	}
+	if err := ensureAnotherGlobalAdmin(ctx, q, req.Id); err != nil {
+		return nil, err
+	}
+	u, err := q.GetUserForUpdate(ctx, req.Id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, notFound("user %s", req.Id)
+	} else if err != nil {
+		return nil, err
+	}
+	if u.LocalPasswordHash != nil {
+		return nil, conflict("Local admin accounts cannot be deleted.")
+	}
+
+	sessions, err := q.CountSessionsForUser(ctx, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	revokedKeys, err := q.RevokeAPIKeysByCreator(ctx, &u.ID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := q.DeleteRoleBindingsForUser(ctx, u.ID.String()); err != nil {
+		return nil, err
+	}
+	if _, err := q.DeleteUser(ctx, u.ID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	s.audit(ctx, audit.Event{Action: "user.delete", ResourceType: "user", ResourceID: u.ID.String(),
+		Details: map[string]any{"displayName": u.DisplayName, "email": u.Email, "revokedKeys": revokedKeys, "sessions": sessions}})
+	return gen.DeleteUser204Response{}, nil
+}

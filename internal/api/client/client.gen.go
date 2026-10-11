@@ -543,10 +543,10 @@ type ApiKey struct {
 	// CreatedAt Creation time.
 	CreatedAt time.Time `json:"createdAt"`
 
-	// CreatedBy Creating user; the key never exceeds their current permissions.
-	CreatedBy openapi_types.UUID `json:"createdBy"`
+	// CreatedBy Creating user; the key never exceeds their current permissions. Null once that user is deleted (the key is then revoked).
+	CreatedBy *openapi_types.UUID `json:"createdBy"`
 
-	// CreatedByName Creator's display name.
+	// CreatedByName Creator's display name; "(deleted user)" once they are deleted.
 	CreatedByName string `json:"createdByName"`
 
 	// ExpiresAt Expiry; null never expires.
@@ -4170,6 +4170,9 @@ type ClientInterface interface {
 	// ListUsers request
 	ListUsers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DeleteUser request
+	DeleteUser(ctx context.Context, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// UpdateUserWithBody request with any body
 	UpdateUserWithBody(ctx context.Context, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -6254,6 +6257,18 @@ func (c *APIClient) GetSetupStatus(ctx context.Context, reqEditors ...RequestEdi
 
 func (c *APIClient) ListUsers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListUsersRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) DeleteUser(ctx context.Context, id Id, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteUserRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -12596,6 +12611,40 @@ func NewListUsersRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewDeleteUserRequest generates requests for DeleteUser
+func NewDeleteUserRequest(server string, id Id) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/users/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewUpdateUserRequest calls the generic UpdateUser builder with application/json body
 func NewUpdateUserRequest(server string, id Id, body UpdateUserJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -13166,6 +13215,9 @@ type ClientWithResponsesInterface interface {
 
 	// ListUsersWithResponse request
 	ListUsersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListUsersResponse, error)
+
+	// DeleteUserWithResponse request
+	DeleteUserWithResponse(ctx context.Context, id Id, reqEditors ...RequestEditorFn) (*DeleteUserResponse, error)
 
 	// UpdateUserWithBodyWithResponse request with any body
 	UpdateUserWithBodyWithResponse(ctx context.Context, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateUserResponse, error)
@@ -16806,6 +16858,32 @@ func (r ListUsersResponse) StatusCode() int {
 	return 0
 }
 
+type DeleteUserResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON409 *Conflict
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteUserResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteUserResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type UpdateUserResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
@@ -18360,6 +18438,15 @@ func (c *ClientWithResponses) ListUsersWithResponse(ctx context.Context, reqEdit
 		return nil, err
 	}
 	return ParseListUsersResponse(rsp)
+}
+
+// DeleteUserWithResponse request returning *DeleteUserResponse
+func (c *ClientWithResponses) DeleteUserWithResponse(ctx context.Context, id Id, reqEditors ...RequestEditorFn) (*DeleteUserResponse, error) {
+	rsp, err := c.DeleteUser(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteUserResponse(rsp)
 }
 
 // UpdateUserWithBodyWithResponse request with arbitrary body returning *UpdateUserResponse
@@ -26773,6 +26860,60 @@ func ParseListUsersResponse(rsp *http.Response) (*ListUsersResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteUserResponse parses an HTTP response from a DeleteUserWithResponse call
+func ParseDeleteUserResponse(rsp *http.Response) (*DeleteUserResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteUserResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalError

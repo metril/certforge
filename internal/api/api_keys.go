@@ -143,12 +143,13 @@ func (s *Server) CreateApiKey(ctx context.Context, req gen.CreateApiKeyRequestOb
 	if err != nil {
 		return nil, err
 	}
+	uid := p.UserID
 	token, prefix, hash, err := authn.NewAPIKeyToken()
 	if err != nil {
 		return nil, err
 	}
 	k, err := s.createKeyCapped(ctx, sqlcgen.CreateAPIKeyParams{Name: name, Prefix: prefix, SecretHash: hash,
-		Scopes: granted, OrgID: in.OrgId, CreatedBy: p.UserID, ExpiresAt: in.ExpiresAt}, pol.APIKeyMaxActivePerUser)
+		Scopes: granted, OrgID: in.OrgId, CreatedBy: &uid, ExpiresAt: in.ExpiresAt}, pol.APIKeyMaxActivePerUser)
 	if pgCode(err) == pgUniqueViolation {
 		// The 12-hex prefix collided with an existing key's; regenerate once
 		// and retry rather than fail the request over a ~1-in-2^48 event.
@@ -157,7 +158,7 @@ func (s *Server) CreateApiKey(ctx context.Context, req gen.CreateApiKeyRequestOb
 			return nil, err
 		}
 		k, err = s.createKeyCapped(ctx, sqlcgen.CreateAPIKeyParams{Name: name, Prefix: prefix, SecretHash: hash,
-			Scopes: granted, OrgID: in.OrgId, CreatedBy: p.UserID, ExpiresAt: in.ExpiresAt}, pol.APIKeyMaxActivePerUser)
+			Scopes: granted, OrgID: in.OrgId, CreatedBy: &uid, ExpiresAt: in.ExpiresAt}, pol.APIKeyMaxActivePerUser)
 	}
 	if pgCode(err) == pgForeignKeyViolation {
 		return nil, unprocessable("orgId", "no such org")
