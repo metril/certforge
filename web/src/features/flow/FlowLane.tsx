@@ -72,7 +72,7 @@ function GroupHead({ id, title, count, total, problems, open, onToggle, sub, hel
         aria-expanded={open}
         data-group-head={id}
         onClick={onToggle}
-        className={cn('flex min-w-0 flex-1 items-center gap-1.5 rounded-sm text-left focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none', sub ? 'text-xs text-ink-muted' : 'text-xs font-semibold tracking-wide text-ink-muted uppercase')}
+        className={cn('flex min-w-0 flex-1 items-center gap-1.5 rounded-sm text-left @max-[11rem]:basis-full focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none', sub ? 'text-xs text-ink-muted' : 'text-xs font-semibold tracking-wide text-ink-muted uppercase')}
       >
         <ChevronRight className={cn('size-3.5 shrink-0 transition-transform', open && 'rotate-90')} aria-hidden />
         <span className="truncate">{title}</span>
@@ -171,7 +171,7 @@ export function FlowLane({ laneKey, org, hidden, nodes, total, selectedId, onPat
           <GroupHead id={laneKey} title={meta.title} count={countText} total={total} problems={nodes.filter((n) => isProblem(n.status)).length} open={laneOpen} onToggle={() => onToggle(laneKey)} help={`flow.lane.${laneKey}`} />
         ) : (
           <>
-            <span className="min-w-0 flex-1 truncate text-xs font-semibold tracking-wide text-ink-muted uppercase">{meta.title}</span>
+            <span className="min-w-0 flex-1 truncate @max-[11rem]:basis-full text-xs font-semibold tracking-wide text-ink-muted uppercase">{meta.title}</span>
             {!hidden && <Counts count={countText} total={total} problems={0} />}
             <HelpTip id={`flow.lane.${laneKey}`} label={meta.title} />
           </>
