@@ -15,8 +15,8 @@ import (
 )
 
 // TestMigration00026GrantTargetOptions checks the backfill moves a Traefik
-// target's defaultCert onto its grants (live or removal-pending), leaves
-// other targets alone, and that down drops the column.
+// target's defaultCert onto one live grant per client (the certificate whose
+// name sorts first), leaves other targets alone, and that down drops the column.
 func TestMigration00026GrantTargetOptions(t *testing.T) {
 	pool, _ := dbtest.New(t)
 	ctx := context.Background()
@@ -43,13 +43,19 @@ func TestMigration00026GrantTargetOptions(t *testing.T) {
 		}
 		return id
 	}
-	cert := mustID(`INSERT INTO certificates (org_id, name, common_name) VALUES ($1, 'a', 'a') RETURNING id`, org)
+	mkCert := func(n string) uuid.UUID {
+		return mustID(`INSERT INTO certificates (org_id, name, common_name) VALUES ($1, $2, $2) RETURNING id`, org, n)
+	}
+	cert := mkCert("a")
 	target := func(name, typ, cfg string) uuid.UUID {
 		return mustID(`INSERT INTO deploy_targets (org_id, name, type, config) VALUES ($1, $2, $3, $4::jsonb) RETURNING id`, org, name, typ, cfg)
 	}
-	grant := func(client, tgt uuid.UUID, removed bool) uuid.UUID {
+	grantC := func(client, c, tgt uuid.UUID, removed bool) uuid.UUID {
 		return mustID(`INSERT INTO client_cert_grants (client_id, cert_id, deploy_target_id, removed_at)
-			VALUES ($1, $2, $3, CASE WHEN $4 THEN now() END) RETURNING id`, client, cert, tgt, removed)
+			VALUES ($1, $2, $3, CASE WHEN $4 THEN now() END) RETURNING id`, client, c, tgt, removed)
+	}
+	grant := func(client, tgt uuid.UUID, removed bool) uuid.UUID {
+		return grantC(client, cert, tgt, removed)
 	}
 	cl := func(n string) uuid.UUID {
 		return mustID(`INSERT INTO clients (org_id, name) VALUES ($1, $2) RETURNING id`, org, n)
@@ -61,6 +67,11 @@ func TestMigration00026GrantTargetOptions(t *testing.T) {
 	gGone := grant(cl("c2"), tr, true)
 	gOff := grant(cl("c3"), trOff, false)
 	gVault := grant(cl("c4"), vk, false)
+	multi := cl("c5")
+	gZeta := grantC(multi, mkCert("zeta"), tr, false)
+	gAlpha := grantC(multi, mkCert("Alpha"), tr, false)
+	gMid := grantC(multi, mkCert("mid"), tr, false)
+	gOther := grantC(cl("c6"), mkCert("other"), tr, false)
 
 	if _, err := p.UpTo(ctx, 26); err != nil {
 		t.Fatalf("up to 00026: %v", err)
@@ -72,7 +83,10 @@ func TestMigration00026GrantTargetOptions(t *testing.T) {
 		}
 		return s
 	}
-	for id, want := range map[uuid.UUID]string{gLive: `{"defaultCert": true}`, gGone: `{"defaultCert": true}`, gOff: `{}`, gVault: `{}`} {
+	for id, want := range map[uuid.UUID]string{
+		gLive: `{"defaultCert": true}`, gGone: `{}`, gOff: `{}`, gVault: `{}`,
+		gAlpha: `{"defaultCert": true}`, gZeta: `{}`, gMid: `{}`, gOther: `{"defaultCert": true}`,
+	} {
 		if got := opts(id); got != want {
 			t.Errorf("grant %s target_options = %s, want %s", id, got, want)
 		}

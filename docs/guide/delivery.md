@@ -70,6 +70,8 @@ Each grant on a Traefik target has its own **Target options**, shown under the t
 | **Certificate directory as Traefik sees it** (`certsDirTraefik`) | The same directory as Traefik sees it. | Derived from `dir` and `pathPrefix` when `certsDir` is under `dir`, else the same as `certsDir` |
 | **TLS stores** (`stores`) | Overrides the target's stores for this certificate. | The target's |
 
+On upgrade, a target's Default certificate moves to one grant per client: the certificate whose name sorts first, which is what Traefik was serving. Change it in the grant if another certificate should be the default.
+
 The target no longer has a `defaultCert` field. Migration 00026 moved it onto the grants of each target that had it on. Agents older than this change ignore the options and report drift until you upgrade them. Upgrade the server first: a new agent fails to parse a stale target-level `defaultCert` from an old server.
 
 Example YAML for `dir: /data/traefik`, `pathPrefix: /etc/traefik/dynamic` and **Default certificate** on for the grant:
