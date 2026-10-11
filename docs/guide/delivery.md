@@ -70,7 +70,7 @@ Each grant on a Traefik target has its own **Target options**, shown under the t
 | **Certificate directory as Traefik sees it** (`certsDirTraefik`) | The same directory as Traefik sees it. | Derived from `dir` and `pathPrefix` when `certsDir` is under `dir`, else the same as `certsDir` |
 | **TLS stores** (`stores`) | Overrides the target's stores for this certificate. | The target's |
 
-On upgrade, a target's Default certificate moves to one grant per client: the certificate whose name sorts first, which is what Traefik was serving. Change it in the grant if another certificate should be the default.
+On upgrade, a target's Default certificate moves to one grant per client, directory and store set (the same key the 409 rule uses): the certificate whose name sorts first, which is what Traefik was serving. Change it in the grant if another certificate should be the default.
 
 The target no longer has a `defaultCert` field. Migration 00026 moved it onto the grants of each target that had it on. An agent older than this change ignores the options: on the default grant's next deploy it writes the YAML without `defaultCertificate`, and Traefik stops serving the default certificate. Upgrade agents right after the server. A new agent fails to parse a stale target-level `defaultCert` from an old server, so upgrade the server first.
 
