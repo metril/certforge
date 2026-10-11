@@ -163,6 +163,12 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	monitorSvc := &monitor.Service{Store: &monitor.Store{Pool: pool, Q: q}, Emitter: notifyEmitter, Settings: store}
 	issuanceStore := issuance.NewStore(pool, box, store)
 	issuanceStore.SetVault(vaultProvider)
+	// An AD CS CA's web services follow the notifier URL policy: loopback
+	// only when the notifications allowLoopbackUrls setting says so.
+	issuanceStore.SetADCSLoopback(func(ctx context.Context) bool {
+		set, err := notify.Current(ctx, store)
+		return err == nil && set.AllowLoopbackURLs
+	})
 	certStore := certstore.New(pool, box)
 	// dispatcher.River is set right after riverClient exists below (same
 	// construct-then-wire order as keysSvc): RegisterRiver only needs the
