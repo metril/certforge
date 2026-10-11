@@ -72,6 +72,16 @@ func TestMigration00026GrantTargetOptions(t *testing.T) {
 	gAlpha := grantC(multi, mkCert("Alpha"), tr, false)
 	gMid := grantC(multi, mkCert("mid"), tr, false)
 	gOther := grantC(cl("c6"), mkCert("other"), tr, false)
+	// Two targets sharing a dir collide in the 409 rule: only one default.
+	trB := target("tr-b", "traefik", `{"dir":"/d/","defaultCert":true}`)
+	dupClient := cl("c7")
+	gDup1 := grant(dupClient, tr, false)
+	gDup2 := grantC(dupClient, mkCert("dup2"), trB, false)
+	// Different dirs: one default each.
+	trC := target("tr-c", "traefik", `{"dir":"/e","defaultCert":true}`)
+	diffClient := cl("c8")
+	gDiff1 := grant(diffClient, tr, false)
+	gDiff2 := grantC(diffClient, mkCert("diff2"), trC, false)
 
 	if _, err := p.UpTo(ctx, 26); err != nil {
 		t.Fatalf("up to 00026: %v", err)
@@ -86,10 +96,14 @@ func TestMigration00026GrantTargetOptions(t *testing.T) {
 	for id, want := range map[uuid.UUID]string{
 		gLive: `{"defaultCert": true}`, gGone: `{}`, gOff: `{}`, gVault: `{}`,
 		gAlpha: `{"defaultCert": true}`, gZeta: `{}`, gMid: `{}`, gOther: `{"defaultCert": true}`,
+		gDiff1: `{"defaultCert": true}`, gDiff2: `{"defaultCert": true}`,
 	} {
 		if got := opts(id); got != want {
 			t.Errorf("grant %s target_options = %s, want %s", id, got, want)
 		}
+	}
+	if a, b := opts(gDup1), opts(gDup2); (a == `{"defaultCert": true}`) == (b == `{"defaultCert": true}`) {
+		t.Errorf("same-dir targets: want exactly one default, got %s and %s", a, b)
 	}
 	has := func(id uuid.UUID) bool {
 		var b bool
@@ -98,7 +112,7 @@ func TestMigration00026GrantTargetOptions(t *testing.T) {
 		}
 		return b
 	}
-	if has(tr) || has(trOff) {
+	if has(tr) || has(trOff) || has(trB) || has(trC) {
 		t.Error("traefik target config still has defaultCert")
 	}
 	if !has(vk) {
