@@ -1802,8 +1802,10 @@ paths:
         Needs clients:write. The certificate, layout, deploy target and hooks must be in the
         client's org (422 otherwise); a layout or a deploy target is required. One grant per
         client and certificate (409). Two grants on one client never write the same path, counting
-        Traefik `certs/<name>` files and grants awaiting agent removal (409). 422 when the
-        certificate's current version has no key and the layout or target needs one. Bumps the
+        Traefik `certs/<name>` files and grants awaiting agent removal (409), or two grants on
+        the client both set Traefik's default certificate for the same directory and store (409).
+        422 when the certificate's current version has no key and the layout or target needs
+        one, or targetOptions invalid or not supported by the target type. Bumps the
         client's desired revision.
       requestBody:
         required: true
@@ -1857,8 +1859,10 @@ paths:
         Needs clients:write. Replaces delivery, layout, deploy target, hooks and
         auto-remediation; the certificate cannot change. Re-renders the deployment and bumps
         the client's revision. 409 when another of the client's grants (including one awaiting
-        agent removal) would write one of the same file paths. 422 when the certificate's
-        current version has no key and the layout or target needs one.
+        agent removal) would write one of the same file paths, or two grants on the client both
+        set Traefik's default certificate for the same directory and store. 422 when the
+        certificate's current version has no key and the layout or target needs one, or
+        targetOptions invalid or not supported by the target type.
       requestBody:
         required: true
         content:
@@ -2084,7 +2088,8 @@ paths:
         secret re-entered (422 "re-enter the secret"). Every URL in config is
         checked against the URL policy (422 "address not allowed"). Every grant using it is
         re-rendered and its client's revision bumped in the same transaction; 409 when that would
-        make two of a client's grants write one path.
+        make two of a client's grants write one path, or two grants on the client both set
+        Traefik's default certificate for the same directory and store.
       requestBody:
         required: true
         content:
@@ -4555,7 +4560,7 @@ components:
     Grant:
       type: object
       description: A certificate granted to a client (runsOn agent) or a server-side deploy target (runsOn server), with how it is delivered.
-      required: [id, clientId, clientName, certificateId, certificateName, delivery, layoutId, deployTargetId, hookIds, autoRemediate, deployment, runsOn, serverDeployment, createdAt, updatedAt]
+      required: [id, clientId, clientName, certificateId, certificateName, delivery, layoutId, deployTargetId, targetOptions, hookIds, autoRemediate, deployment, runsOn, serverDeployment, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid, description: Grant id.}
         clientId: {type: string, format: uuid, nullable: true, description: Client; null for a server grant.}
@@ -4565,6 +4570,7 @@ components:
         delivery: {$ref: "#/components/schemas/GrantDelivery"}
         layoutId: {type: string, format: uuid, nullable: true, description: Output layout; null for a target-only grant.}
         deployTargetId: {type: string, format: uuid, nullable: true, description: Deploy target; null for files only.}
+        targetOptions: {type: object, additionalProperties: true, description: Per-type options for the deploy target, validated against the type's grantSchema from GET /meta/schemas. Empty when the type has none.}
         hookIds: {type: array, items: {type: string, format: uuid}, description: Hooks in run order.}
         autoRemediate: {type: boolean, description: On drift, bump the revision so the agent reinstalls.}
         deployment:
@@ -4589,16 +4595,18 @@ components:
         delivery: {$ref: "#/components/schemas/GrantDelivery"}
         layoutId: {type: string, format: uuid, nullable: true, description: Output layout in the same org.}
         deployTargetId: {type: string, format: uuid, nullable: true, description: Deploy target in the same org.}
+        targetOptions: {type: object, additionalProperties: true, default: {}, description: Per-type options for the deploy target, validated against the type's grantSchema from GET /meta/schemas.}
         hookIds: {type: array, maxItems: 16, items: {type: string, format: uuid}, description: Hooks in the same org, in run order.}
         autoRemediate: {type: boolean, default: false, description: Reinstall automatically on drift.}
     GrantUpdate:
       type: object
       description: A grant's replaceable fields; all are sent.
-      required: [delivery, layoutId, deployTargetId, hookIds, autoRemediate]
+      required: [delivery, layoutId, deployTargetId, targetOptions, hookIds, autoRemediate]
       properties:
         delivery: {$ref: "#/components/schemas/GrantDelivery"}
         layoutId: {type: string, format: uuid, nullable: true, description: Output layout in the same org.}
         deployTargetId: {type: string, format: uuid, nullable: true, description: Deploy target in the same org.}
+        targetOptions: {type: object, additionalProperties: true, description: Per-type options for the deploy target, validated against the type's grantSchema from GET /meta/schemas.}
         hookIds: {type: array, maxItems: 16, items: {type: string, format: uuid}, description: Hooks in run order.}
         autoRemediate: {type: boolean, description: Reinstall automatically on drift.}
     GrantList:

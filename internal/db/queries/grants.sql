@@ -222,7 +222,7 @@ WHERE id = ANY(sqlc.arg(ids)::uuid[]) RETURNING id, desired_revision;
 
 -- name: ClientGrantPaths :many
 SELECT g.id, g.client_id, g.removed_at, ce.name AS certificate_name, o.files AS layout_files,
-       t.type AS target_type, t.config AS target_config, d.expected
+       t.type AS target_type, t.config AS target_config, g.target_options, d.expected
 FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 LEFT JOIN deployments d ON d.grant_id = g.id

@@ -216,7 +216,7 @@ func (q *Queries) CheckGrantRefs(ctx context.Context, arg CheckGrantRefsParams) 
 
 const clientGrantPaths = `-- name: ClientGrantPaths :many
 SELECT g.id, g.client_id, g.removed_at, ce.name AS certificate_name, o.files AS layout_files,
-       t.type AS target_type, t.config AS target_config, d.expected
+       t.type AS target_type, t.config AS target_config, g.target_options, d.expected
 FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 LEFT JOIN deployments d ON d.grant_id = g.id
@@ -234,6 +234,7 @@ type ClientGrantPathsRow struct {
 	LayoutFiles     []byte     `json:"layout_files"`
 	TargetType      *string    `json:"target_type"`
 	TargetConfig    []byte     `json:"target_config"`
+	TargetOptions   []byte     `json:"target_options"`
 	Expected        []byte     `json:"expected"`
 }
 
@@ -254,6 +255,7 @@ func (q *Queries) ClientGrantPaths(ctx context.Context, clientIds []uuid.UUID) (
 			&i.LayoutFiles,
 			&i.TargetType,
 			&i.TargetConfig,
+			&i.TargetOptions,
 			&i.Expected,
 		); err != nil {
 			return nil, err

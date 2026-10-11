@@ -27,6 +27,9 @@ type GrantInput struct {
 	TargetID      *uuid.UUID
 	HookIDs       []uuid.UUID
 	AutoRemediate bool
+	// TargetOptions is the grant's per-type target options (targetOptions);
+	// empty or null means none and is stored as {}.
+	TargetOptions json.RawMessage
 	// RequireKey, when set, is called once the grant is known to hand a
 	// private key to the agent (a key-bearing layout or any agent target);
 	// its error refuses the write. The API layer wires keys:export here.
@@ -57,6 +60,20 @@ func (in GrantInput) validate() error {
 		return invalid("hookIds", "each hook may appear once")
 	}
 	return nil
+}
+
+// targetOptions is TargetOptions as stored: {} when empty or null.
+func (in GrantInput) targetOptions() []byte {
+	if emptyOptions(in.TargetOptions) {
+		return []byte("{}")
+	}
+	return in.TargetOptions
+}
+
+// emptyOptions reports whether raw carries no options: empty, null or {}.
+func emptyOptions(raw []byte) bool {
+	var m map[string]json.RawMessage
+	return json.Unmarshal(raw, &m) != nil || len(m) == 0
 }
 
 func (in GrantInput) hooks() []uuid.UUID {
@@ -308,7 +325,7 @@ func (s *Service) memoSecretOpener() func(ctx context.Context, sealed []byte) (m
 // server-side Request.Config carries (Dispatcher.Deploy) — never just the
 // public fields, even though neither shipped type (traefik, vault-kv) has
 // a secret field today.
-func targetOf(typ *string, cfg []byte, secrets map[string]string) (*agentproto.Target, error) {
+func targetOf(typ *string, cfg []byte, secrets map[string]string, grantOpts []byte) (*agentproto.Target, error) {
 	if typ == nil {
 		return nil, nil
 	}
@@ -316,7 +333,11 @@ func targetOf(typ *string, cfg []byte, secrets map[string]string) (*agentproto.T
 	if err != nil {
 		return nil, err
 	}
-	return &agentproto.Target{Type: *typ, Config: merged}, nil
+	t := &agentproto.Target{Type: *typ, Config: merged}
+	if !emptyOptions(grantOpts) {
+		t.GrantOptions = json.RawMessage(grantOpts)
+	}
+	return t, nil
 }
 
 // grantPaths lists the paths a live grant writes (layout files, then its
@@ -324,7 +345,7 @@ func targetOf(typ *string, cfg []byte, secrets map[string]string) (*agentproto.T
 // material. typ naming a server-run type (no FileTarget) is a data
 // integrity bug — a client grant can never have one — so that is an error,
 // not a silent zero paths.
-func grantPaths(reg *targets.Registry, layoutFiles []byte, typ *string, cfg []byte, certName string) ([]string, error) {
+func grantPaths(reg *targets.Registry, layoutFiles []byte, typ *string, cfg, grantOpts []byte, certName string) ([]string, error) {
 	var out []string
 	if len(layoutFiles) > 0 {
 		var layout []delivery.OutputFile
@@ -344,7 +365,7 @@ func grantPaths(reg *targets.Registry, layoutFiles []byte, typ *string, cfg []by
 		if !ok {
 			return nil, fmt.Errorf("agents: target type %q writes no agent files (a server-run target reached a client-only path)", *typ)
 		}
-		paths, err := ft.Paths(cfg, nil, certName)
+		paths, err := ft.Paths(cfg, grantOpts, certName)
 		if err != nil {
 			return nil, err
 		}
@@ -392,11 +413,11 @@ func (s *Service) checkPaths(ctx context.Context, q *sqlcgen.Queries, clientIDs 
 			// removal-pending one) still references them, so this is
 			// always available.
 			if len(specs) == 0 {
-				if paths, err = grantPaths(s.Reg, r.LayoutFiles, r.TargetType, r.TargetConfig, r.CertificateName); err != nil {
+				if paths, err = grantPaths(s.Reg, r.LayoutFiles, r.TargetType, r.TargetConfig, r.TargetOptions, r.CertificateName); err != nil {
 					return err
 				}
 			}
-		} else if paths, err = grantPaths(s.Reg, r.LayoutFiles, r.TargetType, r.TargetConfig, r.CertificateName); err != nil {
+		} else if paths, err = grantPaths(s.Reg, r.LayoutFiles, r.TargetType, r.TargetConfig, r.TargetOptions, r.CertificateName); err != nil {
 			return err
 		}
 		for _, p := range paths {
@@ -510,7 +531,7 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 			if err != nil {
 				return nil, nil, err
 			}
-			if target, err = targetOf(r.TargetType, r.TargetConfig, secrets); err != nil {
+			if target, err = targetOf(r.TargetType, r.TargetConfig, secrets, r.TargetOptions); err != nil {
 				return nil, nil, err
 			}
 		}
@@ -631,7 +652,7 @@ func (s *Service) CreateGrant(ctx context.Context, orgID, clientID uuid.UUID, in
 		return uuid.Nil, conflict("Revoked clients cannot receive grants.")
 	}
 	g, err := q.CreateGrant(ctx, sqlcgen.CreateGrantParams{ClientID: &clientID, CertID: in.CertID, Delivery: in.Delivery,
-		OutputSpecID: in.LayoutID, DeployTargetID: in.TargetID, HookIds: in.hooks(), AutoRemediate: in.AutoRemediate, TargetOptions: []byte("{}")})
+		OutputSpecID: in.LayoutID, DeployTargetID: in.TargetID, HookIds: in.hooks(), AutoRemediate: in.AutoRemediate, TargetOptions: in.targetOptions()})
 	if pgCode(err) == pgUniqueViolation {
 		return uuid.Nil, conflict("This client already has a grant for that certificate.")
 	}
@@ -689,7 +710,7 @@ func (s *Service) UpdateGrant(ctx context.Context, orgID, grantID uuid.UUID, in 
 		return err
 	}
 	g, err := q.UpdateGrant(ctx, sqlcgen.UpdateGrantParams{Delivery: in.Delivery, OutputSpecID: in.LayoutID,
-		DeployTargetID: in.TargetID, HookIds: in.hooks(), AutoRemediate: in.AutoRemediate, ID: grantID})
+		DeployTargetID: in.TargetID, HookIds: in.hooks(), AutoRemediate: in.AutoRemediate, TargetOptions: in.targetOptions(), ID: grantID})
 	if err != nil {
 		return err
 	}

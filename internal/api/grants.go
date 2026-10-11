@@ -50,11 +50,39 @@ func grantOut(r sqlcgen.GrantViewsRow) (gen.Grant, error) {
 	if err != nil {
 		return gen.Grant{}, err
 	}
+	opts, err := targetOptionsOut(r.TargetOptions)
+	if err != nil {
+		return gen.Grant{}, err
+	}
 	clientName := r.ClientName
 	return gen.Grant{Id: r.ID, ClientId: r.ClientID, ClientName: &clientName, CertificateId: r.CertID, CertificateName: r.CertificateName,
-		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, HookIds: r.HookIds,
+		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, TargetOptions: opts, HookIds: r.HookIds,
 		AutoRemediate: r.AutoRemediate, Deployment: &d, RunsOn: gen.RunsOn("agent"), ServerDeployment: nil,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}, nil
+}
+
+// targetOptionsOut decodes a grant's stored target_options; never nil.
+func targetOptionsOut(raw []byte) (map[string]interface{}, error) {
+	m := map[string]interface{}{}
+	if len(raw) == 0 {
+		return m, nil
+	}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, err
+	}
+	if m == nil {
+		m = map[string]interface{}{}
+	}
+	return m, nil
+}
+
+// targetOptionsIn encodes request targetOptions for agents.GrantInput; nil
+// or empty means none.
+func targetOptionsIn(m map[string]interface{}) (json.RawMessage, error) {
+	if len(m) == 0 {
+		return nil, nil
+	}
+	return json.Marshal(m)
 }
 
 func (s *Server) grantByID(ctx context.Context, orgID, id uuid.UUID) (gen.Grant, error) {
@@ -119,6 +147,12 @@ func (s *Server) CreateGrant(ctx context.Context, r gen.CreateGrantRequestObject
 	if r.Body.AutoRemediate != nil {
 		in.AutoRemediate = *r.Body.AutoRemediate
 	}
+	if r.Body.TargetOptions != nil {
+		var err error
+		if in.TargetOptions, err = targetOptionsIn(*r.Body.TargetOptions); err != nil {
+			return nil, err
+		}
+	}
 	id, err := s.d.Agents.CreateGrant(ctx, r.OrgId, r.Id, in)
 	if err != nil {
 		return nil, mapAgentErr(err)
@@ -149,6 +183,9 @@ func (s *Server) UpdateGrant(ctx context.Context, r gen.UpdateGrantRequestObject
 	}
 	in := agents.GrantInput{Delivery: string(r.Body.Delivery), LayoutID: r.Body.LayoutId, TargetID: r.Body.DeployTargetId,
 		HookIDs: r.Body.HookIds, AutoRemediate: r.Body.AutoRemediate, RequireKey: requireKeysExport(r.OrgId)}
+	if in.TargetOptions, err = targetOptionsIn(r.Body.TargetOptions); err != nil {
+		return nil, err
+	}
 	if err := s.d.Agents.UpdateGrant(ctx, r.OrgId, r.Id, in); err != nil {
 		return nil, mapAgentErr(err)
 	}
@@ -272,7 +309,7 @@ func serverGrantOut(r sqlcgen.ServerGrantViewsRow) gen.Grant {
 			LastError: lastError, DeployedAt: r.DeployedAt, UpdatedAt: updatedAt}
 	}
 	return gen.Grant{Id: r.ID, ClientId: nil, ClientName: nil, CertificateId: r.CertID, CertificateName: r.CertificateName,
-		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, HookIds: r.HookIds,
+		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, TargetOptions: map[string]interface{}{}, HookIds: r.HookIds,
 		AutoRemediate: r.AutoRemediate, Deployment: nil, RunsOn: gen.RunsOn("server"), ServerDeployment: sd,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
 }

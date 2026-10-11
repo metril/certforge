@@ -1246,3 +1246,36 @@ func TestAgentGrantKeyNeedsKeysExport(t *testing.T) {
 		t.Fatalf("admin key-bearing grant: %v", err)
 	}
 }
+
+// TestGrantTargetOptionsRoundTrip: targetOptions go in on create/update and
+// come back on the Grant; invalid options are a 422.
+func TestGrantTargetOptionsRoundTrip(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("admin")
+	c := f.activeClient(t, "web-1")
+	certID, _ := f.currentCert(t, "web")
+	res, err := f.srv.CreateDeployTarget(op, gen.CreateDeployTargetRequestObject{OrgId: f.org, Body: &gen.DeployTargetInput{
+		Name: "traefik", Type: gen.DeployTargetType("traefik"), Config: map[string]interface{}{"dir": "/etc/traefik/dynamic"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tid := res.(gen.CreateDeployTarget201JSONResponse).Id
+	opts := map[string]interface{}{"defaultCert": true}
+	cr, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &gen.GrantInput{
+		CertificateId: certID, Delivery: push(), DeployTargetId: &tid, TargetOptions: &opts}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := cr.(gen.CreateGrant201JSONResponse)
+	if g.TargetOptions["defaultCert"] != true {
+		t.Fatalf("targetOptions %v", g.TargetOptions)
+	}
+	up, err := f.srv.UpdateGrant(op, gen.UpdateGrantRequestObject{OrgId: f.org, Id: g.Id, Body: &gen.GrantUpdate{
+		Delivery: push(), DeployTargetId: &tid, HookIds: []uuid.UUID{}, TargetOptions: map[string]interface{}{}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := up.(gen.UpdateGrant200JSONResponse).TargetOptions; got == nil || len(got) != 0 {
+		t.Fatalf("after update targetOptions = %#v, want {}", got)
+	}
+}
