@@ -1870,12 +1870,16 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete a user
+         * @description Needs users:write (global admin). Permanently removes the user, their sessions and role bindings, and revokes the API keys they created (the keys stay listed as revoked with no creator). Audit history keeps the user's id. You cannot delete yourself, a local admin account, or the last enabled global admin (409).
+         */
+        delete: operations["deleteUser"];
         options?: never;
         head?: never;
         /**
          * Enable or disable a user
-         * @description Needs users:write (global admin). Disabling revokes every session of the user at once and stops API keys they created. You cannot disable yourself (409). Users are never deleted.
+         * @description Needs users:write (global admin). Disabling revokes every session of the user at once and stops API keys they created. You cannot disable yourself (409).
          */
         patch: operations["updateUser"];
         trace?: never;
@@ -3643,10 +3647,10 @@ export interface components {
             orgId: string | null;
             /**
              * Format: uuid
-             * @description Creating user; the key never exceeds their current permissions.
+             * @description Creating user; the key never exceeds their current permissions. Null once that user is deleted (the key is then revoked).
              */
-            createdBy: string;
-            /** @description Creator's display name. */
+            createdBy: string | null;
+            /** @description Creator's display name; "(deleted user)" once they are deleted. */
             createdByName: string;
             /**
              * Format: date-time
@@ -8439,6 +8443,32 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description User deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
         };
     };

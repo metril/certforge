@@ -236,3 +236,38 @@ func TestLoadPrincipalGroupBindings(t *testing.T) {
 		t.Fatalf("missing global (org-less) group binding: %+v", p.Bindings)
 	}
 }
+
+func TestMiddlewareOrphanedAPIKey(t *testing.T) {
+	ctx := context.Background()
+	_, q := dbtest.New(t)
+	u := seedAdmin(t, q)
+	token, prefix, hash, err := authn.NewAPIKeyToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.CreateAPIKey(ctx, sqlcgen.CreateAPIKeyParams{Name: "k", Prefix: prefix, SecretHash: hash,
+		Scopes: []string{"certs:read"}, CreatedBy: &u.ID}); err != nil {
+		t.Fatal(err)
+	}
+	h := authn.Middleware(authn.MiddlewareOptions{
+		Sessions: authn.NewSessions(q, time.Hour),
+		Queries:  q,
+		Fail:     func(w http.ResponseWriter, status int, _, _ string) { w.WriteHeader(status) },
+	})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
+	call := func() int {
+		req := httptest.NewRequest(http.MethodGet, "/private", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if code := call(); code != 200 {
+		t.Fatalf("live key: %d", code)
+	}
+	if _, err := q.DeleteUser(ctx, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	if code := call(); code != 401 {
+		t.Fatalf("orphaned key: %d, want 401", code)
+	}
+}
