@@ -118,6 +118,48 @@ func TestHookCRUD(t *testing.T) {
 	}
 }
 
+func TestRestartHookCRUD(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	restart := gen.HookKind("restart")
+	target := "docker:nginx"
+	in := func(k *gen.HookKind, tg string, argv []string) *gen.HookInput {
+		return &gen.HookInput{Name: "rs", Phase: gen.HookPhase("post_deploy"), Kind: k, Target: &tg, Argv: argv}
+	}
+	for _, bad := range []*gen.HookInput{
+		in(&restart, "nginx", []string{}),
+		in(&restart, target, []string{"/bin/true"}),
+		in(nil, target, []string{"/bin/true"}),
+	} {
+		_, err := f.srv.CreateHook(op, gen.CreateHookRequestObject{OrgId: f.org, Body: bad})
+		wantStatus(t, err, 422)
+	}
+	res, err := f.srv.CreateHook(op, gen.CreateHookRequestObject{OrgId: f.org, Body: in(&restart, target, nil)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := res.(gen.CreateHook201JSONResponse)
+	if h.Kind != "restart" || h.Target != target || len(h.Argv) != 0 {
+		t.Fatalf("hook %+v", h)
+	}
+	up, err := f.srv.UpdateHook(op, gen.UpdateHookRequestObject{OrgId: f.org, Id: h.Id, Body: in(&restart, "systemd:nginx.service", []string{})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u := up.(gen.UpdateHook200JSONResponse); u.Target != "systemd:nginx.service" {
+		t.Fatalf("updated %+v", u)
+	}
+	// Default kind is exec.
+	ex, err := f.srv.CreateHook(op, gen.CreateHookRequestObject{OrgId: f.org,
+		Body: &gen.HookInput{Name: "ex", Phase: gen.HookPhase("post_deploy"), Argv: []string{"/bin/true"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := ex.(gen.CreateHook201JSONResponse); e.Kind != "exec" || e.Target != "" {
+		t.Fatalf("exec hook %+v", e)
+	}
+}
+
 // Review Focus: deleting another org's layout, deploy target or hook by id
 // must 404, never leak that org's grants (client/certificate names) in a 409.
 func TestDeliveryDeleteIsOrgScoped(t *testing.T) {
