@@ -176,11 +176,11 @@ func (TrueNAS) Deploy(ctx context.Context, req targets.Request) (targets.Result,
 	if err != nil {
 		return fail(err)
 	}
-	conn, _, err := websocket.Dial(ctx, wsURL.String(), opts)
+	conn, err := tnDial(ctx, wsURL.String(), opts)
 	if err != nil {
 		return fail(err)
 	}
-	defer conn.CloseNow()
+	defer func() { _ = conn.CloseNow() }()
 	rc := newRPCClient(conn)
 
 	if err := tnLogin(ctx, rc, username, cfg.APIKey); err != nil {
@@ -245,7 +245,7 @@ func (TrueNAS) Deploy(ctx context.Context, req targets.Request) (targets.Result,
 			detail += ", ui cert set"
 			// The UI restart may drop the socket, so stale cleanup
 			// needs a fresh connection.
-			conn.CloseNow()
+			_ = conn.CloseNow()
 			conn = nil
 			for i := 0; i < 5 && conn == nil; i++ {
 				if i > 0 {
@@ -254,12 +254,12 @@ func (TrueNAS) Deploy(ctx context.Context, req targets.Request) (targets.Result,
 					case <-time.After(2 * time.Second):
 					}
 				}
-				conn, _, _ = websocket.Dial(ctx, wsURL.String(), opts)
+				conn, _ = tnDial(ctx, wsURL.String(), opts)
 			}
 			if conn == nil {
 				return targets.Result{Detail: detail + " (cleanup skipped: reconnect failed)"}, nil
 			}
-			defer conn.CloseNow()
+			defer func() { _ = conn.CloseNow() }()
 			rc = newRPCClient(conn)
 			if err := tnLogin(ctx, rc, username, cfg.APIKey); err != nil {
 				return targets.Result{Detail: detail + " (cleanup skipped: login failed)"}, nil
@@ -373,4 +373,12 @@ func tnJob(ctx context.Context, rc *rpcClient, method string, params any) (json.
 		case <-time.After(time.Second):
 		}
 	}
+}
+
+func tnDial(ctx context.Context, u string, opts *websocket.DialOptions) (*websocket.Conn, error) {
+	conn, resp, err := websocket.Dial(ctx, u, opts)
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	return conn, err
 }

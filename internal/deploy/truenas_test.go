@@ -43,7 +43,7 @@ func (f *fakeTrueNAS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	defer c.CloseNow()
+	defer func() { _ = c.CloseNow() }()
 	for {
 		_, b, err := c.Read(r.Context())
 		if err != nil {
