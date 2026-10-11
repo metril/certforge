@@ -193,7 +193,7 @@ func TestAssembleTruncation(t *testing.T) {
 	g := Assemble(Input{OrgSlug: "a", Certs: certs, Clients: clients}, allPerms(), now)
 	total := len(g.Certificates.Nodes) + len(g.Clients.Nodes)
 	if total != MaxNodes || !g.Truncated {
-		t.Fatalf("total=%d truncated=%v", total, g.Truncated)
+		t.Fatalf("total=%d truncated=%v omitted=certs:%d clients:%d, want total %d truncated", total, g.Truncated, g.Certificates.Omitted, g.Clients.Omitted, MaxNodes)
 	}
 	if len(g.Clients.Nodes) != maxSideNodes {
 		t.Fatalf("clients = %d, want side cap %d", len(g.Clients.Nodes), maxSideNodes)
@@ -201,12 +201,23 @@ func TestAssembleTruncation(t *testing.T) {
 	// Under the cap: not truncated.
 	g = Assemble(Input{OrgSlug: "a", Certs: certs[:10]}, allPerms(), now)
 	if g.Truncated {
-		t.Fatal("small map truncated")
+		t.Fatal("10 certificates under the cap but Truncated is set")
 	}
 	// The certificate list itself being cut short counts.
 	g = Assemble(Input{OrgSlug: "a", Certs: certs[:10], CertsMore: true}, allPerms(), now)
 	if !g.Truncated {
-		t.Fatal("CertsMore did not set truncated")
+		t.Fatal("CertsMore=true but Truncated is not set")
+	}
+}
+
+func TestAssembleClientsMoreCountsOverflow(t *testing.T) {
+	var clients []Client
+	for i := 0; i < MaxNodes; i++ {
+		clients = append(clients, Client{ID: id(), Name: fmt.Sprintf("h%04d", i), Status: "active"})
+	}
+	g := Assemble(Input{OrgSlug: "a", Clients: clients, ClientsMore: true}, allPerms(), now)
+	if want := MaxNodes - maxSideNodes + 1; g.Clients.Omitted != want || !g.Truncated {
+		t.Fatalf("clients omitted=%d truncated=%v, want omitted %d truncated", g.Clients.Omitted, g.Truncated, want)
 	}
 }
 
@@ -224,7 +235,7 @@ func TestAssembleEdgeCap(t *testing.T) {
 	}
 	g := Assemble(Input{OrgSlug: "a", Certs: certs, DNSCreds: dns}, allPerms(), now)
 	if len(g.Edges) != MaxEdges || !g.Truncated {
-		t.Fatalf("edges=%d truncated=%v", len(g.Edges), g.Truncated)
+		t.Fatalf("edges=%d truncated=%v omitted=certs:%d clients:%d, want %d edges truncated", len(g.Edges), g.Truncated, g.Certificates.Omitted, g.Clients.Omitted, MaxEdges)
 	}
 }
 
@@ -323,7 +334,7 @@ func TestIssuerUsageBeyondCap(t *testing.T) {
 	in := Input{OrgSlug: "a", CAs: []Item{{ID: caLate, Name: "late", Detail: "acme"}, {ID: caNone, Name: "none", Detail: "acme"}}, Certs: certs}
 	g := Assemble(in, allPerms(), now)
 	if !g.Truncated {
-		t.Fatal("not truncated")
+		t.Fatal("MaxNodes+100 certificates but Truncated is not set")
 	}
 	got := map[string]Node{}
 	for _, n := range g.Issuers.Nodes {
