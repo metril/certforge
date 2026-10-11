@@ -31,6 +31,7 @@ const authSchema = `{
     "clientSecret": {"type": "string", "title": "Client secret", "description": "Leave empty for a public client using PKCE only.", "secret": true, "maxLength": 1024},
     "scopes": {"type": "array", "title": "Scopes", "description": "Requested scopes; must include openid.", "items": {"type": "string"}, "default": ["openid", "profile", "email", "groups"]},
     "groupsClaim": {"type": "string", "title": "Groups claim", "description": "ID token claim listing the user's groups; group role bindings match these. A dotted path (realm_access.roles) reads a nested claim.", "default": "groups", "maxLength": 128},
+    "usernameClaim": {"type": "string", "title": "Username claim", "description": "Claim tried first for the display name; falls back to preferred_username, name, email, then the subject.", "default": "preferred_username", "maxLength": 128},
     "sessionTtlHours": {"type": "integer", "title": "Session lifetime (hours)", "description": "How long a sign-in lasts. Applies to new sessions.", "minimum": 1, "maximum": 720, "default": 12},
     "trustedProxies": {"type": "array", "title": "Trusted proxies", "description": "Addresses or CIDRs of reverse proxies whose X-Forwarded-For is believed.", "items": {"type": "string"}, "default": [], "examples": [["10.0.0.0/8"]]},
     "loginRatePerMinute": {"type": "integer", "title": "Login rate limit (per minute)", "description": "Login attempts allowed per client address per minute. 0 disables the limit.", "minimum": 0, "default": 10},
@@ -43,7 +44,7 @@ const authSchema = `{
 // DefaultAPIKeyMaxActive is the default per-user active API key cap.
 const DefaultAPIKeyMaxActive = 50
 
-const authDefault = `{"enabled":false,"scopes":["openid","profile","email","groups"],"groupsClaim":"groups","sessionTtlHours":12,"trustedProxies":[],"loginRatePerMinute":10,"loginBurst":5,"apiKeyMaxLifetimeDays":0,"apiKeyMaxActivePerUser":50}`
+const authDefault = `{"enabled":false,"scopes":["openid","profile","email","groups"],"groupsClaim":"groups","usernameClaim":"preferred_username","sessionTtlHours":12,"trustedProxies":[],"loginRatePerMinute":10,"loginBurst":5,"apiKeyMaxLifetimeDays":0,"apiKeyMaxActivePerUser":50}`
 
 // AuthSettings is the decoded authentication section plus its secret.
 type AuthSettings struct {
@@ -52,6 +53,7 @@ type AuthSettings struct {
 	ClientID        string   `json:"clientId"`
 	Scopes          []string `json:"scopes"`
 	GroupsClaim     string   `json:"groupsClaim"`
+	UsernameClaim   string   `json:"usernameClaim"`
 	SessionTTLHours int      `json:"sessionTtlHours"`
 	TrustedProxies  []string `json:"trustedProxies"`
 	// LoginRatePerMinute is the per-client login attempt limit; <= 0 disables

@@ -265,13 +265,15 @@ func (o *OIDC) Finish(ctx context.Context, cfg AuthSettings, redirectURL string,
 			if err := ui.Claims(&uic); err != nil {
 				o.log().Warn("oidc: userinfo claims unreadable; using ID token claims only", "err", err)
 			} else {
-				mergeMissing(claims, uic, "email", "name", "preferred_username", cfg.GroupsClaim)
+				mergeMissing(claims, uic, "email", "name", "preferred_username", cfg.UsernameClaim, cfg.GroupsClaim)
 			}
 		}
 	}
 	id := Identity{Issuer: idt.Issuer, Subject: idt.Subject, Email: claimString(claims, "email"),
-		Name: claimString(claims, "name"), Groups: claimGroups(claimAt(claims, cfg.GroupsClaim))}
-	for _, alt := range []string{claimString(claims, "preferred_username"), id.Email, id.Subject} {
+		Groups: claimGroups(claimAt(claims, cfg.GroupsClaim))}
+	custom, _ := claimAt(claims, cfg.UsernameClaim).(string)
+	for _, alt := range []string{custom, claimString(claims, "preferred_username"),
+		claimString(claims, "name"), id.Email, id.Subject} {
 		if id.Name == "" {
 			id.Name = alt
 		}

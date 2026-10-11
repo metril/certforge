@@ -30,7 +30,11 @@ const (
 // User is the identity the next login returns.
 type User struct {
 	Subject, Email, Name string
-	Groups               []string
+	// PreferredUsername, when set, is sent as the preferred_username claim.
+	PreferredUsername string
+	// Extra claims are sent verbatim (ID token and userinfo).
+	Extra  map[string]any
+	Groups []string
 }
 
 // Provider is a running fake OIDC provider.
@@ -229,7 +233,14 @@ func (p *Provider) userinfo(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_token"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"sub": u.Subject, "email": u.Email, "name": u.Name, "groups": u.Groups})
+	out := map[string]any{"sub": u.Subject, "email": u.Email, "name": u.Name, "groups": u.Groups}
+	if u.PreferredUsername != "" {
+		out["preferred_username"] = u.PreferredUsername
+	}
+	for k, v := range u.Extra {
+		out[k] = v
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (p *Provider) sign(g grant) (string, error) {
@@ -244,6 +255,12 @@ func (p *Provider) sign(g grant) (string, error) {
 		"iat": now.Unix(), "exp": now.Add(5 * time.Minute).Unix(), "nonce": g.nonce}
 	if !slim {
 		claims["email"], claims["name"] = g.user.Email, g.user.Name
+		if g.user.PreferredUsername != "" {
+			claims["preferred_username"] = g.user.PreferredUsername
+		}
+		for k, v := range g.user.Extra {
+			claims[k] = v
+		}
 	}
 	if !slim && g.user.Groups != nil {
 		claims["groups"] = g.user.Groups
