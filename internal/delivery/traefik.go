@@ -22,7 +22,6 @@ const TraefikSchema = `{
   "properties": {
     "dir": {"type": "string", "title": "Directory on the agent", "description": "Traefik's file-provider directory as the agent sees it; the agent writes certforge-<name>.yml and certs/<name>/ here.", "pattern": "^/", "examples": ["/etc/traefik/dynamic"]},
     "pathPrefix": {"type": "string", "title": "Directory as Traefik sees it", "description": "Prefix for certFile and keyFile in the generated YAML when Traefik mounts the directory elsewhere. Empty means the same as the directory.", "pattern": "^(/.*)?$"},
-    "defaultCert": {"type": "boolean", "title": "Default certificate", "description": "Also serve this certificate when no SNI matches (tls.stores.<store>.defaultCertificate).", "default": false},
     "stores": {"type": "array", "title": "TLS stores", "description": "Traefik TLS stores for the certificate. Empty means default.", "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"}, "default": ["default"]},
     "acmeServiceUrl": {"type": "string", "format": "uri", "title": "ACME service URL", "description": "Absolute http or https URL of the agent's http-01/tls-alpn-01 listener. When set, the agent also writes a per-grant certforge-acme-<name>.yml routing /.well-known/acme-challenge/ requests here."}
   }
@@ -32,9 +31,68 @@ const TraefikSchema = `{
 type TraefikConfig struct {
 	Dir            string   `json:"dir"`
 	PathPrefix     string   `json:"pathPrefix,omitempty"`
-	DefaultCert    bool     `json:"defaultCert,omitempty"`
 	Stores         []string `json:"stores,omitempty"`
 	AcmeServiceURL string   `json:"acmeServiceUrl,omitempty"`
+}
+
+// TraefikGrantSchema is the per-grant options schema (targetOptions of a
+// grant on a traefik target; GET /meta/schemas grantSchema).
+const TraefikGrantSchema = `{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "defaultCert": {"type": "boolean", "title": "Default certificate", "description": "Serve this certificate when no SNI matches (tls.stores.<store>.defaultCertificate). One grant per client, directory and store.", "default": false},
+    "certsDir": {"type": "string", "title": "Certificate directory on the agent", "description": "Absolute directory where fullchain.pem and privkey.pem go. Empty means <dir>/certs/<name>.", "pattern": "^(/.*)?$"},
+    "certsDirTraefik": {"type": "string", "title": "Certificate directory as Traefik sees it", "description": "The same directory as Traefik sees it. Empty means derived from the target's directory and pathPrefix.", "pattern": "^(/.*)?$"},
+    "stores": {"type": "array", "title": "TLS stores", "description": "Overrides the target's stores for this certificate. Empty means the target's.", "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"}}
+  }
+}`
+
+// TraefikGrantOptions are a grant's own options on a traefik target.
+type TraefikGrantOptions struct {
+	DefaultCert     bool     `json:"defaultCert,omitempty"`
+	CertsDir        string   `json:"certsDir,omitempty"`
+	CertsDirTraefik string   `json:"certsDirTraefik,omitempty"`
+	Stores          []string `json:"stores,omitempty"`
+}
+
+// ParseTraefikGrantOptions decodes and validates a grant's traefik options;
+// empty, null or {} is the zero value.
+func ParseTraefikGrantOptions(raw json.RawMessage) (TraefikGrantOptions, error) {
+	var o TraefikGrantOptions
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return o, nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&o); err != nil {
+		return TraefikGrantOptions{}, &FieldError{"targetOptions", err.Error()}
+	}
+	if o.CertsDir != "" {
+		if err := CleanPath("targetOptions.certsDir", o.CertsDir); err != nil {
+			return o, err
+		}
+	}
+	if o.CertsDirTraefik != "" {
+		if err := CleanPath("targetOptions.certsDirTraefik", o.CertsDirTraefik); err != nil {
+			return o, err
+		}
+	}
+	for _, s := range o.Stores {
+		if !storeRe.MatchString(s) {
+			return o, &FieldError{"targetOptions.stores", fmt.Sprintf("store %q must be 1 to 64 letters, digits, - or _", s)}
+		}
+	}
+	return o, nil
+}
+
+// TraefikCertsDir is the directory on the agent that holds a certificate's
+// fullchain.pem and privkey.pem: opts.CertsDir, else <dir>/certs/<name>.
+func TraefikCertsDir(certName string, cfg TraefikConfig, opts TraefikGrantOptions) string {
+	if opts.CertsDir != "" {
+		return opts.CertsDir
+	}
+	return path.Join(cfg.Dir, "certs", SafeName(certName))
 }
 
 var storeRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
@@ -149,25 +207,33 @@ func AcmeRouterFile(certName string, names []string, cfg TraefikConfig) *File {
 	return &File{Path: path.Join(cfg.Dir, router+".yml"), Mode: "0644", Data: []byte(y.String())}
 }
 
-// RenderTraefik returns the files the target writes, in write order:
+// RenderTraefik returns the files the target writes (opts are the grant's own
+// options), in write order:
 // fullchain.pem, privkey.pem, certforge-<name>.yml, then (when
 // cfg.AcmeServiceURL is set) the ACME router file (see AcmeRouterFile for
 // what names is). Removal deletes in reverse order, so Traefik drops the
 // certificate before its files vanish.
-func RenderTraefik(certName string, names []string, cfg TraefikConfig, fullchain, key []byte) []File {
+func RenderTraefik(certName string, names []string, cfg TraefikConfig, opts TraefikGrantOptions, fullchain, key []byte) []File {
 	name := SafeName(certName)
-	prefix := cfg.PathPrefix
-	if prefix == "" {
-		prefix = cfg.Dir
+	certsDir := TraefikCertsDir(certName, cfg, opts)
+	traefikDir := opts.CertsDirTraefik
+	if traefikDir == "" {
+		traefikDir = certsDir
+		if cfg.PathPrefix != "" {
+			if rel, ok := strings.CutPrefix(certsDir, cfg.Dir); ok && (rel == "" || strings.HasPrefix(rel, "/")) {
+				traefikDir = path.Join(cfg.PathPrefix, rel)
+			}
+		}
 	}
-	stores := cfg.Stores
+	stores := opts.Stores
+	if len(stores) == 0 {
+		stores = cfg.Stores
+	}
 	if len(stores) == 0 {
 		stores = []string{"default"}
 	}
-	certRel := path.Join("certs", name, "fullchain.pem")
-	keyRel := path.Join("certs", name, "privkey.pem")
-	certFile := strconv.Quote(path.Join(prefix, certRel))
-	keyFile := strconv.Quote(path.Join(prefix, keyRel))
+	certFile := strconv.Quote(path.Join(traefikDir, "fullchain.pem"))
+	keyFile := strconv.Quote(path.Join(traefikDir, "privkey.pem"))
 	var y strings.Builder
 	y.WriteString("# Managed by CertForge. Do not edit; changes are overwritten.\n")
 	y.WriteString("tls:\n  certificates:\n")
@@ -175,15 +241,15 @@ func RenderTraefik(certName string, names []string, cfg TraefikConfig, fullchain
 	for _, s := range stores {
 		fmt.Fprintf(&y, "        - %s\n", strconv.Quote(s))
 	}
-	if cfg.DefaultCert {
+	if opts.DefaultCert {
 		y.WriteString("  stores:\n")
 		for _, s := range stores {
 			fmt.Fprintf(&y, "    %s:\n      defaultCertificate:\n        certFile: %s\n        keyFile: %s\n", strconv.Quote(s), certFile, keyFile)
 		}
 	}
 	out := []File{
-		{Path: path.Join(cfg.Dir, certRel), Mode: "0644", Data: fullchain},
-		{Path: path.Join(cfg.Dir, keyRel), Mode: "0600", Data: key},
+		{Path: path.Join(certsDir, "fullchain.pem"), Mode: "0644", Data: fullchain},
+		{Path: path.Join(certsDir, "privkey.pem"), Mode: "0600", Data: key},
 		{Path: path.Join(cfg.Dir, "certforge-"+name+".yml"), Mode: "0644", Data: []byte(y.String())},
 	}
 	if f := AcmeRouterFile(certName, names, cfg); f != nil {
