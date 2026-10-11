@@ -2,6 +2,13 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.15.0](https://github.com/metril/certforge/compare/v0.14.0...v0.15.0) (2026-10-11)
+
+
+### Features
+
+* **deploy:** generic SSH deploy target with PiKVM and GL.iNet Comet presets ([a9f624c](https://github.com/metril/certforge/commit/a9f624ca9d7bf162ff095b1bed154b37ce6d7495))
+
 ## [0.14.0](https://github.com/metril/certforge/compare/v0.13.0...v0.14.0) (2026-10-11)
 
 
