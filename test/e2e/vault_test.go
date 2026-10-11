@@ -518,21 +518,11 @@ func TestVaultAgainstCompose(t *testing.T) {
 	// about a second after start, at a random point during steps 2-3. Step 3
 	// revokes v2, which sets next_renew_at = now(); if the sweep lands after
 	// the revoke, a v3 is issued and becomes current, and the deploy renders
-	// v3.
+	// v3; if it has not run yet, the revoked v2 stays current until it does.
 	var curCert certOut
 	c.call(ctx, t, http.MethodGet, localCertPath, nil, &curCert)
 	if curCert.CurrentVersion == nil {
 		t.Fatal("certificate has no current version at KV check")
-	}
-	var curVersions []struct {
-		ID        string  `json:"id"`
-		RevokedAt *string `json:"revokedAt"`
-	}
-	c.call(ctx, t, http.MethodGet, localCertPath+"/versions", nil, &curVersions)
-	for _, v := range curVersions {
-		if v.ID == curCert.CurrentVersion.ID && v.RevokedAt != nil {
-			t.Fatalf("current version %s is revoked", v.ID)
-		}
 	}
 	fullchain = c.download(ctx, t, localCertPath+"/versions/"+curCert.CurrentVersion.ID+"/download?format=pem&parts=fullchain")
 	if gotFullchain != string(fullchain) {
