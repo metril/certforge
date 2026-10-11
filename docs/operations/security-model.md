@@ -43,6 +43,8 @@ Enrolment tokens are single use, stored only as a SHA-256 hash, and pin the agen
 ## Agent hooks and writes
 A compromised server could push any command or path to every agent, so both are off until the agent operator allows them locally. Hooks run only if `argv[0]` exactly matches an entry in `CF_HOOK_ALLOW` (never through a shell). Files are written only under directories in `CF_WRITE_ALLOW`, checked after resolving symlinks. With either variable empty, that action fails. Allow narrow executables, never a shell or interpreter. See [Agents](../guide/agents.md#hooks-and-the-allowlist).
 
+Restart hooks follow the same rule: the agent restarts a Docker container or systemd unit only if its exact `docker:<name>` or `systemd:<unit>` is in `CF_RESTART_ALLOW`, and it never runs a shell or a general `docker` command. The Docker socket it needs is root-equivalent, so list only the containers you mean to restart. See [Agents](../guide/agents.md#restart-hooks).
+
 ## Notification channel secrets and URL policy
 - Channel secrets (webhook URL, auth header, signing secret, Discord webhook URL, ntfy token, Home Assistant webhook id, SMTP password) are sealed, never returned on read, and updated with the `__unchanged__` sentinel. Changing a channel's destination while keeping a stored secret is refused (`422`, "re-enter the secret"), so an old secret cannot silently follow a new URL.
 - Webhook custom headers cannot be `Authorization`, `Cookie`, `Proxy-Authorization`, `Host`, `Content-Type`, `X-CertForge-*`, or any name containing `token`, `key`, `secret` or `auth`.

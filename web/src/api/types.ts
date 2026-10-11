@@ -107,6 +107,7 @@ export type DeployTargetInput = S['DeployTargetInput'];
 export type Hook = S['Hook'];
 export type HookInput = S['HookInput'];
 export type HookPhase = S['HookPhase'];
+export type HookKind = S['HookKind'];
 export type AgentCA = S['AgentCA'];
 export type AgentCAList = S['AgentCAList'];
 export type AgentListener = S['AgentListener'];
