@@ -2,7 +2,9 @@ package sshx
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/pem"
 	"io"
@@ -59,6 +61,16 @@ func startServer(t *testing.T, clientPub ssh.PublicKey) *srv {
 		},
 	}
 	cfg.AddHostKey(hs)
+	// A second, client-preferred key type: pinning ed25519 must still work.
+	ek, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	es, err := ssh.NewSignerFromKey(ek)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.AddHostKey(es)
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -197,7 +209,7 @@ func TestWriteFile(t *testing.T) {
 	if err := c.WriteFile(context.Background(), "/etc/it's.pem", []byte("DATA"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	want := `set -e; cat > '/etc/it'\''s.pem.tmp-certforge' && chmod 0600 '/etc/it'\''s.pem.tmp-certforge' && mv -f '/etc/it'\''s.pem.tmp-certforge' '/etc/it'\''s.pem'`
+	want := `umask 077; rm -f -- '/etc/it'\''s.pem.tmp-certforge'; set -e; cat > '/etc/it'\''s.pem.tmp-certforge' && chmod 0600 -- '/etc/it'\''s.pem.tmp-certforge' && mv -f -- '/etc/it'\''s.pem.tmp-certforge' '/etc/it'\''s.pem'`
 	if s.cmds[0] != want || string(s.stdin[0]) != "DATA" {
 		t.Fatalf("cmd %q stdin %q", s.cmds[0], s.stdin[0])
 	}
@@ -224,5 +236,29 @@ func TestRunContextTimeout(t *testing.T) {
 	defer cancel()
 	if _, _, _, err := c.Run(ctx, "sleep 99"); err == nil {
 		t.Fatal("want ctx error")
+	}
+}
+
+func TestHostKeyMarkerRejected(t *testing.T) {
+	s := startServer(t, nil)
+	for _, m := range []string{"@revoked", "@cert-authority"} {
+		line := m + " 127.0.0.1 " + hostLine(s)
+		_, err := Dial(context.Background(), Opts{Host: "127.0.0.1", Port: portOf(t, s), User: "u", Password: "pw", HostKey: line, AllowLoopback: true})
+		if err == nil || !strings.Contains(err.Error(), "marker") {
+			t.Fatalf("%s: got %v", m, err)
+		}
+	}
+}
+
+func TestWriteFilePathValidation(t *testing.T) {
+	s := startServer(t, nil)
+	c := dial(t, s, Opts{Password: "pw"})
+	for _, p := range []string{"", "rel/x.pem"} {
+		if err := c.WriteFile(context.Background(), p, []byte("x"), 0o600); err == nil {
+			t.Fatalf("path %q accepted", p)
+		}
+	}
+	if len(s.cmds) != 0 {
+		t.Fatal("command sent for invalid path")
 	}
 }

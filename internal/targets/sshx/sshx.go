@@ -53,10 +53,22 @@ func parseHostKey(s string) (ssh.PublicKey, error) {
 	if k, _, _, _, err := ssh.ParseAuthorizedKey([]byte(s)); err == nil {
 		return k, nil
 	}
-	if _, _, k, _, _, err := ssh.ParseKnownHosts([]byte(s)); err == nil {
+	if marker, _, k, _, _, err := ssh.ParseKnownHosts([]byte(s)); err == nil {
+		if marker != "" {
+			return nil, fmt.Errorf("sshx: host key marker %q is not supported", marker)
+		}
 		return k, nil
 	}
 	return nil, errors.New("sshx: host key is not a valid public key")
+}
+
+// hostKeyAlgorithms restricts negotiation to the pinned key's type, so a
+// multi-key server cannot present a different (unpinned) type.
+func hostKeyAlgorithms(k ssh.PublicKey) []string {
+	if k.Type() == ssh.KeyAlgoRSA {
+		return []string{ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSA}
+	}
+	return []string{k.Type()}
 }
 
 // Dial connects to o.Host, verifying the server against o.HostKey.
@@ -99,10 +111,11 @@ func Dial(ctx context.Context, o Opts) (*Client, error) {
 		return nil, fmt.Errorf("sshx: dial: %w", err)
 	}
 	cfg := &ssh.ClientConfig{
-		User:            o.User,
-		Auth:            auth,
-		HostKeyCallback: ssh.FixedHostKey(hk),
-		Timeout:         timeout,
+		User:              o.User,
+		Auth:              auth,
+		HostKeyCallback:   ssh.FixedHostKey(hk),
+		HostKeyAlgorithms: hostKeyAlgorithms(hk),
+		Timeout:           timeout,
 	}
 	// The handshake takes no context; closing conn aborts it.
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
@@ -163,9 +176,12 @@ func shQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) 
 // WriteFile writes data to path atomically: it streams to
 // "<path>.tmp-certforge", chmods it to mode, then renames over path.
 func (c *Client) WriteFile(ctx context.Context, path string, data []byte, mode os.FileMode) error {
+	if path == "" || !strings.HasPrefix(path, "/") {
+		return fmt.Errorf("sshx: remote path %q must be absolute", path)
+	}
 	tmp := shQuote(path + ".tmp-certforge")
-	cmd := fmt.Sprintf("set -e; cat > %s && chmod %04o %s && mv -f %s %s",
-		tmp, mode.Perm(), tmp, tmp, shQuote(path))
+	cmd := fmt.Sprintf("umask 077; rm -f -- %s; set -e; cat > %s && chmod %04o -- %s && mv -f -- %s %s",
+		tmp, tmp, mode.Perm(), tmp, tmp, shQuote(path))
 	if data == nil {
 		data = []byte{}
 	}
