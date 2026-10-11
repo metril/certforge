@@ -12,6 +12,7 @@ Three target types ship with CertForge:
 | SSH (`ssh`) | The server | Only when a file uses `key` or `bundle` |
 | pfSense Plus (`pfsense`) | The server | Always sent |
 | TrueNAS SCALE (`truenas`) | The server | Always sent |
+| MikroTik RouterOS (`routeros`) | The server | Always sent |
 
 ## Before you start
 
@@ -261,6 +262,23 @@ A TrueNAS target imports the certificate into TrueNAS SCALE 25.10 or later over 
 | **Timeout** (`timeoutSeconds`) | Seconds for the whole deploy, 10 to 300. | 120 |
 
 A certificate already on the box with the same fingerprint is reused, not imported again. Older certificates with the prefix are deleted after the switch; one still in use is left alone, and any other failure shows as a warning in the result.
+
+## MikroTik RouterOS
+
+A RouterOS target installs a certificate on RouterOS 7.x. It runs on the server. RouterOS has no POSIX shell, so the certificate and key are uploaded over SCP and then imported and bound through the REST API.
+
+| Field | What it does | Default |
+|---|---|---|
+| **REST URL** (`url`) | https URL of the router, for example `https://router.example.net`. The REST API is served by `www-ssl`. | None |
+| **Username**, **Password** (`username`, `password`) | A user allowed to use SSH and REST and to manage certificates. The password is used for both and stored encrypted. | None |
+| **SSH port** (`sshPort`) | Port for the SCP upload. | 22 |
+| **SSH host key** (`hostKey`) | The router's pinned SSH public key, from `ssh-keyscan -t ed25519 <host>`. | None |
+| **Certificate name prefix** (`certName`) | Certificates are named `<prefix>-<fingerprint>`. | `certforge` |
+| **Services** (`services`) | Where to bind it: `www-ssl`, `api-ssl`, `sstp`, `ovpn`. | `www-ssl`, `api-ssl` |
+| **CA certificate** (`caPem`) | PEM to trust for the router's REST TLS certificate, on top of the system roots. | None |
+| **Timeout** (`timeoutSeconds`) | Seconds per request, 10 to 300. | 90 |
+
+Each deploy checks whether the router already holds the certificate by fingerprint. If not, it uploads `cf-<id>.crt` and `cf-<id>.key`, imports them, renames the certificate and removes the uploaded files. It then binds the certificate to each chosen service and removes older certificates named `<prefix>-<fingerprint>`. Cleanup failures are reported as warnings. Binding `www-ssl` restarts the REST service, so a deploy to a router you reach through that service may drop its own connection after the last step.
 
 ## Grant a certificate to a server target
 
