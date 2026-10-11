@@ -245,6 +245,9 @@ it('shows target options only once a target with a grant schema is picked', asyn
   await pick(user, 'Deploy target', /^edge traefik/);
   expect(await within(sheet).findByText('Target options')).toBeInTheDocument();
   expect(within(sheet).getByRole('switch', { name: 'Default certificate' })).toBeInTheDocument();
+  const tips = within(sheet).getAllByRole('button', { name: 'Help' });
+  await user.hover(tips[tips.length - 1]!);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(/Absolute directory|Serve this certificate|Overrides the target|The same directory/);
   expect(within(sheet).queryByRole('checkbox')).not.toBeInTheDocument();
 });
 
@@ -348,4 +351,11 @@ it('blocks submit client-side on an invalid certsDir', async () => {
   await user.type(within(sheet).getByLabelText('Certificate directory on the agent'), 'rel');
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
   expect(patched).toBeUndefined();
+});
+
+it('opening a traefik grant edit and closing unchanged does not prompt to discard', async () => {
+  const { user, sheet } = await openTraefikEdit();
+  await user.click(within(sheet).getByRole('button', { name: 'Cancel' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(screen.queryByRole('button', { name: 'Discard' })).not.toBeInTheDocument();
 });

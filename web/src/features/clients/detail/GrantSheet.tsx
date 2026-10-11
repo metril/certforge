@@ -4,7 +4,7 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, CircleAlert, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
-import { ApiError, errorMessage } from '@/api/errors';
+import { ApiError, errorMessage, fieldOfTitle } from '@/api/errors';
 import { allCertificatesPickerQuery, plural } from '@/api/queries/certificates';
 import { deployTargetsQuery, hooksQuery, layoutsQuery } from '@/api/queries/delivery';
 import { metaSchemasQuery } from '@/api/queries/dns';
@@ -79,19 +79,21 @@ export function GrantSheet({ orgId, client, grants, editing, removed = false, on
   const [targetOptions, setTargetOptions] = useState<Record<string, unknown>>(editing?.targetOptions ?? {});
   const [optsExtra, setOptsExtra] = useState<ErrorSchema | null>(null);
   const optsRef = useRef<SchemaFormHandle>(null);
-  const dirty = useDirty({ certIds, delivery, layoutId, targetId, hookIds, autoRemediate, targetOptions });
   const selectedTarget = targets.find((t) => t.id === targetId);
   const grantSchema = useMemo(
     () => meta?.deployTargets.find((t) => t.code === selectedTarget?.type)?.grantSchema as RJSFSchema | undefined,
     [meta, selectedTarget?.type],
   );
   const showOpts = !!targetId && !!grantSchema;
+  // Unset-equivalent values (false, '', []) are dropped: the form fills defaults such as
+  // defaultCert: false on mount, possibly after the first-render snapshot (meta loads async).
+  const dirty = useDirty({ certIds, delivery, layoutId, targetId, hookIds, autoRemediate, targetOptions: Object.fromEntries(Object.entries(targetOptions).filter(([, v]) => v !== false && v !== '' && v !== undefined && !(Array.isArray(v) && v.length === 0))) });
   // A 422 titles the field "Invalid targetOptions.<key>"; failing that, match a
   // schema key named in the message. A 409 about the default certificate belongs
   // under its switch.
   const optsFieldError = (msg: string, status?: number, title?: string): ErrorSchema | null => {
     if (!showOpts) return null;
-    const key = /^Invalid targetOptions\.([^.\s]+)/.exec(title ?? '')?.[1];
+    const key = fieldOfTitle(title) === 'targetOptions' ? title?.split('.')[1] : undefined;
     if (key && grantSchema.properties?.[key]) return fieldErr(key, msg);
     const field = fieldErrorFromMessage(grantSchema, msg.replace(/\btargetOptions\./g, ''));
     if (field) return field;
