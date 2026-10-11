@@ -2,6 +2,13 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.19.0](https://github.com/metril/certforge/compare/v0.18.0...v0.19.0) (2026-10-11)
+
+
+### Features
+
+* **deploy:** MikroTik RouterOS 7 deploy target (SCP upload + REST import) ([1a2e487](https://github.com/metril/certforge/commit/1a2e487a69e4d2a3ab0bfd75b98e0a0fbc997452))
+
 ## [0.18.0](https://github.com/metril/certforge/compare/v0.17.0...v0.18.0) (2026-10-11)
 
 
