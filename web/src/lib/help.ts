@@ -37,7 +37,7 @@ export const help = {
   'flow.lane.delivery': { text: 'Layouts, targets and hooks that write a certificate to its destination.' },
   'flow.lane.clients': { text: 'Hosts that receive certificates through an agent.' },
   'flow.lane.alerts': { text: 'Channels that hear about certificate events.' },
-  'flow.map': { text: 'Follows each certificate from its issuers through delivery to the clients that hold it. Select a node to trace its path.' },
+  'flow.map': { text: 'Follows each certificate from its issuers through delivery to the clients that hold it. Hover a node to highlight its path; select it for details, Renew and Redeploy. Filters and selection are kept in the URL.' },
   'status.pending': { text: 'Waiting for its first certificate, or for a manual DNS step.' },
   'status.active': { text: 'Holds a valid certificate and renews on schedule.' },
   'status.failed': { text: 'The last attempt failed. CertForge retries with backoff.' },
