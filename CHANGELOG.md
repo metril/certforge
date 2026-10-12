@@ -2,6 +2,22 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.27.0](https://github.com/metril/certforge/compare/v0.26.0...v0.27.0) (2026-10-12)
+
+
+### Features
+
+* **api:** fetch a server's TLS certificate chain ([c922d33](https://github.com/metril/certforge/commit/c922d332f44c8b8ef577d85973a83aef9f269eb5))
+* **web:** CA bundle input with upload, fetch from server and saved CAs ([cf1349c](https://github.com/metril/certforge/commit/cf1349c831c85052d693b885ac957e5dd465dcd6))
+* **web:** upload, fetch or reuse CA certificates for TLS trust ([89034bd](https://github.com/metril/certforge/commit/89034bddf6f7c4cb8cef5c015979657dbc227622))
+
+
+### Bug Fixes
+
+* **issuers:** validate the ACME trust bundle as a CA bundle ([9d59459](https://github.com/metril/certforge/commit/9d59459333470d353e4667119c8e073f6dfc19cc))
+* **targets:** CA certificate fields accept multi-line PEM ([524e6c5](https://github.com/metril/certforge/commit/524e6c5e8ec491f457f5cbc1f20068f95fde1f5c))
+* **web:** clear fetched certificate picks when fetching again ([9be2e58](https://github.com/metril/certforge/commit/9be2e58ef13e1675e640558433afd01abd52ecac))
+
 ## [0.26.0](https://github.com/metril/certforge/compare/v0.25.0...v0.26.0) (2026-10-12)
 
 
