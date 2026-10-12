@@ -10,6 +10,8 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -213,6 +215,63 @@ func (s *Signer) post(ctx context.Context, url string, body []byte) (*respEnvelo
 	return env, perr
 }
 
+// requestKeyBits is the size in bits of the key req will use, or 0 when
+// unknown.
+func requestKeyBits(req signer.IssueRequest) (bits int, isEC bool, label string) {
+	if len(req.ReuseKeyPKCS8) > 0 {
+		k, err := x509.ParsePKCS8PrivateKey(req.ReuseKeyPKCS8)
+		if err != nil {
+			return 0, false, ""
+		}
+		switch k := k.(type) {
+		case *rsa.PrivateKey:
+			return k.N.BitLen(), false, fmt.Sprintf("rsa%d", k.N.BitLen())
+		case *ecdsa.PrivateKey:
+			return k.Curve.Params().BitSize, true, fmt.Sprintf("ec%d", k.Curve.Params().BitSize)
+		}
+		return 0, false, ""
+	}
+	switch req.KeyType {
+	case signer.RSA2048:
+		return 2048, false, string(req.KeyType)
+	case signer.RSA3072:
+		return 3072, false, string(req.KeyType)
+	case signer.RSA4096:
+		return 4096, false, string(req.KeyType)
+	case signer.EC256:
+		return 256, true, string(req.KeyType)
+	case signer.EC384:
+		return 384, true, string(req.KeyType)
+	}
+	return 0, false, ""
+}
+
+// checkKeySize fails fast when the key is below the template's minimum. It is
+// best-effort: any policy lookup problem skips the check.
+func (s *Signer) checkKeySize(ctx context.Context, req signer.IssueRequest) error {
+	if s.cfg.CEPURL == "" {
+		return nil
+	}
+	bits, isEC, label := requestKeyBits(req)
+	if bits == 0 {
+		return nil
+	}
+	pr, err := s.Policies(ctx)
+	if err != nil {
+		return nil
+	}
+	tpl, err := pr.Template(s.cfg.Template)
+	if err != nil || tpl.MinKeySize <= bits {
+		return nil
+	}
+	hint := fmt.Sprintf("use an RSA key of at least %d bits", tpl.MinKeySize)
+	if isEC {
+		hint += " or an ECDSA template"
+	}
+	return keyTooSmallError{fmt.Sprintf("adcs: key %s (%d bits) is below template %q minimum of %d bits; %s",
+		label, bits, s.cfg.Template, tpl.MinKeySize, hint)}
+}
+
 // Issue enrolls a leaf: the CSR carries the template name extension, is sent
 // to CES as a WSTEP RST, and the PKCS#7 reply is split into the leaf (the
 // certificate matching the CSR key) and its chain. ErrPending and ErrDenied
@@ -226,6 +285,9 @@ func (s *Signer) Issue(ctx context.Context, req signer.IssueRequest) (*signer.Is
 	}
 	if s.cfg.CESURL == "" {
 		return nil, errors.New("adcs: no CES URL configured")
+	}
+	if err := s.checkKeySize(ctx, req); err != nil {
+		return nil, err
 	}
 	ext, err := templateNameExtension(s.cfg.Template)
 	if err != nil {

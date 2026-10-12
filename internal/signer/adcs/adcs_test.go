@@ -114,13 +114,15 @@ type fakeAD struct {
 	cepBody  string
 	cesBody  string
 	template string
+	cepFail  bool
+	minKey   int // minimalKeyLength the policy reports
 	srv      *httptest.Server
 }
 
 var csrRe = regexp.MustCompile(`<o:BinarySecurityToken[^>]*>([^<]*)</o:BinarySecurityToken>`)
 
 func newFake(t *testing.T, mode string) *fakeAD {
-	f := &fakeAD{t: t, mode: mode, template: "CertForgeWeb"}
+	f := &fakeAD{t: t, mode: mode, template: "CertForgeWeb", minKey: 2048}
 	var rk *ecdsa.PrivateKey
 	f.root, rk = mkCert(t, "root", 1, nil, nil, nil, true, nil)
 	f.issuing, f.issKey = mkCert(t, "issuing", 2, nil, f.root, rk, true, nil)
@@ -156,6 +158,10 @@ const soapTail = `</s:Body></s:Envelope>`
 func (f *fakeAD) cep(w http.ResponseWriter, r *http.Request) {
 	b, _ := io.ReadAll(r.Body)
 	f.cepBody = string(b)
+	if f.cepFail {
+		http.Error(w, "down", http.StatusInternalServerError)
+		return
+	}
 	if f.mode == "401" {
 		http.Error(w, "no", http.StatusUnauthorized)
 		return
@@ -164,12 +170,12 @@ func (f *fakeAD) cep(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, soapHead+`<GetPoliciesResponse xmlns="http://schemas.microsoft.com/windows/pki/2009/01/enrollmentpolicy">
 <response><policyID/><policies><policy><policyOIDReference>0</policyOIDReference><cAs><cAReference>0</cAReference></cAs>
 <attributes><commonName>%s</commonName><enrollmentFlags>2</enrollmentFlags><policySchema>2</policySchema><permission><enroll>true</enroll><autoEnroll>false</autoEnroll></permission>
-<privateKeyAttributes><minimalKeyLength>2048</minimalKeyLength></privateKeyAttributes></attributes></policy></policies></response>
+<privateKeyAttributes><minimalKeyLength>%d</minimalKeyLength></privateKeyAttributes></attributes></policy></policies></response>
 <oIDs><oID><value>1.3.6.1.4.1.311.21.8.1.2</value><group>9</group><oIDReferenceID>0</oIDReferenceID><defaultName>x</defaultName></oID></oIDs>
 <cAs><cA><uris><cAURI><clientAuthentication>4</clientAuthentication><uri>%s</uri><priority>1</priority><renewalOnly>false</renewalOnly></cAURI>
 <cAURI><clientAuthentication>2</clientAuthentication><uri>https://kerberos.invalid/ces</uri><priority>0</priority></cAURI></uris>
 <certificate>%s</certificate><enrollPermission>true</enrollPermission><cAReferenceID>0</cAReferenceID></cA></cAs></GetPoliciesResponse>`+soapTail,
-		f.template, f.srv.URL+"/ces", issuer)
+		f.template, f.minKey, f.srv.URL+"/ces", issuer)
 }
 
 func (f *fakeAD) ces(w http.ResponseWriter, r *http.Request) {
@@ -340,6 +346,7 @@ func TestIssue(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.mode, func(t *testing.T) {
 			f := newFake(t, tc.mode)
+			f.minKey = 256
 			got, err := f.signer().Issue(context.Background(), signer.IssueRequest{Names: names, KeyType: signer.EC256})
 			if tc.wantErr != nil {
 				if !tc.wantErr(err) {
@@ -402,5 +409,33 @@ func TestRSTRequestValues(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("request lacks %s", want)
 		}
+	}
+}
+
+func TestIssueKeyTooSmall(t *testing.T) {
+	names := []string{"leaf.example.test"}
+	f := newFake(t, "issued")
+	_, err := f.signer().Issue(context.Background(), signer.IssueRequest{Names: names, KeyType: signer.EC384})
+	if !errors.Is(err, ErrKeyTooSmall) {
+		t.Fatalf("want ErrKeyTooSmall, got %v", err)
+	}
+	for _, w := range []string{"ec384", "384 bits", `"CertForgeWeb"`, "2048 bits", "ECDSA template"} {
+		if !strings.Contains(err.Error(), w) {
+			t.Errorf("error %q lacks %q", err, w)
+		}
+	}
+	if f.cesBody != "" {
+		t.Error("CES was called")
+	}
+	if _, err := f.signer().Issue(context.Background(), signer.IssueRequest{Names: names, KeyType: signer.RSA4096}); err != nil {
+		t.Fatalf("rsa4096: %v", err)
+	}
+}
+
+func TestIssueKeyCheckSkippedOnCEPFailure(t *testing.T) {
+	f := newFake(t, "issued")
+	f.cepFail = true
+	if _, err := f.signer().Issue(context.Background(), signer.IssueRequest{Names: []string{"leaf.example.test"}, KeyType: signer.EC256}); err != nil {
+		t.Fatalf("issue should proceed when CEP fails: %v", err)
 	}
 }
