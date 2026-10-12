@@ -2,6 +2,14 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.25.0](https://github.com/metril/certforge/compare/v0.24.0...v0.25.0) (2026-10-12)
+
+
+### Features
+
+* **agent:** DOCKER_HOST for restart hooks ([8fbd77e](https://github.com/metril/certforge/commit/8fbd77e6e5ed2799680787867a3b1f368fa5e90d))
+* **agent:** DOCKER_HOST for restart hooks ([441622d](https://github.com/metril/certforge/commit/441622ddadceadfce03101d9f5e2f9f2dfc3d10e))
+
 ## [0.24.0](https://github.com/metril/certforge/compare/v0.23.0...v0.24.0) (2026-10-12)
 
 
