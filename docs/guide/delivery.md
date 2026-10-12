@@ -357,7 +357,7 @@ Permissions:
 
 - `deploycreds:read` lists credentials. Viewers and up have it.
 - `deploycreds:write` adds, edits and deletes them. Org admins and admins have it; operators do not.
-- Attaching a credential to a target, or changing the URL or host of a target that uses one, also needs `deploycreds:write`. Without it the **Credential** select and **Save** are disabled.
+- Attaching a credential to a target, or changing the URL, host, port or pinned host key of a target that uses one, also needs `deploycreds:write`. Without it the **Credential** select and **Save** are disabled.
 - A global admin can show a stored value with the eye button (`deploycreds:reveal`). This is audited.
 
 ## Secrets

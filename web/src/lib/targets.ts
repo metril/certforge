@@ -123,10 +123,12 @@ export function omitFields(schema: RJSFSchema, fields: string[]): RJSFSchema {
   return { ...schema, properties, required };
 }
 
-const LOCATION_KEYS = ['url', 'host', 'port'];
+// Mirrors the server's requireCredentialWrite: where a saved credential's
+// secret is sent (url, host, port, RouterOS sshPort) and the pinned hostKey.
+const LOCATION_KEYS = ['url', 'host', 'port', 'sshPort', 'hostKey'];
 
-/** Whether the target's URL, host or port differs from the saved config
- * (defaults filled on both sides). */
+/** Whether the target's URL, host, port or pinned host key differs from the
+ * saved config (defaults filled on both sides). */
 export function locationChanged(schema: RJSFSchema, before: Record<string, unknown>, after: Record<string, unknown>): boolean {
   const a = settledConfig(schema, before, []);
   const b = settledConfig(schema, after, []);

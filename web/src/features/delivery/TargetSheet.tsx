@@ -105,7 +105,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
 
   const blocked = keyGateBlocks(me, orgId, runsOn, meta.keyPolicy, config);
   // Attaching a credential, or moving a credential-backed target to another
-  // host, also needs deploycreds:write (the server returns 403 otherwise).
+  // host, port or hostKey, also needs deploycreds:write (the server returns 403 otherwise).
   const credBlocked =
     !canCredWrite &&
     ((credentialId !== null && credentialId !== initialCredId) ||
