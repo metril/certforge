@@ -130,7 +130,7 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
       return (
         <ul aria-label="Grants" className="grid gap-2">
           {grants.map((g) => (
-            <li key={g.id} className="grid gap-2 rounded-md border border-border bg-panel p-3">
+            <li key={g.id} className="grid grid-cols-1 gap-2 rounded-md border border-border bg-panel p-3">
               <div className="flex items-center justify-between gap-2">
                 {certLink(g)}
                 {statusCell(g)}

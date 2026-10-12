@@ -40,7 +40,7 @@ function matches(k: ApiKey, q: string): boolean {
 function KeyCard({ k, canWrite, onRevoke }: { k: ApiKey; canWrite: boolean; onRevoke: () => void }) {
   const s = STATE[keyState(k)];
   return (
-    <div className="grid gap-2 rounded-md border border-border bg-panel p-3">
+    <div className="grid grid-cols-1 gap-2 rounded-md border border-border bg-panel p-3">
       <div className="flex items-center justify-between gap-2">
         <span className="truncate font-semibold">{k.name}</span>
         <ToneChip tone={s.tone} icon={s.icon} label={s.label} />
@@ -69,7 +69,7 @@ function KeyCard({ k, canWrite, onRevoke }: { k: ApiKey; canWrite: boolean; onRe
 
 function KeyCardSkeleton() {
   return (
-    <div className="grid gap-2 rounded-md border border-border bg-panel p-3" aria-hidden>
+    <div className="grid grid-cols-1 gap-2 rounded-md border border-border bg-panel p-3" aria-hidden>
       <div className="h-4 w-1/2 animate-pulse rounded-sm bg-subtle" />
       <div className="h-3 w-1/3 animate-pulse rounded-sm bg-subtle" />
       <div className="h-3 w-1/4 animate-pulse rounded-sm bg-subtle" />

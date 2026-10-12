@@ -82,7 +82,7 @@ function SubjectDisplay({ type, resolved }: { type: SubjectType; resolved: Resol
 
 function BindingCard({ b, me, resolved, onRemove }: { b: RoleBinding; me: Me; resolved: Resolved; onRemove: () => void }) {
   return (
-    <div className="grid gap-2 rounded-md border border-border bg-panel p-3">
+    <div className="grid grid-cols-1 gap-2 rounded-md border border-border bg-panel p-3">
       <div className="flex items-center justify-between gap-2">
         <SubjectDisplay type={b.subjectType} resolved={resolved} />
         {canManage(me, b) && (
@@ -102,7 +102,7 @@ function BindingCard({ b, me, resolved, onRemove }: { b: RoleBinding; me: Me; re
 
 function BindingCardSkeleton() {
   return (
-    <div className="grid gap-2 rounded-md border border-border bg-panel p-3" aria-hidden>
+    <div className="grid grid-cols-1 gap-2 rounded-md border border-border bg-panel p-3" aria-hidden>
       <div className="h-4 w-1/2 animate-pulse rounded-sm bg-subtle" />
       <div className="h-3 w-1/3 animate-pulse rounded-sm bg-subtle" />
       <div className="h-3 w-1/4 animate-pulse rounded-sm bg-subtle" />

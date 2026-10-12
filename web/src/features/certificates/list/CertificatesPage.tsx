@@ -73,7 +73,7 @@ function CertCard({ cert, org, orgName, ca }: { cert: Certificate; org: string; 
     <Link
       to="/o/$org/certificates/$id/$tab"
       params={{ org, id: cert.id, tab: 'overview' }}
-      className="grid gap-2 rounded-md border border-border bg-panel p-3"
+      className="grid grid-cols-1 gap-2 rounded-md border border-border bg-panel p-3"
     >
       <div className="flex items-center justify-between gap-2">
         <span className="truncate font-semibold">{cert.name}</span>
@@ -91,7 +91,7 @@ function CertCard({ cert, org, orgName, ca }: { cert: Certificate; org: string; 
 
 function CertCardSkeleton() {
   return (
-    <div className="grid gap-2 rounded-md border border-border bg-panel p-3" aria-hidden>
+    <div className="grid grid-cols-1 gap-2 rounded-md border border-border bg-panel p-3" aria-hidden>
       <div className="flex items-center justify-between gap-2">
         <div className="h-4 w-24 animate-pulse rounded-sm bg-subtle" />
         <div className="h-6 w-16 animate-pulse rounded-sm bg-subtle" />

@@ -38,7 +38,7 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
 
 function ClientCard({ client, org, context }: { client: Client; org: string; context?: string }) {
   return (
-    <Link to="/o/$org/clients/$id" params={{ org, id: client.id }} className="grid gap-2 rounded-md border border-border bg-panel p-3 hover:bg-subtle">
+    <Link to="/o/$org/clients/$id" params={{ org, id: client.id }} className="grid grid-cols-1 gap-2 rounded-md border border-border bg-panel p-3 hover:bg-subtle">
       <div className="flex items-center justify-between gap-2">
         <span className="truncate font-semibold">{client.name}</span>
         <ConnectionDot client={client} />
@@ -51,7 +51,7 @@ function ClientCard({ client, org, context }: { client: Client; org: string; con
 
 function CardSkeleton() {
   return (
-    <div className="grid gap-2 rounded-md border border-border bg-panel p-3" aria-hidden>
+    <div className="grid grid-cols-1 gap-2 rounded-md border border-border bg-panel p-3" aria-hidden>
       <div className="flex items-center justify-between gap-2">
         <div className="h-4 w-24 animate-pulse rounded-sm bg-subtle" />
         <div className="h-4 w-16 animate-pulse rounded-sm bg-subtle" />

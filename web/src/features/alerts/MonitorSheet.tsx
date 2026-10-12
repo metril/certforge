@@ -170,7 +170,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
         <div className="grid gap-5 px-4">
           {!canWrite && <ReadOnlyNotice reason="Needs the alerts:write permission" />}
           {monitor?.lastCheckedAt && (
-            <div className="grid gap-2 rounded-md border border-border p-3">
+            <div className="grid grid-cols-1 gap-2 rounded-md border border-border p-3">
               <span className="text-sm font-semibold">Last check</span>
               <div className="grid gap-1.5 text-sm">
                 <span className="flex items-center gap-1.5">

@@ -131,7 +131,7 @@ function UserCard({
   onDelete: () => void;
 }) {
   return (
-    <div className="grid gap-2 rounded-md border border-border bg-panel p-3">
+    <div className="grid grid-cols-1 gap-2 rounded-md border border-border bg-panel p-3">
       <div className="flex items-center justify-between gap-2">
         <span className="flex min-w-0 items-center gap-2">
           <span className="truncate font-semibold">{u.displayName}</span>
