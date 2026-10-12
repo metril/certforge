@@ -25,13 +25,14 @@ type pfCall struct {
 }
 
 type fakePF struct {
-	mu       sync.Mutex
-	calls    []pfCall
-	list     string // JSON body for GET /system/certificates
-	webRef   string // current sslcertref
-	loginBad bool
-	devices  string // JSON body for GET /mim/devices; default one device "d1"
-	prefix   string // system path prefix; default /device/pfsense/d1/api
+	mu         sync.Mutex
+	calls      []pfCall
+	list       string // JSON body for GET /system/certificates
+	webRef     string // current sslcertref
+	loginBad   bool
+	devices    string // JSON body for GET /mim/devices; default one device "d1"
+	restartBad bool
+	prefix     string // system path prefix; default /device/pfsense/d1/api
 }
 
 const pfOneDevice = `{"devices":[{"device_id":"d1","name":"fw1","alias":"edge","state":"active"}]}`
@@ -89,6 +90,12 @@ func (f *fakePF) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"admin":{"webguiproto":"https","ssl_certref":"`+f.webRef+`"}}`)
 	case r.URL.Path == prefix+"/system/advanced/admin" && r.Method == "POST":
 		_, _ = io.WriteString(w, `{}`)
+	case r.URL.Path == prefix+"/diag/cmd/shell" && r.Method == "POST":
+		if f.restartBad {
+			w.WriteHeader(500)
+			return
+		}
+		_, _ = io.WriteString(w, `{"response":""}`)
 	default:
 		w.WriteHeader(404)
 	}
@@ -171,10 +178,10 @@ func TestPfSenseWebGUI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Detail != "certificate abc updated, webgui cert set" {
+	if res.Detail != "certificate abc updated, webgui cert set, webgui restarted" {
 		t.Fatalf("detail = %q", res.Detail)
 	}
-	last := f.calls[len(f.calls)-1]
+	last := f.calls[len(f.calls)-2]
 	if last.Method != "POST" || last.Body["admin"].(map[string]any)["ssl_certref"] != "abc" || last.Body["admin"].(map[string]any)["webguiproto"] != "https" {
 		t.Fatalf("last = %+v", last)
 	}
@@ -183,7 +190,7 @@ func TestPfSenseWebGUI(t *testing.T) {
 	srv2 := httptest.NewServer(f2)
 	defer srv2.Close()
 	res, err = PfSense{}.Deploy(context.Background(), pfRequest(t, srv2.URL, "", true, m))
-	if err != nil || res.Detail != "certificate abc updated" {
+	if err != nil || res.Detail != "certificate abc updated, webgui restarted" {
 		t.Fatalf("res=%+v err=%v", res, err)
 	}
 }
@@ -282,5 +289,68 @@ func TestPfSenseNoDevicesCallsBase(t *testing.T) {
 	}
 	if got := strings.Join(pfPaths(f), ","); got != "POST /login,GET /mim/devices,GET /system/certificates,PUT /system/certificates" {
 		t.Fatalf("calls = %s", got)
+	}
+}
+
+func pfRestarts(f *fakePF) []string {
+	var out []string
+	for _, c := range f.calls {
+		if strings.HasSuffix(c.Path, "/diag/cmd/shell") {
+			raw, _ := base64.StdEncoding.DecodeString(c.Body["cmd"].(string))
+			out = append(out, string(raw))
+		}
+	}
+	return out
+}
+
+func TestPfSenseRestartsWebGUIWhenChanged(t *testing.T) {
+	m, _ := akMaterial(t)
+	f := &fakePF{list: `[{"refid":"abc","descr":"web"}]`, webRef: "abc"} // updated in place, ref already set
+	srv := httptest.NewServer(f)
+	defer srv.Close()
+	res, err := PfSense{}.Deploy(context.Background(), pfRequest(t, srv.URL, "", true, m))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := pfRestarts(f); len(got) != 1 || got[0] != "/etc/rc.restart_webgui" {
+		t.Fatalf("restarts = %v", got)
+	}
+	if f.calls[len(f.calls)-1].Body["timeout"] != float64(60) || !strings.Contains(res.Detail, "restarted") {
+		t.Fatalf("last=%+v detail=%q", f.calls[len(f.calls)-1], res.Detail)
+	}
+}
+
+func TestPfSenseNoRestartWhenUnchangedOrDisabled(t *testing.T) {
+	m, _ := akMaterial(t)
+	leaf := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: m.LeafDER}))
+	same := `{"certs":[{"refid":"abc","descr":"web","crt":"` + base64.StdEncoding.EncodeToString([]byte(leaf)) + `"}]}`
+	f := &fakePF{list: same, webRef: "abc"}
+	srv := httptest.NewServer(f)
+	defer srv.Close()
+	if _, err := (PfSense{}).Deploy(context.Background(), pfRequest(t, srv.URL, "", true, m)); err != nil {
+		t.Fatal(err)
+	}
+	if got := pfRestarts(f); len(got) != 0 {
+		t.Fatalf("unchanged restarted: %v", got)
+	}
+	f2 := &fakePF{list: `[{"refid":"abc","descr":"web"}]`}
+	srv2 := httptest.NewServer(f2)
+	defer srv2.Close()
+	if _, err := (PfSense{}).Deploy(context.Background(), pfRequest(t, srv2.URL, "", false, m)); err != nil {
+		t.Fatal(err)
+	}
+	if got := pfRestarts(f2); len(got) != 0 {
+		t.Fatalf("disabled restarted: %v", got)
+	}
+}
+
+func TestPfSenseRestartFailureSurfaces(t *testing.T) {
+	m, _ := akMaterial(t)
+	f := &fakePF{list: `[{"refid":"abc","descr":"web"}]`, webRef: "old", restartBad: true}
+	srv := httptest.NewServer(f)
+	defer srv.Close()
+	_, err := PfSense{}.Deploy(context.Background(), pfRequest(t, srv.URL, "", true, m))
+	if err == nil || !strings.Contains(err.Error(), "WebGUI restart failed") || !strings.Contains(err.Error(), "status 500") {
+		t.Fatalf("err = %v", err)
 	}
 }
