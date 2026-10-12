@@ -341,7 +341,11 @@ func postAuditOut(p *gen.PostAction) any {
 	if p == nil {
 		return nil
 	}
-	return map[string]any{"sshTargetId": p.SshTargetId, "command": p.Command}
+	kind := "ssh"
+	if p.Kind != nil {
+		kind = string(*p.Kind)
+	}
+	return map[string]any{"kind": kind, "targetId": p.TargetId, "command": p.Command}
 }
 
 // postActionOut maps a stored post_action; nil when none (or unreadable).
@@ -351,31 +355,35 @@ func postActionOut(raw []byte) *gen.PostAction {
 		return nil
 	}
 	t := pa.TimeoutSeconds
-	return &gen.PostAction{SshTargetId: pa.SSHTargetID, Command: pa.Command, TimeoutSeconds: &t}
+	kind := gen.PostActionKind(pa.Kind)
+	return &gen.PostAction{Kind: &kind, TargetId: pa.TargetID, Command: pa.Command, TimeoutSeconds: &t}
 }
 
 // postActionIn validates a request's post action in orgID and returns its
-// stored form: nil (stored as {}) for none. The referenced target must be an
-// ssh target of the same org.
+// stored form: nil (stored as {}) for none. The referenced target must be of
+// the same org and of the type the kind runs against.
 func postActionIn(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, in *gen.PostAction) ([]byte, error) {
 	if in == nil {
 		return nil, nil
 	}
-	pa := deploy.PostAction{SSHTargetID: in.SshTargetId, Command: in.Command}
+	pa := deploy.PostAction{TargetID: in.TargetId, Command: in.Command}
+	if in.Kind != nil {
+		pa.Kind = string(*in.Kind)
+	}
 	if in.TimeoutSeconds != nil {
 		pa.TimeoutSeconds = *in.TimeoutSeconds
 	}
 	if err := pa.Validate(); err != nil {
 		return nil, unprocessable("postAction", err.Error())
 	}
-	t, err := q.GetDeployTarget(ctx, sqlcgen.GetDeployTargetParams{ID: pa.SSHTargetID, OrgID: orgID})
+	t, err := q.GetDeployTarget(ctx, sqlcgen.GetDeployTargetParams{ID: pa.TargetID, OrgID: orgID})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, unprocessable("postAction.sshTargetId", fmt.Sprintf("deploy target %s is not in this org", pa.SSHTargetID))
+		return nil, unprocessable("postAction.targetId", fmt.Sprintf("deploy target %s is not in this org", pa.TargetID))
 	} else if err != nil {
 		return nil, err
 	}
-	if t.Type != "ssh" {
-		return nil, unprocessable("postAction.sshTargetId", "the post action target must be an ssh target")
+	if want := pa.TargetType(); t.Type != want {
+		return nil, unprocessable("postAction.targetId", fmt.Sprintf("a %s post action needs a %s target", pa.Kind, want))
 	}
 	return json.Marshal(pa)
 }
@@ -786,4 +794,39 @@ func (s *Server) addGrantCounts(ctx context.Context, items []gen.Certificate) er
 		items[i].GrantCount = &n
 	}
 	return nil
+}
+
+// GetGrantPfSenseUsage asks the firewall which services use a server grant's
+// certificate.
+func (s *Server) GetGrantPfSenseUsage(ctx context.Context, r gen.GetGrantPfSenseUsageRequestObject) (gen.GetGrantPfSenseUsageResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionDeliveryRead, &r.OrgId); err != nil {
+		return nil, err
+	}
+	rows, err := s.queries().ServerGrantViews(ctx, sqlcgen.ServerGrantViewsParams{OrgID: r.OrgId, GrantID: &r.Id})
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, notFound("grant %s", r.Id)
+	}
+	row := rows[0]
+	t, err := s.queries().GetDeployTarget(ctx, sqlcgen.GetDeployTargetParams{ID: *row.DeployTargetID, OrgID: r.OrgId})
+	if err != nil {
+		return nil, err
+	}
+	if t.Type != deploy.TypePfSense {
+		return nil, unprocessable("grant", "the grant's target is not a pfSense target")
+	}
+	refid, labels, err := s.d.Dispatcher.PfSenseUsage(ctx, r.OrgId, t.ID, row.CertificateName)
+	if err != nil {
+		return nil, &HTTPError{Status: http.StatusBadGateway, Title: "pfSense error", Detail: err.Error()}
+	}
+	if labels == nil {
+		labels = []string{}
+	}
+	out := gen.PfSenseUsage{Services: labels}
+	if refid != "" {
+		out.Refid = &refid
+	}
+	return gen.GetGrantPfSenseUsage200JSONResponse(out), nil
 }

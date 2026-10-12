@@ -334,10 +334,11 @@ func (q *Queries) CountLiveGrantsByCert(ctx context.Context, ids []uuid.UUID) ([
 
 const countPostActionUsers = `-- name: CountPostActionUsers :one
 SELECT count(*)::bigint FROM client_cert_grants g
-WHERE g.removed_at IS NULL AND g.client_id IS NULL AND g.post_action->>'sshTargetId' = $1::text
+WHERE g.removed_at IS NULL AND g.client_id IS NULL AND coalesce(g.post_action->>'targetId', g.post_action->>'sshTargetId') = $1::text
 `
 
-// Live server grants whose post action runs over this ssh target.
+// Live server grants whose post action runs on this target (ssh or pfsense;
+// rows saved before kinds existed name it sshTargetId).
 func (q *Queries) CountPostActionUsers(ctx context.Context, id string) (int64, error) {
 	row := q.db.QueryRow(ctx, countPostActionUsers, id)
 	var column_1 int64
