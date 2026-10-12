@@ -454,17 +454,18 @@ func (d *Dispatcher) deploy(ctx context.Context, grantID, versionID uuid.UUID, w
 	}
 
 	req := targets.Request{
-		GrantID:     grantID.String(),
-		OrgSlug:     row.OrgSlug,
-		CertID:      row.CertID.String(),
-		CertName:    row.CertificateName,
-		Names:       append([]string{row.CertificateCommonName}, row.CertificateSans...),
-		Fingerprint: agentproto.CertFingerprint(m.LeafDER),
-		Material:    &m,
-		Files:       files,
-		Config:      config,
-		Side:        targets.Server,
-		HTTP:        d.HTTP(ctx),
+		GrantID:      grantID.String(),
+		OrgSlug:      row.OrgSlug,
+		CertID:       row.CertID.String(),
+		CertName:     row.CertificateName,
+		Names:        append([]string{row.CertificateCommonName}, row.CertificateSans...),
+		Fingerprint:  agentproto.CertFingerprint(m.LeafDER),
+		Material:     &m,
+		Files:        files,
+		Config:       config,
+		GrantOptions: row.TargetOptions,
+		Side:         targets.Server,
+		HTTP:         d.HTTP(ctx),
 	}
 	if row.DeployTargetID != nil {
 		req.Recorder = hookRecorder{d: d, grant: grantID, target: *row.DeployTargetID}

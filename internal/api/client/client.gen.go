@@ -2936,13 +2936,22 @@ type OutputPart string
 // P12Encoding PKCS#12 encryption; modern (AES) or legacy (RC2/3DES, for old consumers).
 type P12Encoding string
 
+// PfSenseService One pfSense service that uses a certificate.
+type PfSenseService struct {
+	// Key Stable id for a per-grant restart selection: webgui, openvpn:server:<id>, openvpn:client:<id>, ipsec, captiveportal:<zone>, package:<name>.
+	Key string `json:"key"`
+
+	// Label Human label such as WebGUI, OpenVPN server 1, IPsec, Captive portal zone x, package name.
+	Label string `json:"label"`
+}
+
 // PfSenseUsage The pfSense services that use a server grant's certificate.
 type PfSenseUsage struct {
 	// Refid The certificate's id on the firewall; null when the firewall does not hold it yet.
 	Refid *string `json:"refid"`
 
-	// Services Human labels such as WebGUI, OpenVPN server 1, IPsec, Captive portal zone x, package name. Empty when nothing uses it.
-	Services []string `json:"services"`
+	// Services Services that use the certificate. Empty when nothing uses it.
+	Services []PfSenseService `json:"services"`
 }
 
 // PostAction One command run after a server grant deploys. Kind ssh runs it over SSH using an existing ssh deploy target's host, credentials and host key. Kind pfsense runs it as a shell command on a firewall through an existing pfsense deploy target.
@@ -3225,6 +3234,9 @@ type ServerGrantInput struct {
 
 	// PostAction Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only.
 	PostAction *PostAction `json:"postAction"`
+
+	// TargetOptions Per-type options for the deploy target, validated against the type's grantSchema from GET /meta/schemas. A pfSense target takes pfsenseRestart: {mode: all|selected|none, services: [keys]}.
+	TargetOptions *map[string]interface{} `json:"targetOptions,omitempty"`
 }
 
 // ServerInfo The running server's identity.

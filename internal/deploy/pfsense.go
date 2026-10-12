@@ -65,7 +65,7 @@ const pfSenseSchema = `{
     "device": {"type": "string", "default": "", "title": "Device", "description": "Name, alias or ID of the firewall in Nexus. Empty uses the only managed device."},
     "certName": {"type": "string", "pattern": "^[A-Za-z0-9 ._-]{0,64}$", "default": "", "title": "Certificate name", "description": "Description of the certificate in pfSense. Empty uses the certificate's name."},
     "setWebGuiCert": {"type": "boolean", "default": false, "title": "Use for the WebGUI", "description": "Also select this certificate for the pfSense web interface."},
-    "restartServices": {"type": "boolean", "default": true, "title": "Restart services that use it", "description": "After deploying, restart every pfSense service that uses this certificate: the WebGUI, OpenVPN, IPsec, captive portal and packages."},
+    "restartServices": {"type": "boolean", "default": true, "title": "Restart services that use it", "description": "Default for grants that don't choose: restart every service that uses the certificate after deploying."},
     "caPem": {"type": "string", "format": "pem-bundle", "title": "CA certificate", "description": "PEM certificate(s) to trust for pfSense's TLS certificate, in addition to the system roots."},
     "timeoutSeconds": {"type": "integer", "minimum": 5, "maximum": 120, "default": 30, "title": "Timeout (seconds)"}
   }
@@ -286,16 +286,31 @@ func (PfSense) Deploy(ctx context.Context, req targets.Request) (targets.Result,
 	}
 	// "unchanged" still restarts: an earlier deploy may have left services on
 	// the old certificate.
-	if cfg.RestartServices == nil || *cfg.RestartServices {
-		s, err := n.RestartCertServices(ctx, refid)
-		if err != nil {
-			return fail(fmt.Errorf("certificate deployed (%s) but restarting its services failed: %w", detail, err))
+	opts, err := ParsePfSenseGrantOptions(req.GrantOptions)
+	if err != nil {
+		return fail(fmt.Errorf("certificate deployed (%s) but the grant's options are invalid: %w", detail, err))
+	}
+	rm := cfg.restartMode(opts)
+	if rm.Mode != PfRestartNone {
+		var s pfServices
+		var skipped []string
+		var rerr error
+		if rm.Mode == PfRestartSelected {
+			s, skipped, rerr = n.restartSelected(ctx, refid, rm.Services)
+		} else {
+			s, rerr = n.RestartCertServices(ctx, refid)
+		}
+		if rerr != nil {
+			return fail(fmt.Errorf("certificate deployed (%s) but restarting its services failed: %w", detail, rerr))
 		}
 		if labels := s.Labels(); len(labels) > 0 {
 			detail += ", restarted: " + strings.Join(labels, ", ")
+		} else if rm.Mode == PfRestartSelected {
+			detail += ", none of the selected services use it"
 		} else {
 			detail += ", no services use it"
 		}
+		detail += pfSkippedNote(skipped)
 	}
 	return targets.Result{Detail: detail}, nil
 }

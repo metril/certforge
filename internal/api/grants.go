@@ -19,6 +19,7 @@ import (
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
 	"github.com/metril/certforge/internal/deploy"
+	"github.com/metril/certforge/internal/targets"
 )
 
 func deploymentOut(state string, versionID *uuid.UUID, expected, installed []byte, errText string, reportedAt *time.Time, updatedAt time.Time) (gen.Deployment, error) {
@@ -317,6 +318,10 @@ func (s *Server) ListCertificateDeployments(ctx context.Context, r gen.ListCerti
 // serverGrantOut maps a ServerGrantViews row to its API shape: clientId,
 // clientName and deployment are always nil, runsOn is always server.
 func serverGrantOut(r sqlcgen.ServerGrantViewsRow) gen.Grant {
+	opts, err := targetOptionsOut(r.TargetOptions)
+	if err != nil {
+		opts = map[string]interface{}{}
+	}
 	var sd *gen.ServerDeployment
 	if r.Status != nil {
 		var lastError *string
@@ -331,7 +336,7 @@ func serverGrantOut(r sqlcgen.ServerGrantViewsRow) gen.Grant {
 			LastError: lastError, DeployedAt: r.DeployedAt, UpdatedAt: updatedAt}
 	}
 	return gen.Grant{Id: r.ID, ClientId: nil, ClientName: nil, CertificateId: r.CertID, CertificateName: r.CertificateName,
-		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, TargetOptions: map[string]interface{}{}, HookIds: r.HookIds,
+		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, TargetOptions: opts, HookIds: r.HookIds,
 		AutoRemediate: r.AutoRemediate, Deployment: nil, RunsOn: gen.RunsOn("server"), ServerDeployment: sd,
 		PostAction: postActionOut(r.PostAction), CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
 }
@@ -564,7 +569,15 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 	if err != nil {
 		return nil, err
 	}
-	g, err := q.CreateServerGrant(ctx, sqlcgen.CreateServerGrantParams{CertID: r.Body.CertificateId, OutputSpecID: r.Body.LayoutId, DeployTargetID: &r.Id, PostAction: postAction})
+	var createOpts map[string]interface{}
+	if r.Body.TargetOptions != nil {
+		createOpts = *r.Body.TargetOptions
+	}
+	targetOpts, err := s.serverTargetOptionsIn(target.Type, createOpts)
+	if err != nil {
+		return nil, err
+	}
+	g, err := q.CreateServerGrant(ctx, sqlcgen.CreateServerGrantParams{CertID: r.Body.CertificateId, OutputSpecID: r.Body.LayoutId, DeployTargetID: &r.Id, PostAction: postAction, TargetOptions: targetOpts})
 	if pgCode(err) == pgUniqueViolation {
 		return nil, conflict("This target already has a grant for that certificate.")
 	}
@@ -615,12 +628,35 @@ func (s *Server) ListTargetGrants(ctx context.Context, r gen.ListTargetGrantsReq
 	return items, nil
 }
 
+// serverTargetOptionsIn validates a server grant's targetOptions against its
+// target's type (targets.GrantOptions) and returns them encoded; nil when
+// empty.
+func (s *Server) serverTargetOptionsIn(typ string, m map[string]interface{}) ([]byte, error) {
+	raw, err := targetOptionsIn(m)
+	if err != nil || raw == nil {
+		return nil, err
+	}
+	t, ok := s.d.Targets.Get(typ)
+	if !ok {
+		return nil, fmt.Errorf("unknown target type %q", typ)
+	}
+	g, ok := t.(targets.GrantOptions)
+	if !ok {
+		return nil, unprocessable("targetOptions", "not supported by this target type")
+	}
+	if _, err := g.ParseGrantOptions(raw); err != nil {
+		var fe *delivery.FieldError
+		if errors.As(err, &fe) {
+			return nil, unprocessable(fe.Field, fe.Msg)
+		}
+		return nil, unprocessable("targetOptions", err.Error())
+	}
+	return raw, nil
+}
+
 // updateServerGrant replaces a server grant's layout (its only editable
 // field) and re-renders its current version under it.
 func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequestObject) (gen.UpdateGrantResponseObject, error) {
-	if r.Body != nil && len(r.Body.TargetOptions) > 0 {
-		return nil, unprocessable("targetOptions", "not supported by this target type")
-	}
 	tx, err := s.d.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -682,7 +718,19 @@ func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequest
 	if err != nil {
 		return nil, err
 	}
-	if _, err := q.UpdateServerGrant(ctx, sqlcgen.UpdateServerGrantParams{ID: r.Id, OutputSpecID: layoutID, PostAction: postAction}); err != nil {
+	var optsIn map[string]interface{}
+	if r.Body != nil {
+		optsIn = r.Body.TargetOptions
+	}
+	targetT, err := q.GetDeployTarget(ctx, sqlcgen.GetDeployTargetParams{ID: *g.DeployTargetID, OrgID: r.OrgId})
+	if err != nil {
+		return nil, err
+	}
+	targetOpts, err := s.serverTargetOptionsIn(targetT.Type, optsIn)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := q.UpdateServerGrant(ctx, sqlcgen.UpdateServerGrantParams{ID: r.Id, OutputSpecID: layoutID, PostAction: postAction, TargetOptions: targetOpts}); err != nil {
 		return nil, err
 	}
 	versionID, err := q.CertificateCurrentVersion(ctx, g.CertID)
@@ -817,14 +865,15 @@ func (s *Server) GetGrantPfSenseUsage(ctx context.Context, r gen.GetGrantPfSense
 	if t.Type != deploy.TypePfSense {
 		return nil, unprocessable("grant", "the grant's target is not a pfSense target")
 	}
-	refid, labels, err := s.d.Dispatcher.PfSenseUsage(ctx, r.OrgId, t.ID, row.CertificateName)
+	refid, svcs, err := s.d.Dispatcher.PfSenseUsage(ctx, r.OrgId, t.ID, row.CertificateName)
 	if err != nil {
 		return nil, &HTTPError{Status: http.StatusBadGateway, Title: "pfSense error", Detail: err.Error()}
 	}
-	if labels == nil {
-		labels = []string{}
+	services := make([]gen.PfSenseService, 0, len(svcs))
+	for _, sv := range svcs {
+		services = append(services, gen.PfSenseService{Key: sv.Key, Label: sv.Label})
 	}
-	out := gen.PfSenseUsage{Services: labels}
+	out := gen.PfSenseUsage{Services: services}
 	if refid != "" {
 		out.Refid = &refid
 	}

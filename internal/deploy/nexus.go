@@ -228,30 +228,8 @@ func pfStr(v any) string {
 // Labels returns human labels for the services, WebGUI first.
 func (s pfServices) Labels() []string {
 	out := []string{}
-	if s.WebGUI {
-		out = append(out, "WebGUI")
-	}
-	for _, sv := range s.Services {
-		switch sv.Name {
-		case "openvpn":
-			l := "OpenVPN"
-			if m := pfStr(sv.Extras["vpnmode"]); m != "" {
-				l += " " + m
-			}
-			if id := pfStr(sv.Extras["id"]); id != "" {
-				l += " " + id
-			}
-			out = append(out, l)
-		case "ipsec":
-			out = append(out, "IPsec")
-		case "captiveportal":
-			out = append(out, "Captive portal zone "+pfStr(sv.Extras["zone"]))
-		default:
-			out = append(out, sv.Name)
-		}
-	}
-	for _, p := range s.Packages {
-		out = append(out, "package "+p)
+	for _, k := range s.Keyed() {
+		out = append(out, k.Label)
 	}
 	return out
 }
@@ -350,7 +328,7 @@ func (n *nexusClient) findCert(ctx context.Context, name string, leafDER []byte)
 // under the name Deploy would use (cfg.CertName, else certName), without
 // deploying. refid is "" when the firewall has no such certificate. cfgJSON
 // is the target's resolved config (secrets included).
-func PfSenseUsage(ctx context.Context, f targets.HTTPFactory, cfgJSON json.RawMessage, certName string) (string, []string, error) {
+func PfSenseUsage(ctx context.Context, f targets.HTTPFactory, cfgJSON json.RawMessage, certName string) (string, []PfSenseService, error) {
 	var cfg PfSenseConfig
 	if err := json.Unmarshal(cfgJSON, &cfg); err != nil {
 		return "", nil, err
@@ -382,5 +360,5 @@ func PfSenseUsage(ctx context.Context, f targets.HTTPFactory, cfgJSON json.RawMe
 	if err != nil {
 		return "", nil, wrap(err)
 	}
-	return match[0].Refid, s.Labels(), nil
+	return match[0].Refid, s.Keyed(), nil
 }

@@ -61,7 +61,7 @@ WHERE grant_id = sqlc.arg(grant_id) AND version_id = sqlc.arg(version_id) AND de
 -- deploy.failed both name the target, never its raw config) are added for
 -- the registry-driven dispatcher (Task 5).
 SELECT g.id, g.cert_id, g.deploy_target_id, t.org_id, o.slug AS org_slug, t.type AS target_type, t.config AS target_config,
-       t.secret_cfg AS target_secret_cfg, dc.kind AS credential_kind, dc.public AS credential_public, dc.secret_cfg AS credential_secret_cfg, t.name AS target_name, g.post_action,
+       t.secret_cfg AS target_secret_cfg, dc.kind AS credential_kind, dc.public AS credential_public, dc.secret_cfg AS credential_secret_cfg, t.name AS target_name, g.post_action, g.target_options,
        ce.name AS certificate_name, ce.common_name AS certificate_common_name, ce.sans AS certificate_sans,
        ce.current_version_id, ol.files AS layout_files, ol.password AS layout_password, ol.extra_cert_ids AS layout_extra_cert_ids,
        sd.version_id AS pending_version_id, sd.deploy_seq AS pending_deploy_seq
