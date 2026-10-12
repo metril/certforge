@@ -4335,6 +4335,7 @@ components:
         createdAt: {type: string, format: date-time, description: Creation time.}
     RestartTarget:
       type: object
+      description: A restart hook target an agent reported, shown by the hook target picker.
       required: [target, allowed]
       properties:
         target: {type: string, description: "docker:<container> or systemd:<unit>."}

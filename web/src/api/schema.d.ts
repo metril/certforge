@@ -3976,6 +3976,7 @@ export interface components {
              */
             createdAt: string;
         };
+        /** @description A restart hook target an agent reported, shown by the hook target picker. */
         RestartTarget: {
             /** @description docker:<container> or systemd:<unit>. */
             target: string;

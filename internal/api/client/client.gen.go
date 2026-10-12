@@ -2836,7 +2836,7 @@ type RenewResult struct {
 	Enqueued bool `json:"enqueued"`
 }
 
-// RestartTarget defines model for RestartTarget.
+// RestartTarget A restart hook target an agent reported, shown by the hook target picker.
 type RestartTarget struct {
 	// Allowed Listed in the agent's CF_RESTART_ALLOW; only these run.
 	Allowed bool `json:"allowed"`
