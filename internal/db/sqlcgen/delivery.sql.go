@@ -13,7 +13,7 @@ import (
 
 const createDeployTarget = `-- name: CreateDeployTarget :one
 INSERT INTO deploy_targets (org_id, name, type, runs_on, config, secret_cfg, stored_secret_keys)
-VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::text[], '{}')) RETURNING id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg, stored_secret_keys
+VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::text[], '{}')) RETURNING id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg, stored_secret_keys, credential_id
 `
 
 type CreateDeployTargetParams struct {
@@ -48,6 +48,7 @@ func (q *Queries) CreateDeployTarget(ctx context.Context, arg CreateDeployTarget
 		&i.UpdatedAt,
 		&i.SecretCfg,
 		&i.StoredSecretKeys,
+		&i.CredentialID,
 	)
 	return i, err
 }
@@ -223,7 +224,7 @@ func (q *Queries) DeployTargetDependents(ctx context.Context, arg DeployTargetDe
 }
 
 const deployTargetForUpdate = `-- name: DeployTargetForUpdate :one
-SELECT id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg, stored_secret_keys FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR UPDATE
+SELECT id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg, stored_secret_keys, credential_id FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR UPDATE
 `
 
 type DeployTargetForUpdateParams struct {
@@ -250,6 +251,7 @@ func (q *Queries) DeployTargetForUpdate(ctx context.Context, arg DeployTargetFor
 		&i.UpdatedAt,
 		&i.SecretCfg,
 		&i.StoredSecretKeys,
+		&i.CredentialID,
 	)
 	return i, err
 }
@@ -286,7 +288,7 @@ func (q *Queries) DeployTargetGrantCounts(ctx context.Context, ids []uuid.UUID) 
 }
 
 const getDeployTarget = `-- name: GetDeployTarget :one
-SELECT id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg, stored_secret_keys FROM deploy_targets WHERE id = $1 AND org_id = $2
+SELECT id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg, stored_secret_keys, credential_id FROM deploy_targets WHERE id = $1 AND org_id = $2
 `
 
 type GetDeployTargetParams struct {
@@ -308,6 +310,7 @@ func (q *Queries) GetDeployTarget(ctx context.Context, arg GetDeployTargetParams
 		&i.UpdatedAt,
 		&i.SecretCfg,
 		&i.StoredSecretKeys,
+		&i.CredentialID,
 	)
 	return i, err
 }
@@ -569,7 +572,7 @@ func (q *Queries) LayoutsListingExtraCert(ctx context.Context, arg LayoutsListin
 }
 
 const listDeployTargets = `-- name: ListDeployTargets :many
-SELECT id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg, stored_secret_keys FROM deploy_targets WHERE org_id = $1 ORDER BY lower(name), id
+SELECT id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg, stored_secret_keys, credential_id FROM deploy_targets WHERE org_id = $1 ORDER BY lower(name), id
 `
 
 func (q *Queries) ListDeployTargets(ctx context.Context, orgID uuid.UUID) ([]DeployTarget, error) {
@@ -592,6 +595,7 @@ func (q *Queries) ListDeployTargets(ctx context.Context, orgID uuid.UUID) ([]Dep
 			&i.UpdatedAt,
 			&i.SecretCfg,
 			&i.StoredSecretKeys,
+			&i.CredentialID,
 		); err != nil {
 			return nil, err
 		}
@@ -804,7 +808,7 @@ func (q *Queries) TargetKeylessGrantCertificate(ctx context.Context, id *uuid.UU
 const updateDeployTarget = `-- name: UpdateDeployTarget :one
 UPDATE deploy_targets SET name = $1, config = $2, secret_cfg = $3,
        stored_secret_keys = COALESCE($4::text[], '{}'), updated_at = now()
-WHERE id = $5 AND org_id = $6 RETURNING id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg, stored_secret_keys
+WHERE id = $5 AND org_id = $6 RETURNING id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg, stored_secret_keys, credential_id
 `
 
 type UpdateDeployTargetParams struct {
@@ -837,6 +841,7 @@ func (q *Queries) UpdateDeployTarget(ctx context.Context, arg UpdateDeployTarget
 		&i.UpdatedAt,
 		&i.SecretCfg,
 		&i.StoredSecretKeys,
+		&i.CredentialID,
 	)
 	return i, err
 }

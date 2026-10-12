@@ -284,12 +284,12 @@ func TestRewrapWorkerNowOverride(t *testing.T) {
 // TestRewrapTablesOrder covers Phase 7A Task 1 (Global Constraints:
 // "RewrapTable gains deploy_targets (last)"): Tables is a fixed visit
 // order that only ever gains an entry at the end, never a reorder, so
-// deploy_targets — this phase's addition — must be its last element.
+// deploy_credentials — the latest addition — must be its last element.
 func TestRewrapTablesOrder(t *testing.T) {
 	if len(Tables) == 0 {
 		t.Fatal("Tables is empty")
 	}
-	if got := Tables[len(Tables)-1]; got != TableDeployTargets {
-		t.Fatalf("last table = %q, want %q", got, TableDeployTargets)
+	if got := Tables[len(Tables)-1]; got != TableDeployCredentials {
+		t.Fatalf("last table = %q, want %q", got, TableDeployCredentials)
 	}
 }

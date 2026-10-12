@@ -471,6 +471,78 @@ func TestRewrapIncludesDeployTargets(t *testing.T) {
 	}
 }
 
+// TestRewrapIncludesDeployCredentials: a deploy credential's secret_cfg
+// sealed under KEK A is rewrapped to B and still opens.
+func TestRewrapIncludesDeployCredentials(t *testing.T) {
+	ctx := context.Background()
+	pool, q := dbtest.New(t)
+
+	kekA := testKey(51)
+	wrapperA := crypto.NewStaticWrapper(crypto.KeyID(kekA), kekA)
+	envA := crypto.NewEnvelope(wrapperA)
+
+	org, err := q.CreateOrg(ctx, sqlcgen.CreateOrgParams{Slug: "rewrap-dcreds", Name: "Rewrap Deploy Creds"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secretBlob, err := envA.Encrypt(ctx, []byte(`{"password":"hunter2"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cred, err := q.CreateDeployCredential(ctx, sqlcgen.CreateDeployCredentialParams{
+		OrgID: org.ID, Name: "router", Kind: "password", Public: []byte(`{"username":"admin"}`), SecretCfg: secretBlob.Marshal(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	kekB := testKey(52)
+	wrapperB := crypto.NewStaticWrapper(crypto.KeyID(kekB), kekB)
+	env := crypto.NewEnvelope(wrapperB, wrapperA)
+	svc := &kek.Service{
+		Env: env, Settings: settings.NewStore(q, env), Pool: pool, Audit: audit.New(pool, testKey(53)),
+		Info: kek.Info{Kind: "static", KEKID: wrapperB.ID(), Previous: []kek.Ref{{Kind: "static", KEKID: wrapperA.ID()}}},
+	}
+	if err := (&kek.RewrapWorker{Service: svc}).Work(ctx, &river.Job[kek.RewrapArgs]{}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := svc.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Rewrap == nil || st.Rewrap.Running || st.Rewrap.Remaining != 0 {
+		t.Fatalf("rewrap status = %+v", st.Rewrap)
+	}
+	found := false
+	for _, ts := range st.Rewrap.Tables {
+		if ts.Table != kek.TableDeployCredentials {
+			continue
+		}
+		found = true
+		if ts.Rewrapped != 1 || ts.Remaining != 0 {
+			t.Fatalf("deploy_credentials table status = %+v", ts)
+		}
+	}
+	if !found {
+		t.Fatal("deploy_credentials not present in rewrap status")
+	}
+	row, err := q.GetDeployCredential(ctx, sqlcgen.GetDeployCredentialParams{ID: cred.ID, OrgID: org.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b crypto.Blob
+	if err := b.Unmarshal(row.SecretCfg); err != nil {
+		t.Fatal(err)
+	}
+	if b.KEKID != wrapperB.ID() {
+		t.Fatalf("secret_cfg still sealed under %q, want active %q", b.KEKID, wrapperB.ID())
+	}
+	pt, err := crypto.NewEnvelope(wrapperB).Decrypt(ctx, b)
+	if err != nil || string(pt) != `{"password":"hunter2"}` {
+		t.Fatalf("decrypt under active envelope = %q, %v", pt, err)
+	}
+}
+
 // TestRewrapCASLosesRaceSafely covers final review finding 1:
 // issuance.Store.UpdateCA (the ACME branch) now locks the cas row FOR
 // UPDATE (LockCA) across its read of eab_hmac and its write of the same,

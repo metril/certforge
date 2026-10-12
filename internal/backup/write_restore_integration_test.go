@@ -143,7 +143,8 @@ func seedAllTables(t *testing.T, ctx context.Context, pool *pgxpool.Pool) { //no
 	exec(`INSERT INTO enrollment_requests (org_id, client_id, token_id, poll_secret_hash, csr, pubkey_fp, verify_code, status, expires_at)
 		SELECT $1, $2, id, E'\\x00', 'csr', 'fp', 'ABCDEFGH', 'pending', now() + interval '1 hour' FROM enrollment_tokens WHERE client_id = $2`, org, client)
 	outputSpec := scanID(`INSERT INTO output_specs (org_id, name) VALUES ($1, 'output1') RETURNING id`, org)
-	target := scanID(`INSERT INTO deploy_targets (org_id, name, type, runs_on) VALUES ($1, 'target1', 'traefik', 'agent') RETURNING id`, org)
+	deployCred := scanID(`INSERT INTO deploy_credentials (org_id, name, kind, secret_cfg) VALUES ($1, 'cred1', 'password', E'\\x00') RETURNING id`, org)
+	target := scanID(`INSERT INTO deploy_targets (org_id, name, type, runs_on, credential_id) VALUES ($1, 'target1', 'traefik', 'agent', $2) RETURNING id`, org, deployCred)
 	exec(`INSERT INTO hooks (org_id, name, phase, argv) VALUES ($1, 'hook1', 'pre_deploy', '{/bin/true}')`, org)
 
 	grant := scanID(`INSERT INTO client_cert_grants (client_id, cert_id, output_spec_id) VALUES ($1, $2, $3) RETURNING id`, client, cert, outputSpec)

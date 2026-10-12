@@ -247,6 +247,60 @@ func (q *Queries) RewrapCertificateVersionsPage(ctx context.Context, arg RewrapC
 	return items, nil
 }
 
+const rewrapDeployCredentialsPage = `-- name: RewrapDeployCredentialsPage :many
+SELECT id, secret_cfg FROM deploy_credentials
+WHERE $2::uuid IS NULL OR id > $2
+ORDER BY id LIMIT $1
+`
+
+type RewrapDeployCredentialsPageParams struct {
+	Limit int32      `json:"limit"`
+	After *uuid.UUID `json:"after"`
+}
+
+type RewrapDeployCredentialsPageRow struct {
+	ID        uuid.UUID `json:"id"`
+	SecretCfg []byte    `json:"secret_cfg"`
+}
+
+func (q *Queries) RewrapDeployCredentialsPage(ctx context.Context, arg RewrapDeployCredentialsPageParams) ([]RewrapDeployCredentialsPageRow, error) {
+	rows, err := q.db.Query(ctx, rewrapDeployCredentialsPage, arg.Limit, arg.After)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RewrapDeployCredentialsPageRow{}
+	for rows.Next() {
+		var i RewrapDeployCredentialsPageRow
+		if err := rows.Scan(&i.ID, &i.SecretCfg); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rewrapDeployCredentialsSecretCAS = `-- name: RewrapDeployCredentialsSecretCAS :execrows
+UPDATE deploy_credentials SET secret_cfg = $2 WHERE id = $1 AND secret_cfg = $3
+`
+
+type RewrapDeployCredentialsSecretCASParams struct {
+	ID          uuid.UUID `json:"id"`
+	SecretCfg   []byte    `json:"secret_cfg"`
+	SecretCfg_2 []byte    `json:"secret_cfg_2"`
+}
+
+func (q *Queries) RewrapDeployCredentialsSecretCAS(ctx context.Context, arg RewrapDeployCredentialsSecretCASParams) (int64, error) {
+	result, err := q.db.Exec(ctx, rewrapDeployCredentialsSecretCAS, arg.ID, arg.SecretCfg, arg.SecretCfg_2)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const rewrapDeployTargetsPage = `-- name: RewrapDeployTargetsPage :many
 SELECT id, secret_cfg FROM deploy_targets
 WHERE secret_cfg IS NOT NULL AND ($2::uuid IS NULL OR id > $2)

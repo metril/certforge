@@ -22,12 +22,12 @@ import (
 	"github.com/metril/certforge/internal/settings"
 )
 
-// minMigrationVersion is migration 00024, the latest migration that adds a
-// Manifest table (enrollment_requests); every foreign key is DEFERRABLE from 00013
+// minMigrationVersion is migration 00031, the latest migration that adds a
+// Manifest table (deploy_credentials); every foreign key is DEFERRABLE from 00013
 // (Deviations R6). Restore never loads at anything older, whatever the
 // archive's own header says, so every Manifest table exists to load into.
 // Raise it whenever a migration adds a table.
-const minMigrationVersion = 24
+const minMigrationVersion = 31
 
 // RestoreOpts configures Restore. Both funcs run against the caller's own
 // configured envelope (active plus any previous KEK); Restore itself never
