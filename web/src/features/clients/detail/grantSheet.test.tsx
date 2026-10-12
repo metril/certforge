@@ -358,3 +358,29 @@ it('opening a traefik grant edit and closing unchanged does not prompt to discar
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(screen.queryByRole('button', { name: 'Discard' })).not.toBeInTheDocument();
 });
+
+it('warns, without blocking, when a restart hook target is not allowed on the client', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/clients/cl-1'), () =>
+      HttpResponse.json(makeClient({ restartTargets: [{ target: 'docker:nginx', allowed: true }, { target: 'docker:redis', allowed: false }] })),
+    ),
+    http.get(url('/orgs/org-1/hooks'), () =>
+      HttpResponse.json({
+        items: [
+          makeHook({ id: 'h-1', name: 'ok restart', kind: 'restart', target: 'docker:nginx', argv: [] }),
+          makeHook({ id: 'h-2', name: 'bad restart', kind: 'restart', target: 'docker:redis', argv: [] }),
+        ],
+      }),
+    ),
+    http.get(url('/orgs/org-1/clients/cl-1/grants'), () =>
+      HttpResponse.json({ items: [makeGrant({ id: 'g-1', certificateId: 'c-1', certificateName: 'www', hookIds: ['h-1', 'h-2'] })] }),
+    ),
+  );
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates?grant=g-1');
+  const sheet = await screen.findByRole('dialog', { name: 'Edit www' });
+  await user.click(await within(sheet).findByRole('button', { name: /^Advanced/ }));
+  const list = await within(sheet).findByRole('list', { name: 'Hook run order' });
+  const [ok, bad] = within(list).getAllByRole('listitem');
+  expect(within(ok).queryByText('Not allowed on this agent')).not.toBeInTheDocument();
+  expect(within(bad).getByText('Not allowed on this agent')).toBeInTheDocument();
+});

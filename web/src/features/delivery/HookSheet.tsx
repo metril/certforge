@@ -10,6 +10,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
+import { RestartTargetPicker } from './RestartTargetPicker';
 import { ArgvField, argvErrors } from '@/forms/widgets/ArgvField';
 import { PHASE_LABEL } from '@/lib/clientStatus';
 
@@ -27,6 +28,7 @@ export function HookSheet({ orgId, hook, readOnly, onOpenChange }: Props) {
   const [argv, setArgv] = useState<string[]>(hook?.argv ?? ['']);
   const [timeout, setTimeoutText] = useState(String(hook?.timeoutSeconds ?? 60));
   const [show, setShow] = useState(false);
+  const [browse, setBrowse] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const dirty = useDirty({ name, phase, kind, target, argv, timeout });
@@ -107,18 +109,36 @@ export function HookSheet({ orgId, hook, readOnly, onOpenChange }: Props) {
               <ArgvField id="hook-argv" value={argv} onChange={setArgv} errors={show ? errs : []} disabled={readOnly} />
             </div>
           ) : (
-            <Field id="hook-target" label="Target" help="hook.target" error={show ? targetError : null}>
-              <Input
-                id="hook-target"
-                value={target}
-                placeholder="docker:nginx or systemd:nginx.service"
-                autoComplete="off"
-                spellCheck={false}
-                className="font-mono"
-                disabled={readOnly}
-                onChange={(e) => setTarget(e.target.value)}
-              />
-            </Field>
+            <div className="grid gap-2">
+              <Field id="hook-target" label="Target" help="hook.target" error={show ? targetError : null}>
+                <div className="flex gap-2">
+                  <Input
+                    id="hook-target"
+                    value={target}
+                    placeholder="docker:nginx or systemd:nginx.service"
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="font-mono"
+                    disabled={readOnly}
+                    onChange={(e) => setTarget(e.target.value)}
+                  />
+                  {!readOnly && (
+                    <Button type="button" variant="outline" aria-expanded={browse} onClick={() => setBrowse((b) => !b)}>
+                      Browse
+                    </Button>
+                  )}
+                </div>
+              </Field>
+              {browse && !readOnly && (
+                <RestartTargetPicker
+                  orgId={orgId}
+                  onPick={(t) => {
+                    setTarget(t);
+                    setBrowse(false);
+                  }}
+                />
+              )}
+            </div>
           )}
           <FormSection title="Limits">
           <Field id="hook-timeout" label="Timeout" help="hook.timeout" error={show ? timeoutError : null}>

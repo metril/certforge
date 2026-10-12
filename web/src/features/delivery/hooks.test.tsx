@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, makeHook, meWith, org, problem, url } from '@/test/fixtures';
+import { authHandlers, makeClient, makeHook, meWith, org, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 import { argvErrors } from '@/forms/widgets/ArgvField';
 
@@ -217,4 +217,42 @@ it('clears an unknown ?edit= id and reports it', async () => {
   await screen.findByRole('table', { name: 'Hooks' });
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(await screen.findByText('Hook not found.')).toBeInTheDocument();
+});
+
+it('browses a client for restart targets: allowed fill the field, others are disabled', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/clients'), () =>
+      HttpResponse.json({
+        items: [
+          makeClient({ id: 'cl-0', name: 'aaa-plain', capabilities: ['traefik'] }),
+          makeClient({
+            id: 'cl-1',
+            name: 'web-1',
+            capabilities: ['traefik', 'restart'],
+            restartTargets: [
+              { target: 'docker:nginx', allowed: true, running: true },
+              { target: 'docker:redis', allowed: false, running: true },
+            ],
+          }),
+        ],
+        nextCursor: null,
+      }),
+    ),
+  );
+  const { user } = renderRoute('/o/acme/delivery/hooks?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'New hook' });
+  await user.click(within(sheet).getByRole('radio', { name: 'Restart' }));
+  await user.click(within(sheet).getByRole('button', { name: 'Browse' }));
+  // Agents with the restart capability come first.
+  const select = await within(sheet).findByRole('combobox', { name: 'Client' });
+  expect(select).toHaveValue('cl-1');
+  const redis = within(sheet).getByRole('button', { name: /docker:redis/ });
+  expect(redis).toHaveAttribute('aria-disabled', 'true');
+  await user.hover(redis);
+  expect((await screen.findAllByText("Not in this agent's CF_RESTART_ALLOW")).length).toBeGreaterThan(0);
+  await user.click(redis);
+  expect(within(sheet).getByLabelText('Target')).toHaveValue('docker:');
+  await user.click(within(sheet).getByRole('button', { name: /docker:nginx/ }));
+  expect(within(sheet).getByLabelText('Target')).toHaveValue('docker:nginx');
+  expect(within(sheet).queryByRole('combobox', { name: 'Client' })).not.toBeInTheDocument();
 });

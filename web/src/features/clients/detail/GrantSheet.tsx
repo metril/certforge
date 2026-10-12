@@ -293,6 +293,9 @@ export function GrantSheet({ orgId, client, grants, editing, removed = false, on
                               <span className="w-5 text-right tabular-nums text-ink-muted">{i + 1}.</span>
                               <span className="min-w-0 flex-1 truncate">{name}</span>
                               {h && <span className="text-xs text-ink-muted">{PHASE_LABEL[h.phase]}</span>}
+                              {h?.kind === 'restart' && client.restartTargets.length > 0 && !client.restartTargets.some((t) => t.allowed && t.target === h.target) && (
+                                <ToneChip tone="expiring" icon={TriangleAlert} label="Not allowed on this agent" title={`${h.target} is not in ${client.name}'s CF_RESTART_ALLOW`} />
+                              )}
                               <IconButton variant="ghost" size="icon-sm" className="size-7" label={`Move ${name} up`} disabled={i === 0} onClick={() => moveHook(i, -1)}>
                                 <ArrowUp className="size-3.5" aria-hidden />
                               </IconButton>

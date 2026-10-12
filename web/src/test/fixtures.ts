@@ -558,7 +558,7 @@ export const providers: ProviderSchema[] = [acmedns, route53, cloudflare, hetzne
 export function makeClient(p: Partial<Client> = {}): Client {
   return {
     id: 'cl-1', orgId: org.id, siteId: null, name: 'web-1', status: 'active', connected: true, online: true, hostname: 'web-1.lan',
-    os: 'linux', arch: 'amd64', agentVersion: '0.3.0', capabilities: ['traefik', 'hooks'], lastSeen: iso(0),
+    os: 'linux', arch: 'amd64', agentVersion: '0.3.0', capabilities: ['traefik', 'hooks'], restartTargets: [], lastSeen: iso(0),
     agentCertNotAfter: iso(60), agentCaId: 'aca-1', desiredRevision: 3, appliedRevision: 3, grantCount: 1, driftCount: 0, failedCount: 0,
     tokenExpiresAt: null, createdAt: iso(-10), ...p,
   };
