@@ -793,10 +793,13 @@ func (s *Server) validTarget(ctx context.Context, q *sqlcgen.Queries, orgID uuid
 		return validatedTarget{}, err
 	}
 	if cred != nil {
-		// Attaching a credential clears the target's own stored secrets, and
-		// the config must not also set a field the credential supplies.
-		stored = map[string]string{}
-		if bad, err := targets.Conflicts(raw, nil, cred); err != nil {
+		// Attaching or switching a credential clears the target's own stored
+		// secrets; an edit that keeps the credential keeps them. Either way
+		// the target must not set a field the credential supplies.
+		if old == nil || old.CredentialID == nil || *old.CredentialID != credRow.ID {
+			stored = map[string]string{}
+		}
+		if bad, err := targets.Conflicts(raw, stored, cred); err != nil {
 			return validatedTarget{}, badRequest("config is not a JSON object")
 		} else if len(bad) > 0 {
 			return validatedTarget{}, unprocessable("config", "the credential already supplies: "+strings.Join(bad, ", "))
@@ -810,7 +813,7 @@ func (s *Server) validTarget(ctx context.Context, q *sqlcgen.Queries, orgID uuid
 		return validatedTarget{}, mapTargetErr(err, target, raw, stored)
 	}
 	if cred != nil {
-		if err := s.requireCredentialWrite(ctx, orgID, q, typ, old, credRow, cred, cfg.URLs); err != nil {
+		if err := s.requireCredentialWrite(ctx, orgID, q, typ, old, credRow, cred, cfg.URLs, cfg.Public); err != nil {
 			return validatedTarget{}, err
 		}
 		if cfg.Public, cfg.Secrets, err = cred.Strip(cfg.Public, cfg.Secrets); err != nil {
@@ -818,9 +821,15 @@ func (s *Server) validTarget(ctx context.Context, q *sqlcgen.Queries, orgID uuid
 		}
 	}
 	if old != nil && len(reused) > 0 {
-		oldCfg, _, err := s.d.Targets.Parse(typ, old.Config, stored)
+		oldRaw := old.Config
+		if cred != nil {
+			if oldRaw, err = targets.Resolve(old.Config, nil, cred); err != nil {
+				return validatedTarget{}, unprocessable("config", "config is not valid with this credential")
+			}
+		}
+		oldCfg, _, err := s.d.Targets.Parse(typ, oldRaw, stored)
 		if err != nil {
-			return validatedTarget{}, mapTargetErr(err, target, old.Config, stored)
+			return validatedTarget{}, mapTargetErr(err, target, oldRaw, stored)
 		}
 		if !sameURLSet(oldCfg.URLs, cfg.URLs) {
 			return validatedTarget{}, unprocessable("config", "re-enter the secret")
@@ -901,15 +910,18 @@ func (s *Server) targetCredential(ctx context.Context, q *sqlcgen.Queries, orgID
 // requireCredentialWrite gates the credential-related edits behind
 // deploycreds:write on top of delivery:write: attaching a credential (or
 // switching to another), and changing the URL or host of a target that has
-// one — otherwise an operator could point a stored secret at a host they
-// control. urls is the new resolved URL set.
-func (s *Server) requireCredentialWrite(ctx context.Context, orgID uuid.UUID, q *sqlcgen.Queries, typ string, old *sqlcgen.DeployTarget, credRow *sqlcgen.DeployCredential, cred *targets.Credential, urls []string) error {
+// one, or its pinned host key — otherwise an operator could point a stored
+// secret at a host they control. urls is the new resolved URL set.
+func (s *Server) requireCredentialWrite(ctx context.Context, orgID uuid.UUID, q *sqlcgen.Queries, typ string, old *sqlcgen.DeployTarget, credRow *sqlcgen.DeployCredential, cred *targets.Credential, urls []string, public json.RawMessage) error {
 	needs := old == nil || old.CredentialID == nil || *old.CredentialID != credRow.ID
 	if !needs {
 		resolved, err := targets.Resolve(old.Config, nil, cred)
 		if err != nil {
 			needs = true
 		} else if oldCfg, _, err := s.d.Targets.Parse(typ, resolved, nil); err != nil || !sameURLSet(oldCfg.URLs, urls) {
+			needs = true
+		} else if pinnedHostKey(old.Config) != pinnedHostKey(public) {
+			// A swapped pinned host key would let a MITM capture the credential.
 			needs = true
 		}
 	}
@@ -918,6 +930,15 @@ func (s *Server) requireCredentialWrite(ctx context.Context, orgID uuid.UUID, q 
 	}
 	_, err := authorize(ctx, authz.ActionDeployCredsWrite, &orgID)
 	return err
+}
+
+// pinnedHostKey returns a config's "hostKey" string, or "" when absent.
+func pinnedHostKey(cfg json.RawMessage) string {
+	var v struct {
+		HostKey string `json:"hostKey"`
+	}
+	_ = json.Unmarshal(cfg, &v)
+	return v.HostKey
 }
 
 // checkVaultKVOrgPath is S4's isolation gate: a principal without global

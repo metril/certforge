@@ -9,9 +9,12 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"golang.org/x/crypto/ssh"
 
 	"github.com/metril/certforge/internal/api/gen"
+	"github.com/metril/certforge/internal/deploy"
 	"github.com/metril/certforge/internal/targets"
+	"github.com/metril/certforge/internal/targets/sshx/sshxtest"
 	"github.com/metril/certforge/internal/targets/targetstest"
 )
 
@@ -281,5 +284,51 @@ func TestDeployCredentialRotationReachesDeploys(t *testing.T) {
 	}
 	if len(sec.Calls) != 2 || tokenOf(sec.Calls[1]) != "second" {
 		t.Fatalf("second deploy calls = %+v", sec.Calls)
+	}
+}
+
+func TestDeployCredentialSSHHostKeyGateAndOwnSecrets(t *testing.T) {
+	f := newAgentFixture(t)
+	if _, ok := f.srv.d.Targets.Get("ssh"); !ok {
+		f.srv.d.Targets.Register(deploy.SSH{})
+	}
+	admin, op := f.as("org-admin"), f.as("operator")
+	cred := f.createCred(t, "sshpw", "password", map[string]interface{}{"username": "root", "password": "pw"})
+	line := func() string {
+		s, _ := sshxtest.NewSigner(t)
+		return strings.TrimSpace(string(ssh.MarshalAuthorizedKey(s.PublicKey())))
+	}
+	hk1, hk2 := line(), line()
+	cfg := func(hostKey string, extra map[string]interface{}) map[string]interface{} {
+		m := map[string]interface{}{"host": "h.example.test", "hostKey": hostKey,
+			"files": []map[string]interface{}{{"path": "/etc/c.crt", "content": "cert"}}}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return m
+	}
+	runsOn := gen.RunsOn("server")
+	res, err := f.srv.CreateDeployTarget(admin, gen.CreateDeployTargetRequestObject{OrgId: f.org,
+		Body: &gen.DeployTargetInput{Name: "ssh1", Type: "ssh", RunsOn: &runsOn, Config: cfg(hk1, map[string]interface{}{"privateKey": "own-key"}), CredentialId: &cred.Id}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tgt := gen.DeployTarget(res.(gen.CreateDeployTarget201JSONResponse))
+	upd := func(ctx context.Context, c map[string]interface{}) error {
+		_, err := f.srv.UpdateDeployTarget(ctx, gen.UpdateDeployTargetRequestObject{OrgId: f.org, Id: tgt.Id,
+			Body: &gen.DeployTargetInput{Name: "ssh1", Type: "ssh", Config: c, CredentialId: &cred.Id}})
+		return err
+	}
+
+	// The target's own privateKey survives an edit that sends __unchanged__.
+	if err := upd(op, cfg(hk1, map[string]interface{}{"privateKey": "__unchanged__"})); err != nil {
+		t.Fatalf("edit keeping own secret: %v", err)
+	}
+	// A credential-supplied field still cannot be set on the target.
+	wantStatus(t, upd(admin, cfg(hk1, map[string]interface{}{"password": "x"})), 422)
+	// Swapping the pinned host key needs deploycreds:write.
+	wantStatus(t, upd(op, cfg(hk2, map[string]interface{}{"privateKey": "__unchanged__"})), 403)
+	if err := upd(admin, cfg(hk2, map[string]interface{}{"privateKey": "__unchanged__"})); err != nil {
+		t.Fatalf("org-admin host key change: %v", err)
 	}
 }
