@@ -2,6 +2,16 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.27.1](https://github.com/metril/certforge/compare/v0.27.0...v0.27.1) (2026-10-12)
+
+
+### Bug Fixes
+
+* **adcs:** enroll with the WSTEP request format Windows CES expects ([b9faf1b](https://github.com/metril/certforge/commit/b9faf1bdc50d23251c719fcbdee665c5999410ed))
+* **adcs:** report pending and denied CES replies that carry a CMC token ([e0a5dcd](https://github.com/metril/certforge/commit/e0a5dcd1cfc58dd078ec584c9ea258b58ed09be4))
+* **adcs:** send WSTEP enrollment requests in the format CES expects ([8ce3589](https://github.com/metril/certforge/commit/8ce3589ef55f34ef4cfe7e5ee5ab815fef846a49))
+* **adcs:** show the server's reason when authentication fails ([306b0e3](https://github.com/metril/certforge/commit/306b0e3bd8d4f072270f642f7d4dd8ed5e758d98))
+
 ## [0.27.0](https://github.com/metril/certforge/compare/v0.26.0...v0.27.0) (2026-10-12)
 
 
