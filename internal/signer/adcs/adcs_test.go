@@ -213,6 +213,14 @@ func (f *fakeAD) ces(w http.ResponseWriter, r *http.Request) {
 	} else {
 		p7 = buildPKCS7(f.t, f.root, leaf, f.issuing)
 	}
+	if f.mode == "realistic" {
+		// A real CES: the cert as X509v3 under RequestedSecurityToken and
+		// the chain as a loose PKCS7 token.
+		fmt.Fprint(w, soapHead+`<RequestSecurityTokenResponseCollection xmlns="http://docs.oasis-open.org/ws-sx/ws-trust/200512"><RequestSecurityTokenResponse><TokenType>http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3</TokenType><DispositionMessage xml:lang="en-US" xmlns="http://schemas.microsoft.com/windows/pki/2009/01/enrollment"/><BinarySecurityToken ValueType="http://schemas.microsoft.com/windows/pki/2009/01/enrollment#PKCS7" EncodingType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd#base64binary" xmlns="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">`+
+			base64.StdEncoding.EncodeToString(p7)+`</BinarySecurityToken><RequestedSecurityToken><BinarySecurityToken ValueType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3" EncodingType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd#base64binary" xmlns="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">`+
+			base64.StdEncoding.EncodeToString(leaf.Raw)+`</BinarySecurityToken></RequestedSecurityToken><RequestID xmlns="http://schemas.microsoft.com/windows/pki/2009/01/enrollment">55</RequestID></RequestSecurityTokenResponse></RequestSecurityTokenResponseCollection>`+soapTail)
+		return
+	}
 	fmt.Fprint(w, rstResp("Issued", "55", base64.StdEncoding.EncodeToString(p7)))
 }
 
@@ -301,6 +309,7 @@ func TestIssue(t *testing.T) {
 	}{
 		{"issued", nil, 2},
 		{"leafonly", nil, 2},
+		{"realistic", nil, 2},
 		{"pending", func(e error) bool { var p ErrPending; return errors.As(e, &p) && p.RequestID == "77" }, 0},
 		{"denied", func(e error) bool {
 			var d ErrDenied
@@ -360,5 +369,21 @@ func TestRevokeRenewalUnsupported(t *testing.T) {
 	}
 	if _, err := s.RenewalInfo(context.Background(), nil); !errors.Is(err, signer.ErrNotSupported) {
 		t.Fatal(err)
+	}
+}
+
+func TestRSTRequestValues(t *testing.T) {
+	body := string(rstRequest("https://ces.test/ces", "svc", "pw", []byte("csr"), time.Unix(0, 0)))
+	for _, want := range []string{
+		`<wst:RequestSecurityToken PreferredLanguage="en-US">`,
+		`<wst:TokenType>http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3</wst:TokenType>`,
+		`<wst:RequestType>http://docs.oasis-open.org/ws-sx/ws-trust/200512/Issue</wst:RequestType>`,
+		`<o:BinarySecurityToken ValueType="http://schemas.microsoft.com/windows/pki/2009/01/enrollment#PKCS10" EncodingType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd#base64binary">`,
+		`xmlns:wst="http://docs.oasis-open.org/ws-sx/ws-trust/200512"`,
+		`<a:Action s:mustUnderstand="1">http://schemas.microsoft.com/windows/pki/2009/01/enrollment/RST/wstep</a:Action>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("request lacks %s", want)
+		}
 	}
 }

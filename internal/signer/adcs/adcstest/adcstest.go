@@ -50,7 +50,7 @@ type Fake struct {
 }
 
 var (
-	bstRe  = regexp.MustCompile(`<o:BinarySecurityToken[^>]*>([^<]*)</o:BinarySecurityToken>`)
+	bstRe  = regexp.MustCompile(`<o:BinarySecurityToken([^>]*)>([^<]*)</o:BinarySecurityToken>`)
 	passRe = regexp.MustCompile(`<o:Password [^>]*>([^<]*)</o:Password>`)
 )
 
@@ -106,8 +106,12 @@ func (f *Fake) ces(w http.ResponseWriter, r *http.Request) {
 	if !authed(w, body) {
 		return
 	}
+	if reason := checkRST(body); reason != "" {
+		fault(w, reason)
+		return
+	}
 	m := bstRe.FindStringSubmatch(body)
-	der, _ := base64.StdEncoding.DecodeString(m[1])
+	der, _ := base64.StdEncoding.DecodeString(m[2])
 	csr, err := x509.ParseCertificateRequest(der)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -124,8 +128,47 @@ func (f *Fake) ces(w http.ResponseWriter, r *http.Request) {
 	}
 	f.Issued.Add(1)
 	p7 := pkcs7(leaf, f.ca.Raw)
-	fmt.Fprintf(w, `<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Body><RequestSecurityTokenResponseCollection xmlns="http://docs.oasis-open.org/ws-sx/ws-trust/200512"><RequestSecurityTokenResponse><DispositionMessage>Issued</DispositionMessage><RequestedSecurityToken><BinarySecurityToken xmlns="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">%s</BinarySecurityToken></RequestedSecurityToken><RequestID>1</RequestID></RequestSecurityTokenResponse></RequestSecurityTokenResponseCollection></s:Body></s:Envelope>`,
-		base64.StdEncoding.EncodeToString(p7))
+	fmt.Fprintf(w, `<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Body><RequestSecurityTokenResponseCollection xmlns="http://docs.oasis-open.org/ws-sx/ws-trust/200512"><RequestSecurityTokenResponse><DispositionMessage>Issued</DispositionMessage><RequestedSecurityToken><BinarySecurityToken ValueType="%s" xmlns="%s">%s</BinarySecurityToken></RequestedSecurityToken><BinarySecurityToken ValueType="http://schemas.microsoft.com/windows/pki/2009/01/enrollment#PKCS7" xmlns="%s">%s</BinarySecurityToken><RequestID>1</RequestID></RequestSecurityTokenResponse></RequestSecurityTokenResponseCollection></s:Body></s:Envelope>`,
+		wantTokenType, wsse, base64.StdEncoding.EncodeToString(leaf), wsse, base64.StdEncoding.EncodeToString(p7))
+}
+
+// The exact URIs a real CES requires in an RST (MS-WSTEP / MS-MDE).
+const (
+	wsse           = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"
+	wantTokenType  = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3"
+	wantValueType  = "http://schemas.microsoft.com/windows/pki/2009/01/enrollment#PKCS10"
+	wantEncoding   = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd#base64binary"
+	wantRequestTyp = "http://docs.oasis-open.org/ws-sx/ws-trust/200512/Issue"
+)
+
+var tokenTypeRe = regexp.MustCompile(`<wst:TokenType>([^<]*)</wst:TokenType>`)
+var requestTypeRe = regexp.MustCompile(`<wst:RequestType>([^<]*)</wst:RequestType>`)
+
+// checkRST returns why a real CES would reject the RST, or "".
+func checkRST(body string) string {
+	m := bstRe.FindStringSubmatch(body)
+	if m == nil {
+		return "The request does not contain a certificate request token."
+	}
+	if t := tokenTypeRe.FindStringSubmatch(body); t == nil || t[1] != wantTokenType {
+		return "The TokenType is not supported."
+	}
+	if t := requestTypeRe.FindStringSubmatch(body); t == nil || t[1] != wantRequestTyp {
+		return "The RequestType is not supported."
+	}
+	if !strings.Contains(m[1], `ValueType="`+wantValueType+`"`) {
+		return "The BinarySecurityToken ValueType is not supported."
+	}
+	if !strings.Contains(m[1], `EncodingType="`+wantEncoding+`"`) {
+		return "The BinarySecurityToken EncodingType is not supported."
+	}
+	return ""
+}
+
+// fault replies with a SOAP 1.2 fault like a real CES.
+func fault(w http.ResponseWriter, reason string) {
+	w.WriteHeader(http.StatusBadRequest)
+	fmt.Fprintf(w, `<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Body><s:Fault><s:Code><s:Value>s:Sender</s:Value><s:Subcode><s:Value>a:InvalidRequest</s:Value></s:Subcode></s:Code><s:Reason><s:Text xml:lang="en-US">%s</s:Text></s:Reason></s:Fault></s:Body></s:Envelope>`, reason)
 }
 
 // pkcs7 encodes a certs-only SignedData holding certs.

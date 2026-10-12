@@ -26,8 +26,16 @@ const (
 	actionGetPolicies = "http://schemas.microsoft.com/windows/pki/2009/01/enrollmentpolicy/IPolicy/GetPolicies"
 	actionRST         = "http://schemas.microsoft.com/windows/pki/2009/01/enrollment/RST/wstep"
 
-	tokenTypePKCS10  = "http://docs.oasis-open.org/wss/oasis-wss-soap-message-security-1.1#PKCS10"
+	// tokenTypeX509 is wst:TokenType (MS-WSTEP 3.1.4.1.2.8): the token being
+	// requested is an X.509 certificate.
+	tokenTypeX509 = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3"
+	// valueTypePKCS10 is the BinarySecurityToken ValueType of the request
+	// (MS-WSTEP): a PKCS#10 certificate request.
+	valueTypePKCS10 = "http://schemas.microsoft.com/windows/pki/2009/01/enrollment#PKCS10"
+	// encodingBinary is the BinarySecurityToken EncodingType Windows sends.
+	encodingBinary = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd#base64binary"
 	requestTypeIssue = "http://docs.oasis-open.org/ws-sx/ws-trust/200512/Issue"
+	// encodingBase64 is the UsernameToken Nonce EncodingType (standard WS-Security).
 	encodingBase64   = "http://docs.oasis-open.org/wss/oasis-wss-soap-message-security-1.0#Base64Binary"
 	passwordText     = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordText"
 	anonymousReplyTo = "http://www.w3.org/2005/08/addressing/anonymous"
@@ -93,8 +101,8 @@ func getPoliciesRequest(cepURL, username, password string, now time.Time) []byte
 // rstRequest builds a WSTEP RequestSecurityToken carrying csrDER as a
 // PKCS#10 BinarySecurityToken.
 func rstRequest(cesURL, username, password string, csrDER []byte, now time.Time) []byte {
-	body := fmt.Sprintf(`<wst:RequestSecurityToken><wst:TokenType>%s</wst:TokenType><wst:RequestType>%s</wst:RequestType><o:BinarySecurityToken ValueType="%s" EncodingType="%s">%s</o:BinarySecurityToken></wst:RequestSecurityToken>`,
-		tokenTypePKCS10, requestTypeIssue, tokenTypePKCS10, encodingBase64, base64.StdEncoding.EncodeToString(csrDER))
+	body := fmt.Sprintf(`<wst:RequestSecurityToken PreferredLanguage="en-US"><wst:TokenType>%s</wst:TokenType><wst:RequestType>%s</wst:RequestType><o:BinarySecurityToken ValueType="%s" EncodingType="%s">%s</o:BinarySecurityToken></wst:RequestSecurityToken>`,
+		tokenTypeX509, requestTypeIssue, valueTypePKCS10, encodingBinary, base64.StdEncoding.EncodeToString(csrDER))
 	return envelope(actionRST, cesURL, username, password, body, now)
 }
 
