@@ -29,6 +29,7 @@
     },
     "caPem": {
       "type": "string",
+      "format": "pem-bundle",
       "title": "CA certificate (PEM)",
       "description": "Additional trusted root certificate(s) for a self-hosted server, PEM-encoded.",
       "maxLength": 65536

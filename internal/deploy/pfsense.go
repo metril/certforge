@@ -62,7 +62,7 @@ const pfSenseSchema = `{
     "password": {"type": "string", "secret": true, "title": "Password"},
     "certName": {"type": "string", "pattern": "^[A-Za-z0-9 ._-]{0,64}$", "default": "", "title": "Certificate name", "description": "Description of the certificate in pfSense. Empty uses the certificate's name."},
     "setWebGuiCert": {"type": "boolean", "default": false, "title": "Use for the WebGUI", "description": "Also select this certificate for the pfSense web interface."},
-    "caPem": {"type": "string", "title": "CA certificate", "description": "PEM certificate(s) to trust for pfSense's TLS certificate, in addition to the system roots."},
+    "caPem": {"type": "string", "format": "pem-bundle", "title": "CA certificate", "description": "PEM certificate(s) to trust for pfSense's TLS certificate, in addition to the system roots."},
     "timeoutSeconds": {"type": "integer", "minimum": 5, "maximum": 120, "default": 30, "title": "Timeout (seconds)"}
   }
 }`
@@ -112,6 +112,11 @@ func (t PfSense) Parse(raw json.RawMessage) (targets.Config, error) {
 	}
 	if c.TimeoutSeconds < 5 || c.TimeoutSeconds > 120 {
 		return targets.Config{}, &delivery.FieldError{Field: "config.timeoutSeconds", Msg: "must be between 5 and 120"}
+	}
+	if ca, err := httpx.NormalizeCABundle(c.CAPEM); err != nil {
+		return targets.Config{}, &delivery.FieldError{Field: "config.caPem", Msg: err.Error()}
+	} else {
+		c.CAPEM = ca
 	}
 	canon, err := json.Marshal(c)
 	if err != nil {

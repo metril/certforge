@@ -8,7 +8,9 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 
+	"github.com/metril/certforge/internal/notify/httpx"
 	"github.com/metril/certforge/internal/settings"
 )
 
@@ -56,6 +58,9 @@ func checkSettings(raw json.RawMessage) error {
 	var s Settings
 	if err := json.Unmarshal(raw, &s); err != nil {
 		return err
+	}
+	if _, err := httpx.NormalizeCABundle(s.CAPem); err != nil {
+		return fmt.Errorf("caPem: %w", err)
 	}
 	method := s.AuthMethod
 	if method == "" {

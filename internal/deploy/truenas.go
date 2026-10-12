@@ -54,7 +54,7 @@ const truenasSchema = `{
     "apiKey": {"type": "string", "secret": true, "title": "API key", "description": "TrueNAS API key allowed to manage certificates and system settings."},
     "certPrefix": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,40}$", "default": "certforge", "title": "Certificate name prefix", "description": "Imported certificates are named <prefix>-<fingerprint>; older ones with this prefix are removed."},
     "setUiCert": {"type": "boolean", "default": true, "title": "Use as web UI certificate", "description": "Make the imported certificate the UI certificate and restart the UI."},
-    "caPem": {"type": "string", "title": "CA certificate", "description": "PEM certificate(s) to trust for TrueNAS's TLS certificate, in addition to the system roots."},
+    "caPem": {"type": "string", "format": "pem-bundle", "title": "CA certificate", "description": "PEM certificate(s) to trust for TrueNAS's TLS certificate, in addition to the system roots."},
     "timeoutSeconds": {"type": "integer", "minimum": 10, "maximum": 300, "default": 120, "title": "Timeout (seconds)"}
   }
 }`
@@ -112,6 +112,11 @@ func (t TrueNAS) Parse(raw json.RawMessage) (targets.Config, error) {
 	}
 	if c.TimeoutSeconds < 10 || c.TimeoutSeconds > 300 {
 		return targets.Config{}, &delivery.FieldError{Field: "config.timeoutSeconds", Msg: "must be between 10 and 300"}
+	}
+	if ca, err := httpx.NormalizeCABundle(c.CAPEM); err != nil {
+		return targets.Config{}, &delivery.FieldError{Field: "config.caPem", Msg: err.Error()}
+	} else {
+		c.CAPEM = ca
 	}
 	canon, err := json.Marshal(c)
 	if err != nil {

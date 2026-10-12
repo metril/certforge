@@ -111,3 +111,8 @@ it('headers maps to HeadersField', () => {
   } as unknown as RJSFSchema;
   expect(buildUiSchema(s).headers).toEqual({ 'ui:field': 'headers' });
 });
+
+it('renders a pem-bundle field as a multi-line widget even when short', () => {
+  const s = { type: 'object', properties: { caPem: { type: 'string', format: 'pem-bundle' } } } as unknown as RJSFSchema;
+  expect(buildUiSchema(s).caPem).toMatchObject({ 'ui:widget': 'textarea' });
+});

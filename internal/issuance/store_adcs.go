@@ -68,7 +68,11 @@ func parseADCSInput(raw map[string]any) (adcsConfig, error) {
 	str(&cfg.Template, w.Template)
 	str(&cfg.Username, w.Username)
 	if w.CABundlePEM != nil {
-		cfg.CABundlePEM = strings.TrimSpace(*w.CABundlePEM)
+		ca, err := httpx.NormalizeCABundle(*w.CABundlePEM)
+		if err != nil {
+			return adcsConfig{}, &ValidationError{"config.caBundlePem", err.Error()}
+		}
+		cfg.CABundlePEM = ca
 	}
 	if w.TimeoutSeconds != nil {
 		cfg.TimeoutSeconds = *w.TimeoutSeconds

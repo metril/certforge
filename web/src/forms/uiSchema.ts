@@ -94,6 +94,9 @@ export function buildUiSchema(schema: RJSFSchema, opts: { storedSecrets?: string
 
     if (p.secret === true) {
       ui[key] = { ...base, 'ui:widget': 'secret', 'ui:options': { stored: stored.has(key) } };
+    } else if (p.type === 'string' && p.format === 'pem-bundle') {
+      // TODO(caBundle): swap for the dedicated 'caBundle' widget once built.
+      ui[key] = { ...base, 'ui:widget': 'textarea' };
     } else if (p.type === 'string' && (p.format === 'textarea' || (p.maxLength ?? 0) > 200)) {
       ui[key] = { ...base, 'ui:widget': 'textarea' };
     } else if (isPlainStringArray(p)) {
