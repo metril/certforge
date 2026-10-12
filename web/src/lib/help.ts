@@ -72,6 +72,7 @@ export const help = {
   // CA detail sheet's own trust-bundle download, a different field.
   'ca.importTrustBundle': { text: 'PEM roots for a private ACME server, such as step-ca or Pebble.' },
   // CA bundle input (every pem-bundle field).
+  'secret.privateKeyUpload': { text: 'A PEM private key file (id_ed25519, .pem, .key), not passphrase-protected. It replaces what is here.' },
   'caBundle.upload': { text: 'A PEM or DER certificate file (.pem, .crt, .cer, .der). It is added below what is already here.' },
   'caBundle.fetch': { text: 'Reads the chain the server presents. CertForge connects from its own server, so a host only an agent can reach will not answer.' },
   'caBundle.tofu': {

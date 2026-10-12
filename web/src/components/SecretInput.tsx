@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CircleAlert, Eye, EyeOff, Loader2, Lock } from 'lucide-react';
+import { CircleAlert, Eye, EyeOff, Loader2, Lock, Upload } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { UNCHANGED } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { help } from '@/lib/help';
+import { privateKeyProblem } from '@/lib/pem';
+import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { IconButton } from '@/components/IconButton';
 
@@ -25,6 +29,10 @@ type Props = {
   onReveal?: () => Promise<string>;
   /** When set, the reveal button renders disabled with this tooltip. */
   revealDisabledReason?: string;
+  /** A multi-line PEM field (SSH private key): textarea, Upload and drop. */
+  multiline?: boolean;
+  /** The file picker's accept list for multiline. */
+  accept?: string;
 };
 
 /**
@@ -38,7 +46,7 @@ type Props = {
  * the Replace/Keep-stored buttons — there's nothing a disabled field can let
  * the caller do, so it shows only the static "Stored"/"Not set" state.
  */
-export function SecretInput({ id, label, value, onChange: onChangeProp, stored, placeholder, disabled = false, removeDisabledReason, onReveal, revealDisabledReason }: Props) {
+export function SecretInput({ id, label, value, onChange: onChangeProp, stored, placeholder, disabled = false, removeDisabledReason, onReveal, revealDisabledReason, multiline = false, accept = '.pem,.key,*' }: Props) {
   // The last value this control itself emitted: a `value` that differs from it
   // and is back at UNCHANGED/undefined was reset from outside (Discard, or a
   // Save that reloaded the record), not typed.
@@ -59,6 +67,9 @@ export function SecretInput({ id, label, value, onChange: onChangeProp, stored, 
   // the input's own onChange which one the operator asked for.
   const [removed, setRemoved] = useState(false);
   const [shown, setShown] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
   // The revealed plaintext lives only here; every exit path nulls it.
   const [revealed, setRevealed] = useState<string | null>(null);
   const [revealing, setRevealing] = useState(false);
@@ -241,36 +252,73 @@ export function SecretInput({ id, label, value, onChange: onChangeProp, stored, 
       </div>
     );
   }
+  const shownValue = value === UNCHANGED ? '' : (value ?? '');
+  const onText = (v: string) => {
+    setFileError(null);
+    if (v !== '') {
+      onChange(v);
+      return;
+    }
+    // Cleared back to empty: Remove's "" sticks; a plain Replace
+    // that's cleared reverts to keeping the stored value.
+    onChange(removed ? '' : stored ? UNCHANGED : undefined);
+  };
+  const onFile = async (file: File | undefined) => {
+    if (!file) return;
+    const text = await file.text();
+    const problem = privateKeyProblem(text);
+    if (problem) {
+      setFileError(problem);
+      return;
+    }
+    setFileError(null);
+    onChange(text.trim() + '\n');
+  };
+  const typedProblem = multiline && shownValue !== '' ? privateKeyProblem(shownValue) : null;
+  const problem = multiline ? (fileError ?? typedProblem) : null;
   return (
-    <div className="flex items-center gap-2">
+    <div className={multiline ? 'flex flex-col gap-1.5' : undefined}>
+    <div
+      className={cn('flex items-center gap-2', multiline && dragging && 'rounded-md ring-2 ring-primary')}
+      onDragOver={multiline ? (e) => { e.preventDefault(); setDragging(true); } : undefined}
+      onDragLeave={multiline ? () => setDragging(false) : undefined}
+      onDrop={multiline ? (e) => { e.preventDefault(); setDragging(false); void onFile(e.dataTransfer.files[0]); } : undefined}
+    >
       <div className="relative flex-1">
-        <Input
-          id={id}
-          type={shown ? 'text' : 'password'}
-          aria-label={label}
-          aria-describedby={`${id}-hint`}
-          autoComplete="new-password"
-          className="pr-9 font-mono text-xs"
-          placeholder={placeholder}
-          value={value === UNCHANGED ? '' : (value ?? '')}
-          onChange={(e) => {
-            const v = e.target.value;
-            if (v !== '') {
-              onChange(v);
-              return;
-            }
-            // Cleared back to empty: Remove's "" sticks; a plain Replace
-            // that's cleared reverts to keeping the stored value.
-            onChange(removed ? '' : stored ? UNCHANGED : undefined);
-          }}
-        />
+        {multiline ? (
+          <Textarea
+            id={id}
+            aria-label={label}
+            aria-describedby={`${id}-hint`}
+            autoComplete="off"
+            spellCheck={false}
+            rows={5}
+            className="pr-9 font-mono text-xs break-all"
+            style={shown ? undefined : ({ WebkitTextSecurity: 'disc' } as React.CSSProperties)}
+            placeholder={placeholder}
+            value={shownValue}
+            onChange={(e) => onText(e.target.value)}
+          />
+        ) : (
+          <Input
+            id={id}
+            type={shown ? 'text' : 'password'}
+            aria-label={label}
+            aria-describedby={`${id}-hint`}
+            autoComplete="new-password"
+            className="pr-9 font-mono text-xs"
+            placeholder={placeholder}
+            value={shownValue}
+            onChange={(e) => onText(e.target.value)}
+          />
+        )}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="absolute right-0.5 top-1/2 size-8 -translate-y-1/2 text-ink-muted hover:text-ink"
+              className={cn('absolute right-0.5 size-8 text-ink-muted hover:text-ink', multiline ? 'top-0.5' : 'top-1/2 -translate-y-1/2')}
               aria-label={`${shown ? 'Hide' : 'Show'} ${label}`}
               aria-pressed={shown}
               aria-controls={id}
@@ -301,6 +349,31 @@ export function SecretInput({ id, label, value, onChange: onChangeProp, stored, 
           Keep stored
         </Button>
       )}
+    </div>
+    {multiline && (
+      <div className="flex items-center gap-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
+              <Upload aria-hidden /> Upload
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-64">{help['secret.privateKeyUpload'].text}</TooltipContent>
+        </Tooltip>
+        <input
+          ref={fileRef}
+          type="file"
+          accept={accept}
+          aria-label={`Upload ${label}`}
+          className="hidden"
+          onChange={(e) => {
+            void onFile(e.target.files?.[0]);
+            e.target.value = '';
+          }}
+        />
+        {problem && <p className="text-xs text-failed">{problem}</p>}
+      </div>
+    )}
     </div>
   );
 }

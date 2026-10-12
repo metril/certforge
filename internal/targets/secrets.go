@@ -38,7 +38,7 @@ func SecretProps(schema json.RawMessage) ([]string, error) {
 		if p.Type != "string" {
 			return nil, fmt.Errorf("targets: secret property %q must have type string", k)
 		}
-		if p.Pattern != "" || len(p.Enum) > 0 || len(p.Const) > 0 || p.Format != "" {
+		if p.Pattern != "" || len(p.Enum) > 0 || len(p.Const) > 0 || (p.Format != "" && p.Format != "private-key") {
 			return nil, fmt.Errorf("targets: secret property %q cannot use pattern, enum, const, or format", k)
 		}
 		out = append(out, k)

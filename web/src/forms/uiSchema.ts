@@ -5,7 +5,7 @@ import { UNCHANGED } from '@/api/types';
 // non-standard keywords Ajv ignores (strict: false, see SchemaForm.tsx):
 // `secret` marks a write-only credential field, `serverPath` marks a field
 // the server derives itself and 422s if the client sends it (preflight A10).
-type Prop = RJSFSchema & { secret?: boolean; serverPath?: boolean };
+type Prop = RJSFSchema & { secret?: boolean; serverPath?: boolean; format?: string };
 
 // An array of plain strings (no `items.enum`) maps to the ListInput chip
 // widget (theme/fields.tsx's `listArray` field) instead of RJSF's default
@@ -112,7 +112,7 @@ export function buildUiSchema(schema: RJSFSchema, opts: { storedSecrets?: string
     else if (typeof p.default === 'string' && p.default !== '') base['ui:placeholder'] = p.default;
 
     if (p.secret === true) {
-      ui[key] = { ...base, 'ui:widget': 'secret', 'ui:options': { stored: stored.has(key) } };
+      ui[key] = { ...base, 'ui:widget': 'secret', 'ui:options': { stored: stored.has(key), ...(p.format === 'private-key' ? { multiline: true } : {}) } };
     } else if (p.type === 'string' && p.format === 'pem-bundle') {
       const urlKey = urlKeyOf(schema);
       ui[key] = { ...base, 'ui:widget': 'caBundle', ...(urlKey ? { 'ui:options': { urlKey } } : {}) };

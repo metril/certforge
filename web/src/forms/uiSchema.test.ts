@@ -131,3 +131,13 @@ it('routes an ssh-host-key field to the host key widget with its host and port f
   const b = { type: 'object', properties: { url: { type: 'string', format: 'uri' }, hostKey: f } } as unknown as RJSFSchema;
   expect(buildUiSchema(b).hostKey).toMatchObject({ 'ui:widget': 'sshHostKey', 'ui:options': { hostKey: 'url' } });
 });
+
+it('routes a private-key secret to a multiline secret widget; a plain password stays single-line', () => {
+  const s = {
+    type: 'object',
+    properties: { privateKey: { type: 'string', format: 'private-key', secret: true }, password: { type: 'string', secret: true } },
+  } as unknown as RJSFSchema;
+  const ui = buildUiSchema(s);
+  expect(ui.privateKey).toMatchObject({ 'ui:widget': 'secret', 'ui:options': { stored: false, multiline: true } });
+  expect(ui.password).toMatchObject({ 'ui:widget': 'secret', 'ui:options': { stored: false } });
+});

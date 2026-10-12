@@ -122,6 +122,7 @@ function SecretWidget({ id, value, onChange, options, label, placeholder, disabl
       value={value as string | undefined}
       onChange={onChange}
       stored={options.stored === true}
+      multiline={options.multiline === true}
       placeholder={placeholder}
       disabled={disabled || readonly}
       onReveal={canReveal ? () => onRevealSecret(fieldName) : undefined}

@@ -65,6 +65,14 @@ it('the ssh kind renders no anyOf option picker', async () => {
   expect(within(sheet).queryByText(/Option 1/)).not.toBeInTheDocument();
 });
 
+it('the ssh kind Private key is a textarea with an Upload button', async () => {
+  const { user } = renderRoute('/o/acme/delivery/credentials');
+  await user.click(await screen.findByRole('button', { name: 'Add credential' }));
+  const sheet = await screen.findByRole('dialog', { name: 'Add credential' });
+  expect(within(sheet).getByLabelText('Private key').tagName).toBe('TEXTAREA');
+  expect(within(sheet).getByRole('button', { name: /Upload/ })).toBeInTheDocument();
+});
+
 it('edit keeps stored secrets, locks the kind and sends no kind', async () => {
   creds = [makeDeployCredential({ usedBy: 2 })];
   const { user } = renderRoute('/o/acme/delivery/credentials');
