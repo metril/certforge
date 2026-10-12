@@ -261,6 +261,23 @@ func TestOIDCDiscoveryFailureCachedBriefly(t *testing.T) {
 	}
 }
 
+func TestOIDCEmailVerified(t *testing.T) {
+	for _, slim := range []bool{false, true} {
+		o, p, cfg := oidcSetup(t)
+		p.SetClaimsInIDToken(!slim)
+		p.SetUser(oidctest.User{Subject: "s", Email: "a@x.test", EmailVerified: true})
+		id, _, err := o.Finish(context.Background(), cfg, testRedirect, runFlow(t, o, cfg, "/"))
+		if err != nil || !id.EmailVerified {
+			t.Fatalf("slim=%v verified=%v err=%v", slim, id.EmailVerified, err)
+		}
+	}
+	o, p, cfg := oidcSetup(t)
+	p.SetUser(oidctest.User{Subject: "s", Email: "a@x.test"})
+	if id, _, err := o.Finish(context.Background(), cfg, testRedirect, runFlow(t, o, cfg, "/")); err != nil || id.EmailVerified {
+		t.Fatalf("unverified read as verified: %v", err)
+	}
+}
+
 func TestOIDCDisplayNameOrder(t *testing.T) {
 	cases := []struct {
 		name  string

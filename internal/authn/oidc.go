@@ -47,7 +47,9 @@ var (
 // Identity is the verified result of an OIDC login.
 type Identity struct {
 	Issuer, Subject, Email, Name string
-	Groups                       []string
+	// EmailVerified is the email_verified claim; a missing claim is false.
+	EmailVerified bool
+	Groups        []string
 }
 
 // DiscoveryResult is what POST /settings/authentication/test reports.
@@ -265,12 +267,13 @@ func (o *OIDC) Finish(ctx context.Context, cfg AuthSettings, redirectURL string,
 			if err := ui.Claims(&uic); err != nil {
 				o.log().Warn("oidc: userinfo claims unreadable; using ID token claims only", "err", err)
 			} else {
-				mergeMissing(claims, uic, "email", "name", "preferred_username", cfg.UsernameClaim, cfg.GroupsClaim)
+				mergeMissing(claims, uic, "email", "email_verified", "name", "preferred_username", cfg.UsernameClaim, cfg.GroupsClaim)
 			}
 		}
 	}
 	id := Identity{Issuer: idt.Issuer, Subject: idt.Subject, Email: claimString(claims, "email"),
 		Groups: claimGroups(claimAt(claims, cfg.GroupsClaim))}
+	id.EmailVerified = claimBool(claims, "email_verified")
 	custom, _ := claimAt(claims, cfg.UsernameClaim).(string)
 	for _, alt := range []string{custom, claimString(claims, "preferred_username"),
 		claimString(claims, "name"), id.Email, id.Subject} {
@@ -306,6 +309,17 @@ func mergeMissing(dst, src map[string]any, names ...string) {
 			dst[n] = v
 		}
 	}
+}
+
+// claimBool reads a boolean claim, accepting the string "true" too.
+func claimBool(c map[string]any, k string) bool {
+	switch v := c[k].(type) {
+	case bool:
+		return v
+	case string:
+		return strings.EqualFold(v, "true")
+	}
+	return false
 }
 
 func claimString(c map[string]any, k string) string {

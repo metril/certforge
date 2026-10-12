@@ -394,7 +394,7 @@ func TestOIDCFirstLoginDefaultBinding(t *testing.T) {
 	e := newTestEnv(t)
 	csrf, org := e.seedAdminSession()
 	fake := oidctest.New(t)
-	fake.SetUser(oidctest.User{Subject: "n1", Email: "new@corp.test", PreferredUsername: "newbie"})
+	fake.SetUser(oidctest.User{Subject: "n1", Email: "new@corp.test", EmailVerified: true, PreferredUsername: "newbie"})
 	if code, b := putAuth(e, csrf, fake, map[string]any{"defaultOrgId": org.String(), "defaultRole": "operator",
 		"allowedEmailDomains": []string{"corp.test"}}); code != http.StatusOK {
 		t.Fatalf("put: %d %s", code, b)
@@ -423,7 +423,7 @@ func TestOIDCFirstLoginDomainNotAllowed(t *testing.T) {
 	e := newTestEnv(t)
 	csrf, org := e.seedAdminSession()
 	fake := oidctest.New(t)
-	fake.SetUser(oidctest.User{Subject: "n2", Email: "x@other.test", Name: "X"})
+	fake.SetUser(oidctest.User{Subject: "n2", Email: "x@other.test", EmailVerified: true, Name: "X"})
 	if code, b := putAuth(e, csrf, fake, map[string]any{"defaultOrgId": org.String(), "allowedEmailDomains": []string{"corp.test"}}); code != http.StatusOK {
 		t.Fatalf("put: %d %s", code, b)
 	}
@@ -446,5 +446,19 @@ func TestOIDCDefaultBindingSettingsValidated(t *testing.T) {
 		if code, b := putAuth(e, csrf, fake, extra); code != http.StatusUnprocessableEntity {
 			t.Fatalf("%s: %d %s", name, code, b)
 		}
+	}
+}
+
+func TestOIDCFirstLoginUnverifiedEmail(t *testing.T) {
+	e := newTestEnv(t)
+	csrf, org := e.seedAdminSession()
+	fake := oidctest.New(t)
+	fake.SetUser(oidctest.User{Subject: "n3", Email: "x@corp.test", Name: "X"})
+	if code, b := putAuth(e, csrf, fake, map[string]any{"defaultOrgId": org.String(), "allowedEmailDomains": []string{"corp.test"}}); code != http.StatusOK {
+		t.Fatalf("put: %d %s", code, b)
+	}
+	oidcLogin(t, e, "/")
+	if rbs := userBindings(t, e, "n3"); len(rbs) != 0 {
+		t.Fatalf("unverified email got bindings %+v", rbs)
 	}
 }

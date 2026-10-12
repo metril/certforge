@@ -113,7 +113,7 @@ func (s *Server) OidcCallback(ctx context.Context, _ gen.OidcCallbackRequestObje
 		return fail("user_disabled", u.ID.String()), nil
 	}
 	if u.Inserted {
-		s.bindNewOIDCUser(ctx, st, u.ID, email)
+		s.bindNewOIDCUser(ctx, st, u.ID, email, id.EmailVerified)
 	}
 	if _, err := s.startSession(ctx, u.ID); err != nil {
 		s.d.Log.Error("oidc callback: session start failed", "err", err)
@@ -143,7 +143,7 @@ func (s *Server) TestAuthentication(ctx context.Context, req gen.TestAuthenticat
 // bindNewOIDCUser grants a first-time OIDC user the configured default role in
 // the default organisation, unless their email domain is not allowed. Failures
 // are logged only: the login itself still succeeds.
-func (s *Server) bindNewOIDCUser(ctx context.Context, st authn.AuthSettings, userID uuid.UUID, email *string) {
+func (s *Server) bindNewOIDCUser(ctx context.Context, st authn.AuthSettings, userID uuid.UUID, email *string, verified bool) {
 	if st.DefaultOrgID == "" {
 		return
 	}
@@ -154,6 +154,10 @@ func (s *Server) bindNewOIDCUser(ctx context.Context, st authn.AuthSettings, use
 	addr := ""
 	if email != nil {
 		addr = *email
+	}
+	if len(st.AllowedEmailDomains) > 0 && !verified {
+		s.d.Log.Info("oidc: first login with an unverified email; no default role granted", "user", userID)
+		return
 	}
 	if !st.EmailAllowed(addr) {
 		s.d.Log.Info("oidc: first login outside allowed email domains; no default role granted", "user", userID)

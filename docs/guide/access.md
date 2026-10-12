@@ -142,7 +142,7 @@ Claims (name, email, groups) are read from the ID token and completed from the p
 
 ### First sign-in
 
-When **Default organisation** is set, a user who signs in for the first time gets a role binding for **Default role** in that organisation (and an audit event). Existing users are never changed, and group mappings keep working alongside it. If **Allowed email domains** is set and the user's email is outside it, no binding is created and the user lands on a page asking them to contact an administrator.
+When **Default organisation** is set, a user who signs in for the first time gets a role binding for **Default role** in that organisation (and an audit event). Existing users are never changed, and group mappings keep working alongside it. If **Allowed email domains** is set and the user's email is outside it, or the provider does not report it as verified (`email_verified`; Authentik marks emails verified by default), no binding is created and the user lands on a page asking them to contact an administrator.
 
 A user gets the roles of every group listed at their last sign-in. Without any matching group or binding they have no access.
 
