@@ -2,6 +2,29 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.28.0](https://github.com/metril/certforge/compare/v0.27.1...v0.28.0) (2026-10-12)
+
+
+### Features
+
+* **adcs:** parse template subject, key algorithm, provider and EKU requirements ([74fdaf3](https://github.com/metril/certforge/commit/74fdaf3591d5d4957a81c15a672fe1c74d3d3c79))
+* **adcs:** report template requirements and allowed key types from the probe ([29c4741](https://github.com/metril/certforge/commit/29c47411b81c8fc82e8eb70d012ee908d71da9be))
+* **adcs:** show template requirements and limit key types to the template ([37a9d72](https://github.com/metril/certforge/commit/37a9d72b6f3059d5b57125e6959998b12161fe37))
+* **web:** show AD CS template requirements and limit key types to the template ([5be1769](https://github.com/metril/certforge/commit/5be1769e534d7944b4ff3008b8b9e6086b0564dc))
+
+
+### Bug Fixes
+
+* **adcs:** reject keys below the template's minimum size before enrolling ([d32f27f](https://github.com/metril/certforge/commit/d32f27ff5b161e42e56d06916dea803b6237414f))
+* **adcs:** reject keys below the template's minimum size before enrolling ([4b721da](https://github.com/metril/certforge/commit/4b721da14a8f2e98ee8b6120acb41e46af0e73ad))
+* **adcs:** report the CA's error code behind policy-module denials ([44e0ed4](https://github.com/metril/certforge/commit/44e0ed41a337e238574567bc75c13832e6d35e0b))
+* **adcs:** report the CA's error code behind policy-module denials ([540ba32](https://github.com/metril/certforge/commit/540ba32edcda9b2467b676e95a7a19b7a54dd9ec))
+* **adcs:** treat legacy CSP templates with no algorithm as RSA-only ([7be8107](https://github.com/metril/certforge/commit/7be81071821239890d805c1948e3624f9721eb5e))
+* **web:** deploy target row actions and sheet header overlap ([de3986e](https://github.com/metril/certforge/commit/de3986ec473aa7dad41c5c1c9f34104f34bcb703))
+* **web:** disable AD CS templates with unmet blocking requirements and start key type at an allowed one ([ee2a7b9](https://github.com/metril/certforge/commit/ee2a7b9265f00d7b20d1250a0f83378595733417))
+* **web:** keep the target sheet's Edit button clear of the close button ([ad5bb55](https://github.com/metril/certforge/commit/ad5bb55010165fcf5155a10642cf29a22ff9cbb0))
+* **web:** widen the deploy targets actions column to fit the grants button ([bdd89c8](https://github.com/metril/certforge/commit/bdd89c847f2f93a1fec42204f9853f99a4ba8bb3))
+
 ## [0.27.1](https://github.com/metril/certforge/compare/v0.27.0...v0.27.1) (2026-10-12)
 
 
