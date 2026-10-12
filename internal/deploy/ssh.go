@@ -59,6 +59,7 @@ const sshSchema = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "SSH (files + commands)",
   "description": "Writes certificate files to a remote host over SSH and runs optional commands before and after. Runs on the server.",
+  "credentialKinds": ["ssh", "password"],
   "type": "object",
   "additionalProperties": false,
   "required": ["host", "username", "hostKey", "files"],

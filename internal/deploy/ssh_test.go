@@ -3,6 +3,7 @@ package deploy
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -234,5 +235,42 @@ func TestSSHRecordsCommands(t *testing.T) {
 	}
 	if post.Phase != "post_deploy" || post.ExitCode != 4 || post.Argv[2] != "ro; systemctl restart kvmd-nginx" {
 		t.Fatalf("post = %+v", post)
+	}
+}
+
+// TestCredentialKinds: every server target's credentialKinds names known
+// credential kinds, and the keywords are the ones the design assigns.
+func TestCredentialKinds(t *testing.T) {
+	want := map[string][]string{
+		"ssh": {"ssh", "password"}, "pfsense": {"password"}, "routeros": {"password"},
+		"truenas": {"apiKey"}, "authentik": {"token"},
+	}
+	known := map[string]bool{}
+	for _, k := range targets.Kinds() {
+		known[k] = true
+	}
+	for typ, kinds := range want {
+		var tg targets.Target
+		switch typ {
+		case "ssh":
+			tg = SSH{}
+		case "pfsense":
+			tg = PfSense{}
+		case "routeros":
+			tg = RouterOS{}
+		case "truenas":
+			tg = TrueNAS{}
+		case "authentik":
+			tg = Authentik{}
+		}
+		got := targets.AcceptedKinds(tg.Schema())
+		if !reflect.DeepEqual(got, kinds) {
+			t.Errorf("%s credentialKinds = %v, want %v", typ, got, kinds)
+		}
+		for _, k := range got {
+			if !known[k] {
+				t.Errorf("%s: unknown kind %q", typ, k)
+			}
+		}
 	}
 }

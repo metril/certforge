@@ -44,6 +44,7 @@ const truenasSchema = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "TrueNAS SCALE",
   "description": "Imports a certificate into TrueNAS SCALE 25.10+ over its API and optionally makes it the web UI certificate. Runs on the server.",
+  "credentialKinds": ["apiKey"],
   "type": "object",
   "additionalProperties": false,
   "required": ["url", "apiKey"],

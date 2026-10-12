@@ -66,6 +66,7 @@ const routerOSSchema = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "MikroTik RouterOS",
   "description": "Uploads a certificate and key to RouterOS 7.x over SCP, imports them through the REST API and binds them to services. Runs on the server.",
+  "credentialKinds": ["password"],
   "type": "object",
   "additionalProperties": false,
   "required": ["url", "username", "password", "hostKey"],

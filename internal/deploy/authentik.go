@@ -45,6 +45,7 @@ const authentikSchema = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Authentik",
   "description": "Pushes a certificate and its private key into Authentik's certificate-keypair store. Runs on the server.",
+  "credentialKinds": ["token"],
   "type": "object",
   "additionalProperties": false,
   "required": ["url", "token"],
