@@ -184,7 +184,7 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
     key: 'keyType',
     label: 'Key type',
     help: 'defaults.keyType',
-    initial: () => 'ec256',
+    initial: (c) => c.keyTypeLimit?.allowed[0] ?? 'ec256',
     display: (v) => KEY_TYPES.find((k) => k.value === v)?.label ?? v,
     editor: (v, set, c) => {
       const lim = c.keyTypeLimit;

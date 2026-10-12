@@ -212,6 +212,12 @@ describe('IssuanceDefaultsForm disables the account field for a private effectiv
   });
 });
 
+it('keyType starts at the first key type the template allows', () => {
+  const f = ISSUANCE_FIELDS.find((x) => x.key === 'keyType')!;
+  expect(f.initial(ctx)).toBe('ec256');
+  expect(f.initial({ ...ctx, keyTypeLimit: { allowed: ['rsa2048', 'rsa4096'], template: 'T' } })).toBe('rsa2048');
+});
+
 describe('editor widths (review fix round 1, #8: no fixed width that overflows a 375px viewport)', () => {
   it('never uses a bare w-72/w-96 class — every editor wrapper is w-full max-w-96', () => {
     const src = readFileSync(resolve(import.meta.dirname, './issuanceFields.tsx'), 'utf8');

@@ -165,5 +165,7 @@ export const ADCS_PROBE_BLOCKED = 'Fill in the policy URL, username and password
 export function adcsTemplateReason(t: AdcsProbeTemplate): string | null {
   if (!t.canEnroll) return 'The service account cannot enroll on this template.';
   if (t.requiresApproval) return 'Requests need CA manager approval; only automatic issuance works.';
+  const blocked = t.requirements.find((r) => r.blocking && !r.ok);
+  if (blocked) return blocked.fix;
   return null;
 }

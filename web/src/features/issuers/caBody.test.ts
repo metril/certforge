@@ -157,4 +157,8 @@ it('adcs template reason', () => {
   expect(adcsTemplateReason(t)).toBeNull();
   expect(adcsTemplateReason({ ...t, canEnroll: false })).toMatch(/cannot enroll/);
   expect(adcsTemplateReason({ ...t, requiresApproval: true })).toMatch(/approval/);
+  const req = (ok: boolean, blocking = true) => ({ key: 'subject', label: 'Subject', fix: 'Subject Name tab: select "Supply in the request".', ok, blocking });
+  expect(adcsTemplateReason({ ...t, requirements: [req(true)] })).toBeNull();
+  expect(adcsTemplateReason({ ...t, requirements: [req(false)] })).toBe('Subject Name tab: select "Supply in the request".');
+  expect(adcsTemplateReason({ ...t, requirements: [req(false, false)] })).toBeNull();
 });
