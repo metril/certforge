@@ -44,6 +44,7 @@ func (s *Secret) Schema() json.RawMessage {
 	return json.RawMessage(`{
   "type": "object",
   "additionalProperties": false,
+  "credentialKinds": ["token"],
   "required": ["url", "token"],
   "properties": {
     "url": {"type": "string", "format": "uri", "description": "Endpoint URL."},

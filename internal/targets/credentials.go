@@ -129,6 +129,35 @@ func (c Credential) fields() ([]string, map[string]json.RawMessage, error) {
 	return names, pub, nil
 }
 
+// Strip removes the fields the credential supplies from a target's resolved
+// public config and secrets, leaving only what the target itself stores.
+func (c *Credential) Strip(public json.RawMessage, secrets map[string]string) (json.RawMessage, map[string]string, error) {
+	if c == nil {
+		return public, secrets, nil
+	}
+	names, _, err := c.fields()
+	if err != nil {
+		return nil, nil, err
+	}
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(public, &doc); err != nil {
+		return nil, nil, fmt.Errorf("targets: %w", err)
+	}
+	out := make(map[string]string, len(secrets))
+	for k, v := range secrets {
+		out[k] = v
+	}
+	for _, n := range names {
+		delete(doc, n)
+		delete(out, n)
+	}
+	pub, err := json.Marshal(doc)
+	if err != nil {
+		return nil, nil, err
+	}
+	return pub, out, nil
+}
+
 // Conflicts returns the sorted names of fields the credential supplies that
 // config or targetSecrets also set; nil when cred is nil or none overlap.
 func Conflicts(config json.RawMessage, targetSecrets map[string]string, cred *Credential) ([]string, error) {
