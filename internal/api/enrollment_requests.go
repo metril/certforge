@@ -22,7 +22,7 @@ func enrollmentRequestsOut(items []agents.PendingEnrollment) gen.EnrollmentReque
 	return gen.EnrollmentRequestList{Items: out}
 }
 
-// ListEnrollmentRequests lists an org's enrolment requests waiting for approval.
+// ListEnrollmentRequests lists an org's enrollment requests waiting for approval.
 func (s *Server) ListEnrollmentRequests(ctx context.Context, r gen.ListEnrollmentRequestsRequestObject) (gen.ListEnrollmentRequestsResponseObject, error) {
 	if _, err := authorize(ctx, authz.ActionClientsRead, &r.OrgId); err != nil {
 		return nil, err

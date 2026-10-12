@@ -534,7 +534,7 @@ type AgentCA struct {
 	// CreatedAt Creation time.
 	CreatedAt time.Time `json:"createdAt"`
 
-	// Fingerprint Lowercase hex SHA-256 of the CA certificate; enrolment tokens pin it.
+	// Fingerprint Lowercase hex SHA-256 of the CA certificate; enrollment tokens pin it.
 	Fingerprint string `json:"fingerprint"`
 
 	// Id CA id.
@@ -642,7 +642,7 @@ type ApiKeyList struct {
 	// Items Keys
 	Items []ApiKey `json:"items"`
 
-	// Policy The server's key policy, so a creator without settings access can still honour it.
+	// Policy The server's key policy, so a creator without settings access can still honor it.
 	Policy ApiKeyPolicy `json:"policy"`
 }
 
@@ -1053,7 +1053,7 @@ type CertificateDeployment struct {
 	// ClientOnline The client is online (Client.online).
 	ClientOnline bool `json:"clientOnline"`
 
-	// ClientStatus pending until the agent enrols with its token; revoked clients are refused.
+	// ClientStatus pending until the agent enrolls with its token; revoked clients are refused.
 	ClientStatus ClientStatus `json:"clientStatus"`
 
 	// Delivery push nudges the agent over its socket on every change; pull waits for the agent's own schedule or a manual certforge-agent pull.
@@ -1371,14 +1371,14 @@ type Client struct {
 	// SiteId Site the client sits at; a filter only.
 	SiteId *openapi_types.UUID `json:"siteId"`
 
-	// Status pending until the agent enrols with its token; revoked clients are refused.
+	// Status pending until the agent enrolls with its token; revoked clients are refused.
 	Status ClientStatus `json:"status"`
 
-	// TokenExpiresAt Expiry of the unused enrolment token while pending.
+	// TokenExpiresAt Expiry of the unused enrollment token while pending.
 	TokenExpiresAt *time.Time `json:"tokenExpiresAt"`
 }
 
-// ClientCreated A pending client and its one-time enrolment token.
+// ClientCreated A pending client and its one-time enrollment token.
 type ClientCreated struct {
 	// AgentUrl Agent listener URL the token points at.
 	AgentUrl string `json:"agentUrl"`
@@ -1389,7 +1389,7 @@ type ClientCreated struct {
 	// ExpiresAt When the token stops working.
 	ExpiresAt time.Time `json:"expiresAt"`
 
-	// Token Enrolment token cf1.<agent URL>.<CA fingerprint>.<secret>. Shown once; only its hash is stored.
+	// Token Enrollment token cf1.<agent URL>.<CA fingerprint>.<secret>. Shown once; only its hash is stored.
 	Token string `json:"token"`
 }
 
@@ -1411,7 +1411,7 @@ type ClientList struct {
 	NextCursor *string `json:"nextCursor"`
 }
 
-// ClientStatus pending until the agent enrols with its token; revoked clients are refused.
+// ClientStatus pending until the agent enrolls with its token; revoked clients are refused.
 type ClientStatus string
 
 // ClientUpdate A client's editable fields; both are always sent.
@@ -1750,7 +1750,7 @@ type EnrollmentRequest struct {
 	VerifyCode string `json:"verifyCode"`
 }
 
-// EnrollmentRequestList Enrolment requests waiting for approval.
+// EnrollmentRequestList Enrollment requests waiting for approval.
 type EnrollmentRequestList struct {
 	// Items Requests
 	Items []EnrollmentRequest `json:"items"`
@@ -3304,7 +3304,7 @@ type ClientSite = openapi_types.UUID
 // ClientSort defines model for ClientSort.
 type ClientSort = string
 
-// ClientStatusFilter pending until the agent enrols with its token; revoked clients are refused.
+// ClientStatusFilter pending until the agent enrolls with its token; revoked clients are refused.
 type ClientStatusFilter = ClientStatus
 
 // EventKindFilter defines model for EventKindFilter.

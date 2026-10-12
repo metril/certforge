@@ -36,7 +36,7 @@ type secureTransport struct {
 	base http.RoundTripper
 	now  func() time.Time
 
-	mu       sync.Mutex                // guards sessions, and serialises handshakes
+	mu       sync.Mutex                // guards sessions, and serializes handshakes
 	sessions map[string]*clientSession // by authority
 }
 

@@ -41,18 +41,18 @@ type clientOut struct {
 
 // agentOnce and agentClientID share the one compose agent container across
 // every e2e test that needs it (TestAgentAgainstCompose,
-// TestIssuanceBreadthAgainstCompose): the container enrols once, with
+// TestIssuanceBreadthAgainstCompose): the container enrolls once, with
 // CF_AGENT_TOKEN_FILE pointed at .e2e/agent-data/token, and a second
-// enrolment attempt would just orphan an unused client.
+// enrollment attempt would just orphan an unused client.
 var (
 	agentOnce     sync.Once
 	agentClientID uuid.UUID
 )
 
-// enrolledAgent points the compose agent's settings at this server, enrols
+// enrolledAgent points the compose agent's settings at this server, enrolls
 // it (or reuses an already-enrolled "e2e-agent" client, for a rerun against
 // a stack that was not torn down), and waits for it to report active and
-// connected. Safe to call from multiple tests: the actual enrolment work
+// connected. Safe to call from multiple tests: the actual enrollment work
 // runs at most once per test binary run.
 func enrolledAgent(ctx context.Context, t *testing.T, c *apiClient, orgID string) uuid.UUID {
 	t.Helper()
@@ -87,16 +87,16 @@ func enrolledAgent(ctx context.Context, t *testing.T, c *apiClient, orgID string
 	// sync.Once.Do still marks itself done even if the closure above
 	// exited early via t.Fatal (its deferred done-store runs on that
 	// unwind same as a normal return), so a later caller in a different
-	// test whose own enrolment attempt already failed would otherwise
+	// test whose own enrollment attempt already failed would otherwise
 	// silently proceed with the zero UUID and poll a nonexistent client
 	// until it times out. Fail fast instead, on the caller's own t,
 	// pointing at the real cause.
 	if agentClientID == uuid.Nil {
-		t.Fatal("enrolledAgent: the one-time agent enrolment already failed in an earlier test; see that test's own failure for the cause")
+		t.Fatal("enrolledAgent: the one-time agent enrollment already failed in an earlier test; see that test's own failure for the cause")
 	}
 	clientPath := "/api/v1/orgs/" + orgID + "/clients/" + agentClientID.String()
 	waitFor(ctx, t, "client active and connected", func() (clientOut, bool) {
-		// The agent enrols, then waits for an administrator: approve its
+		// The agent enrolls, then waits for an administrator: approve its
 		// request as soon as it appears (requireApproval defaults to on).
 		var reqs struct {
 			Items []struct {
@@ -221,7 +221,7 @@ func TestAgentAgainstCompose(t *testing.T) {
 	orgID := c.authenticate(ctx, t)
 	cert := issueForAgent(ctx, t, c, orgID, "agent-e2e")
 
-	// 1. Enrol (or reuse) the compose agent → active and connected.
+	// 1. Enroll (or reuse) the compose agent → active and connected.
 	clientID := enrolledAgent(ctx, t, c, orgID)
 	clientPath := "/api/v1/orgs/" + orgID + "/clients/" + clientID.String()
 	connected := func(what string) {
@@ -404,7 +404,7 @@ func TestAgentAgainstCompose(t *testing.T) {
 }
 
 // assertAgentViaCaddy proves the agent's protocol traffic crossed the
-// terminating proxy: Caddy's access log holds the handshake, enrolment and
+// terminating proxy: Caddy's access log holds the handshake, enrollment and
 // signed REST calls. (The WebSocket is logged only when it closes; that the
 // agent is "connected" with an agentUrl that names only Caddy shows it too.)
 func assertAgentViaCaddy(t *testing.T, dir string) {

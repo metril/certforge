@@ -117,7 +117,7 @@ func NewIssueWorker(store *Store, certs *certstore.Store) *IssueWorker {
 		Now: time.Now, Rand: rand.Float64, Log: slog.Default()}
 }
 
-// Timeout covers a manual-dns wait plus propagation and finalisation.
+// Timeout covers a manual-dns wait plus propagation and finalization.
 func (w *IssueWorker) Timeout(*river.Job[IssueArgs]) time.Duration { return 3 * time.Hour }
 
 // saveTimeout bounds a single attempt-progress save (SaveAttemptProgress):
@@ -545,7 +545,7 @@ func ledgerRefusal(tl *Timeline, exceeded *LedgerExceeded) error {
 // 12, RFC 9773 §5): useAri is set, and v was actually issued (not imported
 // or uploaded) by the very CA (caID) this attempt is going to — an
 // imported/uploaded version, or one issued against a different CA, has
-// nothing this CA would recognise as a ReplacesCertID.
+// nothing this CA would recognize as a ReplacesCertID.
 func replacesEligible(useAri bool, v certstore.Version, caID uuid.UUID) bool {
 	return useAri && v.Source == "issued" && v.CAID != nil && *v.CAID == caID
 }

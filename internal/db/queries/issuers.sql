@@ -98,7 +98,7 @@ SELECT (
 )::bigint AS users;
 
 -- name: LockCAByID :one
--- Serialises CRL signing for one CA (and with RevokeVersion's LockCA).
+-- Serializes CRL signing for one CA (and with RevokeVersion's LockCA).
 SELECT * FROM cas WHERE id = $1 FOR UPDATE;
 
 -- name: GetCACRL :one

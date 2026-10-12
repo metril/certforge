@@ -26,7 +26,7 @@ import (
 
 // fakeProtocol is the server half of the agent protocol for tests: the
 // handshake, and a wrapper that verifies, opens, seals and signs for a mux of
-// plain handlers. Enrol and the WebSocket stay outside it, as on the server.
+// plain handlers. Enroll and the WebSocket stay outside it, as on the server.
 type fakeProtocol struct {
 	l  *agentca.Listener
 	au string
@@ -39,8 +39,8 @@ type fakeProtocol struct {
 	// busyHandshakes answers that many handshakes with an unsigned 429.
 	busyHandshakes int
 
-	// enrol serves every /agent/v1/enroll* request (nil: 404).
-	enrol http.HandlerFunc
+	// enroll serves every /agent/v1/enroll* request (nil: 404).
+	enroll http.HandlerFunc
 }
 
 type fakeSession struct {
@@ -146,7 +146,7 @@ func (p *fakeProtocol) secure(next http.Handler) http.Handler {
 	})
 }
 
-// handler routes enrol and the WebSocket straight to mux, the handshake to
+// handler routes enroll and the WebSocket straight to mux, the handshake to
 // the protocol, and everything else through it.
 func (p *fakeProtocol) handler(mux http.Handler) http.Handler {
 	secured := p.secure(mux)
@@ -155,7 +155,7 @@ func (p *fakeProtocol) handler(mux http.Handler) http.Handler {
 		case r.URL.Path == agentproto.PathSession:
 			p.handshake(w, r)
 		case strings.HasPrefix(r.URL.Path, agentproto.PathEnroll):
-			p.enrol(w, r)
+			p.enroll(w, r)
 		case strings.HasSuffix(r.URL.Path, "/ws"):
 			mux.ServeHTTP(w, r)
 		default:

@@ -141,7 +141,7 @@ func (s *Server) TestAuthentication(ctx context.Context, req gen.TestAuthenticat
 }
 
 // bindNewOIDCUser grants a first-time OIDC user the configured default role in
-// the default organisation, unless their email domain is not allowed. Failures
+// the default organization, unless their email domain is not allowed. Failures
 // are logged only: the login itself still succeeds.
 func (s *Server) bindNewOIDCUser(ctx context.Context, st authn.AuthSettings, userID uuid.UUID, email *string, verified bool) {
 	if st.DefaultOrgID == "" {

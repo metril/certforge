@@ -55,7 +55,7 @@ type Signer struct {
 	riRT    *retryAfterTransport
 	riErr   error
 	riErrAt time.Time
-	// riCall serialises RenewalInfo requests so riRT's largest-Retry-After
+	// riCall serializes RenewalInfo requests so riRT's largest-Retry-After
 	// can be reset per request (concurrent callers share one Signer).
 	riCall sync.Mutex
 }
@@ -105,7 +105,7 @@ func legoKeyType(k signer.KeyType) (certcrypto.KeyType, error) {
 // ctx to every outgoing request so a cancellation reaches an in-flight round
 // trip too. lego v4 is not context-aware on its own: without this, cancelling
 // the issuance context would stop the challenge solver (manual-dns waits
-// honour it) but leave an in-flight CA HTTP call running until it completes
+// honor it) but leave an in-flight CA HTTP call running until it completes
 // or times out.
 type ctxTransport struct {
 	base http.RoundTripper

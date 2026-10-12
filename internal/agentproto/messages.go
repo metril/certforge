@@ -38,7 +38,7 @@ const (
 // Message is one WebSocket message; MsgType is its "type" field.
 type Message interface{ MsgType() string }
 
-// ErrUnknownType is returned by Unmarshal for an unrecognised "type".
+// ErrUnknownType is returned by Unmarshal for an unrecognized "type".
 var ErrUnknownType = errors.New("agentproto: unknown message type")
 
 // Hello is the agent's first message on a new socket.

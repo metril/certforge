@@ -472,7 +472,7 @@ func (s *Store) CRL(ctx context.Context, caID uuid.UUID, issuerSerial string) ([
 		return stored.Der, nil
 	}
 
-	// Slow path: serialise signers on the CA row (and with revocations),
+	// Slow path: serialize signers on the CA row (and with revocations),
 	// re-check, then sign with the next cRLNumber (RFC 5280 5.2.3).
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {

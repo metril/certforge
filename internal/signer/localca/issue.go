@@ -62,7 +62,7 @@ func New(mat Material, cfg Config, rec Recorder, opts Opts) *Signer {
 
 func (s *Signer) Kind() string { return "localca" }
 
-// Issue signs a leaf under Issuing: NewKeyAndCSR builds the key (honouring
+// Issue signs a leaf under Issuing: NewKeyAndCSR builds the key (honoring
 // req.ReuseKeyPKCS8 and req.KeyType), NotAfter is capped to the issuing
 // certificate's own NotAfter (Issue refuses when under 24 h of it remain), and a CRL distribution point is added only
 // when Opts.BaseURL is set.

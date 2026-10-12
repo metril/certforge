@@ -39,7 +39,7 @@ type FailureInfo struct {
 // ClassifyFailure buckets a failed attempt's cause for cert.renewal_failed.
 // step is the timeline step that failed (lastFailedStep's result, possibly
 // "" for a pre-flight error before any step ran, for example "no CA
-// configured"). Order matters: caa and rate_ledger are recognised by step
+// configured"). Order matters: caa and rate_ledger are recognized by step
 // name first — both fail from a local pre-check that never reaches the CA,
 // so a *signer.Error's own Type (set only for a CA-returned rateLimited)
 // is checked alongside the local rate-ledger's own LedgerExceeded; a

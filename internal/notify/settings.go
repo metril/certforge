@@ -40,7 +40,7 @@ type SMTPSettings struct {
 	TimeoutSeconds int    `json:"timeoutSeconds"`
 }
 
-// SectionName is the global settings section holding notification behaviour
+// SectionName is the global settings section holding notification behavior
 // shared across every channel (Shared contract).
 const SectionName = "notifications"
 

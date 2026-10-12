@@ -57,7 +57,7 @@ type UploadInput struct {
 // chain, in order. PKCS#12: pkcs12.DecodeChain. A supplied key (PEM, or
 // embedded in the PKCS#12 bundle) must match the leaf's public key, or this
 // is a 422 on privateKeyPem. Key encodings PKCS#1, SEC1 and PKCS#8 are all
-// accepted and normalised to PKCS#8; omitting the key (both PrivateKeyPEM
+// accepted and normalized to PKCS#8; omitting the key (both PrivateKeyPEM
 // and any PKCS#12 key) stores a keyless version. KeyTypeOf classifies the
 // leaf's own public key either way (so a keyless upload is still typed);
 // anything it rejects (ed25519, an unusual RSA size or EC curve) is 422

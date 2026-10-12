@@ -70,7 +70,7 @@ func TestAgentCARotateRetire(t *testing.T) {
 	en2 := e.newClient(t, "web-2")
 	cert2, _, code2 := e.enroll(t, en2.Token)
 	if code2 != http.StatusOK {
-		t.Fatalf("enrol under the new CA right after rotate: %d", code2)
+		t.Fatalf("enroll under the new CA right after rotate: %d", code2)
 	}
 	if leaf, _ := x509.ParseCertificate(cert2.Certificate[0]); leaf == nil || leaf.Issuer.CommonName != next.Subject {
 		t.Fatal("client enrolled right after rotate was not signed by the new CA")

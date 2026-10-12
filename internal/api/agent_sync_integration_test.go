@@ -20,7 +20,7 @@ import (
 	"github.com/metril/certforge/internal/delivery"
 )
 
-// enrolledWithGrant enrols an agent and grants it a current certificate
+// enrolledWithGrant enrolls an agent and grants it a current certificate
 // through a one-file layout.
 func (e *agentEnv) enrolledWithGrant(t *testing.T, name string, autoRemediate bool) (tls.Certificate, sqlcgen.Client, uuid.UUID) {
 	t.Helper()

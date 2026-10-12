@@ -258,7 +258,7 @@ const shareAgentCA = `-- name: ShareAgentCA :one
 SELECT id, cert_der, key, status, not_before, not_after, created_at FROM agent_cas WHERE id = $1 FOR SHARE
 `
 
-// A shared lock: concurrent enrolments/renewals against the same CA do not
+// A shared lock: concurrent enrollments/renewals against the same CA do not
 // serialize on each other, but still conflict with Retire's FOR UPDATE.
 func (q *Queries) ShareAgentCA(ctx context.Context, id uuid.UUID) (AgentCa, error) {
 	row := q.db.QueryRow(ctx, shareAgentCA, id)

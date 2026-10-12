@@ -119,7 +119,7 @@ func fakeBlockingCA(t *testing.T) (srv *httptest.Server, reached chan struct{}) 
 		// watches for the client closing the connection (and cancels
 		// r.Context() accordingly) once the request body has been read to
 		// EOF. A real CA always reads the signed JWS body before acting on
-		// it, so this matches real behaviour rather than working around it.
+		// it, so this matches real behavior rather than working around it.
 		_, _ = io.Copy(io.Discard, r.Body)
 		close(reached)
 		<-r.Context().Done()

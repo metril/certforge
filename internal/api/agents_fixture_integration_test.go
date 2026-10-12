@@ -118,7 +118,7 @@ func newAgentFixture(t *testing.T) *agentFixture {
 }
 
 // newClient creates a pending client through the service as an operator.
-func (f *agentFixture) newClient(t *testing.T, name string) agents.Enrolment {
+func (f *agentFixture) newClient(t *testing.T, name string) agents.Enrollment {
 	t.Helper()
 	e, err := f.svc.CreateClient(f.as("operator"), f.org, name, nil)
 	if err != nil {

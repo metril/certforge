@@ -37,7 +37,7 @@ type DeployArgs struct {
 	VersionID uuid.UUID `json:"version_id"`
 	// Seq is server_deployments.deploy_seq at enqueue time: it keeps a
 	// re-enqueue of the same version from being dropped as a duplicate of a
-	// running (stale) job, and lets that stale job be recognised.
+	// running (stale) job, and lets that stale job be recognized.
 	Seq int64 `json:"seq"`
 }
 

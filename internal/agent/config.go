@@ -1,4 +1,4 @@
-// Package agent is certforge-agent: enrolment, the mTLS client, the
+// Package agent is certforge-agent: enrollment, the mTLS client, the
 // reconcile loop that installs grants, the Traefik target, and hooks.
 package agent
 

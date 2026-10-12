@@ -68,7 +68,7 @@ func (s *Service) RetireCA(ctx context.Context, id uuid.UUID) error {
 	case errors.Is(err, agentca.ErrActive):
 		return conflict("The active agent CA cannot be retired; rotate first.")
 	case errors.As(err, &inUse):
-		return conflict("%d active agent certificates were issued by this CA; connected agents renew when they get the new trust bundle, pull-mode and offline agents when their certificate comes due. Wait for them or re-enrol them.", inUse.N)
+		return conflict("%d active agent certificates were issued by this CA; connected agents renew when they get the new trust bundle, pull-mode and offline agents when their certificate comes due. Wait for them or re-enroll them.", inUse.N)
 	case err != nil:
 		return err
 	}

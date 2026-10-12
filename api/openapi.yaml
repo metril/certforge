@@ -1557,7 +1557,7 @@ paths:
     get:
       operationId: listAllEnrollmentRequests
       tags: [clients]
-      summary: List enrolment requests waiting for approval across orgs
+      summary: List enrollment requests waiting for approval across orgs
       description: Like listEnrollmentRequests, over every org where the caller has clients:read. 403 when there is none. Items carry orgId.
       responses:
         "200":
@@ -1573,7 +1573,7 @@ paths:
     get:
       operationId: listEnrollmentRequests
       tags: [clients]
-      summary: List enrolment requests waiting for approval
+      summary: List enrollment requests waiting for approval
       description: Needs clients:read. An agent that presents a valid one-time token waits here (Settings → Agents → requireApproval) until an administrator compares its verification code with the one the agent logged and approves or rejects it. Expired requests are not listed. Not paginated; at most 50 wait per org.
       responses:
         "200":
@@ -1590,7 +1590,7 @@ paths:
     post:
       operationId: approveEnrollmentRequest
       tags: [clients]
-      summary: Approve an enrolment request
+      summary: Approve an enrollment request
       description: Needs clients:write. The waiting agent receives its certificate at its next poll and the client becomes active. 409 when the request was already decided or has expired; 404 when it does not exist in this org. Audited as client.enrol_approved.
       responses:
         "204": {description: Approved.}
@@ -1604,8 +1604,8 @@ paths:
     post:
       operationId: rejectEnrollmentRequest
       tags: [clients]
-      summary: Reject an enrolment request
-      description: Needs clients:write. The agent is told its request was rejected and stops. The token stays used; re-enrol the client for a new one. 409 when the request was already decided or has expired; 404 when it does not exist in this org. Audited as client.enrol_rejected.
+      summary: Reject an enrollment request
+      description: Needs clients:write. The agent is told its request was rejected and stops. The token stays used; re-enroll the client for a new one. 409 when the request was already decided or has expired; 404 when it does not exist in this org. Audited as client.enrol_rejected.
       responses:
         "204": {description: Rejected.}
         "401": {$ref: "#/components/responses/Unauthorized"}
@@ -1667,7 +1667,7 @@ paths:
       operationId: createClient
       tags: [clients]
       summary: Create a client
-      description: Needs clients:write. Creates a pending client and returns its one-time enrolment token, shown once; only its hash is stored.
+      description: Needs clients:write. Creates a pending client and returns its one-time enrollment token, shown once; only its hash is stored.
       requestBody:
         required: true
         content:
@@ -1764,7 +1764,7 @@ paths:
     post:
       operationId: reenrollClient
       tags: [clients]
-      summary: Issue a new enrolment token
+      summary: Issue a new enrollment token
       description: Needs clients:write. Returns the client to pending with a fresh one-time token, refuses its current agent certificate and closes its socket. 409 for a revoked client.
       responses:
         "200":
@@ -4210,7 +4210,7 @@ components:
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/ApiKey"}, description: Keys, newest first.}
         policy:
-          description: The server's key policy, so a creator without settings access can still honour it.
+          description: The server's key policy, so a creator without settings access can still honor it.
           allOf:
             - $ref: "#/components/schemas/ApiKeyPolicy"
     ApiKeyPolicy:
@@ -4301,7 +4301,7 @@ components:
     ClientStatus:
       type: string
       enum: [pending, active, revoked]
-      description: pending until the agent enrols with its token; revoked clients are refused.
+      description: pending until the agent enrolls with its token; revoked clients are refused.
     Client:
       type: object
       description: A host running certforge-agent, enrolled into one org.
@@ -4331,7 +4331,7 @@ components:
         grantCount: {type: integer, description: Live grants.}
         driftCount: {type: integer, description: Grants whose deployment is in drift.}
         failedCount: {type: integer, description: Grants whose last deployment failed.}
-        tokenExpiresAt: {type: string, format: date-time, nullable: true, description: Expiry of the unused enrolment token while pending.}
+        tokenExpiresAt: {type: string, format: date-time, nullable: true, description: Expiry of the unused enrollment token while pending.}
         createdAt: {type: string, format: date-time, description: Creation time.}
     RestartTarget:
       type: object
@@ -4357,11 +4357,11 @@ components:
         siteId: {type: string, format: uuid, nullable: true, description: Site in the same org; null clears it.}
     ClientCreated:
       type: object
-      description: A pending client and its one-time enrolment token.
+      description: A pending client and its one-time enrollment token.
       required: [client, token, expiresAt, agentUrl]
       properties:
         client: {$ref: "#/components/schemas/Client"}
-        token: {type: string, description: "Enrolment token cf1.<agent URL>.<CA fingerprint>.<secret>. Shown once; only its hash is stored."}
+        token: {type: string, description: "Enrollment token cf1.<agent URL>.<CA fingerprint>.<secret>. Shown once; only its hash is stored."}
         expiresAt: {type: string, format: date-time, description: When the token stops working.}
         agentUrl: {type: string, description: Agent listener URL the token points at.}
     ClientList:
@@ -4392,7 +4392,7 @@ components:
         expiresAt: {type: string, format: date-time, description: Deadline for a decision (Settings → Agents → pendingTtlHours after creation); after it the request is no longer listed and the agent is told it expired.}
     EnrollmentRequestList:
       type: object
-      description: Enrolment requests waiting for approval.
+      description: Enrollment requests waiting for approval.
       required: [items]
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/EnrollmentRequest"}, description: Requests, oldest first.}
@@ -4407,7 +4407,7 @@ components:
       properties:
         id: {type: string, format: uuid, description: CA id.}
         status: {$ref: "#/components/schemas/AgentCAStatus"}
-        fingerprint: {type: string, description: Lowercase hex SHA-256 of the CA certificate; enrolment tokens pin it.}
+        fingerprint: {type: string, description: Lowercase hex SHA-256 of the CA certificate; enrollment tokens pin it.}
         subject: {type: string, description: Certificate subject common name.}
         notBefore: {type: string, format: date-time, description: Start of validity.}
         notAfter: {type: string, format: date-time, description: End of validity.}

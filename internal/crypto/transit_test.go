@@ -66,7 +66,7 @@ func TestTransitWrapperID(t *testing.T) {
 		t.Fatalf("id changed with key version: %q vs %q", id1, w.ID())
 	}
 
-	// Trailing slash on the address is normalised away.
+	// Trailing slash on the address is normalized away.
 	w2 := NewTransitWrapper(api, "https://vault.example.com:8200/", "transit", "certforge-kek")
 	if w2.ID() != id1 {
 		t.Fatalf("trailing slash changed id: %q vs %q", id1, w2.ID())

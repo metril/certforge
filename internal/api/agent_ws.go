@@ -99,7 +99,7 @@ func (a *agentAPI) ws(w http.ResponseWriter, r *http.Request) {
 		_ = conn.CloseNow()
 		return
 	}
-	// A revoke or re-enrolment that committed between the check above and the
+	// A revoke or re-enrollment that committed between the check above and the
 	// hub registering this connection must not leave it open: re-run the same
 	// check the hub is now holding a slot for.
 	verify := func(ctx context.Context) error {

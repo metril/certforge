@@ -23,7 +23,7 @@ import (
 )
 
 // signedLeaf issues a client certificate for id from ca, the same shape
-// agent enrolment produces.
+// agent enrollment produces.
 func signedLeaf(t *testing.T, ca *agentca.CA, id uuid.UUID) *x509.Certificate {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

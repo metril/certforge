@@ -29,7 +29,7 @@ const MaxPendingEnrollments = 50
 // pruneAfter is how long a finished request row is kept.
 const pruneAfter = 7 * 24 * time.Hour
 
-// EnrollToken is an enrolment token found by its lookup id. Hash keys the
+// EnrollToken is an enrollment token found by its lookup id. Hash keys the
 // proof of possession; it never leaves the server.
 type EnrollToken struct {
 	ID, ClientID uuid.UUID
@@ -125,12 +125,12 @@ func (s *Service) SubmitEnrollment(ctx context.Context, tok EnrollToken, csrPEM 
 		return agentproto.EnrollAccepted{}, err
 	}
 	if cur.Status != "pending" {
-		return agentproto.EnrollAccepted{}, conflict("This client is %s; re-enrol it for a new token.", cur.Status)
+		return agentproto.EnrollAccepted{}, conflict("This client is %s; re-enroll it for a new token.", cur.Status)
 	}
 	status := "approved"
 	if st.ApprovalRequired() {
 		status = "pending"
-		// Serialise the cap check and insert per org so concurrent submits cannot overshoot.
+		// Serialize the cap check and insert per org so concurrent submits cannot overshoot.
 		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", "enroll-pending:"+cur.OrgID.String()); err != nil {
 			return agentproto.EnrollAccepted{}, err
 		}
@@ -139,7 +139,7 @@ func (s *Service) SubmitEnrollment(ctx context.Context, tok EnrollToken, csrPEM 
 			return agentproto.EnrollAccepted{}, err
 		}
 		if n >= MaxPendingEnrollments {
-			return agentproto.EnrollAccepted{}, conflict("Too many enrolment requests are waiting for approval; approve or reject some first.")
+			return agentproto.EnrollAccepted{}, conflict("Too many enrollment requests are waiting for approval; approve or reject some first.")
 		}
 	}
 	req, err := q.InsertEnrollmentRequest(ctx, sqlcgen.InsertEnrollmentRequestParams{OrgID: cur.OrgID, ClientID: cur.ID, TokenID: tok.ID,
@@ -152,6 +152,7 @@ func (s *Service) SubmitEnrollment(ctx context.Context, tok EnrollToken, csrPEM 
 		return agentproto.EnrollAccepted{}, err
 	}
 	actx := authn.WithPrincipal(ctx, AgentPrincipal(cur))
+	// "client.enrol_*" audit actions keep their stored spelling (history, filters).
 	s.audit(actx, audit.Event{Action: "client.enrol_requested", ResourceType: "client", ResourceID: cur.ID.String(), OrgID: &cur.OrgID,
 		Details: map[string]any{"requestId": req.ID, "verifyCode": code, "hostname": clip(facts.Hostname, 253), "approvalRequired": status == "pending",
 			"expiresAt": req.ExpiresAt}})
@@ -189,7 +190,7 @@ func (s *Service) resubmit(ctx context.Context, tx pgx.Tx, q *sqlcgen.Queries, t
 func (s *Service) EnrollmentKey(ctx context.Context, id uuid.UUID) (*ecdsa.PublicKey, error) {
 	req, err := s.Q.GetEnrollmentRequest(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, unauthorized("Unknown enrolment request.")
+		return nil, unauthorized("Unknown enrollment request.")
 	}
 	if err != nil {
 		return nil, err
@@ -200,7 +201,7 @@ func (s *Service) EnrollmentKey(ctx context.Context, id uuid.UUID) (*ecdsa.Publi
 	}
 	pub, ok := csr.PublicKey.(*ecdsa.PublicKey)
 	if !ok {
-		return nil, unauthorized("Unknown enrolment request.")
+		return nil, unauthorized("Unknown enrollment request.")
 	}
 	return pub, nil
 }
@@ -219,7 +220,7 @@ func (s *Service) PollEnrollment(ctx context.Context, id uuid.UUID, pollSecret s
 	q := s.Q.WithTx(tx)
 	req, err := q.LockEnrollmentRequest(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return agentproto.EnrollPoll{}, unauthorized("Unknown enrolment request.")
+		return agentproto.EnrollPoll{}, unauthorized("Unknown enrollment request.")
 	}
 	if err != nil {
 		return agentproto.EnrollPoll{}, err
@@ -269,7 +270,7 @@ func (s *Service) PollEnrollment(ctx context.Context, id uuid.UUID, pollSecret s
 		return out, err
 	}
 	if cur.Status != "pending" {
-		return out, conflict("This client is %s; re-enrol it for a new token.", cur.Status)
+		return out, conflict("This client is %s; re-enroll it for a new token.", cur.Status)
 	}
 	ca, err := s.CA.WithQueries(q).Active(ctx)
 	if err != nil {
@@ -353,9 +354,9 @@ func (s *Service) decide(ctx context.Context, orgID, id uuid.UUID, status, actio
 	if errors.Is(err, pgx.ErrNoRows) {
 		var one int
 		if gerr := s.Pool.QueryRow(ctx, "SELECT 1 FROM enrollment_requests WHERE id = $1 AND org_id = $2", id, orgID).Scan(&one); gerr == nil {
-			return conflict("This enrolment request was already decided or has expired.")
+			return conflict("This enrollment request was already decided or has expired.")
 		}
-		return notFound("enrolment request %s", id)
+		return notFound("enrollment request %s", id)
 	}
 	if err != nil {
 		return err
@@ -372,7 +373,7 @@ func (s *Service) ApproveEnrollment(ctx context.Context, orgID, id uuid.UUID) er
 	return s.decide(ctx, orgID, id, "approved", "client.enrol_approved")
 }
 
-// RejectEnrollment refuses a waiting request. The token stays used: re-enrol
+// RejectEnrollment refuses a waiting request. The token stays used: re-enroll
 // the client for a new one.
 func (s *Service) RejectEnrollment(ctx context.Context, orgID, id uuid.UUID) error {
 	return s.decide(ctx, orgID, id, "rejected", "client.enrol_rejected")

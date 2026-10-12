@@ -19,7 +19,7 @@ import (
 	"github.com/metril/certforge/internal/db/sqlcgen"
 )
 
-const badToken = "The enrolment token is invalid, already used or expired."
+const badToken = "The enrollment token is invalid, already used or expired."
 
 // AgentPrincipal is the request principal for an authenticated agent;
 // audit events recorded under it get actor_type agent and the client id.
@@ -47,19 +47,19 @@ func clip(s string, n int) string {
 // (which takes an exclusive row lock) could retire the CA after this
 // transaction signed with it but before it committed the client's
 // agent_ca_id, stranding the client on a CA nothing trusts. The lock is
-// shared (FOR SHARE), not exclusive, so concurrent enrolments and renewals
+// shared (FOR SHARE), not exclusive, so concurrent enrollments and renewals
 // against the same CA do not serialize on each other; they still conflict
 // with Retire's FOR UPDATE.
 func lockSigningCA(ctx context.Context, q *sqlcgen.Queries, id uuid.UUID) error {
 	row, err := q.ShareAgentCA(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return conflict("The signing agent CA no longer exists; retry enrolment.")
+		return conflict("The signing agent CA no longer exists; retry enrollment.")
 	}
 	if err != nil {
 		return err
 	}
 	if row.Status == "retired" {
-		return conflict("The signing agent CA was retired while this request was in flight; retry enrolment.")
+		return conflict("The signing agent CA was retired while this request was in flight; retry enrollment.")
 	}
 	return nil
 }
@@ -76,10 +76,10 @@ func (s *Service) AuthenticateKey(ctx context.Context, id uuid.UUID, serial stri
 		return c, err
 	}
 	if c.Status != "active" {
-		return c, unauthorized("This client is %s; enrol the agent again with a new token.", c.Status)
+		return c, unauthorized("This client is %s; enroll the agent again with a new token.", c.Status)
 	}
 	if c.AgentCertSerial != serial {
-		return c, unauthorized("This agent certificate was replaced; use the newest certificate or enrol again.")
+		return c, unauthorized("This agent certificate was replaced; use the newest certificate or enroll again.")
 	}
 	return c, nil
 }

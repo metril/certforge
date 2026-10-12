@@ -25,7 +25,7 @@ const sessionLabel = "certforge-agent-session-v1 "
 // ErrSeal means a sealed message did not authenticate.
 var ErrSeal = errors.New("agentproto: cannot open sealed message")
 
-// SealInfo is the HPKE info for the one-off enrol exchange: it binds the
+// SealInfo is the HPKE info for the one-off enroll exchange: it binds the
 // direction, the request path and the request nonce.
 func SealInfo(dir, path, reqNonce string) []byte {
 	return []byte("certforge-agent-hpke-v1\x00" + dir + "\x00" + path + "\x00" + reqNonce)

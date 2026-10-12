@@ -37,7 +37,7 @@ func (s staticSource) Trusted(context.Context) ([]*x509.Certificate, error) {
 }
 
 // fakeServer is a minimal agent listener: real TLS from the agent CA,
-// enrol, renew, assignments, report, heartbeat and the WebSocket. The
+// enroll, renew, assignments, report, heartbeat and the WebSocket. The
 // fields below mu are shared with the handlers: use with.
 type fakeServer struct {
 	srv      *httptest.Server
@@ -46,8 +46,8 @@ type fakeServer struct {
 	proto    *fakeProtocol
 
 	mu         sync.Mutex
-	bundle     string // trust bundle returned by enrol and renew
-	agentURL   string // non-empty: AgentURL returned by enrol instead of the listener's
+	bundle     string // trust bundle returned by enroll and renew
+	agentURL   string // non-empty: AgentURL returned by enroll instead of the listener's
 	renewals   int
 	reports    []agentproto.Report
 	heartbeats int
@@ -62,14 +62,14 @@ type fakeServer struct {
 
 	tokens      map[string][]byte // lookup id -> token hash, for tokens f.token issued
 	hellos      map[string]*ecdh.PrivateKey
-	reqs        map[string]*fakeEnrolReq
+	reqs        map[string]*fakeEnrollReq
 	pendingFor  int    // polls answered "pending" before approval
 	outcome     string // non-empty: the status every poll reports (rejected, expired)
-	wrongCode   bool   // answer enrolment with a verification code the agent will not recognise
+	wrongCode   bool   // answer enrollment with a verification code the agent will not recognize
 	unsignedHel bool   // answer hello without a signature
 }
 
-type fakeEnrolReq struct {
+type fakeEnrollReq struct {
 	pub    *ecdsa.PublicKey
 	csr    string
 	secret string
@@ -105,7 +105,7 @@ func newFakeServer(t *testing.T) *fakeServer {
 		t.Fatal(err)
 	}
 	f := &fakeServer{ca: &agentca.CA{ID: uuid.New(), Cert: caCert, Key: caKey}, clientID: uuid.New(), bundle: string(agentca.CertPEM(caCert.Raw)),
-		tokens: map[string][]byte{}, hellos: map[string]*ecdh.PrivateKey{}, reqs: map[string]*fakeEnrolReq{}}
+		tokens: map[string][]byte{}, hellos: map[string]*ecdh.PrivateKey{}, reqs: map[string]*fakeEnrollReq{}}
 	l := &agentca.Listener{Source: staticSource{f.ca}, Names: func(context.Context) ([]string, error) { return []string{"127.0.0.1"}, nil }}
 	if err := l.Reload(context.Background()); err != nil {
 		t.Fatal(err)
@@ -196,7 +196,7 @@ func newFakeServer(t *testing.T) *fakeServer {
 		}
 		_ = json.NewEncoder(w).Encode(agentproto.Assignments{Revision: 7})
 	})
-	f.proto = &fakeProtocol{l: l, sessions: map[string]*fakeSession{}, enrol: f.serveEnrol}
+	f.proto = &fakeProtocol{l: l, sessions: map[string]*fakeSession{}, enroll: f.serveEnroll}
 	f.srv = httptest.NewUnstartedServer(nil)
 	f.proto.au = f.srv.Listener.Addr().String()
 	f.srv.Config.Handler = f.proto.handler(mux)
@@ -234,8 +234,8 @@ func (f *fakeServer) sealed(w http.ResponseWriter, status int, path, nonce strin
 	f.respond(w, status, nonce, ct)
 }
 
-// serveEnrol is the server half of the enrolment exchange.
-func (f *fakeServer) serveEnrol(w http.ResponseWriter, r *http.Request) {
+// serveEnroll is the server half of the enrollment exchange.
+func (f *fakeServer) serveEnroll(w http.ResponseWriter, r *http.Request) {
 	au := f.proto.au
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == agentproto.PathEnrollHello:
@@ -282,7 +282,7 @@ func (f *fakeServer) serveEnrol(w http.ResponseWriter, r *http.Request) {
 		secretRaw := make([]byte, 16)
 		_, _ = rand.Read(secretRaw)
 		id := uuid.New()
-		rq := &fakeEnrolReq{pub: csr.PublicKey.(*ecdsa.PublicKey), csr: sub.CSR, secret: base64.RawURLEncoding.EncodeToString(secretRaw)}
+		rq := &fakeEnrollReq{pub: csr.PublicKey.(*ecdsa.PublicKey), csr: sub.CSR, secret: base64.RawURLEncoding.EncodeToString(secretRaw)}
 		var wrong bool
 		status := agentproto.EnrollApproved
 		f.with(func() {
@@ -299,7 +299,7 @@ func (f *fakeServer) serveEnrol(w http.ResponseWriter, r *http.Request) {
 		f.sealed(w, http.StatusOK, agentproto.PathEnroll, helloID, sub.Reply, agentproto.EnrollAccepted{ID: id, PollSecret: rq.secret,
 			VerifyCode: code, Status: status, ExpiresAt: time.Now().Add(time.Hour)})
 	case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, agentproto.PathEnroll+"/"):
-		var rq *fakeEnrolReq
+		var rq *fakeEnrollReq
 		f.with(func() { rq = f.reqs[strings.TrimPrefix(r.URL.Path, agentproto.PathEnroll+"/")] })
 		body, _ := io.ReadAll(r.Body)
 		if rq == nil {
@@ -469,7 +469,7 @@ func TestEnrollRefusesUnverifiedServer(t *testing.T) {
 		t.Fatalf("unknown token: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "state.json")); err == nil {
-		t.Fatal("state written for a refused enrolment")
+		t.Fatal("state written for a refused enrollment")
 	}
 }
 
@@ -533,7 +533,7 @@ func TestEnrollRejectsNonHTTPSAgentURL(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "state.json")); err == nil {
-		t.Fatal("state.json written for a rejected enrolment")
+		t.Fatal("state.json written for a rejected enrollment")
 	}
 }
 

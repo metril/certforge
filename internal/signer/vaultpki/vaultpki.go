@@ -46,7 +46,7 @@ func New(client *vault.Client, cfg Config) *Signer {
 func (s *Signer) Kind() string { return Code }
 
 // Issue signs a leaf through Vault's PKI secrets engine: NewKeyAndCSR
-// builds the key (honouring req.ReuseKeyPKCS8/req.KeyType) and PEM-encodes
+// builds the key (honoring req.ReuseKeyPKCS8/req.KeyType) and PEM-encodes
 // the CSR for PKISign. The returned leaf is cross-checked against the CSR's
 // own public key — Vault signs whatever CSR it is handed, so a mismatched
 // response would otherwise go unnoticed — and the chain comes from

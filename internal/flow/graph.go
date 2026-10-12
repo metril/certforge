@@ -512,7 +512,7 @@ func Assemble(in Input, perms Perms, now time.Time) Graph {
 		}
 	}
 
-	// Issuer edges: cert -> CA / account / DNS credential, coloured by the cert.
+	// Issuer edges: cert -> CA / account / DNS credential, colored by the cert.
 	for _, c := range certs {
 		cid := nid(KindCertificate, c.ID)
 		st := b.nodes[cid].Status

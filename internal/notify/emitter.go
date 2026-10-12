@@ -114,7 +114,7 @@ func (e *Emitter) emitTx(ctx context.Context, tx pgx.Tx, ev Event) (bool, error)
 // record inserts the (prepared) event and, unless it was a duplicate, one
 // pending delivery per matching channel, returning the jobs to enqueue for
 // them. match, when non-nil, replaces the per-event channel lookup (the
-// batch path memoises it).
+// batch path memoizes it).
 func (e *Emitter) record(ctx context.Context, tx pgx.Tx, ev Event, match func(sqlcgen.MatchingChannelsParams) ([]uuid.UUID, error)) (bool, []DeliverArgs, error) {
 	q := sqlcgen.New(tx)
 
@@ -204,7 +204,7 @@ type channelKey struct {
 // EmitBatch emits many events like Emit(ctx, nil, ev) each (same
 // validation, dedupe and delivery rows), but one transaction per chunk of
 // emitBatchChunk with a savepoint per event, so one failing event rolls
-// back only itself. The matching-channel lookup is memoised per (org,
+// back only itself. The matching-channel lookup is memoized per (org,
 // kind, severity) across the batch and a chunk's delivery jobs are
 // enqueued together at its end. It returns how many events were newly
 // recorded (duplicates are not errors) and the joined errors of the events

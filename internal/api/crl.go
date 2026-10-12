@@ -26,7 +26,7 @@ var crlTail = regexp.MustCompile(`^([^/]+?)(?:/([0-9a-f]{1,40}))?\.crl$`)
 
 // crlCacheTTL bounds how long a built CRL is served from memory before the
 // next request rebuilds it — the same 10 minutes the response's
-// Cache-Control: max-age=600 already asks clients to honour, so a
+// Cache-Control: max-age=600 already asks clients to honor, so a
 // revocation is never more stale server-side than it already is
 // client-side.
 const crlCacheTTL = 10 * time.Minute

@@ -39,7 +39,7 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string) in
 	case "enroll":
 		fs := flag.NewFlagSet("enroll", flag.ContinueOnError)
 		fs.SetOutput(stderr)
-		token := fs.String("token", "", "one-time enrolment token (default: CF_AGENT_TOKEN or CF_AGENT_TOKEN_FILE)")
+		token := fs.String("token", "", "one-time enrollment token (default: CF_AGENT_TOKEN or CF_AGENT_TOKEN_FILE)")
 		if err := fs.Parse(args[1:]); err != nil {
 			return 2
 		}

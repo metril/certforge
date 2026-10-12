@@ -12,7 +12,7 @@ import (
 )
 
 // TestDiscordEmbedShape covers the task-4 brief's TestDiscordEmbedShape:
-// colour per severity and no mentions, plus the rest of the embed's shape
+// color per severity and no mentions, plus the rest of the embed's shape
 // (username, timestamp, fields, footer).
 func TestDiscordEmbedShape(t *testing.T) {
 	var body []byte
@@ -92,7 +92,7 @@ func TestDiscordEmbedShape(t *testing.T) {
 	}
 }
 
-// TestDiscordColorBySeverity covers the info/warning colours (critical is
+// TestDiscordColorBySeverity covers the info/warning colors (critical is
 // covered by TestDiscordEmbedShape).
 func TestDiscordColorBySeverity(t *testing.T) {
 	cases := map[string]int{"info": 0x3B82F6, "warning": 0xF59E0B}
