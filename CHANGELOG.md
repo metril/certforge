@@ -2,6 +2,22 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.23.0](https://github.com/metril/certforge/compare/v0.22.0...v0.23.0) (2026-10-12)
+
+
+### Features
+
+* **agent:** report restart targets on heartbeat ([0f649f3](https://github.com/metril/certforge/commit/0f649f312fae6153e60cd4df1ae2c38453d20a9d))
+* **agents:** store restart targets from heartbeat and expose on clients ([476ac35](https://github.com/metril/certforge/commit/476ac351d2e3e003db2e4d80d55ef6436bfa7d81))
+* **hooks:** pick restart targets from what the agent can restart ([0803dc3](https://github.com/metril/certforge/commit/0803dc3a2a8754b22dc0fbb93c2f43b85121b686))
+* **web:** restart target picker and grant allowlist warning ([397e9df](https://github.com/metril/certforge/commit/397e9df9435a119eaf10f04f7a5f94bb0aaa2db6))
+
+
+### Bug Fixes
+
+* **api:** describe RestartTarget schema ([758d9f8](https://github.com/metril/certforge/commit/758d9f8dbd0e434c758c7deb047b29baadaf308e))
+* **web:** keep hook.target help to two sentences ([330a839](https://github.com/metril/certforge/commit/330a839f5f9bc24f48e81b1af3bc8a345e2cc9d4))
+
 ## [0.22.0](https://github.com/metril/certforge/compare/v0.21.0...v0.22.0) (2026-10-12)
 
 
