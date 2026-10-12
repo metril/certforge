@@ -167,7 +167,7 @@ func (d *Dispatcher) loadTarget(ctx context.Context, orgID, id uuid.UUID, typ, l
 
 // PfSenseUsage reports which pfSense services use the certificate named
 // certName on the org's pfsense target id (see the package-level PfSenseUsage).
-func (d *Dispatcher) PfSenseUsage(ctx context.Context, orgID, id uuid.UUID, certName string) (string, []string, error) {
+func (d *Dispatcher) PfSenseUsage(ctx context.Context, orgID, id uuid.UUID, certName string) (string, []PfSenseService, error) {
 	rt, err := d.loadTarget(ctx, orgID, id, TypePfSense, "pfsense")
 	if err != nil {
 		return "", nil, err

@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -126,7 +125,7 @@ func TestGrantPfSenseUsage(t *testing.T) {
 		return gen.PfSenseUsage(res.(gen.GetGrantPfSenseUsage200JSONResponse)), nil
 	}
 	u, err := usage(grant(certID, pfT))
-	if err != nil || u.Refid == nil || *u.Refid != "abc123" || strings.Join(u.Services, ",") != "WebGUI,IPsec" {
+	if err != nil || u.Refid == nil || *u.Refid != "abc123" || len(u.Services) != 2 || u.Services[0] != (gen.PfSenseService{Key: "webgui", Label: "WebGUI"}) || u.Services[1] != (gen.PfSenseService{Key: "ipsec", Label: "IPsec"}) {
 		t.Fatalf("usage = %+v err=%v", u, err)
 	}
 	u, err = usage(grant(otherCert, pfT)) // certificate not on the firewall

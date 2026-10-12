@@ -363,7 +363,8 @@ export const help = {
   },
   'grant.postAction': { text: 'After a successful deploy, run one command, such as a service reload: over SSH on a host, or on a pfSense firewall.', learnMore: 'guide/delivery.md#post-actions' },
   'grant.postActionKind': { text: 'SSH runs the command on an SSH target’s host. pfSense runs it as a shell command on a firewall through its pfSense target.', learnMore: 'guide/delivery.md#post-actions' },
-  'grant.pfsenseUsage': { text: 'The pfSense services that use this certificate. After each deploy the target restarts them when Restart services that use it is on.', learnMore: 'guide/delivery.md#pfsense-plus' },
+  'grant.pfsenseRestart': { text: 'Which pfSense services restart after each deploy. Unless you choose, a grant follows the target’s Restart services option.', learnMore: 'guide/delivery.md#pfsense-plus' },
+  'grant.pfsenseUsage': { text: 'The pfSense services that use this certificate. After each deploy the grant restarts them, or only the ones it selected.', learnMore: 'guide/delivery.md#pfsense-plus' },
   'layout.path': { text: 'Absolute path on the client host, one per file.', learnMore: 'guide/agents.md#file-layouts' },
   'layout.parts': { text: "Joined in the order picked. extra adds each extra certificate's leaf and chain." },
   'layout.format': {

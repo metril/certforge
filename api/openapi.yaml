@@ -5076,6 +5076,7 @@ components:
       properties:
         certificateId: {type: string, format: uuid, description: Certificate in the target's org.}
         layoutId: {type: string, format: uuid, nullable: true, description: Output layout in the same org, for a target that renders files from a layout.}
+        targetOptions: {type: object, additionalProperties: true, description: "Per-type options for the deploy target, validated against the type's grantSchema from GET /meta/schemas. A pfSense target takes pfsenseRestart: {mode: all|selected|none, services: [keys]}."}
         postAction:
           description: Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only.
           allOf:
@@ -5096,7 +5097,14 @@ components:
       required: [refid, services]
       properties:
         refid: {type: string, nullable: true, description: The certificate's id on the firewall; null when the firewall does not hold it yet.}
-        services: {type: array, items: {type: string}, description: "Human labels such as WebGUI, OpenVPN server 1, IPsec, Captive portal zone x, package name. Empty when nothing uses it."}
+        services: {type: array, items: {$ref: "#/components/schemas/PfSenseService"}, description: Services that use the certificate. Empty when nothing uses it.}
+    PfSenseService:
+      type: object
+      description: One pfSense service that uses a certificate.
+      required: [key, label]
+      properties:
+        key: {type: string, maxLength: 80, description: "Stable id for a per-grant restart selection: webgui, openvpn:server:<id>, openvpn:client:<id>, ipsec, captiveportal:<zone>, package:<name>."}
+        label: {type: string, description: "Human label such as WebGUI, OpenVPN server 1, IPsec, Captive portal zone x, package name."}
     ServerDeploymentStatus:
       type: string
       enum: [pending, deployed, failed]

@@ -4893,6 +4893,10 @@ export interface components {
              * @description Output layout in the same org
              */
             layoutId?: string | null;
+            /** @description Per-type options for the deploy target, validated against the type's grantSchema from GET /meta/schemas. A pfSense target takes pfsenseRestart: {mode: all|selected|none, services: [keys]}. */
+            targetOptions?: {
+                [key: string]: unknown;
+            };
             /** @description Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only. */
             postAction?: components["schemas"]["PostAction"] | null;
         };
@@ -4921,8 +4925,15 @@ export interface components {
         PfSenseUsage: {
             /** @description The certificate's id on the firewall; null when the firewall does not hold it yet. */
             refid: string | null;
-            /** @description Human labels such as WebGUI, OpenVPN server 1, IPsec, Captive portal zone x, package name. Empty when nothing uses it. */
-            services: string[];
+            /** @description Services that use the certificate. Empty when nothing uses it. */
+            services: components["schemas"]["PfSenseService"][];
+        };
+        /** @description One pfSense service that uses a certificate. */
+        PfSenseService: {
+            /** @description Stable id for a per-grant restart selection: webgui, openvpn:server:<id>, openvpn:client:<id>, ipsec, captiveportal:<zone>, package:<name>. */
+            key: string;
+            /** @description Human label such as WebGUI, OpenVPN server 1, IPsec, Captive portal zone x, package name. */
+            label: string;
         };
         /**
          * @description A server grant's deploy state.
