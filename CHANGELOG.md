@@ -2,6 +2,22 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.20.0](https://github.com/metril/certforge/compare/v0.19.0...v0.20.0) (2026-10-12)
+
+
+### Features
+
+* **auth:** grant a default org role to first-time OIDC users ([55f6224](https://github.com/metril/certforge/commit/55f62247d30354563d3ec18b4695a19dfa6a8c8d))
+* **web:** default org picker, role and domains for OIDC first login; clearer no-organization page ([87b8a69](https://github.com/metril/certforge/commit/87b8a698446f85f1217146f9e60848eff03f3355))
+
+
+### Bug Fixes
+
+* **auth:** adapt authn integration test to UpsertOIDCUser row ([bec517c](https://github.com/metril/certforge/commit/bec517c5de7f0dedaf81bc00becb9a9e1160616c))
+* **auth:** OIDC display name from preferred_username and default org role on first login ([8cd950a](https://github.com/metril/certforge/commit/8cd950a77cdc05d077ec698de55b3a0fae7dd58f))
+* **auth:** prefer preferred_username for OIDC display name, add usernameClaim setting ([5bc3551](https://github.com/metril/certforge/commit/5bc3551c8bcb350d08844f53b0cdf1b854de4f10))
+* **auth:** require email_verified for the default-role domain filter ([2eba03f](https://github.com/metril/certforge/commit/2eba03fb39cd59b7b5aa76e726d3d9746b905289))
+
 ## [0.19.0](https://github.com/metril/certforge/compare/v0.18.0...v0.19.0) (2026-10-11)
 
 
