@@ -66,7 +66,7 @@ export const API_KEY_SCOPES: ApiKeyScope[] = [
 // Mirror of authz.ScopeGrant.
 const SCOPE_GRANT: Record<ApiKeyScope, Action> = {
   'certs:read': 'certs:read', 'certs:write': 'certs:write', 'certs:issue': 'certs:issue',
-  'keys:export': 'keys:export', 'dnscreds:reveal': 'dnscreds:reveal', 'clients:read': 'clients:read', 'clients:write': 'clients:write',
+  'keys:export': 'keys:export', 'dnscreds:reveal': 'dnscreds:reveal', 'deploycreds:reveal': 'deploycreds:reveal', 'clients:read': 'clients:read', 'clients:write': 'clients:write',
   'delivery:read': 'delivery:read', 'delivery:write': 'delivery:write',
   'alerts:read': 'alerts:read', 'alerts:write': 'alerts:write', admin: 'settings:write',
 };

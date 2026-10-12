@@ -38,18 +38,19 @@ const (
 
 // Defines values for ApiKeyScope.
 const (
-	ApiKeyScopeAdmin          ApiKeyScope = "admin"
-	ApiKeyScopeAlertsRead     ApiKeyScope = "alerts:read"
-	ApiKeyScopeAlertsWrite    ApiKeyScope = "alerts:write"
-	ApiKeyScopeCertsIssue     ApiKeyScope = "certs:issue"
-	ApiKeyScopeCertsRead      ApiKeyScope = "certs:read"
-	ApiKeyScopeCertsWrite     ApiKeyScope = "certs:write"
-	ApiKeyScopeClientsRead    ApiKeyScope = "clients:read"
-	ApiKeyScopeClientsWrite   ApiKeyScope = "clients:write"
-	ApiKeyScopeDeliveryRead   ApiKeyScope = "delivery:read"
-	ApiKeyScopeDeliveryWrite  ApiKeyScope = "delivery:write"
-	ApiKeyScopeDnscredsReveal ApiKeyScope = "dnscreds:reveal"
-	ApiKeyScopeKeysExport     ApiKeyScope = "keys:export"
+	ApiKeyScopeAdmin             ApiKeyScope = "admin"
+	ApiKeyScopeAlertsRead        ApiKeyScope = "alerts:read"
+	ApiKeyScopeAlertsWrite       ApiKeyScope = "alerts:write"
+	ApiKeyScopeCertsIssue        ApiKeyScope = "certs:issue"
+	ApiKeyScopeCertsRead         ApiKeyScope = "certs:read"
+	ApiKeyScopeCertsWrite        ApiKeyScope = "certs:write"
+	ApiKeyScopeClientsRead       ApiKeyScope = "clients:read"
+	ApiKeyScopeClientsWrite      ApiKeyScope = "clients:write"
+	ApiKeyScopeDeliveryRead      ApiKeyScope = "delivery:read"
+	ApiKeyScopeDeliveryWrite     ApiKeyScope = "delivery:write"
+	ApiKeyScopeDeploycredsReveal ApiKeyScope = "deploycreds:reveal"
+	ApiKeyScopeDnscredsReveal    ApiKeyScope = "dnscreds:reveal"
+	ApiKeyScopeKeysExport        ApiKeyScope = "keys:export"
 )
 
 // Defines values for AttemptStepStatus.
@@ -664,7 +665,7 @@ type ApiKeyPolicy struct {
 	MaxLifetimeDays int `json:"maxLifetimeDays"`
 }
 
-// ApiKeyScope What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials (without secrets); dnscreds:reveal also reads DNS credentials and may reveal their stored secrets; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks; alerts covers notification channels, events and external monitors; admin is everything.
+// ApiKeyScope What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials (without secrets); dnscreds:reveal also reads DNS credentials and may reveal their stored secrets; deploycreds:reveal also reads deploy credentials and may reveal their stored secrets; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks, and reads deploy credentials (without secrets); alerts covers notification channels, events and external monitors; admin is everything.
 type ApiKeyScope string
 
 // AriWindow The CA's cached ACME Renewal Information window for a certificate's current version.

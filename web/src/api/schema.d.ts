@@ -3767,10 +3767,10 @@ export interface components {
             disabled: boolean;
         };
         /**
-         * @description What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials (without secrets); dnscreds:reveal also reads DNS credentials and may reveal their stored secrets; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks; alerts covers notification channels, events and external monitors; admin is everything.
+         * @description What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials (without secrets); dnscreds:reveal also reads DNS credentials and may reveal their stored secrets; deploycreds:reveal also reads deploy credentials and may reveal their stored secrets; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks, and reads deploy credentials (without secrets); alerts covers notification channels, events and external monitors; admin is everything.
          * @enum {string}
          */
-        ApiKeyScope: "certs:read" | "certs:write" | "certs:issue" | "keys:export" | "dnscreds:reveal" | "clients:read" | "clients:write" | "delivery:read" | "delivery:write" | "alerts:read" | "alerts:write" | "admin";
+        ApiKeyScope: "certs:read" | "certs:write" | "certs:issue" | "keys:export" | "dnscreds:reveal" | "deploycreds:reveal" | "clients:read" | "clients:write" | "delivery:read" | "delivery:write" | "alerts:read" | "alerts:write" | "admin";
         /** @description An API key without its secret. */
         ApiKey: {
             /**
