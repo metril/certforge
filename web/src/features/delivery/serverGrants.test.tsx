@@ -399,7 +399,7 @@ it('pfSense target grants check usage on demand', async () => {
     http.get(url('/orgs/org-1/deploy-targets/t-pf/grants'), () => HttpResponse.json([{ ...grantServer, deployTargetId: 't-pf' }])),
     http.get(url('/orgs/org-1/grants/g-server-1/pfsense-usage'), () => {
       calls++;
-      return HttpResponse.json(calls === 1 ? { refid: 'abc', services: ['WebGUI', 'OpenVPN server 1'] } : { refid: 'abc', services: [] });
+      return HttpResponse.json(calls === 1 ? { refid: 'abc', services: [{ key: 'webgui', label: 'WebGUI' }, { key: 'openvpn:server:1', label: 'OpenVPN server 1' }] } : { refid: 'abc', services: [] });
     }),
   );
   const { user } = renderRoute('/o/acme/delivery/targets?view=t-pf');
@@ -411,4 +411,75 @@ it('pfSense target grants check usage on demand', async () => {
   expect(within(list).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['WebGUI', 'OpenVPN server 1']);
   await user.click(within(dialog).getByRole('button', { name: 'Check usage' }));
   expect(await within(dialog).findByText('No services use it')).toBeInTheDocument();
+});
+
+function pfGrantRoutes(options: Record<string, unknown> = {}) {
+  server.use(
+    http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [pfTarget] })),
+    http.get(url('/orgs/org-1/deploy-targets/t-pf/grants'), () => HttpResponse.json([{ ...grantServer, deployTargetId: 't-pf', targetOptions: options }])),
+    http.post(url('/orgs/org-1/deploy-targets/t-pf/grants'), async ({ request }) => {
+      posted = await request.json();
+      return HttpResponse.json({ ...grantServer, id: 'g-new', deployTargetId: 't-pf' }, { status: 201 });
+    }),
+    http.get(url('/orgs/org-1/grants/g-server-1/pfsense-usage'), () =>
+      HttpResponse.json({ refid: 'abc', services: [{ key: 'webgui', label: 'WebGUI' }, { key: 'openvpn:server:1', label: 'OpenVPN server 1' }] }),
+    ),
+  );
+}
+
+it('new pfSense grant: restart mode defaults to all, Only these waits for a first deploy', async () => {
+  pfGrantRoutes();
+  const { user } = renderRoute('/o/acme/delivery/targets?view=t-pf');
+  const dialog = await screen.findByRole('dialog', { name: 'edge fw' });
+  await user.click(await within(dialog).findByRole('button', { name: 'New server grant' }));
+  const group = within(dialog).getByRole('radiogroup', { name: 'Restart services' });
+  expect(within(group).getByRole('radio', { name: 'All that use it' })).toBeChecked();
+  expect(within(group).getByRole('radio', { name: 'Only these' })).toBeDisabled();
+  expect(within(dialog).getByText(/available after the first deploy/)).toBeInTheDocument();
+  await user.click(within(dialog).getByRole('combobox', { name: 'Certificate' }));
+  await user.click(await screen.findByRole('option', { name: /^api/ }));
+  await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
+  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null }));
+});
+
+it('new pfSense grant posts restart none', async () => {
+  pfGrantRoutes();
+  const { user } = renderRoute('/o/acme/delivery/targets?view=t-pf');
+  const dialog = await screen.findByRole('dialog', { name: 'edge fw' });
+  await user.click(await within(dialog).findByRole('button', { name: 'New server grant' }));
+  await user.click(within(dialog).getByRole('combobox', { name: 'Certificate' }));
+  await user.click(await screen.findByRole('option', { name: /^api/ }));
+  await user.click(within(dialog).getByRole('radio', { name: 'None' }));
+  await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
+  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null, targetOptions: { pfsenseRestart: { mode: 'none' } } }));
+});
+
+it('editing a pfSense grant toggles services, keeps ones no longer in use, and saves the selection', async () => {
+  pfGrantRoutes({ pfsenseRestart: { mode: 'selected', services: ['webgui', 'ipsec'] } });
+  const { user } = renderRoute('/o/acme/delivery/targets?view=t-pf');
+  const dialog = await screen.findByRole('dialog', { name: 'edge fw' });
+  await user.click(await within(dialog).findByRole('button', { name: 'Edit layout for www' }));
+  expect(within(dialog).getByRole('radio', { name: 'Only these' })).toBeChecked();
+  const chips = await within(dialog).findByRole('toolbar', { name: 'Services to restart' });
+  expect(await within(chips).findByRole('button', { name: 'WebGUI' })).toHaveAttribute('aria-pressed', 'true');
+  expect(within(chips).getByRole('button', { name: 'OpenVPN server 1' })).toHaveAttribute('aria-pressed', 'false');
+  expect(within(chips).getByRole('button', { name: 'ipsec (not in use)' })).toHaveAttribute('aria-pressed', 'true');
+  await user.click(within(chips).getByRole('button', { name: 'OpenVPN server 1' }));
+  await user.click(within(chips).getByRole('button', { name: 'WebGUI' }));
+  await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+  await waitFor(() =>
+    expect(patched).toEqual({ layoutId: 'l-1', targetOptions: { pfsenseRestart: { mode: 'selected', services: ['ipsec', 'openvpn:server:1'] } } }),
+  );
+});
+
+it('Only these with nothing picked is refused', async () => {
+  pfGrantRoutes();
+  const { user } = renderRoute('/o/acme/delivery/targets?view=t-pf');
+  const dialog = await screen.findByRole('dialog', { name: 'edge fw' });
+  await user.click(await within(dialog).findByRole('button', { name: 'Edit layout for www' }));
+  await user.click(within(dialog).getByRole('radio', { name: 'Only these' }));
+  await within(dialog).findByRole('button', { name: 'WebGUI' });
+  await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+  expect(await within(dialog).findByText('Pick at least one service, or choose None.')).toBeInTheDocument();
+  expect(patched).toBeUndefined();
 });

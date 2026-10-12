@@ -247,13 +247,13 @@ A pfSense Plus target pushes a certificate into pfSense through the Netgate Nexu
 | **Device** (`device`) | Name, alias or ID of the firewall in Nexus. | The only managed device |
 | **Certificate name** (`certName`) | Description of the certificate in pfSense, letters, digits, space, `.`, `_` and `-`. | The certificate's name |
 | **Use for the WebGUI** (`setWebGuiCert`) | Also select this certificate for the pfSense web interface. | Off |
-| **Restart services that use it** (`restartServices`) | After deploying, restart every pfSense service that uses this certificate: the WebGUI, OpenVPN, IPsec, captive portal and packages. | On |
+| **Restart services that use it** (`restartServices`) | Default for grants that don't choose: restart every service that uses the certificate after deploying. | On |
 | **CA certificate** (`caPem`) | PEM to trust for pfSense's TLS certificate, on top of the system roots. | None |
 | **Timeout** (`timeoutSeconds`) | Seconds per request, 5 to 120. | 30 |
 
 Each deploy logs in, then looks the certificate up by its description. If it exists it is updated in place, so WebGUI, OpenVPN and HAProxy references keep pointing at it. Otherwise it is created. If two certificates share the name the deploy fails. When pfSense already holds the same certificate, nothing is written.
 
-With **Restart services that use it** on, every deploy then asks pfSense which services use the certificate and restarts exactly those, because Nexus restarts none of them itself. This runs even when the certificate was unchanged, since an earlier deploy may have left a service on the old one. The deploy detail lists what was restarted. The pfSense user needs the privileges to run PHP and shell commands through the device API (the diag command privileges). If the restart fails the deploy reports an error, although the certificate is already in place.
+With **Restart services that use it** on, every deploy then asks pfSense which services use the certificate (the WebGUI, OpenVPN, IPsec, captive portal and packages) and restarts exactly those, because Nexus restarts none of them itself. A grant can override this: see [Choosing services per grant](#choosing-services-per-grant). This runs even when the certificate was unchanged, since an earlier deploy may have left a service on the old one. The deploy detail lists what was restarted. The pfSense user needs the privileges to run PHP and shell commands through the device API (the diag command privileges). If the restart fails the deploy reports an error, although the certificate is already in place.
 ## TrueNAS SCALE
 
 A TrueNAS target imports the certificate into TrueNAS SCALE 25.10 or later over its WebSocket API and can make it the web UI certificate. It runs on the server.
@@ -325,7 +325,17 @@ The **Kind** is **SSH** or **pfSense**. SSH runs the command over SSH, as above.
 
 The run is recorded on the **Hook runs** tab of the grant's target. A non-zero exit, or a connection failure, marks the deployment Failed: the error says the certificate deployed but the post action failed, and CertForge retries. A target that grants use as a post action cannot be deleted until you remove those post actions.
 
-On a pfSense target's grants, **Check usage** asks the firewall which services use the grant's certificate (WebGUI, OpenVPN, IPsec, captive portal, packages) without changing anything. These are the services the target restarts after each deploy when **Restart services that use it** is on. A certificate that is not on the firewall yet shows as such.
+On a pfSense target's grants, **Check usage** asks the firewall which services use the grant's certificate (WebGUI, OpenVPN, IPsec, captive portal, packages) without changing anything. These are the services the grant restarts after each deploy, or the ones it selected. A certificate that is not on the firewall yet shows as such.
+
+### Choosing services per grant
+
+In the grant form of a pfSense target, **Restart services** picks what a deploy restarts:
+
+- **All that use it** restarts every service that uses the certificate. A grant that never chose follows the target's **Restart services that use it** option, so existing grants keep their behavior.
+- **Only these** restarts just the services you toggle. It needs an existing grant, because the list comes from the firewall: create the grant, deploy once, then edit it. A selected service that no longer uses the certificate is shown as not in use and skipped at deploy time, and the deploy detail names what it skipped.
+- **None** restarts nothing.
+
+The setting is stored as the grant's `targetOptions.pfsenseRestart` (`{"mode": "all|selected|none", "services": [...]}`). Service keys are `webgui`, `openvpn:server:<id>`, `openvpn:client:<id>`, `ipsec`, `captiveportal:<zone>` and `package:<name>`; `GET /orgs/{orgId}/grants/{id}/pfsense-usage` returns each service's key and label.
 
 Redeploy also exists for client grants. See [Clients](clients.md).
 

@@ -8,8 +8,8 @@ import { Button } from '@/components/ui/button';
 type Props = { orgId: string; grantId: string };
 
 // "Used on pfSense by": asks the firewall on demand which services use a
-// server grant's certificate. The target restarts exactly these after each
-// deploy when its "Restart services that use it" option is on.
+// server grant's certificate. After each deploy the grant restarts these, or
+// the ones it selected.
 export function PfSenseUsage({ orgId, grantId }: Props) {
   const q = useQuery(grantPfSenseUsageQuery(orgId, grantId));
   const data = q.data;
@@ -30,8 +30,8 @@ export function PfSenseUsage({ orgId, grantId }: Props) {
         ) : (
           <ul aria-label="Services" className="flex flex-wrap gap-1">
             {data.services.map((s) => (
-              <li key={s} className="rounded-sm border border-border bg-subtle px-2 py-0.5">
-                {s}
+              <li key={s.key} className="rounded-sm border border-border bg-subtle px-2 py-0.5">
+                {s.label}
               </li>
             ))}
           </ul>

@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CircleAlert } from 'lucide-react';
 import { ApiError, errorMessage, fieldOfTitle } from '@/api/errors';
 import { allCertificatesPickerQuery, plural } from '@/api/queries/certificates';
 import { deployTargetsQuery, layoutsQuery } from '@/api/queries/delivery';
-import { useCreateServerGrant, useUpdateGrant } from '@/api/queries/grants';
+import { grantPfSenseUsageQuery, useCreateServerGrant, useUpdateGrant } from '@/api/queries/grants';
 import type { Grant, GrantUpdate, PostAction } from '@/api/types';
+import { ChipSet } from '@/components/ChipSet';
 import { Combobox } from '@/components/Combobox';
 import { Field } from '@/components/Field';
 import { SegmentedControl } from '@/components/SegmentedControl';
@@ -25,6 +26,15 @@ type PostKind = 'ssh' | 'pfsense';
 const PFSENSE_COMMAND = '/etc/rc.restart_webgui';
 const KIND_LABEL: Record<PostKind, string> = { ssh: 'SSH', pfsense: 'pfSense' };
 
+type RestartMode = 'all' | 'selected' | 'none';
+type StoredRestart = { mode?: RestartMode; services?: string[] };
+const NOT_IN_USE = ' (not in use)';
+
+function storedRestart(g?: Grant): StoredRestart | undefined {
+  const r = g?.targetOptions?.pfsenseRestart;
+  return r && typeof r === 'object' ? (r as StoredRestart) : undefined;
+}
+
 export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Props) {
   const certsQ = useQuery(allCertificatesPickerQuery(orgId));
   const layoutsQ = useQuery(layoutsQuery(orgId));
@@ -42,6 +52,19 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
   const [certError, setCertError] = useState<string | null>(null);
   const [layoutError, setLayoutError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const isPf = targetsQ.data?.find((t) => t.id === targetId)?.type === 'pfsense';
+  const stored = storedRestart(editing);
+  const [restartMode, setRestartMode] = useState<RestartMode>(stored?.mode ?? 'all');
+  const [restartKeys, setRestartKeys] = useState<string[]>(stored?.services ?? []);
+  const [restartError, setRestartError] = useState<string | null>(null);
+  // Never fetched on its own (enabled: false): "Only these" asks the firewall once.
+  const usageQ = useQuery(grantPfSenseUsageQuery(orgId, editing?.id ?? ''));
+  const wantUsage = isPf && !!editing && restartMode === 'selected';
+  const { refetch: loadUsage } = usageQ;
+  const usageLoaded = usageQ.data !== undefined;
+  useEffect(() => {
+    if (wantUsage && !usageLoaded) void loadUsage();
+  }, [wantUsage, usageLoaded, loadUsage]);
   const busy = create.isPending || update.isPending;
 
   // Only a certificate with a current version can be granted (task-9-brief).
@@ -65,7 +88,16 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
     else if (next === 'ssh' && command.trim() === PFSENSE_COMMAND) setCommand('');
   };
 
+  const usage = usageQ.data;
+  const reported = usage?.services ?? [];
+  const reportedKeys = new Set(reported.map((x) => x.key));
+  const restartOptions = [
+    ...reported.map((x) => ({ value: x.key, label: x.label })),
+    ...(usage ? restartKeys.filter((k) => !reportedKeys.has(k)).map((k) => ({ value: k, label: k + NOT_IN_USE })) : []),
+  ];
+
   const submit = async () => {
+    setRestartError(null);
     setPostError(null);
     setCertError(null);
     setLayoutError(null);
@@ -74,6 +106,18 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
       setCertError('Pick a certificate.');
       return;
     }
+    if (isPf && restartMode === 'selected' && restartKeys.length === 0) {
+      setRestartError('Pick at least one service, or choose None.');
+      return;
+    }
+    // "All that use it" on a grant that never chose is left unset, so it keeps following the target's option.
+    const targetOptions: Record<string, unknown> | undefined = !isPf
+      ? undefined
+      : restartMode === 'selected'
+        ? { pfsenseRestart: { mode: 'selected', services: restartKeys } }
+        : restartMode === 'none' || stored
+          ? { pfsenseRestart: { mode: restartMode } }
+          : {};
     let postAction: PostAction | undefined;
     if (postOn) {
       const secs = Number(timeout);
@@ -92,9 +136,9 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
         // internal/api/grants.go's updateServerGrant only reads LayoutId and
         // PostAction for a server grant; the other GrantUpdate fields are
         // agent-only and ignored server-side. Omitting postAction clears it.
-        await update.mutateAsync({ id: editing.id, body: { layoutId: layoutId ?? null, ...(postAction && { postAction }) } as GrantUpdate });
+        await update.mutateAsync({ id: editing.id, body: { layoutId: layoutId ?? null, ...(targetOptions && { targetOptions }), ...(postAction && { postAction }) } as GrantUpdate });
       } else {
-        await create.mutateAsync({ certificateId: certificateId!, layoutId: layoutId ?? null, ...(postAction && { postAction }) });
+        await create.mutateAsync({ certificateId: certificateId!, layoutId: layoutId ?? null, ...(targetOptions && Object.keys(targetOptions).length > 0 && { targetOptions }), ...(postAction && { postAction }) });
       }
       onDone();
     } catch (e) {
@@ -102,6 +146,7 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
       if (field === 'certificateId') setCertError(errorMessage(e));
       else if (field === 'layoutId') setLayoutError(errorMessage(e));
       else if (field === 'postAction') setPostError(errorMessage(e));
+      else if (field === 'targetOptions') setRestartError(errorMessage(e));
       else setFormError(errorMessage(e));
     }
   };
@@ -137,6 +182,42 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
           emptyText="No layouts yet."
         />
       </Field>
+      {isPf && (
+        <Field id="server-grant-restart" label="Restart services" help="grant.pfsenseRestart" error={restartError}>
+          <div className="grid gap-2">
+            <SegmentedControl<RestartMode>
+              id="server-grant-restart"
+              aria-label="Restart services"
+              value={restartMode}
+              onChange={(m) => {
+                setRestartMode(m);
+                setRestartError(null);
+              }}
+              options={[
+                { value: 'all', label: 'All that use it' },
+                { value: 'selected', label: 'Only these', disabled: !editing, hint: editing ? undefined : 'The service list is available after the first deploy.' },
+                { value: 'none', label: 'None' },
+              ]}
+            />
+            {!editing && <p className="text-xs text-ink-muted">Choosing services is available after the first deploy; until then every service that uses the certificate restarts.</p>}
+            {restartMode === 'selected' && editing && (
+              <div className="grid gap-1.5">
+                {usageQ.isError ? (
+                  <p role="alert" className="text-xs text-failed">
+                    {errorMessage(usageQ.error)}
+                  </p>
+                ) : usageQ.isFetching && !usage ? (
+                  <p className="text-xs text-ink-muted">Asking the firewall…</p>
+                ) : usage && usage.refid === null ? (
+                  <p className="text-xs text-ink-muted">The certificate is not on the firewall yet.</p>
+                ) : null}
+                {restartOptions.length > 0 && <ChipSet aria-label="Services to restart" value={restartKeys} onChange={setRestartKeys} options={restartOptions} />}
+                {usage && usage.refid !== null && restartOptions.length === 0 && <p className="text-xs text-ink-muted">No services use it.</p>}
+              </div>
+            )}
+          </div>
+        </Field>
+      )}
       <div className="grid gap-3">
         <SwitchField id="server-grant-post" label="Post action" help="grant.postAction" checked={postOn} onCheckedChange={setPostOn} onText="Run a command after deploy" offText="None" />
         {postOn && (
