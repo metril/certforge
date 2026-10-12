@@ -469,7 +469,7 @@ export const metaSigners: ProviderSchema[] = [
         cepUrl: { type: 'string', format: 'uri', title: 'Policy (CEP) URL', description: 'https://<host>/ADPolicyProvider_CEP_UsernamePassword/service.svc/CEP' },
         cesUrl: { type: 'string', format: 'uri', title: 'Enrollment (CES) URL', description: 'Optional; resolved from the policy when empty.' },
         template: { type: 'string', minLength: 1, title: 'Template', description: 'Certificate template name.' },
-        username: { type: 'string', minLength: 1, title: 'Username', description: 'Service account (DOMAIN\\user or UPN).' },
+        username: { type: 'string', minLength: 1, title: 'Username', description: 'Service account, as DOMAIN\\user or user@domain (UPN). A bare name such as svc is rejected by most servers.', examples: ['CORP\\svc-certforge'] },
         password: { type: 'string', secret: true, title: 'Password', description: 'Service account password. Never returned.' },
         caBundlePem: { type: 'string', format: 'textarea', title: 'TLS CA bundle', description: "PEM roots to trust for the web services' HTTPS certificate." },
         timeoutSeconds: { type: 'integer', minimum: 5, maximum: 300, default: 30, title: 'Timeout (seconds)' },

@@ -154,7 +154,7 @@ func (s *Store) adcsPolicies(ctx context.Context, cfg adcsConfig, password strin
 	res, err := sg.Policies(ctx)
 	if err != nil {
 		if errors.Is(err, adcs.ErrAuth) {
-			return nil, &ValidationError{"config.username", "authentication to the enrollment policy service failed"}
+			return nil, &ValidationError{"config.username", adcsAuthMessage(err)}
 		}
 		return nil, &ValidationError{"config.cepUrl", err.Error()}
 	}
@@ -497,4 +497,16 @@ func (s *Store) adcsSigner(ctx context.Context, ca CA) (signer.Signer, error) {
 		return nil, err
 	}
 	return adcs.New(adcsSignerConfig(cfg, row.TrustBundlePem), sec.Password, hc), nil
+}
+
+// adcsAuthMessage is the user-facing text for an AD CS authentication
+// failure: a friendly lead plus the server's reason and, for a username
+// without DOMAIN\ or @domain, the format hint. It never includes the password.
+func adcsAuthMessage(err error) string {
+	const lead = "authentication to the enrollment policy service failed"
+	var ae *adcs.AuthError
+	if errors.As(err, &ae) {
+		return ae.Message(lead)
+	}
+	return lead
 }
