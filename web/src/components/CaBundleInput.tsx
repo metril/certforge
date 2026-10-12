@@ -209,6 +209,7 @@ function FetchChainDialog({ orgId, url, onClose, onAdd }: { orgId: string; url?:
 
   const run = () => {
     if (server.trim() === '') return;
+    setPicked([]);
     peek.mutate({ url: server.trim() }, { onSuccess: (r) => setPicked(r.ok ? suggested(r.chain) : []) });
   };
 
@@ -294,7 +295,7 @@ function FetchChainDialog({ orgId, url, onClose, onAdd }: { orgId: string; url?:
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" disabled={picked.length === 0} onClick={() => onAdd(picked.map(Number).sort((a, b) => a - b).map((i) => chain[i]!.pem))}>
+          <Button type="button" disabled={picked.length === 0 || chain.length === 0} onClick={() => onAdd(picked.map(Number).sort((a, b) => a - b).map((i) => chain[i]!.pem))}>
             {picked.length > 1 ? `Add ${picked.length} certificates` : 'Add certificate'}
           </Button>
         </DialogFooter>

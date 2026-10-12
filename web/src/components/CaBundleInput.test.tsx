@@ -130,3 +130,25 @@ it('disables Fetch behind a permission tooltip without delivery:write or cas:wri
   expect(screen.queryByRole('combobox', { name: /from saved CA/ })).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Upload' })).toBeEnabled();
 });
+
+it('drops earlier picks when a second fetch fails', async () => {
+  let calls = 0;
+  const root = { subject: 'CN=CertForge Test Root,O=CertForge Test', issuer: 'CN=CertForge Test Root,O=CertForge Test', notBefore: '2026-01-01T00:00:00Z', notAfter: '2126-01-01T00:00:00Z', sha256: FP, isCa: true, selfSigned: true, pem: PEM };
+  server.use(
+    http.post(url('/orgs/org-1/tls/peek'), () =>
+      ++calls === 1
+        ? HttpResponse.json({ ok: true, verified: false, chain: [root] })
+        : HttpResponse.json({ ok: false, error: 'connection refused', chain: [], verified: false }),
+    ),
+  );
+  const { user } = renderUI(<Harness initial={{ url: 'https://fw.example.net' }} />);
+  await user.click(screen.getByRole('button', { name: 'Fetch from server' }));
+  const dialog = await screen.findByRole('dialog');
+  await user.click(within(dialog).getByRole('button', { name: 'Fetch' }));
+  await within(dialog).findByRole('button', { name: /CertForge Test Root/ });
+  expect(within(dialog).getByRole('button', { name: 'Add certificate' })).toBeEnabled();
+  await user.click(within(dialog).getByRole('button', { name: 'Fetch' }));
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('connection refused');
+  expect(within(dialog).getByRole('button', { name: 'Add certificate' })).toBeDisabled();
+  expect(value()).toBe('');
+});
