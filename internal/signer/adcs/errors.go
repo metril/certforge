@@ -74,3 +74,13 @@ type ErrDenied struct {
 func (e ErrDenied) Error() string {
 	return e.Disposition
 }
+
+// ErrKeyTooSmall means the requested key is below the template's minimum
+// key length; it is reported before any enrollment request is sent.
+var ErrKeyTooSmall = errors.New("adcs: key below template minimum size")
+
+// keyTooSmallError carries the user-facing message and matches ErrKeyTooSmall.
+type keyTooSmallError struct{ msg string }
+
+func (e keyTooSmallError) Error() string { return e.msg }
+func (e keyTooSmallError) Unwrap() error { return ErrKeyTooSmall }

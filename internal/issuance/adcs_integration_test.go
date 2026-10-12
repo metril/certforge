@@ -46,7 +46,7 @@ func TestADCSCreateUpdateIssue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	iss, err := sg.Issue(ctx, signer.IssueRequest{Names: []string{"a.example.test"}, KeyType: signer.EC256})
+	iss, err := sg.Issue(ctx, signer.IssueRequest{Names: []string{"a.example.test"}, KeyType: signer.RSA2048})
 	if err != nil || len(iss.ChainDER) != 1 {
 		t.Fatalf("issue: %+v, %v", iss, err)
 	}
@@ -63,7 +63,7 @@ func TestADCSCreateUpdateIssue(t *testing.T) {
 		t.Fatalf("update nil password: %v", err)
 	}
 	sg, _ = (&SignerFactory{Store: f.store}).New(ctx, got)
-	if _, err := sg.Issue(ctx, signer.IssueRequest{Names: []string{"b.example.test"}, KeyType: signer.EC256}); err != nil {
+	if _, err := sg.Issue(ctx, signer.IssueRequest{Names: []string{"b.example.test"}, KeyType: signer.RSA2048}); err != nil {
 		t.Fatalf("issue after sentinel update: %v", err)
 	}
 
