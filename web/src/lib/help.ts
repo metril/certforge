@@ -84,7 +84,7 @@ export const help = {
   'caBundle.saved': { text: "Copies the CA's current certificate here. Pick it again after the CA rotates." },
   'hostKey.fetch': { text: 'Reads the key the SSH server presents. CertForge connects from its own server, so a host only an agent can reach will not answer.' },
   'hostKey.tofu': {
-    text: "Trust on first use: anything in between could present its own key. Compare the fingerprint with the device's own, e.g. ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub.",
+    text: "Trust on first use: anything in between could present its own key. Compare the fingerprint with the device's own (ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub).",
   },
   'ca.eab': { text: 'External account binding ties orders to your account at the CA. Some CAs require it.' },
   'ca.resolvers': { text: 'Propagation-check DNS servers: host[:port] or a DoH URL (https://cloudflare-dns.com/dns-query) for networks that intercept port 53. Empty uses system resolvers.' },
