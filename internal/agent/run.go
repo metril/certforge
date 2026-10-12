@@ -118,7 +118,7 @@ func NewTargetsRegistry() *targets.Registry {
 func NewAgent(cfg Config, log *slog.Logger, id *Identity) *Agent {
 	files := NewFileWriter(log)
 	return &Agent{Cfg: cfg, Log: log, ID: id, Now: time.Now,
-		Deployer: &Deployer{Files: files, Hooks: &HookRunner{Allow: cfg.HookAllow}, Restart: &RestartRunner{Allow: cfg.RestartAllow}, Log: log, WriteAllow: cfg.WriteAllow,
+		Deployer: &Deployer{Files: files, Hooks: &HookRunner{Allow: cfg.HookAllow}, Restart: &RestartRunner{Allow: cfg.RestartAllow, DockerNetwork: cfg.DockerNetwork, DockerAddr: cfg.DockerAddr}, Log: log, WriteAllow: cfg.WriteAllow,
 			Reg: NewTargetsRegistry(), HTTP: targets.HTTPFactory{AllowLoopback: true}},
 		Challenge: NewChallengeServer(cfg, files, log)}
 }

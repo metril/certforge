@@ -24,12 +24,56 @@ const (
 )
 
 // RestartRunner runs restart hooks: it restarts a Docker container through
-// the engine API on a unix socket, or a systemd unit through systemctl (no
+// the engine API over the Docker endpoint (DOCKER_HOST), or a systemd unit through systemctl (no
 // shell). Only targets listed exactly in Allow run.
 type RestartRunner struct {
-	Allow        map[string]bool // CF_RESTART_ALLOW entries, e.g. "docker:nginx"
-	DockerSocket string          // default /var/run/docker.sock
-	Systemctl    string          // default /usr/bin/systemctl
+	Allow         map[string]bool // CF_RESTART_ALLOW entries, e.g. "docker:nginx"
+	DockerNetwork string          // "unix" (default) or "tcp"; from DOCKER_HOST
+	DockerAddr    string          // socket path or host:port; default /var/run/docker.sock
+	Systemctl     string          // default /usr/bin/systemctl
+}
+
+// ParseDockerHost parses DOCKER_HOST: unix:///abs/path or tcp://host:port.
+// Empty means the default unix socket.
+func ParseDockerHost(s string) (network, addr string, err error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "unix", defaultDockerSocket, nil
+	}
+	u, perr := url.Parse(s)
+	if perr != nil {
+		return "", "", fmt.Errorf("DOCKER_HOST: %q is not a valid URL", s)
+	}
+	switch u.Scheme {
+	case "unix":
+		if u.Host != "" || !strings.HasPrefix(u.Path, "/") || u.Path == "/" {
+			return "", "", fmt.Errorf("DOCKER_HOST: %q must be unix:///absolute/path", s)
+		}
+		return "unix", u.Path, nil
+	case "tcp":
+		h, port, herr := net.SplitHostPort(u.Host)
+		if herr != nil || h == "" || port == "" || (u.Path != "" && u.Path != "/") {
+			return "", "", fmt.Errorf("DOCKER_HOST: %q must be tcp://host:port", s)
+		}
+		return "tcp", u.Host, nil
+	}
+	return "", "", fmt.Errorf("DOCKER_HOST: %q must use unix:// or tcp://", s)
+}
+
+// dockerClient builds an HTTP client that dials the configured Docker
+// endpoint. The returned func closes its idle connections.
+func (r *RestartRunner) dockerClient() (*http.Client, func()) {
+	network, addr := r.DockerNetwork, r.DockerAddr
+	if network == "" {
+		network = "unix"
+	}
+	if addr == "" {
+		addr = defaultDockerSocket
+	}
+	tr := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, addr)
+	}}
+	return &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, tr.CloseIdleConnections
 }
 
 // ParseRestartAllow parses CF_RESTART_ALLOW: comma-separated exact
@@ -98,20 +142,14 @@ func (r *RestartRunner) Run(ctx context.Context, spec agentproto.HookSpec) agent
 }
 
 func (r *RestartRunner) dockerRestart(ctx context.Context, name string) (string, error) {
-	sock := r.DockerSocket
-	if sock == "" {
-		sock = defaultDockerSocket
-	}
-	tr := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		return (&net.Dialer{}).DialContext(ctx, "unix", sock)
-	}}
-	defer tr.CloseIdleConnections()
+	client, closeConns := r.dockerClient()
+	defer closeConns()
 	u := "http://docker/v1.41/containers/" + url.PathEscape(name) + "/restart?t=10"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, nil)
 	if err != nil {
 		return "", err
 	}
-	resp, err := (&http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}).Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("docker: %w", err)
 	}
@@ -175,21 +213,15 @@ func (r *RestartRunner) Targets(ctx context.Context) []agentproto.RestartTarget 
 
 // dockerRunning returns "docker:<name>" for each running container.
 func (r *RestartRunner) dockerRunning(ctx context.Context) (map[string]bool, error) {
-	sock := r.DockerSocket
-	if sock == "" {
-		sock = defaultDockerSocket
-	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	tr := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		return (&net.Dialer{}).DialContext(ctx, "unix", sock)
-	}}
-	defer tr.CloseIdleConnections()
+	client, closeConns := r.dockerClient()
+	defer closeConns()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://docker/v1.41/containers/json", nil)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := (&http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}).Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
