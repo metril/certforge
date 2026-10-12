@@ -212,6 +212,7 @@ func (d *Dispatcher) runPostAction(ctx context.Context, row sqlcgen.ServerDeploy
 			host = u.Host
 		}
 		run.Argv = []string{"pfsense", host, pa.Command}
+		cfg.TimeoutSeconds = pfPostActionHTTPTimeout(cfg.TimeoutSeconds, pa.TimeoutSeconds)
 		n, err := newNexusClient(ctx, hf, cfg)
 		if err != nil {
 			return fail(err)
@@ -248,4 +249,14 @@ func (d *Dispatcher) runPostAction(ctx context.Context, row sqlcgen.ServerDeploy
 		return fmt.Errorf("post action: exit %d: %s", code, sshSnippet(stderr))
 	}
 	return nil
+}
+
+// pfPostActionHTTPTimeout is the HTTP timeout (seconds) for a pfSense post
+// action: the command may run as long as the post action allows, which can
+// exceed the target's own timeout, plus slack for the request itself.
+func pfPostActionHTTPTimeout(cfgSecs, paSecs int) int {
+	if cfgSecs == 0 {
+		cfgSecs = 30
+	}
+	return max(cfgSecs, paSecs) + 10
 }

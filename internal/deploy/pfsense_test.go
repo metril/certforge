@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/metril/certforge/internal/render"
 	"github.com/metril/certforge/internal/targets"
@@ -410,5 +411,37 @@ func TestPfSenseUsage(t *testing.T) {
 	_, _, err = PfSenseUsage(context.Background(), hf, pfUsageCfg(srv2.URL), "web")
 	if err == nil || strings.Contains(err.Error(), pfPass) || strings.Contains(err.Error(), pfToken) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestPfSensePostActionTimeoutOutlastsTarget(t *testing.T) {
+	if got := pfPostActionHTTPTimeout(5, 60); got != 70 {
+		t.Fatalf("timeout = %d", got)
+	}
+	f := &fakePF{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/diag/cmd/shell") {
+			time.Sleep(1500 * time.Millisecond) // longer than the target's 1s timeout
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"response":"ok"}`)
+			return
+		}
+		f.ServeHTTP(w, r)
+	}))
+	defer srv.Close()
+	run := func(secs int) error {
+		cfg := PfSenseConfig{URL: srv.URL + "/api", Username: "admin", Password: pfPass, TimeoutSeconds: secs}
+		n, err := newNexusClient(context.Background(), targets.HTTPFactory{AllowLoopback: true}, cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = n.Shell(context.Background(), "true", 3)
+		return err
+	}
+	if err := run(1); err == nil {
+		t.Fatal("short target timeout should fail the slow shell")
+	}
+	if err := run(pfPostActionHTTPTimeout(1, 3)); err != nil {
+		t.Fatal(err)
 	}
 }
