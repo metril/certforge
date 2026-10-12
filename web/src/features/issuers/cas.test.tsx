@@ -272,6 +272,94 @@ it('adcs edit keeps the stored password with the sentinel', async () => {
   expect(put!.config).not.toHaveProperty('templateOid');
 });
 
+const probeTemplates = [
+  { name: 'CertForgeWeb', oid: '1.3.6.1.4.1.311.21.8.1.2', minKeySize: 2048, canEnroll: true, requiresApproval: false },
+  { name: 'Held', oid: '', minKeySize: 2048, canEnroll: true, requiresApproval: true },
+  { name: 'Locked', oid: '', minKeySize: 2048, canEnroll: false, requiresApproval: false },
+];
+
+function withProbe(reply: (body: Record<string, unknown>) => Response | Promise<Response>) {
+  const bodies: Record<string, unknown>[] = [];
+  server.use(
+    http.post(url('/orgs/org-1/cas/adcs/probe'), async ({ request }) => {
+      const b = (await request.json()) as Record<string, unknown>;
+      bodies.push(b);
+      return reply(b);
+    }),
+  );
+  return bodies;
+}
+
+async function fillAdcs(user: ReturnType<typeof renderRoute>['user'], sheet: HTMLElement) {
+  await user.click(within(sheet).getByRole('radio', { name: 'Active Directory (AD CS)' }));
+  await user.type(within(sheet).getByLabelText('Name'), 'Corp AD CS');
+  await user.type(await within(sheet).findByLabelText('Policy (CEP) URL'), 'https://ca.corp.test/cep');
+  await user.type(within(sheet).getByLabelText('Username'), 'svc');
+  await user.type(within(sheet).getByLabelText('Password'), 'hunter2');
+}
+
+it('adcs load templates, pick, test, save', async () => {
+  withSigners();
+  const bodies = withProbe((b) =>
+    HttpResponse.json({ ok: true, templates: probeTemplates, ...(b.template ? { selected: { name: b.template, usable: true } } : {}) }),
+  );
+  const { user } = renderRoute('/o/acme/issuers/cas?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Add certificate authority' });
+  await user.click(within(sheet).getByRole('radio', { name: 'Active Directory (AD CS)' }));
+  expect(await within(sheet).findByRole('button', { name: 'Load templates' })).toHaveAttribute('aria-disabled', 'true');
+  expect(within(sheet).getByRole('button', { name: 'Test' })).toBeDisabled();
+  await user.type(within(sheet).getByLabelText('Name'), 'Corp AD CS');
+  await user.type(within(sheet).getByLabelText('Policy (CEP) URL'), 'https://ca.corp.test/cep');
+  await user.type(within(sheet).getByLabelText('Username'), 'svc');
+  await user.type(within(sheet).getByLabelText('Password'), 'hunter2');
+  await user.click(within(sheet).getByRole('button', { name: 'Load templates' }));
+  const picker = await within(sheet).findByRole('combobox', { name: 'Template' });
+  expect(bodies[0]).toEqual({ cepUrl: 'https://ca.corp.test/cep', username: 'svc', password: 'hunter2', timeoutSeconds: 30 });
+  await user.click(picker);
+  expect(screen.getByRole('option', { name: 'Held' })).toHaveAttribute('aria-disabled', 'true');
+  await user.hover(screen.getByRole('option', { name: 'Locked' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('cannot enroll');
+  await user.click(screen.getByRole('option', { name: /^CertForgeWeb/ }));
+  expect(picker).toHaveTextContent('CertForgeWeb');
+
+  await user.click(within(sheet).getByRole('button', { name: 'Test' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Test Corp AD CS' });
+  await user.click(within(dialog).getByRole('button', { name: 'Run test' }));
+  expect(await within(dialog).findByText('Works with CertForgeWeb')).toBeInTheDocument();
+  expect(bodies[1]).toMatchObject({ template: 'CertForgeWeb', password: 'hunter2' });
+  expect(posted).toBeUndefined();
+  await user.keyboard('{Escape}');
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Test Corp AD CS' })).toBeNull());
+
+  await user.click(within(sheet).getByRole('button', { name: 'Save CA' }));
+  await waitFor(() => expect(posted).toBeDefined());
+  expect(posted).toMatchObject({ type: 'adcs', config: { template: 'CertForgeWeb', password: 'hunter2' } });
+});
+
+it('adcs probe failure keeps the template as free text', async () => {
+  withSigners();
+  withProbe(() => HttpResponse.json({ ok: false, error: 'policy: 401 Unauthorized', templates: [] }));
+  const { user } = renderRoute('/o/acme/issuers/cas?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Add certificate authority' });
+  await fillAdcs(user, sheet);
+  await user.click(within(sheet).getByRole('button', { name: 'Load templates' }));
+  expect(await within(sheet).findByRole('alert')).toHaveTextContent('policy: 401 Unauthorized');
+  await user.type(within(sheet).getByLabelText('Template'), 'Typed');
+  expect(within(sheet).getByLabelText('Template')).toHaveValue('Typed');
+});
+
+it('adcs edit probes with the stored password', async () => {
+  cas = [caAdcs];
+  withSigners();
+  const bodies = withProbe(() => HttpResponse.json({ ok: true, templates: probeTemplates }));
+  const { user } = renderRoute('/o/acme/issuers/cas?edit=ca-adcs-1');
+  const sheet = await screen.findByRole('dialog', { name: 'Edit Corp AD CS' });
+  await user.click(await within(sheet).findByRole('button', { name: 'Load templates' }));
+  // The saved template is listed and stays picked.
+  expect(await within(sheet).findByRole('combobox', { name: 'Template' })).toHaveTextContent('CertForgeWeb');
+  expect(bodies[0]).toMatchObject({ password: UNCHANGED, caId: 'ca-adcs-1' });
+});
+
 it('filter by type', async () => {
   cas = [ca, caLocal, caVaultPki];
   renderRoute('/o/acme/issuers/cas?type=localca');

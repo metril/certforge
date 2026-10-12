@@ -2,7 +2,10 @@ package api
 
 import (
 	"context"
+	"net/http"
 	"strings"
+
+	"github.com/google/uuid"
 
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
@@ -371,4 +374,72 @@ func (s *Server) GetEffectiveIssuanceDefaults(ctx context.Context, r gen.GetEffe
 		return nil, err
 	}
 	return gen.GetEffectiveIssuanceDefaults200JSONResponse(out), nil
+}
+
+// adcsProbeSlots bounds concurrent AD CS probes (each is a live call to an
+// external service that can hang for its timeout), as dnsTestSlots does.
+var adcsProbeSlots = make(chan struct{}, 2)
+
+var errADCSProbeBusy = &HTTPError{Status: http.StatusServiceUnavailable, Title: "Service busy",
+	Detail: "Too many concurrent AD CS probes; retry shortly."}
+
+// ProbeAdcs reads an AD CS enrollment policy with unsaved settings and lists
+// its templates. Service failures are 200 with ok false.
+func (s *Server) ProbeAdcs(ctx context.Context, r gen.ProbeAdcsRequestObject) (gen.ProbeAdcsResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionCAsWrite, &r.OrgId); err != nil {
+		return nil, err
+	}
+	b := r.Body
+	cfg := map[string]any{"cepUrl": b.CepUrl, "username": b.Username}
+	for k, v := range map[string]*string{"cesUrl": b.CesUrl, "caBundlePem": b.CaBundlePem, "template": b.Template} {
+		if v != nil {
+			cfg[k] = *v
+		}
+	}
+	if b.TimeoutSeconds != nil {
+		cfg["timeoutSeconds"] = *b.TimeoutSeconds
+	}
+	if err := s.checkCAADCSURLs(ctx, issuance.CAInput{Type: issuance.CATypeADCS, Config: cfg}, nil); err != nil {
+		return nil, err
+	}
+	select {
+	case adcsProbeSlots <- struct{}{}:
+		defer func() { <-adcsProbeSlots }()
+	default:
+		writeRetryAfter(ctx, "5")
+		return nil, errADCSProbeBusy
+	}
+	pw := ""
+	if b.Password != nil {
+		pw = *b.Password
+	}
+	var caID *uuid.UUID
+	if b.CaId != nil {
+		caID = (*uuid.UUID)(b.CaId)
+	}
+	res, err := s.d.Issuance.Store.ProbeADCS(ctx, r.OrgId, issuance.ADCSProbeInput{Config: cfg, Password: pw, CAID: caID})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := gen.AdcsProbeResult{Ok: res.OK, Templates: make([]gen.AdcsProbeTemplate, 0, len(res.Templates))}
+	if res.Error != "" {
+		out.Error = ptr(res.Error)
+	}
+	for _, t := range res.Templates {
+		out.Templates = append(out.Templates, gen.AdcsProbeTemplate{Name: t.Name, Oid: t.OID, MinKeySize: t.MinKeySize,
+			CanEnroll: t.CanEnroll, RequiresApproval: t.NeedsApproval})
+	}
+	d := map[string]any{"ok": res.OK, "cepUrl": b.CepUrl, "username": b.Username, "templates": len(res.Templates)}
+	if res.Selected != nil {
+		out.Selected = &gen.AdcsProbeSelected{Name: res.Selected.Name, Usable: res.Selected.Usable}
+		if res.Selected.Reason != "" {
+			out.Selected.Reason = ptr(res.Selected.Reason)
+		}
+		d["template"], d["usable"] = res.Selected.Name, res.Selected.Usable
+	}
+	if caID != nil {
+		d["caId"] = caID.String()
+	}
+	s.audit(ctx, audit.Event{Action: "ca.adcs_probe", ResourceType: "ca", OrgID: &r.OrgId, Details: d})
+	return gen.ProbeAdcs200JSONResponse(out), nil
 }

@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { UNCHANGED } from '@/api/types';
 import { caAdcs, caLocal, presets } from '@/test/fixtures';
-import { emptyAcme, emptyLocalCa, emptyAdcs, emptyVaultPki, initialDraft, toCaInput, type CaDraft } from './caBody';
+import { adcsProbeRequest, adcsTemplateReason, emptyAcme, emptyLocalCa, emptyAdcs, emptyVaultPki, initialDraft, toCaInput, type CaDraft } from './caBody';
 
 it('acme body unchanged', () => {
   const draft: CaDraft = {
@@ -132,4 +132,29 @@ it('adcs edit seeds the unchanged sentinel and drops the read-only templateOid',
   expect(toCaInput(draft, { presets, ca: caAdcs }).config).toMatchObject({ template: 'CertForgeWeb', password: UNCHANGED });
   draft.adcs.config = { ...draft.adcs.config, password: '' };
   expect(toCaInput(draft, { presets, ca: caAdcs }).config).not.toHaveProperty('password');
+});
+
+it('adcs probe request needs url, user and password; reuses a saved password with caId', () => {
+  expect(adcsProbeRequest({ cepUrl: 'https://x/cep', username: 'svc' })).toBeNull();
+  expect(adcsProbeRequest({ cepUrl: 'https://x/cep', username: 'svc', password: 'pw', cesUrl: '', template: ' Web ', timeoutSeconds: 30 })).toEqual({
+    cepUrl: 'https://x/cep',
+    username: 'svc',
+    password: 'pw',
+    template: 'Web',
+    timeoutSeconds: 30,
+  });
+  expect(adcsProbeRequest({ cepUrl: 'https://x/cep', username: 'svc', password: UNCHANGED, templateOid: '1.2' }, 'ca-1')).toEqual({
+    cepUrl: 'https://x/cep',
+    username: 'svc',
+    password: UNCHANGED,
+    caId: 'ca-1',
+  });
+  expect(adcsProbeRequest({ cepUrl: 'https://x/cep', username: 'svc', password: 'new' }, 'ca-1')).not.toHaveProperty('caId');
+});
+
+it('adcs template reason', () => {
+  const t = { name: 'Web', oid: '', minKeySize: 2048, canEnroll: true, requiresApproval: false };
+  expect(adcsTemplateReason(t)).toBeNull();
+  expect(adcsTemplateReason({ ...t, canEnroll: false })).toMatch(/cannot enroll/);
+  expect(adcsTemplateReason({ ...t, requiresApproval: true })).toMatch(/approval/);
 });

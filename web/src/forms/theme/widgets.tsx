@@ -1,8 +1,11 @@
 import { enumOptionsIndexForValue, enumOptionsValueForIndex, type RegistryWidgetsType, type WidgetProps } from '@rjsf/utils';
 import { useQuery } from '@tanstack/react-query';
+import { CircleAlert, ListRestart, LoaderCircle } from 'lucide-react';
+import type { AdcsProbeTemplate } from '@/api/types';
 import { orgsQuery } from '@/api/queries/orgs';
 import { ChipSet } from '@/components/ChipSet';
-import { Combobox } from '@/components/Combobox';
+import { Combobox, type ComboOption } from '@/components/Combobox';
+import { IconButton } from '@/components/IconButton';
 import { PermissionTip } from '@/components/PermissionTip';
 import { SecretInput } from '@/components/SecretInput';
 import { SegmentedControl } from '@/components/SegmentedControl';
@@ -144,7 +147,83 @@ function OrgSelectWidget({ id, value, onChange, disabled, readonly, label }: Wid
   );
 }
 
+/** formContext.adcsTemplates, set by the AD CS body (CaKindBody). */
+export type AdcsTemplateContext = {
+  /** Undefined until a probe has read the policy. */
+  templates?: AdcsProbeTemplate[];
+  /** Why each template cannot be picked, or null when it can. */
+  reasonOf: (t: AdcsProbeTemplate) => string | null;
+  loading: boolean;
+  error?: string;
+  onLoad: () => void;
+  /** Why Load is disabled (missing settings or permission), if it is. */
+  loadBlocked?: string;
+  loadTip: string;
+};
+
+// `ui:widget: 'adcsTemplate'`: a searchable select over the templates a
+// probe read, with unusable ones disabled behind a tooltip reason; free text
+// (the plain input) until templates load or when the probe fails.
+function AdcsTemplateWidget(props: WidgetProps) {
+  const { id, value, onChange, disabled, readonly, label, registry } = props;
+  const ctx = (registry.formContext as { adcsTemplates?: AdcsTemplateContext } | undefined)?.adcsTemplates;
+  const Base = registry.templates.BaseInputTemplate;
+  const templates = ctx?.templates;
+  const current = typeof value === 'string' ? value : '';
+  let control = <Base {...props} />;
+  if (ctx && templates && templates.length > 0) {
+    const options: ComboOption[] = templates.map((t) => {
+      const reason = ctx.reasonOf(t);
+      return { value: t.name, label: t.name, disabled: !!reason, hint: reason ?? `${t.minKeySize}-bit min`, keywords: t.oid ? [t.oid] : [] };
+    });
+    if (current && !templates.some((t) => t.name === current)) {
+      options.unshift({ value: current, label: current, disabled: true, hint: 'Not published by the policy.' });
+    }
+    control = (
+      <Combobox
+        id={id}
+        aria-label={label}
+        mono
+        value={current || undefined}
+        onChange={(v) => onChange(v ?? '')}
+        options={options}
+        placeholder="Pick a template"
+        emptyText="No template matches."
+        disabled={disabled || readonly}
+      />
+    );
+  }
+  return (
+    <div className="grid gap-1.5">
+      <div className="flex items-center gap-1">
+        <div className="min-w-0 flex-1">{control}</div>
+        {ctx && (
+          <IconButton
+            type="button"
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            label="Load templates"
+            tip={ctx.loadBlocked ?? ctx.loadTip}
+            disabled={!!ctx.loadBlocked || ctx.loading || disabled || readonly}
+            onClick={ctx.onLoad}
+          >
+            {ctx.loading ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : <ListRestart className="size-4" aria-hidden />}
+          </IconButton>
+        )}
+      </div>
+      {ctx?.error && (
+        <p role="alert" className="flex items-center gap-1 text-xs">
+          <CircleAlert className="size-3.5 text-failed" aria-hidden />
+          {ctx.error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export const widgets: RegistryWidgetsType = {
+  adcsTemplate: AdcsTemplateWidget,
   orgSelect: OrgSelectWidget,
   CheckboxWidget: SwitchWidget,
   CheckboxesWidget: (p: WidgetProps) => <SelectWidget {...p} multiple />,

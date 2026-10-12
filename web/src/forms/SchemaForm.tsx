@@ -48,9 +48,12 @@ type Props = {
    * button (passed via formContext, never uiSchema — nothing secret in it). */
   onRevealSecret?: (field: string) => Promise<string>;
   revealDisabledReason?: string;
+  /** Extra formContext entries for custom widgets (e.g. the AD CS template
+   * picker's loaded templates and Load action). */
+  formContext?: Record<string, unknown>;
 };
 
-export const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm({ schema, value, onChange, storedSecrets, readonly = false, extraErrors, uiSchemaOverrides, onRevealSecret, revealDisabledReason }, ref) {
+export const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm({ schema, value, onChange, storedSecrets, readonly = false, extraErrors, uiSchemaOverrides, onRevealSecret, revealDisabledReason, formContext: extraContext }, ref) {
   const formRef = useRef<Form>(null);
   const uiSchema = useMemo(() => {
     const base = buildUiSchema(schema, { storedSecrets });
@@ -69,7 +72,7 @@ export const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaFor
     return merged;
   }, [schema, storedSecrets, uiSchemaOverrides]);
   const serverPath = useMemo(() => serverPathKeys(schema), [schema]);
-  const formContext = useMemo(() => ({ onRevealSecret, revealDisabledReason }), [onRevealSecret, revealDisabledReason]);
+  const formContext = useMemo(() => ({ ...extraContext, onRevealSecret, revealDisabledReason }), [extraContext, onRevealSecret, revealDisabledReason]);
   useImperativeHandle(ref, () => ({ validate: () => formRef.current?.validateForm() ?? false }), []);
   return (
     <ThemedForm
