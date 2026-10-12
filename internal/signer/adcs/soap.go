@@ -122,7 +122,11 @@ type Fault struct {
 	Code    string `xml:"Code>Value"`
 	Subcode string `xml:"Code>Subcode>Value"`
 	Reason  string `xml:"Reason>Text"`
-	Detail  string `xml:"Detail"`
+	Detail  struct {
+		ErrorCode      *int64 `xml:"CertificateEnrollmentWSDetail>ErrorCode"`
+		RequestID      string `xml:"CertificateEnrollmentWSDetail>RequestID"`
+		InvalidRequest bool   `xml:"CertificateEnrollmentWSDetail>InvalidRequest"`
+	} `xml:"Detail"`
 }
 
 // Error implements error.
@@ -131,8 +135,20 @@ func (f *Fault) Error() string { return "adcs: soap fault: " + f.text() }
 // text is the fault as "Subcode: reason (detail)" without the package prefix.
 func (f *Fault) text() string {
 	msg := strings.TrimSpace(f.Reason)
-	if d := strings.TrimSpace(f.Detail); d != "" {
-		msg += " (" + d + ")"
+	var parts []string
+	if c := f.Detail.ErrorCode; c != nil {
+		u := uint32(int32(*c))
+		code := fmt.Sprintf("0x%08X", u)
+		if h := hresultHint(u); h != "" {
+			code += ": " + h
+		}
+		parts = append(parts, code)
+	}
+	if id := strings.TrimSpace(f.Detail.RequestID); id != "" {
+		parts = append(parts, "request "+id)
+	}
+	if len(parts) > 0 {
+		msg += " (" + strings.Join(parts, "; ") + ")"
 	}
 	if f.Subcode != "" {
 		sub := f.Subcode

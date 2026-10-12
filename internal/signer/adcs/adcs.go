@@ -205,6 +205,9 @@ func (s *Signer) post(ctx context.Context, url string, body []byte) (*respEnvelo
 		if env.Body.Fault.isAuth() {
 			return nil, s.authError(env.Body.Fault.text())
 		}
+		if strings.Contains(strings.ToLower(env.Body.Fault.Reason), "denied") {
+			return nil, ErrDenied{Disposition: env.Body.Fault.text()}
+		}
 		return nil, env.Body.Fault
 	}
 	if resp.StatusCode/100 != 2 {
