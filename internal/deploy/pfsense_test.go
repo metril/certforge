@@ -34,6 +34,7 @@ type fakePF struct {
 	devices  string // JSON body for GET /mim/devices; default one device "d1"
 	phpOut   string // response for /diag/cmd/php; default no services
 	phpBad   bool
+	phpFn    func(code string) string // raw "response" value; overrides phpOut
 	php      []string
 	prefix   string // system path prefix; default /device/pfsense/d1/api
 }
@@ -106,7 +107,11 @@ func (f *fakePF) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if out == "" {
 			out = `CFJSON:{"webgui":false,"services":[],"packages":[]}`
 		}
-		resp, _ := json.Marshal(map[string]string{"response": "notice\n" + out + "\n"})
+		text := "notice\n" + out + "\n"
+		if f.phpFn != nil {
+			text = f.phpFn(string(raw))
+		}
+		resp, _ := json.Marshal(map[string]string{"response": text})
 		_, _ = w.Write(resp)
 	default:
 		w.WriteHeader(404)
@@ -443,5 +448,53 @@ func TestPfSensePostActionTimeoutOutlastsTarget(t *testing.T) {
 	}
 	if err := run(pfPostActionHTTPTimeout(1, 3)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func pfUsageWith(t *testing.T, fn func(string) string) (*fakePF, error) {
+	t.Helper()
+	f := &fakePF{list: `[{"refid":"abc","descr":"web"}]`, phpFn: fn}
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	_, _, err := PfSenseUsage(context.Background(), targets.HTTPFactory{AllowLoopback: true}, pfUsageCfg(srv.URL), "web")
+	return f, err
+}
+
+func TestPfSensePHPPlainMarker(t *testing.T) {
+	f, err := pfUsageWith(t, func(string) string { return pfPHPOut })
+	if err != nil || len(f.php) != 1 {
+		t.Fatalf("%v %d", err, len(f.php))
+	}
+}
+
+func TestPfSensePHPBase64Response(t *testing.T) {
+	f, err := pfUsageWith(t, func(string) string { return base64.StdEncoding.EncodeToString([]byte("x\n" + pfPHPOut + "\n")) })
+	if err != nil || len(f.php) != 1 {
+		t.Fatalf("%v %d", err, len(f.php))
+	}
+}
+
+func TestPfSensePHPRetriesWithOpenTag(t *testing.T) {
+	f, err := pfUsageWith(t, func(code string) string {
+		if strings.HasPrefix(code, "<?php\n") {
+			return pfPHPOut
+		}
+		return ""
+	})
+	if err != nil || len(f.php) != 2 || !strings.HasPrefix(f.php[1], "<?php\n") {
+		t.Fatalf("%v %q", err, f.php)
+	}
+}
+
+func TestPfSensePHPErrorSnippet(t *testing.T) {
+	long := "bad\x01output " + pfToken + " " + pfPass + strings.Repeat("z", 500)
+	f, err := pfUsageWith(t, func(string) string { return long })
+	if err == nil || len(f.php) != 2 {
+		t.Fatalf("%v %d", err, len(f.php))
+	}
+	m := err.Error()
+	if !strings.Contains(m, `unexpected output from the PHP command: "bad output `) || strings.ContainsAny(m, "\x01") ||
+		strings.Contains(m, pfToken) || strings.Contains(m, pfPass) || len(m) > 400 {
+		t.Fatalf("err = %q", m)
 	}
 }
