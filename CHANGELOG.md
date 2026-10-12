@@ -2,6 +2,15 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.28.3](https://github.com/metril/certforge/compare/v0.28.2...v0.28.3) (2026-10-12)
+
+
+### Bug Fixes
+
+* **deploy:** lowercase the Nexus device error ([265429c](https://github.com/metril/certforge/commit/265429c4bf2e6c7882139dee75a0f7bd71d7e378))
+* **deploy:** talk to pfSense through Netgate Nexus ([d81149c](https://github.com/metril/certforge/commit/d81149c4393eb1a068cc9a35d569e92cbe28415a))
+* **deploy:** talk to pfSense through Netgate Nexus ([58afb0b](https://github.com/metril/certforge/commit/58afb0b812816b77069df14e2e730276f60fa716))
+
 ## [0.28.2](https://github.com/metril/certforge/compare/v0.28.1...v0.28.2) (2026-10-12)
 
 
