@@ -1685,6 +1685,31 @@ export interface paths {
         patch: operations["updateDeployTarget"];
         trace?: never;
     };
+    "/orgs/{orgId}/deploy-targets/{id}/hook-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a server-side deploy target's hook runs
+         * @description Needs clients:read. Newest first; the ssh target's own pre and post commands and post actions of grants on the target. stdout and stderr are capped at 8 KiB each.
+         */
+        get: operations["listTargetHookRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orgs/{orgId}/deploy-targets/{id}/grants": {
         parameters: {
             query?: never;
@@ -4410,6 +4435,8 @@ export interface components {
             runsOn: components["schemas"]["RunsOn"];
             /** @description Server-side deployment state; null for an agent grant (see deployment). */
             serverDeployment: components["schemas"]["ServerDeployment"] | null;
+            /** @description Command to run over SSH after a successful deploy; null when none. Server grants only. */
+            postAction?: components["schemas"]["PostAction"] | null;
             /**
              * Format: date-time
              * @description Creation time.
@@ -4475,6 +4502,8 @@ export interface components {
             hookIds: string[];
             /** @description Reinstall automatically on drift. */
             autoRemediate: boolean;
+            /** @description Command to run over SSH after a successful deploy; null when none. Server grants only. */
+            postAction?: components["schemas"]["PostAction"] | null;
         };
         /** @description A client's live grants. */
         GrantList: {
@@ -4493,6 +4522,23 @@ export interface components {
              * @description Output layout in the same org
              */
             layoutId?: string | null;
+            /** @description Command to run over SSH after a successful deploy; null when none. Server grants only. */
+            postAction?: components["schemas"]["PostAction"] | null;
+        };
+        /** @description One command run over SSH after a server grant deploys, using an existing ssh deploy target's host, credentials and host key. */
+        PostAction: {
+            /**
+             * Format: uuid
+             * @description An ssh deploy target in the same org.
+             */
+            sshTargetId: string;
+            /** @description Command to run on that host. */
+            command: string;
+            /**
+             * @description Time allowed for connecting and running.
+             * @default 60
+             */
+            timeoutSeconds: number;
         };
         /**
          * @description A server grant's deploy state.
@@ -4566,7 +4612,7 @@ export interface components {
             /** @description Deployments sorted by client name. */
             items: components["schemas"]["CertificateDeployment"][];
         };
-        /** @description One hook execution an agent reported. */
+        /** @description One hook execution an agent reported, or a server-side command run for an ssh target or a grant's post action. */
         HookRun: {
             /**
              * Format: uuid
@@ -8218,6 +8264,42 @@ export interface operations {
             409: components["responses"]["Conflict"];
             413: components["responses"]["PayloadTooLarge"];
             415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listTargetHookRuns: {
+        parameters: {
+            query?: {
+                /** @description Page size, 1 to 500. */
+                limit?: components["parameters"]["ListLimit"];
+                /** @description nextCursor from the previous page. */
+                cursor?: components["parameters"]["ListCursor"];
+            };
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of hook runs. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HookRunList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             422: components["responses"]["UnprocessableEntity"];
             500: components["responses"]["InternalError"];
         };

@@ -202,3 +202,37 @@ func TestSSHParse(t *testing.T) {
 		}
 	}
 }
+
+type fakeRecorder struct{ runs []targets.HookRun }
+
+func (f *fakeRecorder) RecordHook(_ context.Context, r targets.HookRun) { f.runs = append(f.runs, r) }
+
+func TestSSHRecordsCommands(t *testing.T) {
+	s := sshxtest.Start(t, nil)
+	s.ExitFor = func(cmd string) uint32 {
+		if cmd == "rw" {
+			return 0
+		}
+		if strings.HasPrefix(cmd, "ro") {
+			return 4
+		}
+		return 0
+	}
+	m, _ := akMaterial(t)
+	rec := &fakeRecorder{}
+	req := sshReq(sshCfg(t, s, nil), m)
+	req.Recorder = rec
+	if _, err := (SSH{}).Deploy(context.Background(), req); err == nil {
+		t.Fatal("post command exit 4 should fail")
+	}
+	if len(rec.runs) != 2 {
+		t.Fatalf("runs = %+v", rec.runs)
+	}
+	pre, post := rec.runs[0], rec.runs[1]
+	if pre.Phase != "pre_deploy" || pre.ExitCode != 0 || strings.Join(pre.Argv, "|") != "ssh|127.0.0.1|rw" {
+		t.Fatalf("pre = %+v", pre)
+	}
+	if post.Phase != "post_deploy" || post.ExitCode != 4 || post.Argv[2] != "ro; systemctl restart kvmd-nginx" {
+		t.Fatalf("post = %+v", post)
+	}
+}

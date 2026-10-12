@@ -211,6 +211,14 @@ func sshContent(name string, m *render.Material, files []render.File) ([]byte, e
 	return b, nil
 }
 
+// capRun bounds recorded command output to 8 KiB.
+func capRun(b []byte) string {
+	if len(b) > 8192 {
+		b = b[:8192]
+	}
+	return strings.ToValidUTF8(strings.ReplaceAll(string(b), "\x00", ""), "")
+}
+
 func sshSnippet(b []byte) string {
 	if len(b) > sshErrCap {
 		b = b[:sshErrCap]
@@ -256,8 +264,22 @@ func (SSH) Deploy(ctx context.Context, req targets.Request) (targets.Result, err
 	}
 	defer func() { _ = cl.Close() }()
 
+	record := func(ctx context.Context, phase, cmd string, start time.Time, stdout, stderr []byte, code int, err error) {
+		if req.Recorder == nil {
+			return
+		}
+		r := targets.HookRun{Phase: phase, Argv: []string{"ssh", cfg.Host, cmd}, ExitCode: code, Duration: time.Since(start),
+			Stdout: capRun(stdout), Stderr: capRun(stderr)}
+		if err != nil {
+			r.ExitCode = -1
+			r.Stderr = capRun([]byte(targets.Redact(err, secrets, 500)))
+		}
+		req.Recorder.RecordHook(ctx, r)
+	}
 	run := func(label, cmd string) error {
-		_, stderr, code, err := cl.Run(ctx, cmd)
+		start := time.Now()
+		stdout, stderr, code, err := cl.Run(ctx, cmd)
+		record(ctx, "pre_deploy", cmd, start, stdout, stderr, code, err)
 		if err != nil {
 			return fmt.Errorf("%s: %w", label, err)
 		}
@@ -290,7 +312,9 @@ func (SSH) Deploy(ctx context.Context, req targets.Request) (targets.Result, err
 		// A fresh context: ctx may be what expired, and the post command
 		// restores state (for example a read-only root filesystem).
 		pctx, pcancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-		_, stderr, code, perr := cl.Run(pctx, cfg.PostCommand)
+		pstart := time.Now()
+		stdout, stderr, code, perr := cl.Run(pctx, cfg.PostCommand)
+		record(pctx, "post_deploy", cfg.PostCommand, pstart, stdout, stderr, code, perr)
 		pcancel()
 		switch {
 		case perr != nil:

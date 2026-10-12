@@ -279,8 +279,8 @@ SELECT * FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR SHARE;
 -- name: CreateServerGrant :one
 -- client_id is NULL, delivery is always 'push' (there is no agent pull
 -- schedule for a server grant), hook_ids is empty (hooks are agent-side).
-INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate)
-VALUES (NULL, $1, 'push', $2, $3, '{}', false) RETURNING *;
+INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, post_action)
+VALUES (NULL, sqlc.arg(cert_id), 'push', sqlc.narg(output_spec_id), sqlc.narg(deploy_target_id), '{}', false, COALESCE(sqlc.narg(post_action)::jsonb, '{}')) RETURNING *;
 
 -- name: LockServerGrant :one
 -- Org-scoped through deploy_targets.org_id (pre-flight ruling): locks only
@@ -291,10 +291,9 @@ JOIN deploy_targets t ON t.id = g.deploy_target_id
 WHERE g.id = $1 AND g.client_id IS NULL AND g.removed_at IS NULL AND t.org_id = $2
 FOR UPDATE OF g;
 
--- name: UpdateServerGrantLayout :one
--- A server grant's only editable field (Shared contract: updateGrant on a
--- server grant is layoutId only).
-UPDATE client_cert_grants SET output_spec_id = sqlc.narg(output_spec_id), updated_at = now()
+-- name: UpdateServerGrant :one
+-- A server grant's editable fields: its layout and post action.
+UPDATE client_cert_grants SET output_spec_id = sqlc.narg(output_spec_id), post_action = COALESCE(sqlc.narg(post_action)::jsonb, '{}'), updated_at = now()
 WHERE id = sqlc.arg(id) RETURNING *;
 
 -- name: GrantRunsOn :one
@@ -316,7 +315,7 @@ WHERE g.id = $1
 
 -- name: ServerGrantViews :many
 SELECT g.id, g.deploy_target_id, g.cert_id, ce.name AS certificate_name, g.delivery,
-       g.output_spec_id, g.hook_ids, g.auto_remediate, g.created_at, g.updated_at,
+       g.output_spec_id, g.hook_ids, g.auto_remediate, g.post_action, g.created_at, g.updated_at,
        sd.status, sd.version_id, sd.last_error, sd.deployed_at, sd.updated_at AS deployment_updated_at
 FROM client_cert_grants g
 JOIN deploy_targets t ON t.id = g.deploy_target_id
@@ -336,3 +335,8 @@ SELECT
   (sqlc.narg(layout_id)::uuid IS NULL OR EXISTS (SELECT 1 FROM output_specs WHERE output_specs.id = sqlc.narg(layout_id)::uuid AND output_specs.org_id = sqlc.arg(org_id)))::bool AS layout_ok,
   (sqlc.narg(target_id)::uuid IS NULL OR EXISTS (SELECT 1 FROM deploy_targets WHERE deploy_targets.id = sqlc.narg(target_id)::uuid AND deploy_targets.org_id = sqlc.arg(org_id)))::bool AS target_ok,
   (SELECT count(*) FROM hooks WHERE hooks.id = ANY(sqlc.arg(hook_ids)::uuid[]) AND hooks.org_id = sqlc.arg(org_id))::bigint AS hooks_found;
+
+-- name: CountPostActionUsers :one
+-- Live server grants whose post action runs over this ssh target.
+SELECT count(*)::bigint FROM client_cert_grants g
+WHERE g.removed_at IS NULL AND g.client_id IS NULL AND g.post_action->>'sshTargetId' = sqlc.arg(id)::text;

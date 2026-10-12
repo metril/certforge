@@ -38,7 +38,7 @@ func (s *Server) ListClientHookRuns(ctx context.Context, r gen.ListClientHookRun
 		}
 		limit = *r.Params.Limit
 	}
-	arg := sqlcgen.ListHookRunsParams{ClientID: r.Id, PageLimit: int32(limit + 1)}
+	arg := sqlcgen.ListHookRunsParams{ClientID: &r.Id, PageLimit: int32(limit + 1)}
 	if r.Params.Cursor != nil && *r.Params.Cursor != "" {
 		b, err := base64.RawURLEncoding.DecodeString(*r.Params.Cursor)
 		var c hookRunCursor
@@ -66,4 +66,52 @@ func (s *Server) ListClientHookRuns(ctx context.Context, r gen.ListClientHookRun
 			Stdout: x.Stdout, Stderr: x.Stderr, RanAt: x.RanAt})
 	}
 	return gen.ListClientHookRuns200JSONResponse(gen.HookRunList{Items: items, NextCursor: next}), nil
+}
+
+// ListTargetHookRuns returns one page of a server-side deploy target's hook
+// runs (its ssh commands and grants' post actions), newest first.
+func (s *Server) ListTargetHookRuns(ctx context.Context, r gen.ListTargetHookRunsRequestObject) (gen.ListTargetHookRunsResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionClientsRead, &r.OrgId); err != nil {
+		return nil, err
+	}
+	q := s.queries()
+	if _, err := q.GetDeployTarget(ctx, sqlcgen.GetDeployTargetParams{ID: r.Id, OrgID: r.OrgId}); errors.Is(err, pgx.ErrNoRows) {
+		return nil, notFound("deploy target %s", r.Id)
+	} else if err != nil {
+		return nil, err
+	}
+	limit := 50
+	if r.Params.Limit != nil {
+		if *r.Params.Limit < 1 || *r.Params.Limit > 500 {
+			return nil, unprocessable("limit", "limit must be 1 to 500")
+		}
+		limit = *r.Params.Limit
+	}
+	arg := sqlcgen.ListTargetHookRunsParams{DeployTargetID: &r.Id, PageLimit: int32(limit + 1)}
+	if r.Params.Cursor != nil && *r.Params.Cursor != "" {
+		b, err := base64.RawURLEncoding.DecodeString(*r.Params.Cursor)
+		var c hookRunCursor
+		if err != nil || json.Unmarshal(b, &c) != nil || c.ID == uuid.Nil {
+			return nil, unprocessable("cursor", "cursor is not from this list")
+		}
+		arg.HasCursor, arg.BeforeTs, arg.BeforeID = true, c.RanAt, c.ID
+	}
+	rows, err := q.ListTargetHookRuns(ctx, arg)
+	if err != nil {
+		return nil, err
+	}
+	var next *string
+	if len(rows) > limit {
+		rows = rows[:limit]
+		last := rows[len(rows)-1]
+		b, _ := json.Marshal(hookRunCursor{RanAt: last.RanAt, ID: last.ID})
+		n := base64.RawURLEncoding.EncodeToString(b)
+		next = &n
+	}
+	items := make([]gen.HookRun, 0, len(rows))
+	for _, x := range rows {
+		items = append(items, gen.HookRun{Id: x.ID, GrantId: x.GrantID, Phase: gen.HookPhase(x.Phase), Argv: x.Argv,
+			ExitCode: int(x.ExitCode), DurationMs: x.DurationMs, Stdout: x.Stdout, Stderr: x.Stderr, RanAt: x.RanAt})
+	}
+	return gen.ListTargetHookRuns200JSONResponse(gen.HookRunList{Items: items, NextCursor: next}), nil
 }

@@ -233,6 +233,8 @@ The private key is sent only when a file asks for `key` or `bundle` (or a layout
 
 **PiKVM and GL.iNet Comet.** Their root filesystem is read-only, so the **PiKVM / GL.iNet Comet** preset wraps the write: `rw` before, then `ro; systemctl restart kvmd-nginx` after. It writes `/etc/kvmd/user/ssl/server.crt` and `server.key`. Older PiKVM images use `/etc/kvmd/nginx/ssl/`: pick **PiKVM (legacy paths)**. Log in as `root`.
 
+Every command the SSH target runs, before or after the files, is recorded as a hook run. Open the target and pick the **Hook runs** tab to see the command, exit status, duration and output (8 KiB each).
+
 ## pfSense Plus
 
 A pfSense Plus target pushes a certificate into pfSense through Netgate's built-in REST API (pfSense Plus 25.03 or later). It runs on the server, so its grants have no client. The API is new and its details may change between releases.
@@ -307,8 +309,14 @@ A new certificate version, **Redeploy** and a changed layout all mark the grant 
 Per grant, three icon buttons sit on the row:
 
 - **Redeploy** pushes the current version again, even if nothing changed.
-- **Edit layout** changes the grant's layout. It is the only field you can change.
+- **Edit layout** changes the grant's layout and post action.
 - **Remove** stops CertForge pushing this certificate. What is already in Vault stays. You confirm by typing the certificate name.
+
+### Post actions
+
+A server grant can run one command after a successful deploy, for example `systemctl reload nginx` on the host that serves the certificate. Switch **Post action** on in the grant form, pick an existing [SSH](#ssh) target and enter the command (up to 512 characters) and a timeout of 5 to 300 seconds. The post action reuses that target's host, credentials and pinned host key; its files and own commands are not used. Any server-run target type can have one.
+
+The run is recorded on the **Hook runs** tab of the grant's target. A non-zero exit, or a connection failure, marks the deployment Failed: the error says the certificate deployed but the post action failed, and CertForge retries. An SSH target that grants use as a post action cannot be deleted until you remove those post actions.
 
 Redeploy also exists for client grants. See [Clients](clients.md).
 

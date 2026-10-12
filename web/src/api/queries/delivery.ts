@@ -1,4 +1,5 @@
-import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
+import { infiniteQueryOptions, queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
+import { firstPagePoll } from '@/lib/polling';
 import { api, call } from '../client';
 import type { DeployTarget, DeployTargetInput, HookInput, LayoutInput } from '../types';
 import { invalidateGrants } from './grants';
@@ -88,3 +89,13 @@ export function useDeleteHook(orgId: string) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['hooks', orgId] }),
   });
 }
+
+export const targetHookRunsInfinite = (orgId: string, targetId: string) =>
+  infiniteQueryOptions({
+    queryKey: ['hook-runs', orgId, 'target', targetId],
+    queryFn: ({ pageParam }) =>
+      call(api.GET('/orgs/{orgId}/deploy-targets/{id}/hook-runs', { params: { path: { orgId, id: targetId }, query: { limit: 50, cursor: pageParam } } })),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    refetchInterval: firstPagePoll,
+  });

@@ -162,7 +162,7 @@ func (q *Queries) MarkServerDeploymentFailed(ctx context.Context, arg MarkServer
 
 const serverDeployGrant = `-- name: ServerDeployGrant :one
 SELECT g.id, g.cert_id, g.deploy_target_id, t.org_id, o.slug AS org_slug, t.type AS target_type, t.config AS target_config,
-       t.secret_cfg AS target_secret_cfg, t.name AS target_name,
+       t.secret_cfg AS target_secret_cfg, t.name AS target_name, g.post_action,
        ce.name AS certificate_name, ce.common_name AS certificate_common_name, ce.sans AS certificate_sans,
        ce.current_version_id, ol.files AS layout_files, ol.password AS layout_password, ol.extra_cert_ids AS layout_extra_cert_ids,
        sd.version_id AS pending_version_id, sd.deploy_seq AS pending_deploy_seq
@@ -185,6 +185,7 @@ type ServerDeployGrantRow struct {
 	TargetConfig          []byte      `json:"target_config"`
 	TargetSecretCfg       []byte      `json:"target_secret_cfg"`
 	TargetName            string      `json:"target_name"`
+	PostAction            []byte      `json:"post_action"`
 	CertificateName       string      `json:"certificate_name"`
 	CertificateCommonName string      `json:"certificate_common_name"`
 	CertificateSans       []string    `json:"certificate_sans"`
@@ -222,6 +223,7 @@ func (q *Queries) ServerDeployGrant(ctx context.Context, id uuid.UUID) (ServerDe
 		&i.TargetConfig,
 		&i.TargetSecretCfg,
 		&i.TargetName,
+		&i.PostAction,
 		&i.CertificateName,
 		&i.CertificateCommonName,
 		&i.CertificateSans,

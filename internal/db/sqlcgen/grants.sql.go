@@ -332,9 +332,22 @@ func (q *Queries) CountLiveGrantsByCert(ctx context.Context, ids []uuid.UUID) ([
 	return items, nil
 }
 
+const countPostActionUsers = `-- name: CountPostActionUsers :one
+SELECT count(*)::bigint FROM client_cert_grants g
+WHERE g.removed_at IS NULL AND g.client_id IS NULL AND g.post_action->>'sshTargetId' = $1::text
+`
+
+// Live server grants whose post action runs over this ssh target.
+func (q *Queries) CountPostActionUsers(ctx context.Context, id string) (int64, error) {
+	row := q.db.QueryRow(ctx, countPostActionUsers, id)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createGrant = `-- name: CreateGrant :one
 INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, target_options)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options, post_action
 `
 
 type CreateGrantParams struct {
@@ -375,25 +388,32 @@ func (q *Queries) CreateGrant(ctx context.Context, arg CreateGrantParams) (Clien
 		&i.RemovedRevision,
 		&i.RedeploySeq,
 		&i.TargetOptions,
+		&i.PostAction,
 	)
 	return i, err
 }
 
 const createServerGrant = `-- name: CreateServerGrant :one
-INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate)
-VALUES (NULL, $1, 'push', $2, $3, '{}', false) RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options
+INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, post_action)
+VALUES (NULL, $1, 'push', $2, $3, '{}', false, COALESCE($4::jsonb, '{}')) RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options, post_action
 `
 
 type CreateServerGrantParams struct {
 	CertID         uuid.UUID  `json:"cert_id"`
 	OutputSpecID   *uuid.UUID `json:"output_spec_id"`
 	DeployTargetID *uuid.UUID `json:"deploy_target_id"`
+	PostAction     []byte     `json:"post_action"`
 }
 
 // client_id is NULL, delivery is always 'push' (there is no agent pull
 // schedule for a server grant), hook_ids is empty (hooks are agent-side).
 func (q *Queries) CreateServerGrant(ctx context.Context, arg CreateServerGrantParams) (ClientCertGrant, error) {
-	row := q.db.QueryRow(ctx, createServerGrant, arg.CertID, arg.OutputSpecID, arg.DeployTargetID)
+	row := q.db.QueryRow(ctx, createServerGrant,
+		arg.CertID,
+		arg.OutputSpecID,
+		arg.DeployTargetID,
+		arg.PostAction,
+	)
 	var i ClientCertGrant
 	err := row.Scan(
 		&i.ID,
@@ -410,6 +430,7 @@ func (q *Queries) CreateServerGrant(ctx context.Context, arg CreateServerGrantPa
 		&i.RemovedRevision,
 		&i.RedeploySeq,
 		&i.TargetOptions,
+		&i.PostAction,
 	)
 	return i, err
 }
@@ -836,7 +857,7 @@ func (q *Queries) LockCertificateForGrant(ctx context.Context, arg LockCertifica
 }
 
 const lockGrant = `-- name: LockGrant :one
-SELECT client_cert_grants.id, client_cert_grants.client_id, client_cert_grants.cert_id, client_cert_grants.delivery, client_cert_grants.output_spec_id, client_cert_grants.deploy_target_id, client_cert_grants.hook_ids, client_cert_grants.auto_remediate, client_cert_grants.removed_at, client_cert_grants.created_at, client_cert_grants.updated_at, client_cert_grants.removed_revision, client_cert_grants.redeploy_seq, client_cert_grants.target_options FROM client_cert_grants
+SELECT client_cert_grants.id, client_cert_grants.client_id, client_cert_grants.cert_id, client_cert_grants.delivery, client_cert_grants.output_spec_id, client_cert_grants.deploy_target_id, client_cert_grants.hook_ids, client_cert_grants.auto_remediate, client_cert_grants.removed_at, client_cert_grants.created_at, client_cert_grants.updated_at, client_cert_grants.removed_revision, client_cert_grants.redeploy_seq, client_cert_grants.target_options, client_cert_grants.post_action FROM client_cert_grants
 WHERE client_cert_grants.id = $1 AND removed_at IS NULL AND client_id IN (SELECT c.id FROM clients c WHERE c.org_id = $2)
 FOR UPDATE
 `
@@ -864,12 +885,13 @@ func (q *Queries) LockGrant(ctx context.Context, arg LockGrantParams) (ClientCer
 		&i.RemovedRevision,
 		&i.RedeploySeq,
 		&i.TargetOptions,
+		&i.PostAction,
 	)
 	return i, err
 }
 
 const lockGrantAny = `-- name: LockGrantAny :one
-SELECT client_cert_grants.id, client_cert_grants.client_id, client_cert_grants.cert_id, client_cert_grants.delivery, client_cert_grants.output_spec_id, client_cert_grants.deploy_target_id, client_cert_grants.hook_ids, client_cert_grants.auto_remediate, client_cert_grants.removed_at, client_cert_grants.created_at, client_cert_grants.updated_at, client_cert_grants.removed_revision, client_cert_grants.redeploy_seq, client_cert_grants.target_options FROM client_cert_grants
+SELECT client_cert_grants.id, client_cert_grants.client_id, client_cert_grants.cert_id, client_cert_grants.delivery, client_cert_grants.output_spec_id, client_cert_grants.deploy_target_id, client_cert_grants.hook_ids, client_cert_grants.auto_remediate, client_cert_grants.removed_at, client_cert_grants.created_at, client_cert_grants.updated_at, client_cert_grants.removed_revision, client_cert_grants.redeploy_seq, client_cert_grants.target_options, client_cert_grants.post_action FROM client_cert_grants
 WHERE client_cert_grants.id = $1 AND client_id IN (SELECT c.id FROM clients c WHERE c.org_id = $2)
 FOR UPDATE
 `
@@ -900,6 +922,7 @@ func (q *Queries) LockGrantAny(ctx context.Context, arg LockGrantAnyParams) (Cli
 		&i.RemovedRevision,
 		&i.RedeploySeq,
 		&i.TargetOptions,
+		&i.PostAction,
 	)
 	return i, err
 }
@@ -975,7 +998,7 @@ func (q *Queries) LockLayoutForGrant(ctx context.Context, arg LockLayoutForGrant
 }
 
 const lockServerGrant = `-- name: LockServerGrant :one
-SELECT g.id, g.client_id, g.cert_id, g.delivery, g.output_spec_id, g.deploy_target_id, g.hook_ids, g.auto_remediate, g.removed_at, g.created_at, g.updated_at, g.removed_revision, g.redeploy_seq, g.target_options FROM client_cert_grants g
+SELECT g.id, g.client_id, g.cert_id, g.delivery, g.output_spec_id, g.deploy_target_id, g.hook_ids, g.auto_remediate, g.removed_at, g.created_at, g.updated_at, g.removed_revision, g.redeploy_seq, g.target_options, g.post_action FROM client_cert_grants g
 JOIN deploy_targets t ON t.id = g.deploy_target_id
 WHERE g.id = $1 AND g.client_id IS NULL AND g.removed_at IS NULL AND t.org_id = $2
 FOR UPDATE OF g
@@ -1007,6 +1030,7 @@ func (q *Queries) LockServerGrant(ctx context.Context, arg LockServerGrantParams
 		&i.RemovedRevision,
 		&i.RedeploySeq,
 		&i.TargetOptions,
+		&i.PostAction,
 	)
 	return i, err
 }
@@ -1092,7 +1116,7 @@ func (q *Queries) MarkGrantRemoved(ctx context.Context, arg MarkGrantRemovedPara
 }
 
 const removalPendingGrantsForClient = `-- name: RemovalPendingGrantsForClient :many
-SELECT id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options FROM client_cert_grants WHERE client_id = $1 AND removed_at IS NOT NULL FOR UPDATE
+SELECT id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options, post_action FROM client_cert_grants WHERE client_id = $1 AND removed_at IS NOT NULL FOR UPDATE
 `
 
 // Revoking a client can never be confirmed by its agent again, so
@@ -1122,6 +1146,7 @@ func (q *Queries) RemovalPendingGrantsForClient(ctx context.Context, clientID *u
 			&i.RemovedRevision,
 			&i.RedeploySeq,
 			&i.TargetOptions,
+			&i.PostAction,
 		); err != nil {
 			return nil, err
 		}
@@ -1135,7 +1160,7 @@ func (q *Queries) RemovalPendingGrantsForClient(ctx context.Context, clientID *u
 
 const serverGrantViews = `-- name: ServerGrantViews :many
 SELECT g.id, g.deploy_target_id, g.cert_id, ce.name AS certificate_name, g.delivery,
-       g.output_spec_id, g.hook_ids, g.auto_remediate, g.created_at, g.updated_at,
+       g.output_spec_id, g.hook_ids, g.auto_remediate, g.post_action, g.created_at, g.updated_at,
        sd.status, sd.version_id, sd.last_error, sd.deployed_at, sd.updated_at AS deployment_updated_at
 FROM client_cert_grants g
 JOIN deploy_targets t ON t.id = g.deploy_target_id
@@ -1162,6 +1187,7 @@ type ServerGrantViewsRow struct {
 	OutputSpecID        *uuid.UUID  `json:"output_spec_id"`
 	HookIds             []uuid.UUID `json:"hook_ids"`
 	AutoRemediate       bool        `json:"auto_remediate"`
+	PostAction          []byte      `json:"post_action"`
 	CreatedAt           time.Time   `json:"created_at"`
 	UpdatedAt           time.Time   `json:"updated_at"`
 	Status              *string     `json:"status"`
@@ -1189,6 +1215,7 @@ func (q *Queries) ServerGrantViews(ctx context.Context, arg ServerGrantViewsPara
 			&i.OutputSpecID,
 			&i.HookIds,
 			&i.AutoRemediate,
+			&i.PostAction,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Status,
@@ -1327,7 +1354,7 @@ const updateGrant = `-- name: UpdateGrant :one
 UPDATE client_cert_grants SET delivery = $1, output_spec_id = $2,
        deploy_target_id = $3, hook_ids = $4,
        auto_remediate = $5, target_options = COALESCE($6, target_options), updated_at = now()
-WHERE id = $7 RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options
+WHERE id = $7 RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options, post_action
 `
 
 type UpdateGrantParams struct {
@@ -1366,24 +1393,25 @@ func (q *Queries) UpdateGrant(ctx context.Context, arg UpdateGrantParams) (Clien
 		&i.RemovedRevision,
 		&i.RedeploySeq,
 		&i.TargetOptions,
+		&i.PostAction,
 	)
 	return i, err
 }
 
-const updateServerGrantLayout = `-- name: UpdateServerGrantLayout :one
-UPDATE client_cert_grants SET output_spec_id = $1, updated_at = now()
-WHERE id = $2 RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options
+const updateServerGrant = `-- name: UpdateServerGrant :one
+UPDATE client_cert_grants SET output_spec_id = $1, post_action = COALESCE($2::jsonb, '{}'), updated_at = now()
+WHERE id = $3 RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options, post_action
 `
 
-type UpdateServerGrantLayoutParams struct {
+type UpdateServerGrantParams struct {
 	OutputSpecID *uuid.UUID `json:"output_spec_id"`
+	PostAction   []byte     `json:"post_action"`
 	ID           uuid.UUID  `json:"id"`
 }
 
-// A server grant's only editable field (Shared contract: updateGrant on a
-// server grant is layoutId only).
-func (q *Queries) UpdateServerGrantLayout(ctx context.Context, arg UpdateServerGrantLayoutParams) (ClientCertGrant, error) {
-	row := q.db.QueryRow(ctx, updateServerGrantLayout, arg.OutputSpecID, arg.ID)
+// A server grant's editable fields: its layout and post action.
+func (q *Queries) UpdateServerGrant(ctx context.Context, arg UpdateServerGrantParams) (ClientCertGrant, error) {
+	row := q.db.QueryRow(ctx, updateServerGrant, arg.OutputSpecID, arg.PostAction, arg.ID)
 	var i ClientCertGrant
 	err := row.Scan(
 		&i.ID,
@@ -1400,6 +1428,7 @@ func (q *Queries) UpdateServerGrantLayout(ctx context.Context, arg UpdateServerG
 		&i.RemovedRevision,
 		&i.RedeploySeq,
 		&i.TargetOptions,
+		&i.PostAction,
 	)
 	return i, err
 }

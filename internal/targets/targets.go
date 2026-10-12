@@ -12,6 +12,7 @@ package targets
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/metril/certforge/internal/delivery"
 	"github.com/metril/certforge/internal/render"
@@ -136,6 +137,25 @@ type Request struct {
 	GrantOptions json.RawMessage
 	Side         Mode
 	HTTP         HTTPFactory
+	// Recorder, when set, receives each command a server-run target runs
+	// (the ssh target's pre and post commands). nil records nothing.
+	Recorder HookRecorder
+}
+
+// HookRun is one command a target ran on a remote host.
+type HookRun struct {
+	Phase    string // "pre_deploy" or "post_deploy"
+	Argv     []string
+	ExitCode int // -1 when it did not run or did not finish
+	Duration time.Duration
+	Stdout   string
+	Stderr   string
+}
+
+// HookRecorder stores HookRuns; it must not fail the deploy and must never
+// be handed a secret.
+type HookRecorder interface {
+	RecordHook(ctx context.Context, r HookRun)
 }
 
 // Result is what Deploy produced: any files (unwritten until an agent

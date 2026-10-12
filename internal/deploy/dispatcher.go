@@ -450,8 +450,20 @@ func (d *Dispatcher) deploy(ctx context.Context, grantID, versionID uuid.UUID, w
 		Side:        targets.Server,
 		HTTP:        d.HTTP(ctx),
 	}
+	if row.DeployTargetID != nil {
+		req.Recorder = hookRecorder{d: d, grant: grantID, target: *row.DeployTargetID}
+	}
 	if _, err := target.Deploy(ctx, req); err != nil {
 		return d.fail(ctx, row, versionID, seq, secrets, err)
+	}
+	pa, err := ParsePostAction(row.PostAction)
+	if err != nil {
+		return d.fail(ctx, row, versionID, seq, secrets, fmt.Errorf("deployed, but the post action is invalid: %w", err))
+	}
+	if pa != nil && row.DeployTargetID != nil {
+		if err := d.runPostAction(ctx, row, pa, req.HTTP.AllowLoopback); err != nil {
+			return d.fail(ctx, row, versionID, seq, secrets, fmt.Errorf("deployed, but %w", err))
+		}
 	}
 	return d.Q.MarkServerDeploymentDeployed(ctx, sqlcgen.MarkServerDeploymentDeployedParams{GrantID: grantID, VersionID: &versionID, DeploySeq: seq})
 }

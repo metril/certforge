@@ -106,3 +106,18 @@ LIMIT sqlc.arg(page_limit)::int;
 DELETE FROM hook_runs WHERE id IN (
   SELECT h.id FROM hook_runs h WHERE h.ran_at < sqlc.arg(before) LIMIT sqlc.arg(batch_limit)::int
 );
+
+-- name: InsertServerHookRun :exec
+-- A server-side run (the ssh target's own pre/post command, or a grant's
+-- post action): no client, tied to the grant and its deploy target.
+INSERT INTO hook_runs (client_id, grant_id, deploy_target_id, phase, argv, exit_code, duration_ms, stdout, stderr)
+VALUES (NULL, sqlc.narg(grant_id)::uuid, sqlc.arg(deploy_target_id), sqlc.arg(phase), sqlc.arg(argv)::text[],
+        sqlc.arg(exit_code), sqlc.arg(duration_ms), sqlc.arg(stdout), sqlc.arg(stderr));
+
+-- name: ListTargetHookRuns :many
+SELECT r.id, r.grant_id, r.phase, r.argv, r.exit_code, r.duration_ms, r.stdout, r.stderr, r.ran_at
+FROM hook_runs r
+WHERE r.deploy_target_id = sqlc.arg(deploy_target_id)
+  AND (NOT sqlc.arg(has_cursor)::bool OR (r.ran_at, r.id) < (sqlc.arg(before_ts)::timestamptz, sqlc.arg(before_id)::uuid))
+ORDER BY r.ran_at DESC, r.id DESC
+LIMIT sqlc.arg(page_limit)::int;

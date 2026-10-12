@@ -167,6 +167,7 @@ type ClientCertGrant struct {
 	RemovedRevision int64       `json:"removed_revision"`
 	RedeploySeq     int64       `json:"redeploy_seq"`
 	TargetOptions   []byte      `json:"target_options"`
+	PostAction      []byte      `json:"post_action"`
 }
 
 type DeployTarget struct {
@@ -275,17 +276,18 @@ type Hook struct {
 }
 
 type HookRun struct {
-	ID         uuid.UUID  `json:"id"`
-	ClientID   uuid.UUID  `json:"client_id"`
-	GrantID    *uuid.UUID `json:"grant_id"`
-	HookID     *uuid.UUID `json:"hook_id"`
-	Phase      string     `json:"phase"`
-	Argv       []string   `json:"argv"`
-	ExitCode   int32      `json:"exit_code"`
-	DurationMs int64      `json:"duration_ms"`
-	Stdout     string     `json:"stdout"`
-	Stderr     string     `json:"stderr"`
-	RanAt      time.Time  `json:"ran_at"`
+	ID             uuid.UUID  `json:"id"`
+	ClientID       *uuid.UUID `json:"client_id"`
+	GrantID        *uuid.UUID `json:"grant_id"`
+	HookID         *uuid.UUID `json:"hook_id"`
+	Phase          string     `json:"phase"`
+	Argv           []string   `json:"argv"`
+	ExitCode       int32      `json:"exit_code"`
+	DurationMs     int64      `json:"duration_ms"`
+	Stdout         string     `json:"stdout"`
+	Stderr         string     `json:"stderr"`
+	RanAt          time.Time  `json:"ran_at"`
+	DeployTargetID *uuid.UUID `json:"deploy_target_id"`
 }
 
 type IssuanceAttempt struct {

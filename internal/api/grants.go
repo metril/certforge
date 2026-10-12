@@ -197,6 +197,9 @@ func (s *Server) UpdateGrant(ctx context.Context, r gen.UpdateGrantRequestObject
 	if runsOn == "server" {
 		return s.updateServerGrant(ctx, r)
 	}
+	if r.Body.PostAction != nil {
+		return nil, unprocessable("postAction", "only server grants have a post action")
+	}
 	in := agents.GrantInput{Delivery: string(r.Body.Delivery), LayoutID: r.Body.LayoutId, TargetID: r.Body.DeployTargetId,
 		HookIDs: r.Body.HookIds, AutoRemediate: r.Body.AutoRemediate, RequireKey: requireKeysExport(r.OrgId)}
 	if err := requireCertsDirPerm(ctx, r.OrgId, r.Body.TargetOptions); err != nil {
@@ -330,7 +333,51 @@ func serverGrantOut(r sqlcgen.ServerGrantViewsRow) gen.Grant {
 	return gen.Grant{Id: r.ID, ClientId: nil, ClientName: nil, CertificateId: r.CertID, CertificateName: r.CertificateName,
 		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, TargetOptions: map[string]interface{}{}, HookIds: r.HookIds,
 		AutoRemediate: r.AutoRemediate, Deployment: nil, RunsOn: gen.RunsOn("server"), ServerDeployment: sd,
-		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
+		PostAction: postActionOut(r.PostAction), CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
+}
+
+// postAuditOut is a post action's audit form: where and what, never secrets.
+func postAuditOut(p *gen.PostAction) any {
+	if p == nil {
+		return nil
+	}
+	return map[string]any{"sshTargetId": p.SshTargetId, "command": p.Command}
+}
+
+// postActionOut maps a stored post_action; nil when none (or unreadable).
+func postActionOut(raw []byte) *gen.PostAction {
+	pa, err := deploy.ParsePostAction(raw)
+	if err != nil || pa == nil {
+		return nil
+	}
+	t := pa.TimeoutSeconds
+	return &gen.PostAction{SshTargetId: pa.SSHTargetID, Command: pa.Command, TimeoutSeconds: &t}
+}
+
+// postActionIn validates a request's post action in orgID and returns its
+// stored form: nil (stored as {}) for none. The referenced target must be an
+// ssh target of the same org.
+func postActionIn(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, in *gen.PostAction) ([]byte, error) {
+	if in == nil {
+		return nil, nil
+	}
+	pa := deploy.PostAction{SSHTargetID: in.SshTargetId, Command: in.Command}
+	if in.TimeoutSeconds != nil {
+		pa.TimeoutSeconds = *in.TimeoutSeconds
+	}
+	if err := pa.Validate(); err != nil {
+		return nil, unprocessable("postAction", err.Error())
+	}
+	t, err := q.GetDeployTarget(ctx, sqlcgen.GetDeployTargetParams{ID: pa.SSHTargetID, OrgID: orgID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, unprocessable("postAction.sshTargetId", fmt.Sprintf("deploy target %s is not in this org", pa.SSHTargetID))
+	} else if err != nil {
+		return nil, err
+	}
+	if t.Type != "ssh" {
+		return nil, unprocessable("postAction.sshTargetId", "the post action target must be an ssh target")
+	}
+	return json.Marshal(pa)
 }
 
 func (s *Server) serverGrantByID(ctx context.Context, orgID, id uuid.UUID) (gen.Grant, error) {
@@ -500,7 +547,16 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 		return nil, err
 	}
 
-	g, err := q.CreateServerGrant(ctx, sqlcgen.CreateServerGrantParams{CertID: r.Body.CertificateId, OutputSpecID: r.Body.LayoutId, DeployTargetID: &r.Id})
+	if r.Body.PostAction != nil {
+		if _, err := authorize(ctx, authz.ActionDeliveryWrite, &r.OrgId); err != nil {
+			return nil, err
+		}
+	}
+	postAction, err := postActionIn(ctx, q, r.OrgId, r.Body.PostAction)
+	if err != nil {
+		return nil, err
+	}
+	g, err := q.CreateServerGrant(ctx, sqlcgen.CreateServerGrantParams{CertID: r.Body.CertificateId, OutputSpecID: r.Body.LayoutId, DeployTargetID: &r.Id, PostAction: postAction})
 	if pgCode(err) == pgUniqueViolation {
 		return nil, conflict("This target already has a grant for that certificate.")
 	}
@@ -522,7 +578,7 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 	}
 	s.audit(ctx, audit.Event{Action: "grant.create", ResourceType: "grant", ResourceID: g.ID.String(), OrgID: &r.OrgId,
 		Details: map[string]any{"deployTargetId": r.Id, "certificateId": r.Body.CertificateId, "layoutId": r.Body.LayoutId,
-			"runsOn": "server", "includeKey": needsKey}})
+			"runsOn": "server", "includeKey": needsKey, "postAction": postAuditOut(r.Body.PostAction)}})
 	out, err := s.serverGrantByID(ctx, r.OrgId, g.ID)
 	if err != nil {
 		return nil, err
@@ -603,7 +659,22 @@ func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequest
 	if err := deploy.CheckServerGrantPaths(ctx, q, r.OrgId, *g.DeployTargetID); err != nil {
 		return nil, mapErr(err)
 	}
-	if _, err := q.UpdateServerGrantLayout(ctx, sqlcgen.UpdateServerGrantLayoutParams{ID: r.Id, OutputSpecID: layoutID}); err != nil {
+	var postIn *gen.PostAction
+	if r.Body != nil {
+		postIn = r.Body.PostAction
+	}
+	// Running commands on an ssh host is a delivery change: setting, changing
+	// or clearing a post action needs delivery:write on top of clients:write.
+	if pa, _ := deploy.ParsePostAction(g.PostAction); postIn != nil || pa != nil {
+		if _, err := authorize(ctx, authz.ActionDeliveryWrite, &r.OrgId); err != nil {
+			return nil, err
+		}
+	}
+	postAction, err := postActionIn(ctx, q, r.OrgId, postIn)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := q.UpdateServerGrant(ctx, sqlcgen.UpdateServerGrantParams{ID: r.Id, OutputSpecID: layoutID, PostAction: postAction}); err != nil {
 		return nil, err
 	}
 	versionID, err := q.CertificateCurrentVersion(ctx, g.CertID)
@@ -617,7 +688,7 @@ func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequest
 		return nil, err
 	}
 	s.audit(ctx, audit.Event{Action: "grant.update", ResourceType: "grant", ResourceID: r.Id.String(), OrgID: &r.OrgId,
-		Details: map[string]any{"before": map[string]any{"layoutId": g.OutputSpecID}, "after": map[string]any{"layoutId": layoutID},
+		Details: map[string]any{"before": map[string]any{"layoutId": g.OutputSpecID}, "after": map[string]any{"layoutId": layoutID, "postAction": postAuditOut(postIn)},
 			"runsOn": "server", "includeKey": needsKey}})
 	out, err := s.serverGrantByID(ctx, r.OrgId, r.Id)
 	if err != nil {
