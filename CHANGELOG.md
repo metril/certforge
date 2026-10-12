@@ -2,6 +2,14 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.28.4](https://github.com/metril/certforge/compare/v0.28.3...v0.28.4) (2026-10-12)
+
+
+### Bug Fixes
+
+* **deploy:** restart the pfSense WebGUI after deploying its certificate ([c4075ff](https://github.com/metril/certforge/commit/c4075ff4c4e84ef2fda6fac55cdba644b7ecb0df))
+* **deploy:** restart the pfSense WebGUI after deploying its certificate ([6731281](https://github.com/metril/certforge/commit/67312819a4906eeb3bc18ad097ac28556cd500c7))
+
 ## [0.28.3](https://github.com/metril/certforge/compare/v0.28.2...v0.28.3) (2026-10-12)
 
 
