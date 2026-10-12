@@ -14,7 +14,7 @@ export const pendingEnrollmentsQuery = (orgId: string) =>
     staleTime: 0,
   });
 
-/** The shared query behind the queue, the nav badge and the Enrol page: one
+/** The shared query behind the queue, the nav badge and the Enroll page: one
  * request per org. `enabled` is false without clients:write or in All orgs. */
 export function usePendingApprovals(orgId: string, enabled: boolean): EnrollmentRequest[] {
   const q = useQuery({ ...pendingEnrollmentsQuery(orgId), enabled, retry: false });

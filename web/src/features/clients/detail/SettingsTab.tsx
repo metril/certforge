@@ -106,11 +106,11 @@ export function SettingsTab({ client, orgId, orgSlug, sites, canWrite }: Props) 
       </Card>
       <Card role="region" aria-label="Identity" className="grid gap-2 p-4">
         {client.status !== 'revoked' && (
-          <ActionRow label="Re-enrol" help="client.reenroll">
+          <ActionRow label="Re-enroll" help="client.reenroll">
             <PermissionTip allowed={canWrite} action="clients:write" side="left">
               <Button variant="outline" disabled={!canWrite} onClick={() => setConfirm('reenroll')}>
                 <RefreshCw className="size-4" aria-hidden />
-                Re-enrol
+                Re-enroll
               </Button>
             </PermissionTip>
           </ActionRow>
@@ -137,10 +137,10 @@ export function SettingsTab({ client, orgId, orgSlug, sites, canWrite }: Props) 
       <ConfirmDestructive
         open={confirm === 'reenroll'}
         onOpenChange={(o) => !o && setConfirm(null)}
-        title={`Re-enrol ${client.name}`}
-        consequence="The agent is disconnected and its certificate refused until it enrols with the new token."
+        title={`Re-enroll ${client.name}`}
+        consequence="The agent is disconnected and its certificate refused until it enrolls with the new token."
         confirmText={client.name}
-        actionLabel="Re-enrol"
+        actionLabel="Re-enroll"
         onConfirm={async () => setToken(await reenroll.mutateAsync(client.id))}
       />
       <ConfirmDestructive

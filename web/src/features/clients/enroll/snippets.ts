@@ -10,7 +10,7 @@ export const AGENT_IMAGE = 'ghcr.io/metril/certforge-agent:latest';
 // `CF_AGENT_TOKEN` form the token panel already shows in full.
 const WRITE_DIR = '/etc/certforge/deploy';
 
-/** Plan 3A shared contracts "Enrol snippets"; the token is base64url and
+/** Plan 3A shared contracts "Enroll snippets"; the token is base64url and
  * dots only, so single quotes are enough. */
 export function dockerRunSnippet(token: string): string {
   return [

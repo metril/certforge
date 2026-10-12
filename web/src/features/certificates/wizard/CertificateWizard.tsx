@@ -55,7 +55,7 @@ function stepForField(field: string | null): number {
 
 // Fix round 1 (review, Important #1): mirrors the server's own reissue
 // check exactly — internal/issuance/store_certs.go's UpdateCertificate
-// compares `cur.Names()` (`[commonName, ...sans]`, already normalised by a
+// compares `cur.Names()` (`[commonName, ...sans]`, already normalized by a
 // prior NormalizeNames) against the freshly `NormalizeNames`d submission,
 // with `slices.Equal` (ordered). A plain set comparison of `state.names`
 // (the previous version of this function) missed a common-name-only change

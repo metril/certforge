@@ -74,7 +74,7 @@ export function WaitingPanel({ orgId, orgSlug, clientId, expiresAt, renewing, on
         <div className="flex flex-wrap items-center gap-3">
           <Hourglass className="size-4 text-pending" aria-hidden />
           <span className="text-sm">Agent enrolled. Awaiting approval.</span>
-          <HelpTip id="enrol.awaiting" />
+          <HelpTip id="enroll.awaiting" />
           <Button onClick={() => flow.review(request)}>Review</Button>
         </div>
       ) : online ? (

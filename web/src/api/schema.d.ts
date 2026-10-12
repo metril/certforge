@@ -1242,7 +1242,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List enrolment requests waiting for approval across orgs
+         * List enrollment requests waiting for approval across orgs
          * @description Like listEnrollmentRequests, over every org where the caller has clients:read. 403 when there is none. Items carry orgId.
          */
         get: operations["listAllEnrollmentRequests"];
@@ -1265,7 +1265,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List enrolment requests waiting for approval
+         * List enrollment requests waiting for approval
          * @description Needs clients:read. An agent that presents a valid one-time token waits here (Settings → Agents → requireApproval) until an administrator compares its verification code with the one the agent logged and approves or rejects it. Expired requests are not listed. Not paginated; at most 50 wait per org.
          */
         get: operations["listEnrollmentRequests"];
@@ -1292,7 +1292,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Approve an enrolment request
+         * Approve an enrollment request
          * @description Needs clients:write. The waiting agent receives its certificate at its next poll and the client becomes active. 409 when the request was already decided or has expired; 404 when it does not exist in this org. Audited as client.enrol_approved.
          */
         post: operations["approveEnrollmentRequest"];
@@ -1317,8 +1317,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Reject an enrolment request
-         * @description Needs clients:write. The agent is told its request was rejected and stops. The token stays used; re-enrol the client for a new one. 409 when the request was already decided or has expired; 404 when it does not exist in this org. Audited as client.enrol_rejected.
+         * Reject an enrollment request
+         * @description Needs clients:write. The agent is told its request was rejected and stops. The token stays used; re-enroll the client for a new one. 409 when the request was already decided or has expired; 404 when it does not exist in this org. Audited as client.enrol_rejected.
          */
         post: operations["rejectEnrollmentRequest"];
         delete?: never;
@@ -1365,7 +1365,7 @@ export interface paths {
         put?: never;
         /**
          * Create a client
-         * @description Needs clients:write. Creates a pending client and returns its one-time enrolment token, shown once; only its hash is stored.
+         * @description Needs clients:write. Creates a pending client and returns its one-time enrollment token, shown once; only its hash is stored.
          */
         post: operations["createClient"];
         delete?: never;
@@ -1447,7 +1447,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Issue a new enrolment token
+         * Issue a new enrollment token
          * @description Needs clients:write. Returns the client to pending with a fresh one-time token, refuses its current agent certificate and closes its socket. 409 for a revoked client.
          */
         post: operations["reenrollClient"];
@@ -3757,7 +3757,7 @@ export interface components {
         ApiKeyList: {
             /** @description Keys */
             items: components["schemas"]["ApiKey"][];
-            /** @description The server's key policy, so a creator without settings access can still honour it. */
+            /** @description The server's key policy, so a creator without settings access can still honor it. */
             policy: components["schemas"]["ApiKeyPolicy"];
         };
         /** @description Limits enforced when an API key is created (Settings, Authentication). */
@@ -3894,7 +3894,7 @@ export interface components {
             anchorId?: number | null;
         };
         /**
-         * @description pending until the agent enrols with its token; revoked clients are refused.
+         * @description pending until the agent enrolls with its token; revoked clients are refused.
          * @enum {string}
          */
         ClientStatus: "pending" | "active" | "revoked";
@@ -3967,7 +3967,7 @@ export interface components {
             failedCount: number;
             /**
              * Format: date-time
-             * @description Expiry of the unused enrolment token while pending.
+             * @description Expiry of the unused enrollment token while pending.
              */
             tokenExpiresAt?: string | null;
             /**
@@ -4005,10 +4005,10 @@ export interface components {
              */
             siteId: string | null;
         };
-        /** @description A pending client and its one-time enrolment token. */
+        /** @description A pending client and its one-time enrollment token. */
         ClientCreated: {
             client: components["schemas"]["Client"];
-            /** @description Enrolment token cf1.<agent URL>.<CA fingerprint>.<secret>. Shown once; only its hash is stored. */
+            /** @description Enrollment token cf1.<agent URL>.<CA fingerprint>.<secret>. Shown once; only its hash is stored. */
             token: string;
             /**
              * Format: date-time
@@ -4074,7 +4074,7 @@ export interface components {
              */
             expiresAt: string;
         };
-        /** @description Enrolment requests waiting for approval. */
+        /** @description Enrollment requests waiting for approval. */
         EnrollmentRequestList: {
             /** @description Requests */
             items: components["schemas"]["EnrollmentRequest"][];
@@ -4092,7 +4092,7 @@ export interface components {
              */
             id: string;
             status: components["schemas"]["AgentCAStatus"];
-            /** @description Lowercase hex SHA-256 of the CA certificate; enrolment tokens pin it. */
+            /** @description Lowercase hex SHA-256 of the CA certificate; enrollment tokens pin it. */
             fingerprint: string;
             /** @description Certificate subject common name. */
             subject: string;

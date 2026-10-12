@@ -7,7 +7,7 @@ import { setTheme, snap } from './screens';
 
 const PEM = `${E2E.certName}-pw.pem`;
 
-test('clients: enrol the compose agent, grant a certificate, see it deployed', async ({ page }) => {
+test('clients: enroll the compose agent, grant a certificate, see it deployed', async ({ page }) => {
   test.setTimeout(300_000);
   await page.addInitScript(() => localStorage.setItem('cf-theme', 'light'));
   await page.goto('/login');
@@ -38,21 +38,21 @@ test('clients: enrol the compose agent, grant a certificate, see it deployed', a
   await layout.getByRole('button', { name: 'Save' }).click();
   await expect(layout).toBeHidden();
 
-  // 3. Enrol: the compose agent waits for CF_AGENT_TOKEN_FILE=/data/token.
+  // 3. Enroll: the compose agent waits for CF_AGENT_TOKEN_FILE=/data/token.
   await page.goto(`/o/${E2E.orgSlug}/clients`);
-  await page.getByRole('link', { name: 'Enrol client' }).click();
+  await page.getByRole('link', { name: 'Enroll client' }).click();
   await page.getByLabel('Name', { exact: true }).fill('pw-agent');
   await page.getByRole('button', { name: 'Create token' }).click();
-  const tokenRegion = page.getByRole('region', { name: 'Enrolment token' });
+  const tokenRegion = page.getByRole('region', { name: 'Enrollment token' });
   const token = ((await tokenRegion.locator('code').first().textContent()) ?? '').trim();
   expect(token).toMatch(/^cf1\./);
   const connection = page.getByRole('region', { name: 'Agent connection' });
   await expect(connection).toContainText('Waiting for agent');
-  await snap(page, 'enrol-waiting');
+  await snap(page, 'enroll-waiting');
   await writeFile(resolve(E2E.agentDir, 'agent-data', 'token'), token, { mode: 0o600 });
   // The agent proves the token, then waits for an administrator.
   await expect(connection.getByText('Agent enrolled. Awaiting approval.')).toBeVisible({ timeout: 90_000 });
-  await snap(page, 'enrol-awaiting');
+  await snap(page, 'enroll-awaiting');
   await expect(page.getByRole('link', { name: /^Clients, 1 awaiting approval/ })).toBeVisible();
   await connection.getByRole('button', { name: 'Review' }).click();
   const approve = page.getByRole('dialog', { name: /Approve agent/ });
@@ -79,7 +79,7 @@ test('clients: enrol the compose agent, grant a certificate, see it deployed', a
   await expect(approve).toBeHidden();
   await expect(page.getByRole('link', { name: /awaiting approval/ })).toBeHidden();
   await expect(connection.getByText('Online')).toBeVisible({ timeout: 90_000 });
-  await snap(page, 'enrol-online');
+  await snap(page, 'enroll-online');
 
   // 4. Grant the global-setup certificate with that layout.
   await connection.getByRole('link', { name: 'Grant certificate' }).click();
@@ -120,7 +120,7 @@ test('clients: enrol the compose agent, grant a certificate, see it deployed', a
 
 const READY: Record<string, RegExp> = {
   [`/o/${E2E.orgSlug}/clients`]: /^Clients$/,
-  [`/o/${E2E.orgSlug}/clients/new`]: /^Enrol client$/,
+  [`/o/${E2E.orgSlug}/clients/new`]: /^Enroll client$/,
   [`/o/${E2E.orgSlug}/delivery/targets`]: /^Delivery$/,
   [`/o/${E2E.orgSlug}/delivery/layouts`]: /^Delivery$/,
   [`/o/${E2E.orgSlug}/delivery/hooks`]: /^Delivery$/,

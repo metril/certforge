@@ -191,7 +191,7 @@ export function ChannelsPage() {
           </>
         )}
         {(edit === 'new' || editing) && (
-          // Mount only once the channel is loaded so the sheet initialises from it.
+          // Mount only once the channel is loaded so the sheet initializes from it.
           <ChannelSheet key={edit} orgId={org.id} open channel={editing} onOpenChange={(o) => !o && openSheet(undefined)} />
         )}
         {editNotFound && (

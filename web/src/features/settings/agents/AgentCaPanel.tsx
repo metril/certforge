@@ -150,7 +150,7 @@ export function AgentCaPanel() {
         open={rotateOpen}
         onOpenChange={setRotateOpen}
         title="Rotate agent CA"
-        consequence="Agents move to the new CA as they renew; unused enrolment tokens keep working until the old CA is retired."
+        consequence="Agents move to the new CA as they renew; unused enrollment tokens keep working until the old CA is retired."
         help="agents.rotate"
         confirmText="rotate"
         actionLabel="Rotate"

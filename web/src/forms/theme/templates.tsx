@@ -80,7 +80,7 @@ function FieldTemplate({ id, label, displayLabel, rawDescription, required, rawE
 }
 
 function ObjectFieldTemplate({ properties }: ObjectFieldTemplateProps) {
-  // B5: honours the `ui:classNames` FieldTemplate forwarded above (e.g.
+  // B5: honors the `ui:classNames` FieldTemplate forwarded above (e.g.
   // Issuance's rateLimits: 'grid gap-3 sm:grid-cols-2') on this template's
   // own properties grid, not on the label-and-content wrapper.
   const gridClassNames = useContext(ObjectGridClassNames);

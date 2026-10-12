@@ -24,7 +24,7 @@ export function isExpired(r: EnrollmentRequest, now = Date.now()): boolean {
 /** Requests still approvable: the nav badge and the Overview count these. */
 export const live = (rs: EnrollmentRequest[]) => rs.filter((r) => !isExpired(r));
 
-/** Dialogs plus the approve/reject mutations, shared by the queue and the Enrol page. */
+/** Dialogs plus the approve/reject mutations, shared by the queue and the Enroll page. */
 export function useApprovalFlow(orgId: string) {
   const org = useOrg();
   const navigate = useNavigate();

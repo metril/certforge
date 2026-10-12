@@ -24,7 +24,7 @@ export async function setTheme(page: Page, t: 'light' | 'dark') {
 }
 
 /** Screenshots the page in both themes without a reload (state that lives
- * only in the page, e.g. an enrolment token or an unsaved sheet, survives
+ * only in the page, e.g. an enrollment token or an unsaved sheet, survives
  * the theme toggle), then goes back to light. */
 export async function snap(page: Page, name: string) {
   for (const theme of ['light', 'dark'] as const) {

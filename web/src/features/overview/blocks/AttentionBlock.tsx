@@ -35,7 +35,7 @@ const CLIENT_KIND: Record<ClientAttentionKind, { tone: Tone; icon: LucideIcon; l
   'deploy-failed': { tone: 'failed', icon: CircleAlert, label: 'Deploy failed', tab: 'certificates', fix: 'Review' },
   drift: { tone: 'drift', icon: FileDiff, label: 'Drift', tab: 'certificates', fix: 'Review' },
   offline: { tone: 'neutral', icon: WifiOff, label: 'Offline', tab: 'certificates', fix: 'Open' },
-  'agent-cert': { tone: 'expiring', icon: Clock, label: 'Agent certificate', tab: 'settings', fix: 'Re-enrol' },
+  'agent-cert': { tone: 'expiring', icon: Clock, label: 'Agent certificate', tab: 'settings', fix: 'Re-enroll' },
   'awaiting-approval': { tone: 'pending', icon: Hourglass, label: 'Awaiting approval', tab: 'certificates', fix: 'Review' },
 };
 // Deviations "Overview rows": only mismatch and unreachable, single-org only.

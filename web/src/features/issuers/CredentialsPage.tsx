@@ -169,7 +169,7 @@ export function CredentialsPage() {
         )}
         <ProviderPicker open={picker} onOpenChange={setPicker} providers={providers} onPickProvider={(p) => setSheet({ provider: p })} />
         {sheet && (
-          // Mount only once the provider is chosen so the form initialises from it.
+          // Mount only once the provider is chosen so the form initializes from it.
           <CredentialSheet
             key={sheet.credential?.id ?? sheet.provider.code}
             orgId={org.id}

@@ -16,7 +16,7 @@ const fqdn = (n: string) => (n.endsWith('.') ? n : `${n}.`);
 
 type CopyStatus = 'idle' | 'copied' | 'failed';
 
-/** Mirrors CopyField's own clipboard-copy behaviour (try/catch around
+/** Mirrors CopyField's own clipboard-copy behavior (try/catch around
  * navigator.clipboard.writeText, a 1.5s status reset) so tests spying on
  * navigator.clipboard still work, but renders the value with `break-all`
  * instead of CopyField's fixed `truncate` — CopyField itself isn't part of

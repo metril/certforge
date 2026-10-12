@@ -41,7 +41,7 @@ async function createToken() {
 // 10 s: the 2 s poll plus route load comes before the 5 s wait for Online.
 it('creates a pending client, shows token and snippets, then sees the agent online', async () => {
   const { user } = await createToken();
-  const token = await screen.findByRole('region', { name: 'Enrolment token' });
+  const token = await screen.findByRole('region', { name: 'Enrollment token' });
   expect(body).toEqual({ name: 'edge-1', siteId: 's-1' });
   expect(within(token).getByText(TOKEN)).toBeInTheDocument();
   expect(within(token).getByLabelText('docker run command')).toHaveTextContent(`CF_AGENT_TOKEN='${TOKEN}'`);

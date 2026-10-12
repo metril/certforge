@@ -15,7 +15,7 @@ export type Coverage = {
 };
 
 // Adaptation (preflight A31, matcher row): the server (challenge/match.go)
-// lowercases and IDNA-normalises both the certificate name and the rule
+// lowercases and IDNA-normalizes both the certificate name and the rule
 // pattern to A-labels before comparing. `new URL('http://'+s+'/').hostname`
 // runs the same WHATWG host-parsing algorithm (IDNA + lowercasing) that
 // jsdom (tr46, in tests) already ships, so it doubles as a zero-dependency
@@ -29,7 +29,7 @@ export type Coverage = {
 // smoke test does), the old code turned every `*` and `*.zone` rule into
 // `%2A`/`%2A.zone`, so no wildcard or catch-all rule ever matched — a
 // jsdom-only pass, not a real one. `*` and a leading `*.` are therefore
-// stripped before URL-normalising and re-attached after; nothing else
+// stripped before URL-normalizing and re-attached after; nothing else
 // about a pattern or name legitimately starts with `*` (matchError already
 // rejects a `*` anywhere else).
 function normaliseAscii(v: string): string {
@@ -150,7 +150,7 @@ export function coverage(names: string[], rules: VerificationRule[], inherited: 
       const apex = toAscii(name.slice(2));
       if (present.has(apex)) {
         const apexCov = resolveName(apex, rules, inherited, clients);
-        // The apex-sharing optimisation above only holds for dns-01/
+        // The apex-sharing optimization above only holds for dns-01/
         // manual-dns (the same TXT record proves both); an http-01 or
         // tls-alpn-01 rule can win the apex's own lookup (the apex isn't a
         // wildcard, so it's never skipped there) but can never prove the

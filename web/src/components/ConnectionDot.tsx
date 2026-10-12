@@ -15,7 +15,7 @@ type Props = {
   label?: string;
 } & Omit<ComponentPropsWithoutRef<'span'>, 'children'>;
 
-/** Dot plus word (never colour alone). `label` overrides the word, for the
+/** Dot plus word (never color alone). `label` overrides the word, for the
  * detail header's "Offline since <time>". forwardRef so it can sit inside
  * a `Tooltip`/`PermissionTip`'s `asChild` trigger (Radix clones and needs
  * to attach a ref to the actual DOM node), matching Sidebar's TargetLink. */

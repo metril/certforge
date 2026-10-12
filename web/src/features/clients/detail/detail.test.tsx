@@ -96,7 +96,7 @@ it('renames and moves the client, showing a duplicate name inline', async () => 
   await user.click(screen.getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(patched).toEqual({ name: 'web-2', siteId: 's-2' }));
   // M3: a rename also invalidates ['grants', orgId] and ['deployments', orgId]
-  // (Grant.clientName/CertificateDeployment.clientName are denormalised)
+  // (Grant.clientName/CertificateDeployment.clientName are denormalized)
   // — the always-mounted grants query (ClientDetail) refetches once more.
   await waitFor(() => expect(grantsFetches).toBeGreaterThanOrEqual(2));
   server.use(http.patch(url('/orgs/org-1/clients/cl-1'), () => problem(409, 'A client named db-1 already exists.')));
@@ -106,11 +106,11 @@ it('renames and moves the client, showing a duplicate name inline', async () => 
   expect(await screen.findByText('A client named db-1 already exists.')).toBeInTheDocument();
 });
 
-it('re-enrol dialog shows the token once and forgets it on Done', async () => {
+it('re-enroll dialog shows the token once and forgets it on Done', async () => {
   const { user, queryClient } = renderRoute('/o/acme/clients/cl-1/settings');
-  await user.click(await screen.findByRole('button', { name: 'Re-enrol' }));
+  await user.click(await screen.findByRole('button', { name: 'Re-enroll' }));
   await user.type(screen.getByLabelText(/to confirm/), 'web-1');
-  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Re-enrol' }));
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Re-enroll' }));
   const dialog = await screen.findByRole('dialog', { name: 'New token for web-1' });
   expect(within(dialog).getByText('cf1.aHR0cHM6Ly9jZg.ab12.s3cret')).toBeInTheDocument();
   await user.click(within(dialog).getByRole('button', { name: 'Done' }));
@@ -129,7 +129,7 @@ it('revokes with the name typed, then allows delete and returns to the list', as
   await waitFor(() => expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled());
   expect(screen.queryByRole('button', { name: 'Revoke' })).not.toBeInTheDocument();
   // 3A refuses re-enrolling a revoked client (409); the action is gone.
-  expect(screen.queryByRole('button', { name: 'Re-enrol' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Re-enroll' })).not.toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Delete' }));
   await user.type(screen.getByLabelText(/to confirm/), 'web-1');
   await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }));
@@ -141,7 +141,7 @@ it('is read-only for a viewer', async () => {
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))));
   renderRoute('/o/acme/clients/cl-1/settings');
   expect(await screen.findByLabelText('Name')).toBeDisabled();
-  for (const name of ['Save', 'Re-enrol', 'Revoke', 'Delete']) expect(screen.getByRole('button', { name })).toBeDisabled();
+  for (const name of ['Save', 'Re-enroll', 'Revoke', 'Delete']) expect(screen.getByRole('button', { name })).toBeDisabled();
 });
 
 it('All orgs redirects to the All orgs overview', async () => {
@@ -166,11 +166,11 @@ it('labels a revoked client', async () => {
   expect(await screen.findByText('Revoked')).toBeInTheDocument();
 });
 
-it('Escape closes the re-enrol token dialog and forgets the token', async () => {
+it('Escape closes the re-enroll token dialog and forgets the token', async () => {
   const { user } = renderRoute('/o/acme/clients/cl-1/settings');
-  await user.click(await screen.findByRole('button', { name: 'Re-enrol' }));
+  await user.click(await screen.findByRole('button', { name: 'Re-enroll' }));
   await user.type(screen.getByLabelText(/to confirm/), 'web-1');
-  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Re-enrol' }));
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Re-enroll' }));
   const dialog = await screen.findByRole('dialog', { name: 'New token for web-1' });
   expect(within(dialog).getByText('cf1.aHR0cHM6Ly9jZg.ab12.s3cret')).toBeInTheDocument();
   // The dialog autofocuses Done (no tooltip of its own), so one Escape

@@ -147,7 +147,7 @@ it('caps the command at 64 entries', async () => {
   const sheet = await screen.findByRole('dialog', { name: 'New hook' });
   const add = within(sheet).getByRole('button', { name: 'Add argument' });
   // fireEvent (not userEvent): userEvent's full pointer simulation is
-  // wasted on a plain click loop with no hover/focus behaviour under test.
+  // wasted on a plain click loop with no hover/focus behavior under test.
   // 63 re-renders of the sheet still take several seconds under vitest.
   for (let i = 0; i < 63; i++) fireEvent.click(add);
   expect(within(sheet).getByLabelText('Argument 63')).toBeInTheDocument();

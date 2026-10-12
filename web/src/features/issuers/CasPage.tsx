@@ -198,7 +198,7 @@ export function CasPage() {
           </>
         )}
         {(edit === 'new' || editing) && (
-          // Mount only once the CA is loaded so the form initialises from it.
+          // Mount only once the CA is loaded so the form initializes from it.
           <CaSheet key={edit} orgId={org.id} open ca={editing} initialKind={kind} onOpenChange={(o) => !o && openSheet(undefined)} />
         )}
         {viewing && (

@@ -93,7 +93,7 @@ it('keeps Approve blocked until the code is confirmed, then approves', async () 
 it('rejects from the row after a confirmation', async () => {
   const { user } = renderRoute('/o/acme/clients');
   await user.click(await screen.findByRole('button', { name: 'Reject' }));
-  const dialog = await screen.findByRole('dialog', { name: 'Reject enrolment from edge-1?' });
+  const dialog = await screen.findByRole('dialog', { name: 'Reject enrollment from edge-1?' });
   expect(rejected).toEqual([]);
   await user.click(within(dialog).getByRole('button', { name: 'Reject' }));
   await waitFor(() => expect(rejected).toEqual(['er-1']));
@@ -103,7 +103,7 @@ it('swaps from the approve dialog to the reject dialog', async () => {
   const { user } = renderRoute('/o/acme/clients');
   await user.click(await screen.findByRole('button', { name: 'Review' }));
   await user.click(within(await screen.findByRole('dialog', { name: /Approve agent/ })).getByRole('button', { name: 'Reject' }));
-  expect(await screen.findByRole('dialog', { name: /Reject enrolment/ })).toBeInTheDocument();
+  expect(await screen.findByRole('dialog', { name: /Reject enrollment/ })).toBeInTheDocument();
 });
 
 it('shows an inline message when someone else already handled the request', async () => {
@@ -127,7 +127,7 @@ it('an expired row offers Dismiss, not Review, and is not counted', async () => 
   await waitFor(() => expect(rejected).toEqual(['er-1']));
 });
 
-it('Enrol page: an enrolled agent shows Awaiting approval with Review', async () => {
+it('Enroll page: an enrolled agent shows Awaiting approval with Review', async () => {
   server.use(
     http.post(url('/orgs/org-1/clients'), () =>
       HttpResponse.json({ client: makeClient({ id: 'cl-9', name: 'edge-1', status: 'pending', online: false, connected: false }), token: 'cf1.x.y.z', expiresAt: new Date(Date.now() + 3_600_000).toISOString(), agentUrl: 'https://cf.lan:8443' }, { status: 201 }),
@@ -157,7 +157,7 @@ it('keeps the dialog open and shows the handled message when a refetch drops the
   expect(await within(open).findByRole('alert')).toHaveTextContent('Someone else already handled this request.');
 });
 
-it('Enrol page: keeps polling past the token expiry while approval is pending, then shows Online', async () => {
+it('Enroll page: keeps polling past the token expiry while approval is pending, then shows Online', async () => {
   let active = false;
   server.use(
     http.post(url('/orgs/org-1/clients'), () =>

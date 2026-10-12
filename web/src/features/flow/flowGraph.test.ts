@@ -144,7 +144,7 @@ describe('pairStatus', () => {
   });
 });
 
-describe('visibleNodeIds memoisation', () => {
+describe('visibleNodeIds memoization', () => {
   it('returns the same ids on repeated calls', () => {
     const a = visibleNodeIds(flow, { q: 'k1' })!;
     const b = visibleNodeIds(flow, { q: 'k1' })!;

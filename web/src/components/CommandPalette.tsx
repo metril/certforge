@@ -13,7 +13,7 @@ import { keywordFilter } from '@/lib/utils';
 
 /**
  * Ctrl/Cmd-K palette: jump to a certificate by any name or a client by name
- * or hostname, jump to a page, or run New certificate, Enrol client, Renew
+ * or hostname, jump to a page, or run New certificate, Enroll client, Renew
  * <name>. Every
  * `CommandItem` gets a `value` prefixed with its kind (`page:`, `cert:`,
  * `action:`, `renew:`) plus its own id, so two entries never collide on
@@ -266,12 +266,12 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             )}
             {canWriteClients && (
               <CommandItem
-                value="action:enrol-client"
-                keywords={['enrol', 'enroll', 'agent', 'client', 'token']}
+                value="action:enroll-client"
+                keywords={['enroll', 'enroll', 'agent', 'client', 'token']}
                 onSelect={() => run(() => void navigate({ to: '/o/$org/clients/new', params: { org: org.slug } }))}
               >
                 <Plus className="size-4" aria-hidden />
-                Enrol client
+                Enroll client
               </CommandItem>
             )}
             {canIssue &&

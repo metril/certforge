@@ -12,7 +12,7 @@ import { CHIP, CHIP_TINT, StatusChip } from './StatusChip';
 
 // Controller ruling (Task 6): chip words use the `ink` token in both themes;
 // this proves each tone's real background — panel blended with the tone
-// colour at CHIP_TINT's own alpha, exactly what the rendered `bg-<tone>/NN`
+// color at CHIP_TINT's own alpha, exactly what the rendered `bg-<tone>/NN`
 // utility produces — still clears 4.5:1 against ink. `expired` and `failed`
 // are covered by styles/tokens.test.ts (on-status vs expired/failed, and ink
 // vs panel/subtle for the outlined/neutral chips) so they are not repeated

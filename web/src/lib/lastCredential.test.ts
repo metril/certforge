@@ -20,12 +20,12 @@ it('ignores remembered credentials that no longer exist', () => {
   expect(makeSuggester([], creds)('gone.test')).toBeUndefined();
 });
 
-// Fix round 1 (review, item 3): the remembered key is a normalised
+// Fix round 1 (review, item 3): the remembered key is a normalized
 // (lowercase, IDNA A-label) zone, so a rule written in a different case or
-// script still resolves for a lookup zone that's already normalised
+// script still resolves for a lookup zone that's already normalized
 // (classifyName only ever hands makeSuggester an already-lowercase,
 // already-ASCII zone).
-it('remembers and looks up by normalised (lowercase, IDNA) zone', () => {
+it('remembers and looks up by normalized (lowercase, IDNA) zone', () => {
   rememberFromRules([{ match: '*.EXAMPLE.NET.', method: 'dns-01', dnsCredentialId: 'd-1', via: 'server' }]);
   expect(makeSuggester([], creds)('example.net')).toBe('d-1');
 });
