@@ -167,7 +167,7 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
               </TableRow>
               {target.type === 'pfsense' && (
                 <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={4} className="py-1.5">
+                  <TableCell colSpan={4} className="whitespace-normal py-1.5">
                     <PfSenseUsage orgId={orgId} grantId={g.id} />
                   </TableCell>
                 </TableRow>
