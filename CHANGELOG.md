@@ -2,6 +2,22 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.22.0](https://github.com/metril/certforge/compare/v0.21.0...v0.22.0) (2026-10-12)
+
+
+### Features
+
+* **deploy:** post action for server grants over an ssh target, recorded as hook runs ([7fc01d9](https://github.com/metril/certforge/commit/7fc01d9e3d9f111fcf36d36cbf131033b5ac4b31))
+* **deploy:** post actions for server grants over an SSH target, recorded as hook runs ([07fc700](https://github.com/metril/certforge/commit/07fc700e99d9af071a6bbff29ca20012d1281fca))
+* **web:** post action on server grants and a hook runs tab on server targets, plus docs ([b789ebc](https://github.com/metril/certforge/commit/b789ebccdbe34527a49ae7168efa982d1ee734f8))
+
+
+### Bug Fixes
+
+* **api:** post actions require delivery:write ([3d77920](https://github.com/metril/certforge/commit/3d779202859592d32e6a0a08e7789d94095eca53))
+* **db:** make hook_runs.deploy_target_id deferrable like other foreign keys ([c5a0312](https://github.com/metril/certforge/commit/c5a0312578ab6f90ba8a75b9e063c70bc13611a1))
+* **web:** regenerate API types for hook runs and type the phase lookup ([9dd3d05](https://github.com/metril/certforge/commit/9dd3d0531fbed6e98f328cc1a2649d608a8b458c))
+
 ## [0.21.0](https://github.com/metril/certforge/compare/v0.20.0...v0.21.0) (2026-10-12)
 
 
