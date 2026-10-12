@@ -4302,7 +4302,10 @@ export interface components {
         HookInput: {
             /** @description Name */
             name: string;
-            /** @default exec */
+            /**
+             * @description exec (default) or restart.
+             * @default exec
+             */
             kind: components["schemas"]["HookKind"];
             /** @description Required for restart: docker:<container> or systemd:<unit>. */
             target?: string;

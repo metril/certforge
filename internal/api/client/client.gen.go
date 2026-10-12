@@ -2128,7 +2128,9 @@ type Hook struct {
 // HookInput A hook's definition.
 type HookInput struct {
 	// Argv Exec only. Absolute executable path
-	Argv []string  `json:"argv"`
+	Argv []string `json:"argv"`
+
+	// Kind exec (default) or restart.
 	Kind *HookKind `json:"kind,omitempty"`
 
 	// Name Name

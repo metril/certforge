@@ -4543,7 +4543,7 @@ components:
       required: [name, phase, argv]
       properties:
         name: {type: string, minLength: 1, maxLength: 100, description: Name, unique in the org.}
-        kind: {allOf: [{$ref: "#/components/schemas/HookKind"}], default: exec}
+        kind: {allOf: [{$ref: "#/components/schemas/HookKind"}], default: exec, description: "exec (default) or restart."}
         target: {type: string, maxLength: 140, description: "Required for restart: docker:<container> or systemd:<unit>."}
         phase: {$ref: "#/components/schemas/HookPhase"}
         argv: {type: array, maxItems: 64, items: {type: string}, description: Exec only. Absolute executable path, then arguments; empty for restart.}
