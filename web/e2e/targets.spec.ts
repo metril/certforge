@@ -305,7 +305,7 @@ test('pfSense CA certificate: upload a DER file and fetch from the server', asyn
   await expect(dialog.getByRole('textbox', { name: 'Server' })).toHaveValue('https://fw.example.net/api/v2');
   await dialog.getByRole('button', { name: 'Fetch', exact: true }).click();
   await expect(dialog.getByText(`SHA-256 ${CA_FP}`)).toBeVisible();
-  await expect(dialog.getByRole('button', { name: /CertForge Test Root/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(dialog.getByRole('button', { name: /CertForge Test Root.*Self-signed/ })).toHaveAttribute('aria-pressed', 'true');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   await snap(page, 'ca-bundle-fetch-375');
   await dialog.getByRole('button', { name: /fw\.example\.net/ }).click();
