@@ -35,6 +35,7 @@ import { Route as AppOOrgCertificatesUploadRouteImport } from './routes/_app/o/$
 import { Route as AppOOrgClientsIndexRouteImport } from './routes/_app/o/$org/clients/index'
 import { Route as AppOOrgClientsNewRouteImport } from './routes/_app/o/$org/clients/new'
 import { Route as AppOOrgDeliveryIndexRouteImport } from './routes/_app/o/$org/delivery/index'
+import { Route as AppOOrgDeliveryCredentialsRouteImport } from './routes/_app/o/$org/delivery/credentials'
 import { Route as AppOOrgDeliveryHooksRouteImport } from './routes/_app/o/$org/delivery/hooks'
 import { Route as AppOOrgDeliveryLayoutsRouteImport } from './routes/_app/o/$org/delivery/layouts'
 import { Route as AppOOrgDeliveryTargetsRouteImport } from './routes/_app/o/$org/delivery/targets'
@@ -180,6 +181,12 @@ const AppOOrgDeliveryIndexRoute = AppOOrgDeliveryIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppOOrgDeliveryRouteRoute,
 } as any)
+const AppOOrgDeliveryCredentialsRoute =
+  AppOOrgDeliveryCredentialsRouteImport.update({
+    id: '/credentials',
+    path: '/credentials',
+    getParentRoute: () => AppOOrgDeliveryRouteRoute,
+  } as any)
 const AppOOrgDeliveryHooksRoute = AppOOrgDeliveryHooksRouteImport.update({
   id: '/hooks',
   path: '/hooks',
@@ -266,6 +273,7 @@ export interface FileRoutesByFullPath {
   '/o/$org/certificates/new': typeof AppOOrgCertificatesNewRoute
   '/o/$org/certificates/upload': typeof AppOOrgCertificatesUploadRoute
   '/o/$org/clients/new': typeof AppOOrgClientsNewRoute
+  '/o/$org/delivery/credentials': typeof AppOOrgDeliveryCredentialsRoute
   '/o/$org/delivery/hooks': typeof AppOOrgDeliveryHooksRoute
   '/o/$org/delivery/layouts': typeof AppOOrgDeliveryLayoutsRoute
   '/o/$org/delivery/targets': typeof AppOOrgDeliveryTargetsRoute
@@ -301,6 +309,7 @@ export interface FileRoutesByTo {
   '/o/$org/certificates/new': typeof AppOOrgCertificatesNewRoute
   '/o/$org/certificates/upload': typeof AppOOrgCertificatesUploadRoute
   '/o/$org/clients/new': typeof AppOOrgClientsNewRoute
+  '/o/$org/delivery/credentials': typeof AppOOrgDeliveryCredentialsRoute
   '/o/$org/delivery/hooks': typeof AppOOrgDeliveryHooksRoute
   '/o/$org/delivery/layouts': typeof AppOOrgDeliveryLayoutsRoute
   '/o/$org/delivery/targets': typeof AppOOrgDeliveryTargetsRoute
@@ -342,6 +351,7 @@ export interface FileRoutesById {
   '/_app/o/$org/certificates/new': typeof AppOOrgCertificatesNewRoute
   '/_app/o/$org/certificates/upload': typeof AppOOrgCertificatesUploadRoute
   '/_app/o/$org/clients/new': typeof AppOOrgClientsNewRoute
+  '/_app/o/$org/delivery/credentials': typeof AppOOrgDeliveryCredentialsRoute
   '/_app/o/$org/delivery/hooks': typeof AppOOrgDeliveryHooksRoute
   '/_app/o/$org/delivery/layouts': typeof AppOOrgDeliveryLayoutsRoute
   '/_app/o/$org/delivery/targets': typeof AppOOrgDeliveryTargetsRoute
@@ -383,6 +393,7 @@ export interface FileRouteTypes {
     | '/o/$org/certificates/new'
     | '/o/$org/certificates/upload'
     | '/o/$org/clients/new'
+    | '/o/$org/delivery/credentials'
     | '/o/$org/delivery/hooks'
     | '/o/$org/delivery/layouts'
     | '/o/$org/delivery/targets'
@@ -418,6 +429,7 @@ export interface FileRouteTypes {
     | '/o/$org/certificates/new'
     | '/o/$org/certificates/upload'
     | '/o/$org/clients/new'
+    | '/o/$org/delivery/credentials'
     | '/o/$org/delivery/hooks'
     | '/o/$org/delivery/layouts'
     | '/o/$org/delivery/targets'
@@ -458,6 +470,7 @@ export interface FileRouteTypes {
     | '/_app/o/$org/certificates/new'
     | '/_app/o/$org/certificates/upload'
     | '/_app/o/$org/clients/new'
+    | '/_app/o/$org/delivery/credentials'
     | '/_app/o/$org/delivery/hooks'
     | '/_app/o/$org/delivery/layouts'
     | '/_app/o/$org/delivery/targets'
@@ -666,6 +679,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppOOrgDeliveryIndexRouteImport
       parentRoute: typeof AppOOrgDeliveryRouteRoute
     }
+    '/_app/o/$org/delivery/credentials': {
+      id: '/_app/o/$org/delivery/credentials'
+      path: '/credentials'
+      fullPath: '/o/$org/delivery/credentials'
+      preLoaderRoute: typeof AppOOrgDeliveryCredentialsRouteImport
+      parentRoute: typeof AppOOrgDeliveryRouteRoute
+    }
     '/_app/o/$org/delivery/hooks': {
       id: '/_app/o/$org/delivery/hooks'
       path: '/hooks'
@@ -771,6 +791,7 @@ const AppOOrgAlertsRouteRouteWithChildren =
   AppOOrgAlertsRouteRoute._addFileChildren(AppOOrgAlertsRouteRouteChildren)
 
 interface AppOOrgDeliveryRouteRouteChildren {
+  AppOOrgDeliveryCredentialsRoute: typeof AppOOrgDeliveryCredentialsRoute
   AppOOrgDeliveryHooksRoute: typeof AppOOrgDeliveryHooksRoute
   AppOOrgDeliveryLayoutsRoute: typeof AppOOrgDeliveryLayoutsRoute
   AppOOrgDeliveryTargetsRoute: typeof AppOOrgDeliveryTargetsRoute
@@ -778,6 +799,7 @@ interface AppOOrgDeliveryRouteRouteChildren {
 }
 
 const AppOOrgDeliveryRouteRouteChildren: AppOOrgDeliveryRouteRouteChildren = {
+  AppOOrgDeliveryCredentialsRoute: AppOOrgDeliveryCredentialsRoute,
   AppOOrgDeliveryHooksRoute: AppOOrgDeliveryHooksRoute,
   AppOOrgDeliveryLayoutsRoute: AppOOrgDeliveryLayoutsRoute,
   AppOOrgDeliveryTargetsRoute: AppOOrgDeliveryTargetsRoute,

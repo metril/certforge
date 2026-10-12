@@ -137,6 +137,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
                   { label: 'Delivery: Deploy targets', keywords: ['traefik', 'target'], go: () => void navigate({ to: '/o/$org/delivery/targets', params: { org: org.slug } }) },
                   { label: 'Delivery: File layouts', keywords: ['layout', 'files', 'output', 'pem'], go: () => void navigate({ to: '/o/$org/delivery/layouts', params: { org: org.slug } }) },
                   { label: 'Delivery: Hooks', keywords: ['hook', 'reload', 'command'], go: () => void navigate({ to: '/o/$org/delivery/hooks', params: { org: org.slug } }) },
+                  { label: 'Delivery: Credentials', keywords: ['credential', 'password', 'ssh key', 'token'], go: () => void navigate({ to: '/o/$org/delivery/credentials', params: { org: org.slug } }) },
                 ]
               : []),
             ...(canReadAlerts

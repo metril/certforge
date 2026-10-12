@@ -8,12 +8,13 @@ export const ACTIONS = [
   'dnscreds:reveal', 'certs:read', 'certs:write', 'certs:issue', 'keys:export', 'clients:read', 'clients:write', 'audit:read',
   'sites:read', 'sites:write', 'bindings:read', 'bindings:write', 'apikeys:read', 'apikeys:write',
   'delivery:read', 'delivery:write', 'alerts:read', 'alerts:write',
+  'deploycreds:read', 'deploycreds:write', 'deploycreds:reveal',
 ] as const;
 export type Action = (typeof ACTIONS)[number];
 
-const GLOBAL_ONLY = new Set<Action>(['settings:write', 'orgs:write', 'cas:write', 'keys:export', 'users:write', 'dnscreds:reveal']);
+const GLOBAL_ONLY = new Set<Action>(['settings:write', 'orgs:write', 'cas:write', 'keys:export', 'users:write', 'dnscreds:reveal', 'deploycreds:reveal']);
 const SHARED_READ = new Set<Action>(['orgs:read', 'settings:read', 'cas:read', 'users:read']);
-const VIEWER: Action[] = ['orgs:read', 'settings:read', 'cas:read', 'accounts:read', 'dnscreds:read', 'certs:read', 'clients:read', 'sites:read', 'delivery:read', 'alerts:read'];
+const VIEWER: Action[] = ['orgs:read', 'settings:read', 'cas:read', 'accounts:read', 'dnscreds:read', 'certs:read', 'clients:read', 'sites:read', 'delivery:read', 'alerts:read', 'deploycreds:read'];
 
 const ROLE_ACTIONS: Record<string, ReadonlySet<Action>> = {
   admin: new Set(ACTIONS),

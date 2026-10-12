@@ -15,6 +15,7 @@ import type {
   Channel,
   Client,
   Deployment,
+  DeployCredential,
   DeployTarget,
   EnrollmentRequest,
   Grant,
@@ -1031,3 +1032,46 @@ export const sshSchema = {
     },
   },
 };
+
+// internal/targets/credentials.go: the deploy credential kinds (GET /meta/schemas deployCredentials).
+export const deployCredentialKinds = [
+  {
+    code: 'ssh',
+    name: 'SSH login',
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['username'],
+      anyOf: [{ required: ['password'] }, { required: ['privateKey'] }],
+      properties: {
+        username: { type: 'string', minLength: 1, title: 'Username' },
+        password: { type: 'string', secret: true, title: 'Password' },
+        privateKey: { type: 'string', secret: true, maxLength: 8192, title: 'Private key' },
+      },
+    },
+  },
+  {
+    code: 'password',
+    name: 'Username and password',
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['username', 'password'],
+      properties: { username: { type: 'string', minLength: 1, title: 'Username' }, password: { type: 'string', secret: true, minLength: 1, title: 'Password' } },
+    },
+  },
+  {
+    code: 'apiKey',
+    name: 'API key',
+    schema: { type: 'object', additionalProperties: false, required: ['apiKey'], properties: { apiKey: { type: 'string', secret: true, minLength: 1, title: 'API key' }, username: { type: 'string', title: 'Username' } } },
+  },
+  {
+    code: 'token',
+    name: 'API token',
+    schema: { type: 'object', additionalProperties: false, required: ['token'], properties: { token: { type: 'string', secret: true, minLength: 1, title: 'Token' } } },
+  },
+];
+
+export function makeDeployCredential(p: Partial<DeployCredential> = {}): DeployCredential {
+  return { id: 'dc-1', orgId: 'org-1', name: 'lab ssh', kind: 'ssh', config: { username: 'root' }, storedSecrets: ['privateKey'], usedBy: 0, ...p };
+}

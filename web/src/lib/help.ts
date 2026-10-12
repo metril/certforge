@@ -337,6 +337,9 @@ export const help = {
   'target.truenas': { text: 'CertForge imports the certificate into TrueNAS SCALE 25.10+ over its API and can make it the web UI certificate. Older CertForge certificates are removed.', learnMore: 'guide/delivery.md#truenas-scale' },
   'target.routeros': { text: 'CertForge uploads the certificate over SCP, imports it through the REST API and binds it to the chosen services. The SSH host key is pinned.', learnMore: 'guide/delivery.md#mikrotik-routeros' },
   'target.includeKey': { text: 'Also send the private key. On the server this needs the keys:export permission.', learnMore: 'guide/delivery.md#vault-kv' },
+  'deployCred.kind': { text: 'What the credential holds. A target type accepts only the kinds that fit its login.' },
+  'deployCred.usedBy': { text: 'Deploy targets that use this credential. Detach them before deleting.' },
+  'target.credential': { text: 'Use a saved credential instead of typing the login here. Rotating it updates every target that uses it.' },
   'target.usedBy': { text: 'Grants that use it. Remove those grants before deleting.' },
   // Task 9: the deploy-target detail sheet's own Grants section and its
   // server grant form's Layout field.
