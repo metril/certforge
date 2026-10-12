@@ -21,7 +21,7 @@ export function RestartTargetPicker({ orgId, onPick }: { orgId: string; onPick: 
   if (clients.length === 0) return <p className="text-sm text-ink-muted">No active clients in this org.</p>;
   const targets = client?.restartTargets ?? [];
   return (
-    <div className="grid gap-2 rounded-md border border-border p-3">
+    <div className="grid grid-cols-1 gap-2 rounded-md border border-border p-3">
       <label className="grid gap-1 text-sm font-medium">
         Client
         <select
