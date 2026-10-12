@@ -323,7 +323,7 @@ it('create posts the post action', async () => {
     expect(posted).toEqual({
       certificateId: 'c-2',
       layoutId: null,
-      postAction: { sshTargetId: 't-ssh', command: 'systemctl reload nginx', timeoutSeconds: 60 },
+      postAction: { kind: 'ssh', targetId: 't-ssh', command: 'systemctl reload nginx', timeoutSeconds: 60 },
     }),
   );
 });
@@ -353,4 +353,62 @@ it('hook runs tab lists the target runs', async () => {
   expect(within(list).getByText('SSH command')).toBeInTheDocument();
   expect(within(list).getByText('ssh bastion systemctl reload nginx')).toBeInTheDocument();
   expect(within(list).getByText('3')).toBeInTheDocument();
+});
+
+const pfTarget = makeTarget({ id: 't-pf', name: 'edge fw', type: 'pfsense', runsOn: 'server', config: { url: 'https://fw.example.net/api' } });
+
+it('pfSense kind prefills the restart command and posts it', async () => {
+  server.use(http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [makeTarget(), targetVaultKv, sshTarget, pfTarget] })));
+  const { user } = openDetail();
+  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  await user.click(await within(dialog).findByRole('button', { name: 'New server grant' }));
+  await user.click(within(dialog).getByRole('combobox', { name: 'Certificate' }));
+  await user.click(await screen.findByRole('option', { name: /^api/ }));
+  await user.click(within(dialog).getByRole('switch', { name: 'Post action' }));
+  expect(within(dialog).getByRole('radio', { name: 'SSH' })).toBeChecked();
+  await user.click(within(dialog).getByRole('radio', { name: 'pfSense' }));
+  expect(within(dialog).getByLabelText('Command')).toHaveValue('/etc/rc.restart_webgui');
+  await user.click(within(dialog).getByRole('combobox', { name: 'pfSense target' }));
+  const opts = await screen.findAllByRole('option');
+  expect(opts.map((o) => o.textContent)).toEqual(['edge fw']);
+  await user.click(opts[0]!);
+  await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
+  await waitFor(() =>
+    expect(posted).toEqual({
+      certificateId: 'c-2',
+      layoutId: null,
+      postAction: { kind: 'pfsense', targetId: 't-pf', command: '/etc/rc.restart_webgui', timeoutSeconds: 60 },
+    }),
+  );
+});
+
+it('switching back to SSH clears the prefilled command', async () => {
+  const { user } = openDetail();
+  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  await user.click(await within(dialog).findByRole('button', { name: 'New server grant' }));
+  await user.click(within(dialog).getByRole('switch', { name: 'Post action' }));
+  await user.click(within(dialog).getByRole('radio', { name: 'pfSense' }));
+  await user.click(within(dialog).getByRole('radio', { name: 'SSH' }));
+  expect(within(dialog).getByLabelText('Command')).toHaveValue('');
+});
+
+it('pfSense target grants check usage on demand', async () => {
+  let calls = 0;
+  server.use(
+    http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [pfTarget] })),
+    http.get(url('/orgs/org-1/deploy-targets/t-pf/grants'), () => HttpResponse.json([{ ...grantServer, deployTargetId: 't-pf' }])),
+    http.get(url('/orgs/org-1/grants/g-server-1/pfsense-usage'), () => {
+      calls++;
+      return HttpResponse.json(calls === 1 ? { refid: 'abc', services: ['WebGUI', 'OpenVPN server 1'] } : { refid: 'abc', services: [] });
+    }),
+  );
+  const { user } = renderRoute('/o/acme/delivery/targets?view=t-pf');
+  const dialog = await screen.findByRole('dialog', { name: 'edge fw' });
+  expect(await within(dialog).findByText('Used on pfSense by')).toBeInTheDocument();
+  expect(calls).toBe(0);
+  await user.click(within(dialog).getByRole('button', { name: 'Check usage' }));
+  const list = await within(dialog).findByRole('list', { name: 'Services' });
+  expect(within(list).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['WebGUI', 'OpenVPN server 1']);
+  await user.click(within(dialog).getByRole('button', { name: 'Check usage' }));
+  expect(await within(dialog).findByText('No services use it')).toBeInTheDocument();
 });

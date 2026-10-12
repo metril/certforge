@@ -8,6 +8,7 @@ import { useCreateServerGrant, useUpdateGrant } from '@/api/queries/grants';
 import type { Grant, GrantUpdate, PostAction } from '@/api/types';
 import { Combobox } from '@/components/Combobox';
 import { Field } from '@/components/Field';
+import { SegmentedControl } from '@/components/SegmentedControl';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +20,11 @@ type Props = { orgId: string; targetId: string; editing?: Grant; onBack: () => v
 // names" (task-9-brief).
 const NO_LAYOUT = '__target_files__';
 
+type PostKind = 'ssh' | 'pfsense';
+// What the pfSense kind prefills: restarts the WebGUI so it picks up the new certificate.
+const PFSENSE_COMMAND = '/etc/rc.restart_webgui';
+const KIND_LABEL: Record<PostKind, string> = { ssh: 'SSH', pfsense: 'pfSense' };
+
 export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Props) {
   const certsQ = useQuery(allCertificatesPickerQuery(orgId));
   const layoutsQ = useQuery(layoutsQuery(orgId));
@@ -28,7 +34,8 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
   const [certificateId, setCertificateId] = useState<string | undefined>(editing?.certificateId);
   const [layoutId, setLayoutId] = useState<string | undefined>(editing?.layoutId ?? undefined);
   const [postOn, setPostOn] = useState(!!editing?.postAction);
-  const [sshTargetId, setSshTargetId] = useState<string | undefined>(editing?.postAction?.sshTargetId);
+  const [kind, setKind] = useState<PostKind>(editing?.postAction?.kind ?? 'ssh');
+  const [postTargetId, setPostTargetId] = useState<string | undefined>(editing?.postAction?.targetId);
   const [command, setCommand] = useState(editing?.postAction?.command ?? '');
   const [timeout, setTimeoutSeconds] = useState(String(editing?.postAction?.timeoutSeconds ?? 60));
   const [postError, setPostError] = useState<string | null>(null);
@@ -47,7 +54,16 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
     }),
   ];
 
-  const sshOptions = (targetsQ.data ?? []).filter((t) => t.type === 'ssh').map((t) => ({ value: t.id, label: t.name }));
+  const postTargetOptions = (targetsQ.data ?? []).filter((t) => t.type === kind).map((t) => ({ value: t.id, label: t.name }));
+
+  const changeKind = (next: PostKind) => {
+    if (next === kind) return;
+    setKind(next);
+    setPostTargetId(undefined);
+    setPostError(null);
+    if (next === 'pfsense' && !command.trim()) setCommand(PFSENSE_COMMAND);
+    else if (next === 'ssh' && command.trim() === PFSENSE_COMMAND) setCommand('');
+  };
 
   const submit = async () => {
     setPostError(null);
@@ -61,15 +77,15 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
     let postAction: PostAction | undefined;
     if (postOn) {
       const secs = Number(timeout);
-      if (!sshTargetId || !command.trim()) {
-        setPostError('Pick an SSH target and enter a command.');
+      if (!postTargetId || !command.trim()) {
+        setPostError(`Pick a${kind === 'ssh' ? 'n SSH' : ' pfSense'} target and enter a command.`);
         return;
       }
       if (!Number.isInteger(secs) || secs < 5 || secs > 300) {
         setPostError('Timeout must be 5 to 300 seconds.');
         return;
       }
-      postAction = { sshTargetId, command: command.trim(), timeoutSeconds: secs };
+      postAction = { kind, targetId: postTargetId, command: command.trim(), timeoutSeconds: secs };
     }
     try {
       if (editing) {
@@ -125,18 +141,30 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
         <SwitchField id="server-grant-post" label="Post action" help="grant.postAction" checked={postOn} onCheckedChange={setPostOn} onText="Run a command after deploy" offText="None" />
         {postOn && (
           <>
-            <Field id="server-grant-post-target" label="SSH target" error={postError}>
+            <Field id="server-grant-post-kind" label="Kind" help="grant.postActionKind">
+              <SegmentedControl<PostKind>
+                id="server-grant-post-kind"
+                aria-label="Post action kind"
+                value={kind}
+                onChange={changeKind}
+                options={[
+                  { value: 'ssh', label: 'SSH' },
+                  { value: 'pfsense', label: 'pfSense' },
+                ]}
+              />
+            </Field>
+            <Field id="server-grant-post-target" label={`${KIND_LABEL[kind]} target`} error={postError}>
               <Combobox
                 id="server-grant-post-target"
-                aria-label="SSH target"
-                value={sshTargetId}
+                aria-label={`${KIND_LABEL[kind]} target`}
+                value={postTargetId}
                 onChange={(v) => {
-                  setSshTargetId(v);
+                  setPostTargetId(v);
                   setPostError(null);
                 }}
-                options={sshOptions}
-                placeholder="Pick an SSH target"
-                emptyText="No SSH targets yet."
+                options={postTargetOptions}
+                placeholder={`Pick a${kind === 'ssh' ? 'n SSH' : ' pfSense'} target`}
+                emptyText={`No ${KIND_LABEL[kind]} targets yet.`}
               />
             </Field>
             <Field id="server-grant-post-command" label="Command">

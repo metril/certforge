@@ -319,9 +319,13 @@ Per grant, three icon buttons sit on the row:
 
 ### Post actions
 
-A server grant can run one command after a successful deploy, for example `systemctl reload nginx` on the host that serves the certificate. Switch **Post action** on in the grant form, pick an existing [SSH](#ssh) target and enter the command (up to 512 characters) and a timeout of 5 to 300 seconds. The post action reuses that target's host, credentials and pinned host key; its files and own commands are not used. Any server-run target type can have one.
+A server grant can run one command after a successful deploy, for example `systemctl reload nginx` on the host that serves the certificate. Switch **Post action** on in the grant form, pick a **Kind** and an existing target of that kind, and enter the command (up to 512 characters) and a timeout of 5 to 300 seconds. The post action reuses that target's host, credentials and pinned host key; its files and own commands are not used. Any server-run target type can have one.
 
-The run is recorded on the **Hook runs** tab of the grant's target. A non-zero exit, or a connection failure, marks the deployment Failed: the error says the certificate deployed but the post action failed, and CertForge retries. An SSH target that grants use as a post action cannot be deleted until you remove those post actions.
+The **Kind** is **SSH** or **pfSense**. SSH runs the command over SSH, as above. pfSense runs it as a shell command on the firewall through a [pfSense Plus](#pfsense-plus) target's API, with the same login the target uses; picking it prefills `/etc/rc.restart_webgui`. The API reports no exit status, so a pfSense command counts as done once the firewall accepts it. The pfSense user needs the diag command privilege.
+
+The run is recorded on the **Hook runs** tab of the grant's target. A non-zero exit, or a connection failure, marks the deployment Failed: the error says the certificate deployed but the post action failed, and CertForge retries. A target that grants use as a post action cannot be deleted until you remove those post actions.
+
+On a pfSense target's grants, **Check usage** asks the firewall which services use the grant's certificate (WebGUI, OpenVPN, IPsec, captive portal, packages) without changing anything. These are the services the target restarts after each deploy when **Restart services that use it** is on. A certificate that is not on the firewall yet shows as such.
 
 Redeploy also exists for client grants. See [Clients](clients.md).
 
