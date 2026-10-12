@@ -1,6 +1,6 @@
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { api, call } from '../client';
-import type { CA, CAInput } from '../types';
+import type { AdcsProbeRequest, AdcsProbeResult, CA, CAInput } from '../types';
 
 export const casQuery = (orgId: string) =>
   queryOptions({ queryKey: ['cas', orgId], queryFn: () => call(api.GET('/orgs/{orgId}/cas', { params: { path: { orgId } } })) });
@@ -50,5 +50,19 @@ export function useDeleteCa(orgId: string) {
     mutationFn: (id: string) => call(api.DELETE('/orgs/{orgId}/cas/{id}', { params: { path: { orgId, id } } })),
     meta: { silent: true, success: 'CA deleted' },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['cas', orgId] }),
+  });
+}
+
+// Takes a getter, not the body: the body carries the service account
+// password, and a getter keeps it out of the mutation's `variables` (and so
+// out of the MutationCache, the same concern as saveCa above).
+export function useProbeAdcs(orgId: string) {
+  return useMutation({
+    mutationFn: (req: () => AdcsProbeRequest): Promise<AdcsProbeResult> =>
+      call(api.POST('/orgs/{orgId}/cas/adcs/probe', { params: { path: { orgId } }, body: req() })),
+    // Callers render both a 200 ok:false and a thrown ApiError (incl. a 503 +
+    // Retry-After from the probe semaphore) inline, as useTestCredential does.
+    meta: { silent: true },
+    gcTime: 0,
   });
 }

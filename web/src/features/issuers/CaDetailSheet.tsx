@@ -3,7 +3,7 @@ import { CircleAlert, CircleOff, Download, Import, Pencil, RotateCw } from 'luci
 import { Link } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { useRotateCa } from '@/api/queries/cas';
-import type { CA } from '@/api/types';
+import { UNCHANGED, type CA } from '@/api/types';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { CopyField } from '@/components/CopyField';
 import { HelpTip, HelpTipBody } from '@/components/HelpTip';
@@ -20,6 +20,8 @@ import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { fmtDate, relDays } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { AdcsTestButton, AdcsTestDialog } from './AdcsTestDialog';
+import { adcsProbeRequest } from './caBody';
 
 type Subject = { commonName: string; organization?: string; country?: string };
 type RetiredIssuer = { pem: string; notAfter: string; serial: string; crlUrl?: string };
@@ -118,10 +120,12 @@ export function CaDetailSheet({ orgId, ca, onEdit, onOpenChange }: Props) {
   const kind = kindOf(ca);
   const rotate = useRotateCa(orgId);
   const [confirmingRotate, setConfirmingRotate] = useState(false);
+  const [testing, setTesting] = useState(false);
 
   const local = kind === 'localca' ? (ca.config as unknown as LocalConfig) : null;
   const vault = kind === 'vaultpki' ? (ca.config as unknown as VaultConfig) : null;
   const adcsCfg = kind === 'adcs' ? (ca.config as unknown as AdcsConfig) : null;
+  const adcsRequest = adcsCfg ? adcsProbeRequest({ ...(ca.config as Record<string, unknown>), password: UNCHANGED }, ca.id) : null;
 
   async function copyRetiredCrl(url: string) {
     try {
@@ -264,6 +268,13 @@ export function CaDetailSheet({ orgId, ca, onEdit, onOpenChange }: Props) {
             </section>
           )}
 
+          {kind === 'adcs' && (
+            <section className="flex items-center gap-1.5">
+              <AdcsTestButton canWrite={canWrite} request={adcsRequest} onClick={() => setTesting(true)} />
+              <HelpTip id="ca.adcsTest" />
+            </section>
+          )}
+
           {kind === 'localca' && (
             <section className="flex items-center gap-1.5">
               <RotateButton canWrite={canWrite} imported={!!local?.imported} onClick={() => setConfirmingRotate(true)} />
@@ -272,6 +283,7 @@ export function CaDetailSheet({ orgId, ca, onEdit, onOpenChange }: Props) {
           )}
         </div>
       </SheetContent>
+      {testing && adcsRequest && <AdcsTestDialog orgId={orgId} name={ca.name} request={adcsRequest} onOpenChange={setTesting} />}
       <ConfirmDestructive
         open={confirmingRotate}
         onOpenChange={setConfirmingRotate}
