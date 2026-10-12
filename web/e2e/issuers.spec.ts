@@ -126,7 +126,10 @@ test('AD CS template picker and test', async ({ page }) => {
 
   await page.goto('/login');
   await signInLocal(page);
+  // Wait for the login to land; navigating earlier aborts the in-flight sign-in.
+  await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
   await page.goto(`/o/${E2E.orgSlug}/issuers/cas`);
+  await expect(page.getByRole('button', { name: 'Add CA' }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Add CA' }).first().click();
   const sheet = page.getByRole('dialog', { name: 'Add certificate authority' });
   await sheet.getByLabel('Name', { exact: true }).fill('e2e-adcs');
