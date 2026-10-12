@@ -2,6 +2,16 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.28.2](https://github.com/metril/certforge/compare/v0.28.1...v0.28.2) (2026-10-12)
+
+
+### Bug Fixes
+
+* **web:** choose the certificate authority on the Names step ([8c742cb](https://github.com/metril/certforge/commit/8c742cb6a6fe104b37597d2d0fee107912e05273))
+* **web:** choose the certificate authority on the Names step ([650f1fa](https://github.com/metril/certforge/commit/650f1fa7ebf392220eb63690f0cad9d3daf6d8db))
+* **web:** keep schema field order so Username precedes Password ([a6f5736](https://github.com/metril/certforge/commit/a6f5736155c805d9be9fe517611ee2a66e829869))
+* **web:** keep schema field order so Username precedes Password ([3e4372c](https://github.com/metril/certforge/commit/3e4372cbb37b26ec4bfa65dc859c27010eb8e840))
+
 ## [0.28.1](https://github.com/metril/certforge/compare/v0.28.0...v0.28.1) (2026-10-12)
 
 
