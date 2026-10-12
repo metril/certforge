@@ -541,6 +541,17 @@ func TestPoliciesRequirementFields(t *testing.T) {
 	}
 }
 
+func TestAllowedKeyTypesLegacyDefaultsToRSA(t *testing.T) {
+	legacy := Template{Schema: 2, MinKeySize: 2048}
+	if got := strings.Join(legacy.AllowedKeyTypes(), ","); got != "rsa2048,rsa3072,rsa4096" {
+		t.Fatalf("legacy allowed = %q", got)
+	}
+	modern := Template{Schema: 4, Providers: []string{"Microsoft Software Key Storage Provider"}}
+	if got := modern.AllowedKeyTypes(); got != nil {
+		t.Fatalf("unknown modern allowed = %v", got)
+	}
+}
+
 func TestEmptyEKUAllowsServerAuth(t *testing.T) {
 	if !(Template{}).ServerAuthOK() {
 		t.Fatal("empty EKU list should allow server auth")

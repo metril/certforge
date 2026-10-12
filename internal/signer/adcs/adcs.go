@@ -161,7 +161,11 @@ func (t Template) ServerAuthOK() bool {
 
 // AllowedKeyTypes lists the CertForge key types the template accepts.
 func (t Template) AllowedKeyTypes() []string {
-	switch t.KeyAlgorithm {
+	alg := t.KeyAlgorithm
+	if alg == "" && t.LegacyCSP() {
+		alg = "RSA" // legacy CSP templates are RSA-only
+	}
+	switch alg {
 	case "RSA":
 		var out []string
 		for _, k := range []struct {
