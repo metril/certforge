@@ -2,6 +2,21 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.29.0](https://github.com/metril/certforge/compare/v0.28.4...v0.29.0) (2026-10-12)
+
+
+### Features
+
+* **deliver:** run a grant's post action on a pfSense firewall ([7876c43](https://github.com/metril/certforge/commit/7876c431e69146dad6cb0415b7e7ef9b893065eb))
+* **deploy:** restart the pfSense services that use a certificate, and pfSense post actions ([0e16e45](https://github.com/metril/certforge/commit/0e16e454121e3925bb71d9059c047795d2aeb094))
+* **deploy:** restart the pfSense services that use the certificate ([42b8275](https://github.com/metril/certforge/commit/42b82759bc6fc108e5719f260bdaa60eab68d62a))
+* **web:** pfSense post action kind and certificate usage on pfSense grants ([abc4e67](https://github.com/metril/certforge/commit/abc4e67101809d93a8b771218003ddd7e2312d71))
+
+
+### Bug Fixes
+
+* **deploy:** let the pfSense post action outlast the target's HTTP timeout ([dad5fa4](https://github.com/metril/certforge/commit/dad5fa48c2a4aeefa18fda0c255a60a2955a6116))
+
 ## [0.28.4](https://github.com/metril/certforge/compare/v0.28.3...v0.28.4) (2026-10-12)
 
 
