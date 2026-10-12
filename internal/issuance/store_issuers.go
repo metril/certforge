@@ -20,6 +20,7 @@ import (
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/challenge"
 	"github.com/metril/certforge/internal/db/sqlcgen"
+	"github.com/metril/certforge/internal/notify/httpx"
 	"github.com/metril/certforge/internal/signer"
 	acmesigner "github.com/metril/certforge/internal/signer/acme"
 	"github.com/metril/certforge/internal/signer/localca"
@@ -156,9 +157,11 @@ func (in *CAInput) normalize(stored []string) (acmesigner.Preset, error) {
 	if err != nil || u.Scheme != "https" || u.Host == "" {
 		return p, &ValidationError{"directoryUrl", "must be an https URL"}
 	}
-	if in.TrustBundlePEM != "" && !x509.NewCertPool().AppendCertsFromPEM([]byte(in.TrustBundlePEM)) {
-		return p, &ValidationError{"trustBundlePem", "contains no PEM certificates"}
+	ca, err := httpx.NormalizeCABundle(in.TrustBundlePEM)
+	if err != nil {
+		return p, &ValidationError{"trustBundlePem", err.Error()}
 	}
+	in.TrustBundlePEM = ca
 	if in.Resolvers == nil {
 		in.Resolvers = []string{}
 	}
