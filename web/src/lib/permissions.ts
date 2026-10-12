@@ -75,3 +75,9 @@ const SCOPE_GRANT: Record<ApiKeyScope, Action> = {
 export function canGrantScope(me: Pick<Me, 'bindings'>, scope: ApiKeyScope, orgId: string | null): boolean {
   return can(me, SCOPE_GRANT[scope], orgId);
 }
+
+/** formContext.caBundle for a form with a CA bundle field: the TLS peek
+ * needs delivery:write or cas:write, the saved-CA list cas:read. */
+export function caBundleScope(me: Pick<Me, 'bindings'>, orgId: string): { orgId: string; canPeek: boolean; canReadCas: boolean } {
+  return { orgId, canPeek: can(me, 'delivery:write', orgId) || can(me, 'cas:write', orgId), canReadCas: can(me, 'cas:read', orgId) };
+}

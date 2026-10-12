@@ -23,7 +23,7 @@ import { canWriteChannel, TYPE_META } from '@/lib/channels';
 import { SEVERITY_META } from '@/lib/events';
 import type { HelpKey } from '@/lib/help';
 import { useMe } from '@/lib/org';
-import { can, isGlobalAdmin } from '@/lib/permissions';
+import { caBundleScope, can, isGlobalAdmin } from '@/lib/permissions';
 import { stripSecretDefaults, withStoredSentinels } from '@/lib/secretForm';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { ChannelTest } from './ChannelTest';
@@ -140,6 +140,7 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
   // edit another org's allOrgs channel) — a new channel always belongs to
   // the current route org.
   const targetOrgId = channel?.orgId ?? orgId;
+  const formContext = useMemo(() => ({ caBundle: caBundleScope(me, targetOrgId) }), [me, targetOrgId]);
   const canWrite = canWriteChannel(me, { orgId: targetOrgId, allOrgs: draft.allOrgs });
   const writeReason = !can(me, 'alerts:write', targetOrgId) ? undefined : 'Needs a global admin';
 
@@ -239,6 +240,7 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
             storedSecrets={storedSecrets}
             readonly={!canWrite}
             extraErrors={configError}
+            formContext={formContext}
           />
           <EventKindPicker value={draft.events} onChange={(events) => setDraft((d) => ({ ...d, events }))} disabled={!canWrite} />
           <SwitchField

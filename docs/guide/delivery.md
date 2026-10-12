@@ -374,6 +374,15 @@ If you change a URL while keeping a stored secret, the save is refused with "re-
 
 Agent-run targets may always use loopback and link-local addresses. The setting is under **Settings → Integrations → Notifications**. See [the configuration reference](../reference/configuration.md#notifications-section).
 
+## Trusting a private CA
+
+Some forms have a CA certificate field for a server whose HTTPS certificate does not chain to a public root: pfSense, TrueNAS, RouterOS and Authentik targets, AD CS and custom ACME CAs, Vault, and ntfy, Home Assistant and webhook channels. The field holds one or more PEM certificates, added to the system roots. Each way below adds the certificates the field does not already hold, so a root and an intermediate can come from different places. Clear the field to start over.
+
+- **Paste** the PEM text. The summary under the field lists each certificate's common name and expiry, and warns about text that is not a certificate. The server checks the field again on save.
+- **Upload** a `.pem`, `.crt`, `.cer` or `.der` file. A DER file is converted to PEM in the browser.
+- **Fetch from server** reads the chain the server presents and lets you pick the certificates to add; the topmost CA is picked by default. It uses the form's URL, or a `host:port` you type. CertForge connects from its own server under the same address policy as server-run targets (see [Options](#options)), so a host only an agent can reach will not answer. It needs `delivery:write` or `cas:write`. This is trust on first use: anything between CertForge and the server could present its own chain, so compare the SHA-256 fingerprint with the one the server shows on its own console or web UI before you save.
+- **From saved CA** copies the certificate of a CA in this organization, such as a Built-in CA, a Vault PKI CA or an AD CS CA. It is a copy: pick the CA again after it rotates to a new root.
+
 ## Common problems
 
 **The Save button on a target is disabled.** The target would send the private key and you lack `keys:export`. Ask a global admin, or turn **Include private key** off.

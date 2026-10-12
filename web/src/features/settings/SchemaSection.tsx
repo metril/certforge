@@ -45,6 +45,7 @@ export function SchemaSection({
   prepareBody,
   onSaved,
   onDirtyChange,
+  formContext,
 }: {
   section: SectionId;
   title?: string;
@@ -90,6 +91,8 @@ export function SchemaSection({
   onSaved?: () => void;
   /** Reports whether an unsaved draft exists (for a caller's leave-page guard). */
   onDirtyChange?: (dirty: boolean) => void;
+  /** Forwarded to `SchemaForm` (the Vault section's CA bundle scope). */
+  formContext?: Record<string, unknown>;
 }) {
   const me = useMe();
   const qc = useQueryClient();
@@ -158,6 +161,7 @@ export function SchemaSection({
         readonly={!canWrite}
         extraErrors={saveError ?? undefined}
         uiSchemaOverrides={resolvedUiSchemaOverrides}
+        formContext={formContext}
       />
       {hasWritableField && (
         <div className="flex flex-wrap gap-2">
