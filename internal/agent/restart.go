@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -74,6 +75,29 @@ func (r *RestartRunner) dockerClient() (*http.Client, func()) {
 		return (&net.Dialer{}).DialContext(ctx, network, addr)
 	}}
 	return &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, tr.CloseIdleConnections
+}
+
+var dockerAPIVersionRE = regexp.MustCompile(`^\d+\.\d+$`)
+
+// dockerPath prefixes path with the daemon's API version, read from the
+// API-Version header of an unversioned GET /_ping as the Docker SDK does
+// (Podman sends it too). Any failure or malformed value falls back to the
+// unversioned path, so the real request reports the error.
+func dockerPath(ctx context.Context, client *http.Client, path string) string {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://docker/_ping", nil)
+	if err != nil {
+		return path
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return path
+	}
+	defer func() { _ = resp.Body.Close() }()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, restartBodyCap))
+	if v := resp.Header.Get("API-Version"); dockerAPIVersionRE.MatchString(v) {
+		return "/v" + v + path
+	}
+	return path
 }
 
 // ParseRestartAllow parses CF_RESTART_ALLOW: comma-separated exact
@@ -144,7 +168,7 @@ func (r *RestartRunner) Run(ctx context.Context, spec agentproto.HookSpec) agent
 func (r *RestartRunner) dockerRestart(ctx context.Context, name string) (string, error) {
 	client, closeConns := r.dockerClient()
 	defer closeConns()
-	u := "http://docker/v1.41/containers/" + url.PathEscape(name) + "/restart?t=10"
+	u := "http://docker" + dockerPath(ctx, client, "/containers/"+url.PathEscape(name)+"/restart?t=10")
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, nil)
 	if err != nil {
 		return "", err
@@ -217,7 +241,7 @@ func (r *RestartRunner) dockerRunning(ctx context.Context) (map[string]bool, err
 	defer cancel()
 	client, closeConns := r.dockerClient()
 	defer closeConns()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://docker/v1.41/containers/json", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://docker"+dockerPath(ctx, client, "/containers/json"), nil)
 	if err != nil {
 		return nil, err
 	}
