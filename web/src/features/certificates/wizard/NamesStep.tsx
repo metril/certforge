@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, type Dispatch } from 'react';
+import { memo, useMemo, useState, type Dispatch, type ReactNode } from 'react';
 import {
   DndContext,
   KeyboardSensor,
@@ -19,6 +19,7 @@ import { help, type HelpKey } from '@/lib/help';
 import { classifyName, groupByZone, MAX_NAMES, splitNames, type ParsedName } from '@/lib/names';
 import { cn } from '@/lib/utils';
 import type { WizardAction, WizardState } from './state';
+
 
 const CN_SLOT = 'cn-slot';
 const CN_SLOT_LABEL = 'Common name';
@@ -152,7 +153,7 @@ const NameChip = memo(function NameChip({
   );
 });
 
-export function NamesStep({ state, dispatch }: { state: WizardState; dispatch: Dispatch<WizardAction> }) {
+export function NamesStep({ state, dispatch, issuer }: { state: WizardState; dispatch: Dispatch<WizardAction>; issuer?: ReactNode }) {
   const [draft, setDraft] = useState('');
   const parsed = useMemo(() => state.names.map(classifyName), [state.names]);
   const groups = useMemo(() => groupByZone(parsed), [parsed]);
@@ -220,6 +221,7 @@ export function NamesStep({ state, dispatch }: { state: WizardState; dispatch: D
           </section>
         ))}
       </DndContext>
+      {issuer}
     </div>
   );
 }

@@ -350,20 +350,22 @@ it('limits key types to what the AD CS template allows', async () => {
   expect(within(keyType).getByRole('radio', { name: 'RSA 4096' })).not.toBeDisabled();
 });
 
-it('choosing private CA in options updates step label', async () => {
+it('choosing a private CA on Names skips verification and unlocks Options', async () => {
   server.use(http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca, caLocal])));
   const { user } = renderRoute('/o/acme/certificates/new');
   await user.click(await screen.findByLabelText('Names'));
   await user.paste('www.example.com');
-  await user.click(screen.getByRole('button', { name: 'Next' })); // -> Verification
-  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Rule 1 credential' })).toHaveTextContent('Cloudflare prod'));
   const stepper = screen.getByRole('list', { name: 'Steps' });
   expect(within(stepper).queryByText('Not needed')).toBeNull();
-  await user.click(screen.getByRole('button', { name: 'Next' })); // -> Options
-  await user.click(screen.getByRole('switch', { name: 'Override Certificate authority' }));
+  await user.click(await screen.findByRole('switch', { name: 'Override Certificate authority' }));
   await user.click(screen.getByRole('combobox', { name: 'Certificate authority' }));
   await user.click(await screen.findByText(caLocal.name));
   expect(within(stepper).getByText('Not needed')).toBeInTheDocument();
+  // Options is reachable with no DNS challenge set up.
+  await user.click(screen.getByRole('button', { name: 'Next' })); // -> Verification
+  await screen.findByRole('radiogroup', { name: 'Verification' });
+  await user.click(screen.getByRole('button', { name: 'Next' })); // -> Options
+  expect(screen.queryByRole('combobox', { name: 'Certificate authority' })).toBeNull();
 });
 
 it('create body for localca: sends empty verificationRules for the private effective CA', async () => {
