@@ -269,3 +269,72 @@ func (c *Client) WriteFileSCP(ctx context.Context, name string, data []byte, mod
 	}
 	return nil
 }
+
+// HostKey is one host key a server offers.
+type HostKey struct {
+	// Type is the key type, e.g. "ssh-ed25519".
+	Type string
+	// Line is the "<type> <base64>" public key to pin.
+	Line string
+	// Sha256 is the "SHA256:..." fingerprint.
+	Sha256 string
+}
+
+var scanAlgos = []string{ssh.KeyAlgoED25519, ssh.KeyAlgoECDSA256, ssh.KeyAlgoECDSA384, ssh.KeyAlgoECDSA521, ssh.KeyAlgoRSASHA512}
+
+var errScanDone = errors.New("sshx: host key recorded")
+
+// ScanHostKeys connects once per host key algorithm and records the key the
+// server offers, like ssh-keyscan. Algorithms the server rejects are skipped;
+// it errors when the dial fails or no key is found.
+func ScanHostKeys(ctx context.Context, host string, port int, allowLoopback bool) ([]HostKey, error) {
+	if port == 0 {
+		port = 22
+	}
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
+	ctx, cancel := context.WithTimeout(ctx, httpx.PeekTimeout)
+	defer cancel()
+	d := &net.Dialer{Timeout: httpx.PeekTimeout, Control: httpx.DialControl(allowLoopback)}
+	var keys []HostKey
+	seen := map[string]bool{}
+	var dialErr error
+	for _, algo := range scanAlgos {
+		conn, err := d.DialContext(ctx, "tcp", addr)
+		if err != nil {
+			dialErr = err
+			if len(keys) == 0 {
+				return nil, fmt.Errorf("sshx: dial: %w", err)
+			}
+			break
+		}
+		var got ssh.PublicKey
+		cfg := &ssh.ClientConfig{
+			User:              "certforge",
+			HostKeyAlgorithms: []string{algo},
+			Timeout:           httpx.PeekTimeout,
+			HostKeyCallback: func(_ string, _ net.Addr, k ssh.PublicKey) error {
+				got = k
+				return errScanDone
+			},
+		}
+		stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+		_, _, _, _ = ssh.NewClientConn(conn, addr, cfg)
+		stop()
+		_ = conn.Close()
+		if got != nil && !seen[string(got.Marshal())] {
+			seen[string(got.Marshal())] = true
+			keys = append(keys, HostKey{
+				Type:   got.Type(),
+				Line:   strings.TrimSpace(string(ssh.MarshalAuthorizedKey(got))),
+				Sha256: ssh.FingerprintSHA256(got),
+			})
+		}
+	}
+	if len(keys) == 0 {
+		if dialErr != nil {
+			return nil, fmt.Errorf("sshx: dial: %w", dialErr)
+		}
+		return nil, errors.New("sshx: the server offered no host key")
+	}
+	return keys, nil
+}

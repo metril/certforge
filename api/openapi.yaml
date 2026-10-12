@@ -788,6 +788,39 @@ paths:
         "422": {$ref: "#/components/responses/UnprocessableEntity"}
         "500": {$ref: "#/components/responses/InternalError"}
         "503": {$ref: "#/components/responses/ServiceUnavailable"}
+  /orgs/{orgId}/ssh/peek:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    post:
+      operationId: peekSSHHostKey
+      tags: [issuers]
+      summary: Fetch a server's SSH host keys
+      description: >-
+        Needs delivery:write. Connects to host (port default 22) and returns the host keys the
+        server offers, like ssh-keyscan, to pin on an SSH deploy target. The same address policy as
+        deploy targets applies (loopback only when the notifications allowLoopbackUrls setting is
+        on; 422 naming host otherwise). A connection that fails returns 200 with ok false. 10 second
+        timeout; at most 2 peeks run at once server-wide, beyond that this returns 503 with
+        Retry-After. Recorded as ssh.peek in the audit log with the host and port.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SshPeekRequest"}
+      responses:
+        "200":
+          description: Peek outcome.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SshPeekResult"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
   /orgs/{orgId}/acme-accounts:
     parameters: [{$ref: "#/components/parameters/OrgId"}]
     get:
@@ -3974,6 +4007,32 @@ components:
           description: Certificates in the order presented (leaf first); empty when ok is false.
           items: {$ref: "#/components/schemas/TlsPeekCertificate"}
         verified: {type: boolean, description: The chain verifies against the system roots for the host.}
+    SshPeekRequest:
+      type: object
+      description: SSH server to read host keys from.
+      required: [host]
+      properties:
+        host: {type: string, maxLength: 253, description: Host name or IP address.}
+        port: {type: integer, minimum: 1, maximum: 65535, description: SSH port; defaults to 22.}
+    SshPeekHostKey:
+      type: object
+      description: One host key a server offers.
+      required: [type, key, sha256]
+      properties:
+        type: {type: string, description: "Key type, e.g. ssh-ed25519."}
+        key: {type: string, description: "The \"<type> <base64>\" public key line to pin."}
+        sha256: {type: string, description: "Fingerprint, SHA256:... as shown by ssh-keygen."}
+    SshPeekResult:
+      type: object
+      description: Outcome of an SSH host key peek.
+      required: [ok, keys]
+      properties:
+        ok: {type: boolean, description: At least one host key was read.}
+        error: {type: string, description: Why the connection failed, when ok is false.}
+        keys:
+          type: array
+          description: Host keys offered; empty when ok is false.
+          items: {$ref: "#/components/schemas/SshPeekHostKey"}
     AdcsProbeResult:
       type: object
       description: Outcome of an AD CS probe.
