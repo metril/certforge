@@ -102,3 +102,5 @@ The agent tells the server what it can do. The client header lists them: `traefi
 
 - [Agents](../guide/agents.md), [Clients](../guide/clients.md)
 - [Configuration](configuration.md#agents): server-side agent settings.
+
+Each heartbeat also reports restart targets (the `CF_RESTART_ALLOW` entries and, if the Docker socket is reachable, running containers, at most 200) so the hook sheet can offer them; only allowlisted ones can run.

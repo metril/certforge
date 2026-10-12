@@ -150,6 +150,7 @@ type Client struct {
 	DesiredRevision   int64      `json:"desired_revision"`
 	AppliedRevision   int64      `json:"applied_revision"`
 	CreatedAt         time.Time  `json:"created_at"`
+	RestartTargets    []byte     `json:"restart_targets"`
 }
 
 type ClientCertGrant struct {

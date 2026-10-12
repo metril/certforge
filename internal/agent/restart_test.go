@@ -150,3 +150,67 @@ func TestDeployRestartPostHook(t *testing.T) {
 		t.Fatal("file written despite failed pre_deploy restart")
 	}
 }
+
+func TestRestartTargets(t *testing.T) {
+	sock := dockerStub(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" || r.URL.Path != "/v1.41/containers/json" {
+			http.Error(w, "no", 404)
+			return
+		}
+		_, _ = w.Write([]byte(`[{"Names":["/nginx"]},{"Names":["/redis","/app/alias"]},{"Names":[]},{"Names":["/bad name!"]}]`))
+	})
+	rr := &RestartRunner{Allow: map[string]bool{"docker:nginx": true, "docker:stopped": true, "systemd:x.service": true}, DockerSocket: sock}
+	got := map[string]agentproto.RestartTarget{}
+	for _, tg := range rr.Targets(context.Background()) {
+		got[tg.Target] = tg
+	}
+	if len(got) != 4 {
+		t.Fatalf("targets = %+v", got)
+	}
+	if g := got["docker:nginx"]; !g.Allowed || g.Running == nil || !*g.Running {
+		t.Fatalf("nginx = %+v", g)
+	}
+	if g := got["docker:redis"]; g.Allowed || g.Running == nil || !*g.Running {
+		t.Fatalf("redis = %+v", g)
+	}
+	if g := got["docker:stopped"]; !g.Allowed || g.Running == nil || *g.Running {
+		t.Fatalf("stopped = %+v", g)
+	}
+	if g := got["systemd:x.service"]; !g.Allowed || g.Running != nil {
+		t.Fatalf("systemd = %+v", g)
+	}
+	if _, ok := got["docker:alias"]; ok {
+		t.Fatal("secondary names must be skipped")
+	}
+}
+
+func TestRestartTargetsDockerDown(t *testing.T) {
+	rr := &RestartRunner{Allow: map[string]bool{"docker:nginx": true}, DockerSocket: "/nonexistent.sock"}
+	got := rr.Targets(context.Background())
+	if len(got) != 1 || !got[0].Allowed || got[0].Running != nil {
+		t.Fatalf("targets = %+v", got)
+	}
+	if (*RestartRunner)(nil).Targets(context.Background()) != nil {
+		t.Fatal("nil runner has no targets")
+	}
+}
+
+func TestRestartTargetsCap(t *testing.T) {
+	sock := dockerStub(t, func(w http.ResponseWriter, r *http.Request) {
+		var b strings.Builder
+		b.WriteString("[")
+		for i := 0; i < 300; i++ {
+			if i > 0 {
+				b.WriteString(",")
+			}
+			b.WriteString(`{"Names":["/c` + strings.Repeat("a", 1) + string(rune('a'+i%26)) + string(rune('a'+i/26%26)) + `"]}`)
+		}
+		b.WriteString("]")
+		_, _ = w.Write([]byte(b.String()))
+	})
+	rr := &RestartRunner{Allow: map[string]bool{"docker:keep": true}, DockerSocket: sock}
+	got := rr.Targets(context.Background())
+	if len(got) != maxRestartTargets || got[0].Target != "docker:keep" {
+		t.Fatalf("len %d first %v", len(got), got[0])
+	}
+}

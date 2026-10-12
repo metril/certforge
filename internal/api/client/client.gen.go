@@ -1365,6 +1365,9 @@ type Client struct {
 	// Os Operating system the agent reported
 	Os string `json:"os"`
 
+	// RestartTargets What the agent reported it could restart, refreshed on each heartbeat. Allowed entries are its CF_RESTART_ALLOW list; the rest are running Docker containers shown for reference only. Empty when the agent has no restart capability.
+	RestartTargets []RestartTarget `json:"restartTargets"`
+
 	// SiteId Site the client sits at; a filter only.
 	SiteId *openapi_types.UUID `json:"siteId"`
 
@@ -2831,6 +2834,18 @@ type RenewPolicyMode string
 type RenewResult struct {
 	// Enqueued False when an issuance was already queued or running.
 	Enqueued bool `json:"enqueued"`
+}
+
+// RestartTarget A restart hook target an agent reported, shown by the hook target picker.
+type RestartTarget struct {
+	// Allowed Listed in the agent's CF_RESTART_ALLOW; only these run.
+	Allowed bool `json:"allowed"`
+
+	// Running Whether the container is running; absent when unknown (systemd units
+	Running *bool `json:"running"`
+
+	// Target docker:<container> or systemd:<unit>.
+	Target string `json:"target"`
 }
 
 // RevocationReason RFC 5280 CRL revocation reason code.

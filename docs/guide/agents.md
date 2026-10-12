@@ -190,6 +190,10 @@ The Docker socket is root-equivalent on the host. Keep `CF_RESTART_ALLOW` as sho
 
 A `systemd:` target (templated units such as `foo@bar.service` are allowed) runs `/usr/bin/systemctl restart <unit>` and so works only for agents installed on the host, not in the distroless container image.
 
+### Choosing a target
+
+In the hook sheet, **Browse** next to Target lists what a client's agent reported: each heartbeat carries every `CF_RESTART_ALLOW` entry plus, when the Docker socket answers, the running containers. Allowed entries fill the field when clicked; containers not in `CF_RESTART_ALLOW` are shown greyed with a tooltip and cannot be picked. Systemd units are never enumerated, so they appear only when allowlisted. Browsing never widens the allowlist: it stays the only gate. When you attach a restart hook to a grant whose client reports targets and the hook's target is not allowed there, the grant sheet shows a "Not allowed on this agent" chip (it does not block saving).
+
 ## Grants and reconcile
 
 A grant gives one client one certificate, with a layout, a deploy target or both, plus hooks. Every change on the server (a new certificate version, an edit to a grant, layout, target or hook, a redeploy) raises the client's desired revision.

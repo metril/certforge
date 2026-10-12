@@ -3932,6 +3932,8 @@ export interface components {
             agentVersion: string;
             /** @description Features the agent advertised */
             capabilities: string[];
+            /** @description What the agent reported it could restart, refreshed on each heartbeat. Allowed entries are its CF_RESTART_ALLOW list; the rest are running Docker containers shown for reference only. Empty when the agent has no restart capability. */
+            restartTargets: components["schemas"]["RestartTarget"][];
             /**
              * Format: date-time
              * @description Last hello
@@ -3973,6 +3975,15 @@ export interface components {
              * @description Creation time.
              */
             createdAt: string;
+        };
+        /** @description A restart hook target an agent reported, shown by the hook target picker. */
+        RestartTarget: {
+            /** @description docker:<container> or systemd:<unit>. */
+            target: string;
+            /** @description Listed in the agent's CF_RESTART_ALLOW; only these run. */
+            allowed: boolean;
+            /** @description Whether the container is running; absent when unknown (systemd units */
+            running?: boolean | null;
         };
         /** @description A new client. */
         ClientInput: {

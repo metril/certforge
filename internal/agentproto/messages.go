@@ -86,6 +86,18 @@ type Revoked struct{}
 // Heartbeat reports what is installed; the server compares it for drift.
 type Heartbeat struct {
 	Installed []InstalledFile `json:"installed"`
+	// RestartTargets is what this agent could restart (see RestartTarget);
+	// absent from an agent without CF_RESTART_ALLOW.
+	RestartTargets []RestartTarget `json:"restartTargets,omitempty"`
+}
+
+// RestartTarget is a restart hook target the agent knows about. Allowed means
+// it is listed in CF_RESTART_ALLOW; only those can run. Running is nil when
+// unknown (systemd units, or Docker unreachable).
+type RestartTarget struct {
+	Target  string `json:"target"`
+	Allowed bool   `json:"allowed"`
+	Running *bool  `json:"running,omitempty"`
 }
 
 // DeployResult is a Report sent over the socket.
