@@ -189,6 +189,13 @@ func (f *fakeAD) ces(w http.ResponseWriter, r *http.Request) {
 	case "denied":
 		fmt.Fprint(w, rstResp("Denied by Policy Module", "78", ""))
 		return
+	case "pendingcmc", "deniedcmc":
+		disp, id := "Taken Under Submission", "77"
+		if f.mode == "deniedcmc" {
+			disp, id = "Denied by Policy Module", "78"
+		}
+		fmt.Fprint(w, soapHead+`<RequestSecurityTokenResponseCollection xmlns="http://docs.oasis-open.org/ws-sx/ws-trust/200512"><RequestSecurityTokenResponse><DispositionMessage xmlns="http://schemas.microsoft.com/windows/pki/2009/01/enrollment">`+disp+`</DispositionMessage><BinarySecurityToken ValueType="http://schemas.microsoft.com/windows/pki/2009/01/enrollment#PKCS7" xmlns="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">AAAA</BinarySecurityToken><RequestID xmlns="http://schemas.microsoft.com/windows/pki/2009/01/enrollment">`+id+`</RequestID></RequestSecurityTokenResponse></RequestSecurityTokenResponseCollection>`+soapTail)
+		return
 	}
 	m := csrRe.FindStringSubmatch(f.cesBody)
 	der, _ := base64.StdEncoding.DecodeString(m[1])
@@ -213,11 +220,15 @@ func (f *fakeAD) ces(w http.ResponseWriter, r *http.Request) {
 	} else {
 		p7 = buildPKCS7(f.t, f.root, leaf, f.issuing)
 	}
-	if f.mode == "realistic" {
+	if f.mode == "realistic" || f.mode == "badloose" {
+		loose := base64.StdEncoding.EncodeToString(p7)
+		if f.mode == "badloose" {
+			loose = "AAAA"
+		}
 		// A real CES: the cert as X509v3 under RequestedSecurityToken and
 		// the chain as a loose PKCS7 token.
 		fmt.Fprint(w, soapHead+`<RequestSecurityTokenResponseCollection xmlns="http://docs.oasis-open.org/ws-sx/ws-trust/200512"><RequestSecurityTokenResponse><TokenType>http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3</TokenType><DispositionMessage xml:lang="en-US" xmlns="http://schemas.microsoft.com/windows/pki/2009/01/enrollment"/><BinarySecurityToken ValueType="http://schemas.microsoft.com/windows/pki/2009/01/enrollment#PKCS7" EncodingType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd#base64binary" xmlns="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">`+
-			base64.StdEncoding.EncodeToString(p7)+`</BinarySecurityToken><RequestedSecurityToken><BinarySecurityToken ValueType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3" EncodingType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd#base64binary" xmlns="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">`+
+			loose+`</BinarySecurityToken><RequestedSecurityToken><BinarySecurityToken ValueType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3" EncodingType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd#base64binary" xmlns="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">`+
 			base64.StdEncoding.EncodeToString(leaf.Raw)+`</BinarySecurityToken></RequestedSecurityToken><RequestID xmlns="http://schemas.microsoft.com/windows/pki/2009/01/enrollment">55</RequestID></RequestSecurityTokenResponse></RequestSecurityTokenResponseCollection>`+soapTail)
 		return
 	}
@@ -310,6 +321,12 @@ func TestIssue(t *testing.T) {
 		{"issued", nil, 2},
 		{"leafonly", nil, 2},
 		{"realistic", nil, 2},
+		{"badloose", nil, 2},
+		{"pendingcmc", func(e error) bool { var p ErrPending; return errors.As(e, &p) && p.RequestID == "77" }, 0},
+		{"deniedcmc", func(e error) bool {
+			var d ErrDenied
+			return errors.As(e, &d) && strings.Contains(d.Disposition, "Denied")
+		}, 0},
 		{"pending", func(e error) bool { var p ErrPending; return errors.As(e, &p) && p.RequestID == "77" }, 0},
 		{"denied", func(e error) bool {
 			var d ErrDenied

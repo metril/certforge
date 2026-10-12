@@ -253,8 +253,10 @@ func (s *Signer) Issue(ctx context.Context, req signer.IssueRequest) (*signer.Is
 	default:
 		return nil, errors.New("adcs: no RequestSecurityTokenResponse in reply")
 	}
-	tokens := append(append([]bst(nil), r.Token...), r.Loose...)
-	if len(tokens) == 0 {
+	// The outcome is decided by the RequestedSecurityToken (the issued
+	// certificate) and the disposition; loose tokens (a CMC/PKCS7 reply, the
+	// chain) are only a best-effort chain source.
+	if len(r.Token) == 0 {
 		d := strings.TrimSpace(r.Disposition)
 		low := strings.ToLower(d)
 		if strings.Contains(low, "under submission") || strings.Contains(low, "pending") {
@@ -263,16 +265,20 @@ func (s *Signer) Issue(ctx context.Context, req signer.IssueRequest) (*signer.Is
 		return nil, ErrDenied{Disposition: d}
 	}
 	var certs []*x509.Certificate
-	for _, t := range tokens {
+	for i, t := range append(append([]bst(nil), r.Token...), r.Loose...) {
+		strict := i < len(r.Token)
 		der, err := base64.StdEncoding.DecodeString(strings.Join(strings.Fields(t.Value), ""))
 		if err != nil {
-			return nil, fmt.Errorf("adcs: decode token: %w", err)
+			if strict {
+				return nil, fmt.Errorf("adcs: decode token: %w", err)
+			}
+			continue
 		}
 		if cs, err := parseCertsOnlyPKCS7(der); err == nil {
 			certs = append(certs, cs...)
 		} else if c, cerr := x509.ParseCertificate(der); cerr == nil {
 			certs = append(certs, c)
-		} else {
+		} else if strict {
 			return nil, fmt.Errorf("adcs: parse issued token: %w", err)
 		}
 	}
