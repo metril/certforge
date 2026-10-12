@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { UNCHANGED } from '@/api/types';
-import { caAdcs, caLocal, presets } from '@/test/fixtures';
+import { adcsProbeTemplate, caAdcs, caLocal, presets } from '@/test/fixtures';
 import { adcsProbeRequest, adcsTemplateReason, emptyAcme, emptyLocalCa, emptyAdcs, emptyVaultPki, initialDraft, toCaInput, type CaDraft } from './caBody';
 
 it('acme body unchanged', () => {
@@ -153,7 +153,7 @@ it('adcs probe request needs url, user and password; reuses a saved password wit
 });
 
 it('adcs template reason', () => {
-  const t = { name: 'Web', oid: '', minKeySize: 2048, canEnroll: true, requiresApproval: false };
+  const t = adcsProbeTemplate({ name: 'Web', oid: '' });
   expect(adcsTemplateReason(t)).toBeNull();
   expect(adcsTemplateReason({ ...t, canEnroll: false })).toMatch(/cannot enroll/);
   expect(adcsTemplateReason({ ...t, requiresApproval: true })).toMatch(/approval/);

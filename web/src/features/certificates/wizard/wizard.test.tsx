@@ -2,7 +2,7 @@ import { delay, http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, ca, caLocal, makeCert, makeClient, problem, providers, url } from '@/test/fixtures';
+import { authHandlers, ca, caAdcs, caLocal, makeCert, makeClient, problem, providers, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let created: unknown;
@@ -326,6 +326,28 @@ it('private inherited CA enables next with no coverage', async () => {
   const summaryCoverageRow = within(summary).getByText('Coverage').closest('div')!;
   expect(summaryCoverageRow).toHaveTextContent('Not needed');
   expect(summaryCoverageRow.querySelector('svg')).toBeNull();
+});
+
+// An AD CS template accepts only some key types: the rest are disabled with
+// the template named, and an inherited key type it rejects is flagged.
+it('limits key types to what the AD CS template allows', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca, caAdcs])),
+    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ caId: { value: caAdcs.id, source: 'org' }, keyType: { value: 'ec256', source: 'global' }, builtin: { keyType: 'ec256', renewPolicy: { mode: 'percent', value: 33, useAri: false }, preferredChain: '', reuseKey: false, mustStaple: false, resolvers: [], verificationRules: [] } })),
+  );
+  const { user } = renderRoute('/o/acme/certificates/new');
+  await user.click(await screen.findByLabelText('Names'));
+  await user.paste('www.example.com');
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  await user.click(await screen.findByRole('button', { name: 'Next' }));
+  await screen.findByRole('switch', { name: 'Override Key type' });
+  expect(screen.getByText(/Template CertForgeWeb does not allow EC P-256/)).toBeInTheDocument();
+  await user.click(screen.getByRole('switch', { name: 'Override Key type' }));
+  const keyType = screen.getByRole('radiogroup', { name: 'Key type' });
+  expect(within(keyType).getByRole('radio', { name: 'EC P-256' })).toBeDisabled();
+  expect(within(keyType).getByRole('radio', { name: 'EC P-384' })).toBeDisabled();
+  expect(within(keyType).getByRole('radio', { name: 'RSA 2048' })).not.toBeDisabled();
+  expect(within(keyType).getByRole('radio', { name: 'RSA 4096' })).not.toBeDisabled();
 });
 
 it('choosing private CA in options updates step label', async () => {

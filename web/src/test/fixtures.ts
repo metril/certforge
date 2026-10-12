@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import type {
+  AdcsProbeTemplate,
   CertBrief,
   CertificateOverview,
   AcmeAccount,
@@ -280,6 +281,7 @@ export const caAdcs: CA = {
     username: 'CORP\\svc-certforge',
     timeoutSeconds: 30,
     templateOid: '1.3.6.1.4.1.311.21.8.1.2',
+    templateKeyTypes: ['rsa2048', 'rsa3072', 'rsa4096'],
   },
   storedSecrets: ['password'],
   notBefore: iso(-5),
@@ -1075,4 +1077,24 @@ export const deployCredentialKinds = [
 
 export function makeDeployCredential(p: Partial<DeployCredential> = {}): DeployCredential {
   return { id: 'dc-1', orgId: 'org-1', name: 'lab ssh', kind: 'ssh', config: { username: 'root' }, storedSecrets: ['privateKey'], usedBy: 0, ...p };
+}
+
+/** A fully populated AD CS probe template: RSA, every requirement met. */
+export function adcsProbeTemplate(over: Partial<AdcsProbeTemplate> = {}): AdcsProbeTemplate {
+  return {
+    name: 'CertForgeWeb',
+    oid: '1.3.6.1.4.1.311.21.8.1.2',
+    minKeySize: 2048,
+    canEnroll: true,
+    requiresApproval: false,
+    requirements: [
+      { key: 'enroll', label: 'Service account can enroll', fix: 'Security tab: give the service account Read and Enroll.', ok: true, blocking: true },
+      { key: 'subject', label: 'Subject supplied in the request', fix: 'Subject Name tab: select "Supply in the request".', ok: true, blocking: true },
+    ],
+    allowedKeyTypes: ['rsa2048', 'rsa3072', 'rsa4096'],
+    keyAlgorithm: 'RSA',
+    schema: 2,
+    legacyCsp: true,
+    ...over,
+  };
 }
