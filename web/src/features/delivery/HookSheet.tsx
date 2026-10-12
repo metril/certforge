@@ -13,7 +13,7 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { ArgvField, argvErrors } from '@/forms/widgets/ArgvField';
 import { PHASE_LABEL } from '@/lib/clientStatus';
 
-const RESTART_TARGET = /^(docker|systemd):[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
+const RESTART_TARGET = /^(docker|systemd):[A-Za-z0-9][A-Za-z0-9_.@-]{0,127}$/;
 
 type Props = { orgId: string; hook?: Hook; readOnly: boolean; onOpenChange: (open: boolean) => void };
 

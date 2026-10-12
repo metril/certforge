@@ -15,7 +15,7 @@ var HookKinds = []string{"exec", "restart"}
 
 // RestartTargetRE matches a restart hook's target: docker:<container> or
 // systemd:<unit>.
-var RestartTargetRE = regexp.MustCompile(`^(docker|systemd):[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`)
+var RestartTargetRE = regexp.MustCompile(`^(docker|systemd):[A-Za-z0-9][A-Za-z0-9_.@-]{0,127}$`)
 
 // ValidateHook checks a hook definition. An exec hook's argv[0] must be an
 // absolute path: hooks never run through a shell. A restart hook has no argv

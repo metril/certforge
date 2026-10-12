@@ -352,6 +352,7 @@ func TestValidateHookRestart(t *testing.T) {
 		{"docker", "restart", "docker:nginx", nil, true},
 		{"systemd", "restart", "systemd:nginx.service", nil, true},
 		{"empty kind is exec", "", "", []string{"/bin/true"}, true},
+		{"templated unit", "restart", "systemd:foo@bar.service", nil, true},
 		{"bad kind", "reboot", "", nil, false},
 		{"no prefix", "restart", "nginx", nil, false},
 		{"bad prefix", "restart", "podman:nginx", nil, false},

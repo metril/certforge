@@ -108,7 +108,7 @@ func (r *RestartRunner) dockerRestart(ctx context.Context, name string) (string,
 	if err != nil {
 		return "", err
 	}
-	resp, err := (&http.Client{Transport: tr}).Do(req)
+	resp, err := (&http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}).Do(req)
 	if err != nil {
 		return "", fmt.Errorf("docker: %w", err)
 	}

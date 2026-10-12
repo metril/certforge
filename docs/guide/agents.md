@@ -188,7 +188,7 @@ services:
 
 The Docker socket is root-equivalent on the host. Keep `CF_RESTART_ALLOW` as short as you can and list exact container names only.
 
-A `systemd:` target runs `/usr/bin/systemctl restart <unit>` and so works only for agents installed on the host, not in the distroless container image.
+A `systemd:` target (templated units such as `foo@bar.service` are allowed) runs `/usr/bin/systemctl restart <unit>` and so works only for agents installed on the host, not in the distroless container image.
 
 ## Grants and reconcile
 
