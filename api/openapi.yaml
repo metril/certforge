@@ -717,6 +717,42 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "422": {$ref: "#/components/responses/UnprocessableEntity"}
         "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/cas/adcs/probe:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    post:
+      operationId: probeAdcs
+      tags: [issuers]
+      summary: Probe an AD CS enrollment policy service
+      description: >-
+        Needs cas:write. Reads the Certificate Enrollment Policy with the supplied settings and
+        lists the published templates, so a template can be picked and a CA tested before saving.
+        The same URL policy as creating an adcs CA applies (422 naming the field); the same
+        template rules apply to the optional template (reported in selected, never an error). A
+        service that cannot be read, or rejects the credentials, returns 200 with ok false.
+        password "__unchanged__" with caId reuses the saved adcs CA's stored password (404 if the
+        CA is not in the org, 422 if it is not an adcs CA). At most 2 probes run at once
+        server-wide; beyond that this returns 503 with Retry-After. Recorded as ca.adcs_probe in
+        the audit log without any secret value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AdcsProbeRequest"}
+      responses:
+        "200":
+          description: Probe outcome.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AdcsProbeResult"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
   /orgs/{orgId}/acme-accounts:
     parameters: [{$ref: "#/components/parameters/OrgId"}]
     get:
@@ -3795,6 +3831,49 @@ components:
         fqdn: {type: string, description: TXT record name used; empty if the test timed out before it was known.}
         error: {type: string, description: "Provider error when ok is false, with every config value redacted; \"timed out\" past the bounded timeout (cleanup keeps running in the background)."}
         durationMs: {type: integer, description: Test duration in milliseconds.}
+    AdcsProbeRequest:
+      type: object
+      description: Settings to probe; the AdcsConfig fields, with the write-only password and an optional template.
+      required: [cepUrl, username, password]
+      properties:
+        cepUrl: {type: string, description: "https:// URL of the Certificate Enrollment Policy service."}
+        cesUrl: {type: string, description: Optional https:// enrollment service URL.}
+        username: {type: string, description: Service account name.}
+        password: {type: string, writeOnly: true, description: "Account password, or \"__unchanged__\" together with caId to reuse the saved CA's."}
+        caBundlePem: {type: string, description: PEM bundle trusted for the service's TLS certificate.}
+        timeoutSeconds: {type: integer, minimum: 5, maximum: 300, description: Per-request timeout; default 30.}
+        template: {type: string, description: Template to judge with the create/update rules; optional.}
+        caId: {type: string, format: uuid, description: Saved adcs CA of the org whose stored password __unchanged__ refers to.}
+    AdcsProbeTemplate:
+      type: object
+      description: A certificate template published by the enrollment policy.
+      required: [name, oid, minKeySize, canEnroll, requiresApproval]
+      properties:
+        name: {type: string, description: Template common name, as sent in the request.}
+        oid: {type: string, description: Template OID when published; may be empty.}
+        minKeySize: {type: integer, description: Minimal key length in bits.}
+        canEnroll: {type: boolean, description: The service account may enroll.}
+        requiresApproval: {type: boolean, description: Requests are held for CA manager approval, so CertForge cannot use it.}
+    AdcsProbeSelected:
+      type: object
+      description: Verdict on the requested template, by the rules create/update apply.
+      required: [name, usable]
+      properties:
+        name: {type: string, description: Template name as published (or as requested when it is not published).}
+        usable: {type: boolean, description: The template passes the create/update rules.}
+        reason: {type: string, description: Why the template is not usable.}
+    AdcsProbeResult:
+      type: object
+      description: Outcome of an AD CS probe.
+      required: [ok, templates]
+      properties:
+        ok: {type: boolean, description: The policy was read.}
+        error: {type: string, description: Why the policy could not be read, when ok is false.}
+        templates:
+          type: array
+          description: Published templates; empty when ok is false.
+          items: {$ref: "#/components/schemas/AdcsProbeTemplate"}
+        selected: {$ref: "#/components/schemas/AdcsProbeSelected"}
     KeyType:
       type: string
       description: Certificate key algorithm.

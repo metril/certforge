@@ -137,33 +137,161 @@ type adcsResolved struct {
 	notBefore, notAfter time.Time
 }
 
-// resolveADCS runs GetPolicies with cfg and password, requires the template
-// to exist, fills in cfg.CESURL (when empty) and cfg.TemplateOID, and returns
-// the issuing CA certificate(s) as a PEM trust bundle with the first one's
-// validity window.
-func (s *Store) resolveADCS(ctx context.Context, cfg adcsConfig, password string) (adcsResolved, error) {
+// adcsPolicies reads the enrollment policy with cfg and password. Failures
+// are *ValidationError (bad bundle, authentication, unreachable CEP). The
+// create/update path and the probe both go through it.
+func (s *Store) adcsPolicies(ctx context.Context, cfg adcsConfig, password string) (*adcs.PolicyResult, error) {
 	hc, err := s.adcsClient(ctx, cfg)
 	if err != nil {
-		return adcsResolved{}, &ValidationError{"config.caBundlePem", err.Error()}
+		return nil, &ValidationError{"config.caBundlePem", err.Error()}
 	}
 	sg := adcs.New(adcsSignerConfig(cfg, ""), password, hc)
 	defer sg.Close()
 	res, err := sg.Policies(ctx)
 	if err != nil {
 		if errors.Is(err, adcs.ErrAuth) {
-			return adcsResolved{}, &ValidationError{"config.username", "authentication to the enrollment policy service failed"}
+			return nil, &ValidationError{"config.username", "authentication to the enrollment policy service failed"}
 		}
-		return adcsResolved{}, &ValidationError{"config.cepUrl", err.Error()}
+		return nil, &ValidationError{"config.cepUrl", err.Error()}
 	}
-	tpl, err := res.Template(cfg.Template)
+	return res, nil
+}
+
+// usableADCSTemplate returns the named template, or a *ValidationError saying
+// why it cannot be used: unknown, held for approval, or no Enroll permission.
+func usableADCSTemplate(res *adcs.PolicyResult, name string) (*adcs.Template, error) {
+	tpl, err := res.Template(name)
 	if err != nil {
-		return adcsResolved{}, &ValidationError{"config.template", err.Error()}
+		return nil, &ValidationError{"config.template", err.Error()}
 	}
 	if tpl.RequiresApproval() {
-		return adcsResolved{}, &ValidationError{"config.template", "template requires CA manager approval; use a template that issues automatically"}
+		return nil, &ValidationError{"config.template", "template requires CA manager approval; use a template that issues automatically"}
 	}
 	if !tpl.CanEnroll {
-		return adcsResolved{}, &ValidationError{"config.template", "the service account lacks Enroll permission on this template"}
+		return nil, &ValidationError{"config.template", "the service account lacks Enroll permission on this template"}
+	}
+	return tpl, nil
+}
+
+// ADCSProbeInput is a probe of an AD CS enrollment policy service.
+type ADCSProbeInput struct {
+	Config   map[string]any // AdcsConfig fields; template is optional
+	Password string         // challenge.Unchanged with CAID reuses the saved CA's password
+	CAID     *uuid.UUID
+}
+
+// ADCSProbeTemplate is one published template.
+type ADCSProbeTemplate struct {
+	Name, OID                string
+	MinKeySize               int
+	CanEnroll, NeedsApproval bool
+}
+
+// ADCSProbeSelected is the verdict on the template named in the probe.
+type ADCSProbeSelected struct {
+	Name, Reason string
+	Usable       bool
+}
+
+// ADCSProbeResult is a probe outcome. Error is set (OK false) when the
+// service could not be read; Templates and Selected are empty then.
+type ADCSProbeResult struct {
+	OK        bool
+	Error     string
+	Templates []ADCSProbeTemplate
+	Selected  *ADCSProbeSelected
+}
+
+// ProbeADCS reads the policy with the supplied settings and lists the
+// templates, judging cfg.template by the same rules as create/update. Input
+// errors are *ValidationError or ErrNotFound; a failing service yields
+// OK false, not an error.
+func (s *Store) ProbeADCS(ctx context.Context, orgID uuid.UUID, in ADCSProbeInput) (ADCSProbeResult, error) {
+	cfg, err := parseADCSInput(in.Config)
+	if err != nil {
+		return ADCSProbeResult{}, err
+	}
+	if err := httpsURL("config.cepUrl", cfg.CEPURL, true); err != nil {
+		return ADCSProbeResult{}, err
+	}
+	if err := httpsURL("config.cesUrl", cfg.CESURL, false); err != nil {
+		return ADCSProbeResult{}, err
+	}
+	if cfg.Username == "" {
+		return ADCSProbeResult{}, &ValidationError{"config.username", "required"}
+	}
+	if cfg.TimeoutSeconds < 5 || cfg.TimeoutSeconds > 300 {
+		return ADCSProbeResult{}, &ValidationError{"config.timeoutSeconds", "must be between 5 and 300"}
+	}
+	pw := in.Password
+	if pw == challenge.Unchanged {
+		if in.CAID == nil {
+			return ADCSProbeResult{}, &ValidationError{"config.password", "value is only valid with a saved CA (caId)"}
+		}
+		row, err := s.q.GetCA(ctx, sqlcgen.GetCAParams{ID: *in.CAID, OrgID: orgID})
+		if err != nil {
+			return ADCSProbeResult{}, notFound(err)
+		}
+		if row.Type != CATypeADCS {
+			return ADCSProbeResult{}, &ValidationError{"caId", "not an adcs CA"}
+		}
+		var sec adcsSecretCfg
+		if err := s.openJSON(ctx, row.SecretCfg, &sec); err != nil {
+			return ADCSProbeResult{}, err
+		}
+		var old adcsConfig
+		if err := json.Unmarshal(row.Config, &old); err != nil {
+			return ADCSProbeResult{}, err
+		}
+		if adcsConnectionChanged(old, cfg) {
+			return ADCSProbeResult{}, errADCSReenterPassword
+		}
+		pw = sec.Password
+	}
+	if pw == "" {
+		return ADCSProbeResult{}, &ValidationError{"config.password", "required"}
+	}
+	res, err := s.adcsPolicies(ctx, cfg, pw)
+	if err != nil {
+		var ve *ValidationError
+		if errors.As(err, &ve) && ve.Field != "config.caBundlePem" {
+			return ADCSProbeResult{Error: ve.Msg}, nil
+		}
+		return ADCSProbeResult{}, err
+	}
+	out := ADCSProbeResult{OK: true, Templates: make([]ADCSProbeTemplate, 0, len(res.Templates))}
+	for _, t := range res.Templates {
+		out.Templates = append(out.Templates, ADCSProbeTemplate{Name: t.Name, OID: t.OID, MinKeySize: t.MinKeySize,
+			CanEnroll: t.CanEnroll, NeedsApproval: t.RequiresApproval()})
+	}
+	if cfg.Template != "" {
+		sel := &ADCSProbeSelected{Name: cfg.Template, Usable: true}
+		if tpl, err := usableADCSTemplate(res, cfg.Template); err != nil {
+			sel.Usable = false
+			var ve *ValidationError
+			if errors.As(err, &ve) {
+				sel.Reason = ve.Msg
+			}
+		} else {
+			sel.Name = tpl.Name
+		}
+		out.Selected = sel
+	}
+	return out, nil
+}
+
+// resolveADCS runs GetPolicies with cfg and password, requires the template
+// to exist, fills in cfg.CESURL (when empty) and cfg.TemplateOID, and returns
+// the issuing CA certificate(s) as a PEM trust bundle with the first one's
+// validity window.
+func (s *Store) resolveADCS(ctx context.Context, cfg adcsConfig, password string) (adcsResolved, error) {
+	res, err := s.adcsPolicies(ctx, cfg, password)
+	if err != nil {
+		return adcsResolved{}, err
+	}
+	tpl, err := usableADCSTemplate(res, cfg.Template)
+	if err != nil {
+		return adcsResolved{}, err
 	}
 	out := adcsResolved{cfg: cfg}
 	out.cfg.TemplateOID = tpl.OID
@@ -230,6 +358,17 @@ func (s *Store) createADCSCA(ctx context.Context, orgID uuid.UUID, in CAInput) (
 	return caFromRow(row)
 }
 
+var errADCSReenterPassword = &ValidationError{"config.password", "must be re-entered when the endpoint, account or TLS bundle change"}
+
+// adcsConnectionChanged reports whether cfg points the stored password at a
+// different connection than old (endpoints, account or TLS bundle). A saved
+// password must not follow such a change; the template alone may change. An
+// empty CES URL means "derive it from the policy", so it is not a change.
+func adcsConnectionChanged(old, cfg adcsConfig) bool {
+	return cfg.CEPURL != old.CEPURL || (cfg.CESURL != "" && cfg.CESURL != old.CESURL) ||
+		cfg.Username != old.Username || cfg.CABundlePEM != old.CABundlePEM
+}
+
 // adcsUpdateHook, when set by a test, runs between updateADCSCA's unlocked
 // read and its row lock, to simulate a concurrent writer.
 var adcsUpdateHook func()
@@ -264,6 +403,9 @@ func (s *Store) updateADCSCA(ctx context.Context, orgID, id uuid.UUID, in CAInpu
 			return CA{}, &ValidationError{"config.password", "must not be empty"}
 		}
 		pw, newPW = *in.ADCSPassword, true
+	}
+	if !newPW && adcsConnectionChanged(old, cfg) {
+		return CA{}, errADCSReenterPassword
 	}
 	var (
 		resolved bool

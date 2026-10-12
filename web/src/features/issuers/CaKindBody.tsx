@@ -1,9 +1,11 @@
-import { useMemo, type Dispatch, type RefObject, type SetStateAction } from 'react';
+import { useMemo, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { Check, TriangleAlert } from 'lucide-react';
 import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
+import { useProbeAdcs } from '@/api/queries/cas';
 import { settingsQuery } from '@/api/queries/settings';
+import { errorMessage } from '@/api/errors';
 import type { CA, CAPreset, ProviderSchema } from '@/api/types';
 import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
@@ -14,10 +16,12 @@ import { FormSection } from '@/components/FormSection';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
+import type { AdcsTemplateContext } from '@/forms/theme/widgets';
+import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
-import type { AcmeDraft, CaDraft } from './caBody';
+import { ADCS_PROBE_BLOCKED, adcsProbeRequest, adcsTemplateReason, type AcmeDraft, type CaDraft } from './caBody';
 
 const CUSTOM = 'custom';
 
@@ -43,6 +47,7 @@ export const hostPort = (v: string) => {
 export type ServerField = 'name' | 'directoryUrl' | 'eab' | null;
 
 type Props = {
+  orgId: string;
   draft: CaDraft;
   setDraft: Dispatch<SetStateAction<CaDraft>>;
   ca?: CA;
@@ -59,7 +64,7 @@ type Props = {
   nameTouched: boolean;
 };
 
-export function CaKindBody({ draft, setDraft, ca, presets, signers, submitted, serverError, extraErrors, formRef, nameTouched }: Props) {
+export function CaKindBody({ orgId, draft, setDraft, ca, presets, signers, submitted, serverError, extraErrors, formRef, nameTouched }: Props) {
   if (draft.kind === 'acme') {
     return <AcmeBody draft={draft} setDraft={setDraft} ca={ca} presets={presets} submitted={submitted} serverError={serverError} nameTouched={nameTouched} />;
   }
@@ -67,7 +72,7 @@ export function CaKindBody({ draft, setDraft, ca, presets, signers, submitted, s
     return <LocalCaBody draft={draft} setDraft={setDraft} ca={ca} signers={signers} extraErrors={extraErrors} formRef={formRef} />;
   }
   if (draft.kind === 'adcs') {
-    return <AdcsBody draft={draft} setDraft={setDraft} ca={ca} signers={signers} extraErrors={extraErrors} formRef={formRef} />;
+    return <AdcsBody orgId={orgId} draft={draft} setDraft={setDraft} ca={ca} signers={signers} extraErrors={extraErrors} formRef={formRef} />;
   }
   return <VaultPkiBody draft={draft} setDraft={setDraft} signers={signers} extraErrors={extraErrors} formRef={formRef} />;
 }
@@ -314,7 +319,10 @@ function LocalCaBody({
   );
 }
 
+const ADCS_UI = { template: { 'ui:widget': 'adcsTemplate' } };
+
 function AdcsBody({
+  orgId,
   draft,
   setDraft,
   ca,
@@ -322,6 +330,7 @@ function AdcsBody({
   extraErrors,
   formRef,
 }: {
+  orgId: string;
   draft: CaDraft;
   setDraft: Dispatch<SetStateAction<CaDraft>>;
   ca?: CA;
@@ -330,6 +339,43 @@ function AdcsBody({
   formRef: RefObject<SchemaFormHandle | null>;
 }) {
   const schema = useMemo(() => schemaOf(signers, 'adcs'), [signers]);
+  const me = useMe();
+  const canWrite = can(me, 'cas:write', orgId);
+  const probe = useProbeAdcs(orgId);
+  // Kept across a failed reload, so a transient error doesn't drop the list.
+  const [templates, setTemplates] = useState<AdcsTemplateContext['templates']>(undefined);
+  const request = adcsProbeRequest(draft.adcs.config, ca?.id);
+  // RJSF's shouldComponentUpdate deep-compares props and treats functions as
+  // equal, so a widget keeps an older onLoad: read the latest request here.
+  const latest = useRef(request);
+  latest.current = request;
+  const data = probe.isSuccess ? probe.data : undefined;
+  const error = probe.isError
+    ? errorMessage(probe.error)
+    : data && !data.ok
+      ? data.error || 'Could not read the policy.'
+      : data?.ok && data.templates.length === 0
+        ? 'The policy publishes no templates.'
+        : undefined;
+  const loadBlocked = !canWrite ? 'Needs the cas:write permission' : request ? undefined : ADCS_PROBE_BLOCKED;
+  // Rebuilt every render (probe state changes with it); RJSF re-renders the
+  // form on any parent render anyway.
+  const formContext = {
+      adcsTemplates: {
+        templates,
+        reasonOf: adcsTemplateReason,
+        loading: probe.isPending,
+        error,
+        loadBlocked,
+        loadTip: help['ca.adcsLoad'].text,
+        onLoad: () => {
+          if (!latest.current) return;
+          // The template is left out: Load lists templates, Test judges one.
+          const body = { ...latest.current, template: undefined };
+          probe.mutate(() => body, { onSuccess: (r) => r.ok && setTemplates(r.templates) });
+        },
+      } satisfies AdcsTemplateContext,
+  };
   return (
     <SchemaForm
       ref={formRef}
@@ -338,6 +384,8 @@ function AdcsBody({
       onChange={(v) => setDraft((d) => ({ ...d, adcs: { config: v } }))}
       storedSecrets={ca?.storedSecrets}
       extraErrors={extraErrors}
+      uiSchemaOverrides={ADCS_UI}
+      formContext={formContext}
     />
   );
 }

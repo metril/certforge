@@ -67,6 +67,24 @@ func TestADCSCreateUpdateIssue(t *testing.T) {
 		t.Fatalf("issue after sentinel update: %v", err)
 	}
 
+	// A saved password does not follow a changed endpoint, account or bundle.
+	for name, mut := range map[string]func(map[string]any){
+		"cepUrl":      func(m map[string]any) { m["cepUrl"] = fk.CEPURL + "?x=1" },
+		"cesUrl":      func(m map[string]any) { m["cesUrl"] = "https://evil.example.test/ces" },
+		"username":    func(m map[string]any) { m["username"] = "other" },
+		"caBundlePem": func(m map[string]any) { m["caBundlePem"] = "" },
+	} {
+		for _, pw := range []*string{nil, &un} {
+			chg := adcsInput(fk, "Corp AD CS 2", un)
+			chg.ADCSPassword = pw
+			mut(chg.Config)
+			var cve *ValidationError
+			if _, err := f.store.UpdateCA(ctx, f.org, ca.ID, chg); !errors.As(err, &cve) || cve.Field != "config.password" {
+				t.Fatalf("%s changed with kept password: err = %v", name, err)
+			}
+		}
+	}
+
 	// A new wrong password is checked against the policy service.
 	bad := "wrong"
 	in.ADCSPassword = &bad

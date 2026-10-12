@@ -18,7 +18,8 @@ import { help } from '@/lib/help';
 import { settledConfig } from '@/lib/secretForm';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
-import { initialDraft, toCaInput, type CaDraft } from './caBody';
+import { AdcsTestButton, AdcsTestDialog } from './AdcsTestDialog';
+import { adcsProbeRequest, initialDraft, toCaInput, type CaDraft } from './caBody';
 import { CaKindBody, type ServerField } from './CaKindBody';
 
 // Adaptation: the Problem schema has no structured field name, only a prose
@@ -69,6 +70,8 @@ export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }:
   const [serverError, setServerError] = useState<{ field: ServerField; message: string } | null>(null);
   const [configError, setConfigError] = useState<ErrorSchema | undefined>(undefined);
   const [bannerError, setBannerError] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const adcsRequest = draft.kind === 'adcs' ? adcsProbeRequest(draft.adcs.config, ca?.id) : null;
   // rjsf fires onChange on mount once defaults fill, so the kinds' config is
   // compared in its settled form (as TargetSheet does) and the baseline waits
   // for the signer schemas to arrive.
@@ -177,6 +180,7 @@ export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }:
             />
           </Field>
           <CaKindBody
+            orgId={orgId}
             draft={draft}
             setDraft={setDraft}
             ca={ca}
@@ -194,6 +198,12 @@ export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }:
             </p>
           )}
           <SheetFooter className="flex-row justify-end gap-2 px-0">
+            {draft.kind === 'adcs' && (
+              <span className="mr-auto inline-flex items-center gap-1.5">
+                <AdcsTestButton canWrite={canWrite} request={adcsRequest} onClick={() => setTesting(true)} />
+                <HelpTip id="ca.adcsTest" />
+              </span>
+            )}
             <SheetClose asChild>
               <Button type="button" variant="outline">Cancel</Button>
             </SheetClose>
@@ -204,6 +214,7 @@ export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }:
             </PermissionTip>
           </SheetFooter>
         </form>
+        {testing && adcsRequest && <AdcsTestDialog orgId={orgId} name={draft.name.trim()} request={adcsRequest} onOpenChange={setTesting} />}
       </SheetContent>
     </Sheet>
   );

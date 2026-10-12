@@ -1,4 +1,4 @@
-import type { CA, CAInput, CAPreset, CaType } from '@/api/types';
+import type { AdcsProbeRequest, AdcsProbeTemplate, CA, CAInput, CAPreset, CaType } from '@/api/types';
 import { UNCHANGED } from '@/api/types';
 
 const CUSTOM = 'custom';
@@ -136,4 +136,33 @@ export function toCaInput(draft: CaDraft, ctx: { presets: CAPreset[]; ca?: CA })
   }
   const config = draft.kind === 'localca' ? localCaConfig(draft.localca, !!ctx.ca) : draft.vaultpki.config;
   return { name, type: draft.kind, config };
+}
+
+const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+
+/** Builds an AD CS probe body from an adcs config (a draft or a saved CA's).
+ * With `caId`, an untouched password (the sentinel or empty) reuses the saved
+ * CA's. Returns null until the policy URL, username and a password are set. */
+export function adcsProbeRequest(config: Record<string, unknown>, caId?: string): AdcsProbeRequest | null {
+  const cepUrl = str(config.cepUrl);
+  const username = str(config.username);
+  const raw = typeof config.password === 'string' ? config.password : '';
+  const keep = !!caId && (raw === '' || raw === UNCHANGED);
+  if (!cepUrl || !username || (!raw && !keep)) return null;
+  const req: AdcsProbeRequest = { cepUrl, username, password: keep ? UNCHANGED : raw };
+  if (keep) req.caId = caId;
+  if (str(config.cesUrl)) req.cesUrl = str(config.cesUrl);
+  if (str(config.caBundlePem)) req.caBundlePem = str(config.caBundlePem);
+  if (str(config.template)) req.template = str(config.template);
+  if (typeof config.timeoutSeconds === 'number') req.timeoutSeconds = config.timeoutSeconds;
+  return req;
+}
+
+export const ADCS_PROBE_BLOCKED = 'Fill in the policy URL, username and password first.';
+
+/** Why a published template cannot back this CA, or null when it can. */
+export function adcsTemplateReason(t: AdcsProbeTemplate): string | null {
+  if (!t.canEnroll) return 'The service account cannot enroll on this template.';
+  if (t.requiresApproval) return 'Requests need CA manager approval; only automatic issuance works.';
+  return null;
 }

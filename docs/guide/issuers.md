@@ -162,6 +162,13 @@ The default URLs are:
 
 CertForge reads the policy at creation with those credentials, so the service must be reachable and the template must exist and allow the account to enroll. It stores the template's OID, takes the CA certificate from the policy as the trust bundle, and seals the password. When you edit the CA, leave **Password** untouched to keep the stored one; a changed URL, template, account or password reads the policy again.
 
+### Load templates and test
+
+- **Load templates** (the button beside **Template**) reads the policy with the URL, account and password above and turns **Template** into a searchable list. Templates the account cannot enroll on, or that need CA manager approval, are shown disabled; hover one to see why. If the policy cannot be read, the error shows under the field and you can still type a template name.
+- **Test** (in the CA sheet footer, and on the CA's details) reads the policy and checks the chosen template by the same rules as **Save CA**, without saving anything. On a saved CA it uses the stored password unless you entered a new one.
+
+Both need the `cas:write` permission.
+
 ### Behavior
 
 - **Revocation is manual.** CES has no revocation call. Revoke in the AD CS console; CertForge refuses with a message saying so.

@@ -173,3 +173,30 @@ it('opens the private CA detail from the keyboard on its focused row', async () 
   await user.keyboard('{Enter}');
   expect(await screen.findByRole('dialog', { name: 'Internal CA' })).toBeInTheDocument();
 });
+
+it('adcs test reports an unusable template', async () => {
+  cas = [caAdcs];
+  let body: Record<string, unknown> | undefined;
+  server.use(
+    http.post(url('/orgs/org-1/cas/adcs/probe'), async ({ request }) => {
+      body = (await request.json()) as Record<string, unknown>;
+      return HttpResponse.json({ ok: true, templates: [], selected: { name: 'CertForgeWeb', usable: false, reason: 'requires CA manager approval' } });
+    }),
+  );
+  const { user } = renderRoute('/o/acme/issuers/cas?view=ca-adcs-1');
+  const sheet = await screen.findByRole('dialog', { name: 'Corp AD CS' });
+  await user.click(within(sheet).getByRole('button', { name: 'Test' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Test Corp AD CS' });
+  await user.click(within(dialog).getByRole('button', { name: 'Run test' }));
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('CertForgeWeb: requires CA manager approval');
+  expect(body).toMatchObject({ template: 'CertForgeWeb', password: '__unchanged__', caId: 'ca-adcs-1' });
+  expect(body).not.toHaveProperty('templateOid');
+});
+
+it('adcs test needs cas:write', async () => {
+  cas = [caAdcs];
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'org-admin', orgId: 'org-1' }]))));
+  renderRoute('/o/acme/issuers/cas?view=ca-adcs-1');
+  const sheet = await screen.findByRole('dialog', { name: 'Corp AD CS' });
+  expect(within(sheet).getByRole('button', { name: 'Test' })).toBeDisabled();
+});

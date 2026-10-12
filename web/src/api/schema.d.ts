@@ -543,6 +543,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orgs/{orgId}/cas/adcs/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Probe an AD CS enrollment policy service
+         * @description Needs cas:write. Reads the Certificate Enrollment Policy with the supplied settings and lists the published templates, so a template can be picked and a CA tested before saving. The same URL policy as creating an adcs CA applies (422 naming the field); the same template rules apply to the optional template (reported in selected, never an error). A service that cannot be read, or rejects the credentials, returns 200 with ok false. password "__unchanged__" with caId reuses the saved adcs CA's stored password (404 if the CA is not in the org, 422 if it is not an adcs CA). At most 2 probes run at once server-wide; beyond that this returns 503 with Retry-After. Recorded as ca.adcs_probe in the audit log without any secret value.
+         */
+        post: operations["probeAdcs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orgs/{orgId}/acme-accounts": {
         parameters: {
             query?: never;
@@ -3102,6 +3125,60 @@ export interface components {
             error?: string;
             /** @description Test duration in milliseconds. */
             durationMs: number;
+        };
+        /** @description Settings to probe; the AdcsConfig fields, with the write-only password and an optional template. */
+        AdcsProbeRequest: {
+            /** @description https:// URL of the Certificate Enrollment Policy service. */
+            cepUrl: string;
+            /** @description Optional https:// enrollment service URL. */
+            cesUrl?: string;
+            /** @description Service account name. */
+            username: string;
+            /** @description Account password, or "__unchanged__" together with caId to reuse the saved CA's. */
+            password: string;
+            /** @description PEM bundle trusted for the service's TLS certificate. */
+            caBundlePem?: string;
+            /** @description Per-request timeout; default 30. */
+            timeoutSeconds?: number;
+            /** @description Template to judge with the create/update rules; optional. */
+            template?: string;
+            /**
+             * Format: uuid
+             * @description Saved adcs CA of the org whose stored password __unchanged__ refers to.
+             */
+            caId?: string;
+        };
+        /** @description A certificate template published by the enrollment policy. */
+        AdcsProbeTemplate: {
+            /** @description Template common name */
+            name: string;
+            /** @description Template OID when published; may be empty. */
+            oid: string;
+            /** @description Minimal key length in bits. */
+            minKeySize: number;
+            /** @description The service account may enroll. */
+            canEnroll: boolean;
+            /** @description Requests are held for CA manager approval */
+            requiresApproval: boolean;
+        };
+        /** @description Verdict on the requested template, by the rules create/update apply. */
+        AdcsProbeSelected: {
+            /** @description Template name as published (or as requested when it is not published). */
+            name: string;
+            /** @description The template passes the create/update rules. */
+            usable: boolean;
+            /** @description Why the template is not usable. */
+            reason?: string;
+        };
+        /** @description Outcome of an AD CS probe. */
+        AdcsProbeResult: {
+            /** @description The policy was read. */
+            ok: boolean;
+            /** @description Why the policy could not be read */
+            error?: string;
+            /** @description Published templates; empty when ok is false. */
+            templates: components["schemas"]["AdcsProbeTemplate"][];
+            selected?: components["schemas"]["AdcsProbeSelected"];
         };
         /**
          * @description Certificate key algorithm.
@@ -6346,6 +6423,42 @@ export interface operations {
             404: components["responses"]["NotFound"];
             422: components["responses"]["UnprocessableEntity"];
             500: components["responses"]["InternalError"];
+        };
+    };
+    probeAdcs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdcsProbeRequest"];
+            };
+        };
+        responses: {
+            /** @description Probe outcome. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdcsProbeResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listAcmeAccounts: {

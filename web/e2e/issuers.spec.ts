@@ -98,6 +98,67 @@ test('CA kind switching', async ({ page }) => {
   await snap(page, 'ca-detail');
 });
 
+// The compose stack has no AD CS, so the probe and the create are answered
+// by page.route; this covers the sheet's own flow: load templates → pick →
+// test → save.
+test('AD CS template picker and test', async ({ page }) => {
+  const probes: Record<string, unknown>[] = [];
+  let created: { type?: string; config?: Record<string, unknown> } | undefined;
+  await page.route('**/api/v1/orgs/*/cas/adcs/probe', async (route) => {
+    const b = route.request().postDataJSON() as Record<string, unknown>;
+    probes.push(b);
+    await route.fulfill({
+      json: {
+        ok: true,
+        templates: [
+          { name: 'CertForgeWeb', oid: '1.3.6.1.4.1.311.21.8.1.2', minKeySize: 2048, canEnroll: true, requiresApproval: false },
+          { name: 'Held', oid: '', minKeySize: 2048, canEnroll: true, requiresApproval: true },
+        ],
+        ...(b.template ? { selected: { name: b.template, usable: true } } : {}),
+      },
+    });
+  });
+  await page.route('**/api/v1/orgs/*/cas', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    created = route.request().postDataJSON() as typeof created;
+    await route.fulfill({ status: 201, json: { id: '00000000-0000-0000-0000-0000000000ad', name: 'e2e-adcs', type: 'adcs', config: created?.config, trustBundlePem: '', resolvers: [] } });
+  });
+
+  await page.goto('/login');
+  await signInLocal(page);
+  // Wait for the login to land; navigating earlier aborts the in-flight sign-in.
+  await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
+  await page.goto(`/o/${E2E.orgSlug}/issuers/cas`);
+  await expect(page.getByRole('button', { name: 'Add CA' }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Add CA' }).first().click();
+  const sheet = page.getByRole('dialog', { name: 'Add certificate authority' });
+  await sheet.getByLabel('Name', { exact: true }).fill('e2e-adcs');
+  await sheet.getByRole('radio', { name: 'Active Directory (AD CS)' }).click();
+  await sheet.getByLabel('Policy (CEP) URL').fill('https://adcs.e2e.test/ADPolicyProvider_CEP_UsernamePassword/service.svc/CEP');
+  await sheet.getByLabel('Username').fill('E2E\\svc');
+  await sheet.getByLabel('Password', { exact: true }).fill('e2e-secret');
+
+  await sheet.getByRole('button', { name: 'Load templates' }).click();
+  const picker = sheet.getByRole('combobox', { name: 'Template' });
+  await picker.click();
+  await expect(page.getByRole('option', { name: 'Held' })).toHaveAttribute('aria-disabled', 'true');
+  await page.getByRole('option', { name: /^CertForgeWeb/ }).click();
+  await expect(picker).toHaveText(/CertForgeWeb/);
+  await snap(page, 'ca-adcs-templates');
+
+  await sheet.getByRole('button', { name: 'Test' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Test e2e-adcs' });
+  await dialog.getByRole('button', { name: 'Run test' }).click();
+  await expect(dialog.getByText('Works with CertForgeWeb')).toBeVisible();
+  expect(probes.at(-1)).toMatchObject({ template: 'CertForgeWeb', password: 'e2e-secret' });
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+
+  await sheet.getByRole('button', { name: 'Save CA' }).click();
+  await expect(sheet).toBeHidden();
+  expect(created).toMatchObject({ type: 'adcs', config: { template: 'CertForgeWeb' } });
+});
+
 test('server grant', async ({ page }) => {
   test.setTimeout(180_000);
 

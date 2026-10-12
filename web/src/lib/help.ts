@@ -61,6 +61,11 @@ export const help = {
     text: 'Enrolls leaves from Microsoft AD CS through the Certificate Enrollment Policy and Enrollment web services with a service account. Revocation is manual in AD CS.',
     learnMore: 'guide/issuers.md#active-directory-certificate-services',
   },
+  'ca.adcsLoad': { text: 'Reads the templates the policy publishes, with the settings above. Ones the account cannot use are disabled.' },
+  'ca.adcsTest': {
+    text: 'Reads the enrollment policy with these settings and checks the template by the rules used on save.',
+    learnMore: 'guide/issuers.md#load-templates-and-test',
+  },
   'ca.preset': { text: 'Presets fill in the directory URL. Custom takes any ACME server.' },
   'ca.directoryUrl': { text: 'The ACME directory endpoint of the CA.' },
   // Renamed from 'ca.trustBundle' (task 3): that key now names the private
