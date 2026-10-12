@@ -2,6 +2,22 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.21.0](https://github.com/metril/certforge/compare/v0.20.0...v0.21.0) (2026-10-12)
+
+
+### Features
+
+* **agent:** restart hook runner for docker containers and systemd units ([e3e2053](https://github.com/metril/certforge/commit/e3e205365020563e5d61c820f85ea9e07217bd49))
+* **hooks:** restart hook kind for Docker containers and systemd units ([51d67a7](https://github.com/metril/certforge/commit/51d67a75f6b2796904c065262c939592b09a8bb7))
+* **hooks:** restart hook kind in schema, API and validation ([2cbd169](https://github.com/metril/certforge/commit/2cbd169001f6acd5039c8e1bf599f3ab9c2b964c))
+* **web:** restart hook kind in the hook sheet, plus docs ([0e3e4bb](https://github.com/metril/certforge/commit/0e3e4bb2a483689f76c5ce925f320a384b08f023))
+
+
+### Bug Fixes
+
+* **hooks:** describe HookInput.kind and set kind in test fixtures ([b3875ee](https://github.com/metril/certforge/commit/b3875ee4d9a2f6ab82d4eedc4c50f12645fe949d))
+* **hooks:** no redirects on docker client, allow templated systemd units ([a503e4a](https://github.com/metril/certforge/commit/a503e4a81f1d0ca536b351b4c93772806c5aff84))
+
 ## [0.20.0](https://github.com/metril/certforge/compare/v0.19.0...v0.20.0) (2026-10-12)
 
 
