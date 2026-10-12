@@ -238,12 +238,13 @@ Every command the SSH target runs, before or after the files, is recorded as a h
 
 ## pfSense Plus
 
-A pfSense Plus target pushes a certificate into pfSense through Netgate's built-in REST API (pfSense Plus 25.03 or later). It runs on the server, so its grants have no client. The API is new and its details may change between releases.
+A pfSense Plus target pushes a certificate into pfSense through the Netgate Nexus REST API (pfSense Plus 25.03 or later). It runs on the server, so its grants have no client. The API is new and its details may change between releases.
 
 | Field | What it does | Default |
 |---|---|---|
-| **API URL** (`url`) | https URL of the API including its prefix, for example `https://fw.example.net/api/v2`. | None |
+| **API URL** (`url`) | https URL of the Nexus API, for example `https://fw.example.net:8443/api`. | None |
 | **Username**, **Password** (`username`, `password`) | A pfSense user allowed to manage certificates. The password is stored encrypted. | None |
+| **Device** (`device`) | Name, alias or ID of the firewall in Nexus. | The only managed device |
 | **Certificate name** (`certName`) | Description of the certificate in pfSense, letters, digits, space, `.`, `_` and `-`. | The certificate's name |
 | **Use for the WebGUI** (`setWebGuiCert`) | Also select this certificate for the web interface. | Off |
 | **CA certificate** (`caPem`) | PEM to trust for pfSense's TLS certificate, on top of the system roots. | None |
