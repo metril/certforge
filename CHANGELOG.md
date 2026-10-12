@@ -2,6 +2,15 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.28.1](https://github.com/metril/certforge/compare/v0.28.0...v0.28.1) (2026-10-12)
+
+
+### Bug Fixes
+
+* **web:** keep mobile card lists from widening past the viewport ([72b0f8a](https://github.com/metril/certforge/commit/72b0f8a960598c6d4308ae7db630dced78251d9f))
+* **web:** stop card lists from causing horizontal scroll on narrow screens ([f1f5f8d](https://github.com/metril/certforge/commit/f1f5f8d0363b4c894749f11f37223e6313340e6a))
+* **web:** stop long target details widening the mobile target list ([2f8a02e](https://github.com/metril/certforge/commit/2f8a02ee338af7dab2881f686fa17f9fc4e50a78))
+
 ## [0.28.0](https://github.com/metril/certforge/compare/v0.27.1...v0.28.0) (2026-10-12)
 
 
