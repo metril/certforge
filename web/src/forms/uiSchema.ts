@@ -91,6 +91,15 @@ function isMonoKey(key: string, p: Prop): boolean {
 export function buildUiSchema(schema: RJSFSchema, opts: { storedSecrets?: string[] } = {}): UiSchema {
   const stored = new Set(opts.storedSecrets ?? []);
   const ui: UiSchema = { 'ui:submitButtonOptions': { norender: true } };
+  // The API sends `properties` alphabetized (Go map) plus `x-order` with the
+  // author's order; RJSF rejects names absent from the schema (e.g. fields a
+  // saved credential hides), so keep only present ones and let '*' catch the rest.
+  const order = (schema as { 'x-order'?: unknown })['x-order'];
+  if (Array.isArray(order)) {
+    const present = new Set(Object.keys(schema.properties ?? {}));
+    const keys = order.filter((k): k is string => typeof k === 'string' && present.has(k));
+    if (keys.length > 0) ui['ui:order'] = [...keys, '*'];
+  }
   for (const [key, p] of props(schema)) {
     if (p.serverPath === true) {
       ui[key] = { 'ui:widget': 'hidden' };
