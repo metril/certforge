@@ -4,7 +4,7 @@
 -- hook_runs with no client, against the grant's deploy target.
 ALTER TABLE client_cert_grants ADD COLUMN post_action jsonb NOT NULL DEFAULT '{}';
 ALTER TABLE hook_runs ALTER COLUMN client_id DROP NOT NULL;
-ALTER TABLE hook_runs ADD COLUMN deploy_target_id uuid REFERENCES deploy_targets (id) ON DELETE CASCADE;
+ALTER TABLE hook_runs ADD COLUMN deploy_target_id uuid REFERENCES deploy_targets (id) ON DELETE CASCADE DEFERRABLE INITIALLY IMMEDIATE;
 CREATE INDEX hook_runs_grant ON hook_runs (grant_id, ran_at DESC);
 CREATE INDEX hook_runs_target ON hook_runs (deploy_target_id, ran_at DESC, id DESC) WHERE deploy_target_id IS NOT NULL;
 
