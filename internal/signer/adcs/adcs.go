@@ -22,6 +22,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf16"
@@ -99,6 +100,132 @@ type Template struct {
 	CanEnroll bool
 	// CAs are the authorities that issue the template.
 	CAs []CAInfo
+	// Schema is the template's policySchema (version).
+	Schema int
+	// SubjectFlags are the msPKI-Certificate-Name-Flag bits.
+	SubjectFlags int
+	// RASignatures is the number of authorized signatures required.
+	RASignatures int
+	// KeyAlgorithm is "RSA", "ECDSA_P256", "ECDSA_P384", or "" when unknown.
+	KeyAlgorithm string
+	// Providers are the allowed cryptographic service providers.
+	Providers []string
+	// EKUs are the template's extended key usage (or application policy) OIDs.
+	EKUs []string
+
+	algNil bool
+}
+
+const (
+	oidRSA       = "1.2.840.113549.1.1.1"
+	oidP256      = "1.2.840.10045.3.1.7"
+	oidP384      = "1.3.132.0.34"
+	oidEKU       = "2.5.29.37"
+	oidAppPolicy = "1.3.6.1.4.1.311.21.10"
+	oidServer    = "1.3.6.1.5.5.7.3.1"
+	oidAnyEKU    = "2.5.29.37.0"
+)
+
+// FlagEnrolleeSuppliesSubject is CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT.
+const FlagEnrolleeSuppliesSubject = 0x1
+
+// SuppliesSubject reports whether the request may carry its own subject.
+func (t Template) SuppliesSubject() bool { return t.SubjectFlags&FlagEnrolleeSuppliesSubject != 0 }
+
+// LegacyCSP reports whether the template is a legacy CSP template (schema 1
+// or 2, no algorithm reference, or no Key Storage Provider listed).
+func (t Template) LegacyCSP() bool {
+	if t.Schema < 3 || t.algNil {
+		return true
+	}
+	for _, p := range t.Providers {
+		if strings.Contains(p, "Key Storage Provider") {
+			return false
+		}
+	}
+	return true
+}
+
+// ServerAuthOK reports whether the template allows server authentication.
+func (t Template) ServerAuthOK() bool {
+	if len(t.EKUs) == 0 {
+		return true
+	}
+	for _, e := range t.EKUs {
+		if e == oidServer || e == oidAnyEKU {
+			return true
+		}
+	}
+	return false
+}
+
+// AllowedKeyTypes lists the CertForge key types the template accepts.
+func (t Template) AllowedKeyTypes() []string {
+	switch t.KeyAlgorithm {
+	case "RSA":
+		var out []string
+		for _, k := range []struct {
+			name string
+			bits int
+		}{{"rsa2048", 2048}, {"rsa3072", 3072}, {"rsa4096", 4096}} {
+			if k.bits >= t.MinKeySize {
+				out = append(out, k.name)
+			}
+		}
+		return out
+	case "ECDSA_P256":
+		return []string{"ec256"}
+	case "ECDSA_P384":
+		return []string{"ec384"}
+	}
+	return nil
+}
+
+// parseEKUs reads an extended key usage (2.5.29.37) or MS application
+// policies (1.3.6.1.4.1.311.21.10) extension value.
+func parseEKUs(oid string, der []byte) []string {
+	var seq []asn1.RawValue
+	if rest, err := asn1.Unmarshal(der, &seq); err != nil || len(rest) != 0 {
+		return nil
+	}
+	var out []string
+	for _, e := range seq {
+		var id asn1.ObjectIdentifier
+		switch {
+		case e.Tag == asn1.TagOID && e.Class == asn1.ClassUniversal:
+			if _, err := asn1.Unmarshal(e.FullBytes, &id); err != nil {
+				continue
+			}
+		case oid == oidAppPolicy && e.Tag == asn1.TagSequence:
+			if _, err := asn1.Unmarshal(e.Bytes, &id); err != nil {
+				continue
+			}
+		default:
+			continue
+		}
+		out = append(out, id.String())
+	}
+	return out
+}
+
+func keyAlgorithm(oid, name string) string {
+	switch oid {
+	case oidRSA:
+		return "RSA"
+	case oidP256:
+		return "ECDSA_P256"
+	case oidP384:
+		return "ECDSA_P384"
+	}
+	switch {
+	case strings.Contains(name, "ECDSA_P256"):
+		return "ECDSA_P256"
+	case strings.Contains(name, "ECDSA_P384"):
+		return "ECDSA_P384"
+	case strings.EqualFold(name, "RSA"):
+		return "RSA"
+	}
+	return ""
 }
 
 // PolicyResult is the parsed GetPolicies response.
@@ -138,9 +265,10 @@ func (s *Signer) Policies(ctx context.Context) (*PolicyResult, error) {
 	if gp == nil {
 		return nil, errors.New("adcs: no GetPoliciesResponse in reply")
 	}
-	oids := map[string]string{}
+	oids, names := map[string]string{}, map[string]string{}
 	for _, o := range gp.OIDs {
-		oids[strings.TrimSpace(o.RefID)] = strings.TrimSpace(o.Value)
+		ref := strings.TrimSpace(o.RefID)
+		oids[ref], names[ref] = strings.TrimSpace(o.Value), strings.TrimSpace(o.DefaultName)
 	}
 	cas := map[int]CAInfo{}
 	res := &PolicyResult{}
@@ -165,6 +293,27 @@ func (s *Signer) Policies(ctx context.Context) (*PolicyResult, error) {
 		t := Template{
 			Name: strings.TrimSpace(p.Attrs.CommonName), OID: oids[strings.TrimSpace(p.OIDRef)],
 			MinKeySize: p.Attrs.MinKeyLen, CanEnroll: p.Attrs.Enroll, EnrollmentFlags: p.Attrs.EnrollFlag,
+		}
+		a := p.Attrs
+		t.Schema, t.SubjectFlags, t.RASignatures = a.Schema, a.SubjectFlag, a.RASigs
+		t.Providers = a.Providers
+		ref := strings.TrimSpace(a.AlgRef.Value)
+		nl := strings.TrimSpace(a.AlgRef.Nil)
+		t.algNil = nl == "true" || nl == "1" || ref == ""
+		switch {
+		case nl == "true" || nl == "1":
+			t.KeyAlgorithm = "RSA" // xsi:nil is a legacy RSA CSP
+		case ref != "":
+			t.KeyAlgorithm = keyAlgorithm(oids[ref], names[ref])
+		}
+		for _, e := range a.Extensions {
+			id := oids[strconv.Itoa(e.OIDRef)]
+			if id != oidEKU && id != oidAppPolicy {
+				continue
+			}
+			if der, err := base64.StdEncoding.DecodeString(strings.Join(strings.Fields(e.Value), "")); err == nil {
+				t.EKUs = append(t.EKUs, parseEKUs(id, der)...)
+			}
 		}
 		for _, ref := range p.CARefs {
 			if ci, ok := cas[ref]; ok {
@@ -264,7 +413,23 @@ func (s *Signer) checkKeySize(ctx context.Context, req signer.IssueRequest) erro
 		return nil
 	}
 	tpl, err := pr.Template(s.cfg.Template)
-	if err != nil || tpl.MinKeySize <= bits {
+	if err != nil {
+		return nil
+	}
+	if want := tpl.KeyAlgorithm; want != "" {
+		switch {
+		case isEC && want == "RSA":
+			return keyTooSmallError{fmt.Sprintf("adcs: key %s: template %q issues RSA keys only; use an RSA key or a template with an ECDSA key algorithm",
+				label, s.cfg.Template)}
+		case !isEC && want != "RSA":
+			return keyTooSmallError{fmt.Sprintf("adcs: key %s: template %q issues %s keys only; use an ECDSA key or an RSA template",
+				label, s.cfg.Template, strings.Replace(want, "_", " ", 1))}
+		case isEC && want == "ECDSA_P256" && bits != 256, isEC && want == "ECDSA_P384" && bits != 384:
+			return keyTooSmallError{fmt.Sprintf("adcs: key %s: template %q issues %s keys only",
+				label, s.cfg.Template, strings.Replace(want, "_", " ", 1))}
+		}
+	}
+	if tpl.MinKeySize <= bits {
 		return nil
 	}
 	hint := fmt.Sprintf("use an RSA key of at least %d bits", tpl.MinKeySize)

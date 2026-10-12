@@ -115,7 +115,9 @@ type fakeAD struct {
 	cesBody  string
 	template string
 	cepFail  bool
-	minKey   int // minimalKeyLength the policy reports
+	minKey   int    // minimalKeyLength the policy reports
+	rawAttrs string // when set, replaces the policy <attributes> and <oIDs> body
+	rawOIDs  string
 	srv      *httptest.Server
 }
 
@@ -167,6 +169,11 @@ func (f *fakeAD) cep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	issuer := base64.StdEncoding.EncodeToString(f.issuing.Raw)
+	if f.rawAttrs != "" {
+		fmt.Fprintf(w, soapHead+`<GetPoliciesResponse xmlns="http://schemas.microsoft.com/windows/pki/2009/01/enrollmentpolicy"><response><policies><policy><policyOIDReference>0</policyOIDReference><cAs><cAReference>0</cAReference></cAs><attributes>%s</attributes></policy></policies></response><oIDs>%s</oIDs><cAs><cA><uris><cAURI><clientAuthentication>4</clientAuthentication><uri>%s</uri><priority>1</priority></cAURI></uris><certificate>%s</certificate><cAReferenceID>0</cAReferenceID></cA></cAs></GetPoliciesResponse>`+soapTail,
+			f.rawAttrs, f.rawOIDs, f.srv.URL+"/ces", issuer)
+		return
+	}
 	fmt.Fprintf(w, soapHead+`<GetPoliciesResponse xmlns="http://schemas.microsoft.com/windows/pki/2009/01/enrollmentpolicy">
 <response><policyID/><policies><policy><policyOIDReference>0</policyOIDReference><cAs><cAReference>0</cAReference></cAs>
 <attributes><commonName>%s</commonName><enrollmentFlags>2</enrollmentFlags><policySchema>2</policySchema><permission><enroll>true</enroll><autoEnroll>false</autoEnroll></permission>
@@ -455,5 +462,87 @@ func TestIssueKeyCheckSkippedOnCEPFailure(t *testing.T) {
 	f.cepFail = true
 	if _, err := f.signer().Issue(context.Background(), signer.IssueRequest{Names: []string{"leaf.example.test"}, KeyType: signer.EC256}); err != nil {
 		t.Fatalf("issue should proceed when CEP fails: %v", err)
+	}
+}
+
+func eku(t *testing.T, app bool, oids ...asn1.ObjectIdentifier) string {
+	t.Helper()
+	var v any = oids
+	if app {
+		var seqs [][]asn1.ObjectIdentifier
+		for _, o := range oids {
+			seqs = append(seqs, []asn1.ObjectIdentifier{o})
+		}
+		v = seqs
+	}
+	b, err := asn1.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return base64.StdEncoding.EncodeToString(b)
+}
+
+func TestPoliciesRequirementFields(t *testing.T) {
+	serverAuth := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 3, 1}
+	clientAuth := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 3, 2}
+	f := newFake(t, "issued")
+
+	// Schema 2, RSA, legacy SChannel CSP (nil algorithm), application policies.
+	f.rawAttrs = `<commonName>CertForgeWeb</commonName><policySchema>2</policySchema><enrollmentFlags>0</enrollmentFlags><subjectNameFlags>1</subjectNameFlags>` +
+		`<permission><enroll>true</enroll><autoEnroll>false</autoEnroll></permission>` +
+		`<privateKeyAttributes><minimalKeyLength>3072</minimalKeyLength><keySpec>1</keySpec><algorithmOIDReference xsi:nil="true" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"/>` +
+		`<cryptoProviders><provider>Microsoft RSA SChannel Cryptographic Provider</provider></cryptoProviders></privateKeyAttributes>` +
+		`<rARequirements><rASignatures>1</rASignatures></rARequirements>` +
+		`<extensions><extension><oIDReference>1</oIDReference><critical>false</critical><value>` + eku(t, true, clientAuth) + `</value></extension></extensions>`
+	f.rawOIDs = `<oID><value>1.3.6.1.4.1.311.21.8.1.2</value><group>9</group><oIDReferenceID>0</oIDReferenceID></oID><oID><value>1.3.6.1.4.1.311.21.10</value><group>1</group><oIDReferenceID>1</oIDReferenceID></oID>`
+	res, err := f.signer().Policies(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpl, _ := res.Template("CertForgeWeb")
+	if tpl.Schema != 2 || !tpl.SuppliesSubject() || tpl.RASignatures != 1 || tpl.KeyAlgorithm != "RSA" || !tpl.LegacyCSP() {
+		t.Fatalf("schema-2 template = %+v", tpl)
+	}
+	if len(tpl.EKUs) != 1 || tpl.EKUs[0] != clientAuth.String() || tpl.ServerAuthOK() {
+		t.Fatalf("ekus = %v", tpl.EKUs)
+	}
+	if got := strings.Join(tpl.AllowedKeyTypes(), ","); got != "rsa3072,rsa4096" {
+		t.Fatalf("allowed = %s", got)
+	}
+
+	// Schema 4, ECDSA_P384, KSP, plain EKU extension with server auth.
+	f.rawAttrs = `<commonName>CertForgeWeb</commonName><policySchema>4</policySchema><enrollmentFlags>0</enrollmentFlags><subjectNameFlags>0</subjectNameFlags>` +
+		`<permission><enroll>true</enroll></permission>` +
+		`<privateKeyAttributes><minimalKeyLength>384</minimalKeyLength><algorithmOIDReference>2</algorithmOIDReference>` +
+		`<cryptoProviders><provider>Microsoft Software Key Storage Provider</provider></cryptoProviders></privateKeyAttributes>` +
+		`<extensions><extension><oIDReference>1</oIDReference><critical>false</critical><value>` + eku(t, false, serverAuth) + `</value></extension></extensions>`
+	f.rawOIDs = `<oID><value>1.3.6.1.4.1.311.21.8.1.2</value><oIDReferenceID>0</oIDReferenceID></oID><oID><value>2.5.29.37</value><oIDReferenceID>1</oIDReferenceID></oID><oID><value>1.3.132.0.34</value><group>3</group><oIDReferenceID>2</oIDReferenceID><defaultName>ECDSA_P384</defaultName></oID>`
+	res, err = f.signer().Policies(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpl, _ = res.Template("CertForgeWeb")
+	if tpl.Schema != 4 || tpl.SuppliesSubject() || tpl.KeyAlgorithm != "ECDSA_P384" || tpl.LegacyCSP() || !tpl.ServerAuthOK() {
+		t.Fatalf("schema-4 template = %+v", tpl)
+	}
+	if got := strings.Join(tpl.AllowedKeyTypes(), ","); got != "ec384" {
+		t.Fatalf("allowed = %s", got)
+	}
+
+	// Family pre-check: RSA key on an ECDSA template, and the wrong curve.
+	for _, kt := range []signer.KeyType{signer.RSA2048, signer.EC256} {
+		_, err = f.signer().Issue(context.Background(), signer.IssueRequest{Names: []string{"leaf.example.test"}, KeyType: kt})
+		if !errors.Is(err, ErrKeyTooSmall) || !strings.Contains(err.Error(), "ECDSA P384 keys only") {
+			t.Fatalf("%s: err = %v", kt, err)
+		}
+	}
+	if _, err = f.signer().Issue(context.Background(), signer.IssueRequest{Names: []string{"leaf.example.test"}, KeyType: signer.EC384}); err != nil {
+		t.Fatalf("ec384: %v", err)
+	}
+}
+
+func TestEmptyEKUAllowsServerAuth(t *testing.T) {
+	if !(Template{}).ServerAuthOK() {
+		t.Fatal("empty EKU list should allow server auth")
 	}
 }
