@@ -2,6 +2,16 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.29.1](https://github.com/metril/certforge/compare/v0.29.0...v0.29.1) (2026-10-12)
+
+
+### Bug Fixes
+
+* **deploy:** tolerate base64 and untagged PHP output from pfSense ([1971a57](https://github.com/metril/certforge/commit/1971a57b9cf480289b1486ffeec6db417c418140))
+* pfSense PHP output handling and server grant row layout ([1ababda](https://github.com/metril/certforge/commit/1ababdabb0de1abd651cf5a215dae6483eff656a))
+* **web:** give the server grant status column room for its deploy time ([6b06558](https://github.com/metril/certforge/commit/6b065588d6ffccd50bccfe712a2701958f786df0))
+* **web:** wrap the pfSense usage error inside the grant row ([4427cfb](https://github.com/metril/certforge/commit/4427cfb582c55354f7295cb6c42e51b22e969679))
+
 ## [0.29.0](https://github.com/metril/certforge/compare/v0.28.4...v0.29.0) (2026-10-12)
 
 
