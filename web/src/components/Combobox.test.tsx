@@ -42,3 +42,35 @@ it('a disabled option shows its hint and cannot be picked', async () => {
   await user.click(disabledOption);
   expect(screen.getByRole('combobox', { name: 'Certificate' })).toHaveTextContent('Pick a certificate');
 });
+
+function CreatableHarness({ initial }: { initial?: string }) {
+  const [v, setV] = useState<string | undefined>(initial);
+  return (
+    <>
+      <Combobox aria-label="Content" creatable value={v} onChange={setV} options={[{ value: 'fullchain', label: 'fullchain' }]} placeholder="Pick" emptyText="None" />
+      <output data-testid="v">{String(v)}</output>
+    </>
+  );
+}
+
+it('creatable: typed text becomes a Use option that emits it, and invalid text is refused', async () => {
+  const { user } = renderUI(<CreatableHarness />);
+  await user.click(screen.getByRole('combobox', { name: 'Content' }));
+  await user.type(screen.getByPlaceholderText('Search'), 'haproxy.pem');
+  await user.click(screen.getByRole('option', { name: 'Use “haproxy.pem”' }));
+  expect(screen.getByTestId('v')).toHaveTextContent('haproxy.pem');
+  expect(screen.getByRole('combobox', { name: 'Content' })).toHaveTextContent('haproxy.pem');
+});
+
+it('creatable: text with a slash shows an error and no Use option', async () => {
+  const { user } = renderUI(<CreatableHarness />);
+  await user.click(screen.getByRole('combobox', { name: 'Content' }));
+  await user.type(screen.getByPlaceholderText('Search'), 'a/b');
+  expect(screen.queryByRole('option', { name: /Use/ })).toBeNull();
+  expect(screen.getByText(/letters, digits/)).toBeInTheDocument();
+});
+
+it('creatable: a value outside the options shows on the trigger', () => {
+  renderUI(<CreatableHarness initial="custom.pem" />);
+  expect(screen.getByRole('combobox', { name: 'Content' })).toHaveTextContent('custom.pem');
+});

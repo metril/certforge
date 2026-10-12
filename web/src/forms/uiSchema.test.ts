@@ -141,3 +141,16 @@ it('routes a private-key secret to a multiline secret widget; a plain password s
   expect(ui.privateKey).toMatchObject({ 'ui:widget': 'secret', 'ui:options': { stored: false, multiline: true } });
   expect(ui.password).toMatchObject({ 'ui:widget': 'secret', 'ui:options': { stored: false } });
 });
+
+it('routes an array of {path, content, mode} objects to the sshFiles field; plain string arrays stay listArray', () => {
+  const s = {
+    type: 'object',
+    properties: {
+      files: { type: 'array', items: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' }, mode: { type: 'string' } } } },
+      tags: { type: 'array', items: { type: 'string' } },
+    },
+  } as unknown as RJSFSchema;
+  const ui = buildUiSchema(s);
+  expect(ui.files).toMatchObject({ 'ui:field': 'sshFiles' });
+  expect(ui.tags).toMatchObject({ 'ui:field': 'listArray' });
+});

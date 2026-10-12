@@ -15,6 +15,14 @@ function isPlainStringArray(p: Prop): boolean {
   return p.type === 'array' && typeof items === 'object' && !Array.isArray(items) && items.type === 'string' && items.enum === undefined;
 }
 
+// The SSH target's `files`: an array of {path, content, mode} objects maps to
+// the structured SshFilesField instead of RJSF's default per-item rows.
+function isSshFileList(p: Prop): boolean {
+  const items = p.items;
+  if (p.type !== 'array' || typeof items !== 'object' || Array.isArray(items) || typeof items.properties !== 'object') return false;
+  return ['path', 'content', 'mode'].every((k) => k in items.properties!);
+}
+
 // An object field keyed by an arbitrary name (`patternProperties`/
 // `additionalProperties`, no fixed `properties`) — the webhook notifier's
 // `headers` (internal/notify/webhook.schema.json) — maps to the ChannelSheet's
@@ -123,6 +131,8 @@ export function buildUiSchema(schema: RJSFSchema, opts: { storedSecrets?: string
       ui[key] = { ...base, 'ui:widget': 'sshHostKey', 'ui:options': { ...(hostKey ? { hostKey } : {}), ...(portKey ? { portKey } : {}) } };
     } else if (p.type === 'string' && (p.format === 'textarea' || (p.maxLength ?? 0) > 200)) {
       ui[key] = { ...base, 'ui:widget': 'textarea' };
+    } else if (isSshFileList(p)) {
+      ui[key] = { ...base, 'ui:field': 'sshFiles' };
     } else if (isPlainStringArray(p)) {
       ui[key] = { ...base, 'ui:field': 'listArray' };
     } else if (isHeaderMap(p)) {

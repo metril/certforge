@@ -5,7 +5,7 @@ import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
 import { CircleAlert, Cpu, Server as ServerIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError, errorMessage } from '@/api/errors';
-import { createDeployTarget, updateDeployTarget } from '@/api/queries/delivery';
+import { createDeployTarget, layoutsQuery, updateDeployTarget } from '@/api/queries/delivery';
 import { invalidateGrants } from '@/api/queries/grants';
 import { CREDENTIAL_KIND_LABEL, deployCredentialsQuery, suppliedFields } from '@/api/queries/deployCredentials';
 import type { DeployTarget, ProviderSchema } from '@/api/types';
@@ -69,7 +69,26 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
   // Settled so the form's mount-time onChange (defaults, secret sentinels) is not an edit.
   const dirty = useDirty({ name, type, runsOn, credentialId, config: settledConfig(schema, config, storedSecrets) });
   const canExportKeys = can(me, 'keys:export', orgId);
-  const formContext = useMemo(() => ({ caBundle: caBundleScope(me, orgId), sshHostKey: { orgId, canPeek: can(me, 'delivery:write', orgId) } }), [me, orgId]);
+  const layoutsQ = useQuery({ ...layoutsQuery(orgId), enabled: type === 'ssh' });
+  // The SSH files editor suggests layout file names: the dispatcher resolves
+  // a file's content by the base name of the layout path.
+  const sshContentNames = useMemo(() => {
+    const seen = new Set(['fullchain', 'cert', 'chain', 'key', 'bundle']);
+    const out: { name: string; layout: string }[] = [];
+    for (const l of layoutsQ.data ?? []) {
+      for (const f of l.files) {
+        const name = f.path.split('/').pop() ?? '';
+        if (name === '' || seen.has(name)) continue;
+        seen.add(name);
+        out.push({ name, layout: l.name });
+      }
+    }
+    return out;
+  }, [layoutsQ.data]);
+  const formContext = useMemo(
+    () => ({ caBundle: caBundleScope(me, orgId), sshHostKey: { orgId, canPeek: can(me, 'delivery:write', orgId) }, sshContentNames }),
+    [me, orgId, sshContentNames],
+  );
   // Locked once the target exists (R3: runsOn/type are immutable after
   // create) or for a viewer opening it read-only.
   const locked = !!target || readOnly;
