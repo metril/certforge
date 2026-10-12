@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -35,6 +36,40 @@ func (s *Server) GetMetaSchemas(ctx context.Context, _ gen.GetMetaSchemasRequest
 	return gen.GetMetaSchemas200JSONResponse(out), nil
 }
 
+// propertyOrder returns the top-level "properties" keys of a JSON Schema in
+// source order. Decoding the schema into a map (for the generated response
+// type) sorts keys alphabetically and loses the author's field order, so the
+// order is sent separately as "x-order" for the UI to apply.
+func propertyOrder(raw json.RawMessage) []string {
+	var doc struct {
+		Properties json.RawMessage `json:"properties"`
+	}
+	if json.Unmarshal(raw, &doc) != nil || len(doc.Properties) == 0 {
+		return nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(doc.Properties))
+	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
+		return nil
+	}
+	var keys []string
+	for dec.More() {
+		t, err := dec.Token()
+		if err != nil {
+			return nil
+		}
+		k, ok := t.(string)
+		if !ok {
+			return nil
+		}
+		keys = append(keys, k)
+		var skip json.RawMessage
+		if dec.Decode(&skip) != nil {
+			return nil
+		}
+	}
+	return keys
+}
+
 func (s *Server) schemaEntries(k meta.Kind) ([]gen.SchemaEntry, error) {
 	entries := s.d.Meta.List(k)
 	out := make([]gen.SchemaEntry, 0, len(entries))
@@ -42,6 +77,9 @@ func (s *Server) schemaEntries(k meta.Kind) ([]gen.SchemaEntry, error) {
 		var schema map[string]interface{}
 		if err := json.Unmarshal(e.Schema, &schema); err != nil {
 			return nil, fmt.Errorf("meta %s/%s: %w", k, e.Code, err)
+		}
+		if order := propertyOrder(e.Schema); len(order) > 0 {
+			schema["x-order"] = order
 		}
 		se := gen.SchemaEntry{Code: e.Code, Name: e.Name, Schema: schema}
 		if len(e.Aliases) > 0 {
