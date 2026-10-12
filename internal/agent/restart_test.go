@@ -119,7 +119,12 @@ func TestParseRestartAllow(t *testing.T) {
 func TestDeployRestartPostHook(t *testing.T) {
 	dir := t.TempDir()
 	hits := 0
-	sock := dockerStub(t, func(w http.ResponseWriter, r *http.Request) { hits++; w.WriteHeader(204) })
+	sock := dockerStub(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/_ping" {
+			hits++
+		}
+		w.WriteHeader(204)
+	})
 	d := testDeployer([]string{dir})
 	d.Restart = &RestartRunner{Allow: map[string]bool{"docker:web": true}, DockerAddr: sock}
 	versionID := uuid.New()
