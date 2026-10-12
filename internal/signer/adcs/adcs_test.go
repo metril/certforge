@@ -183,6 +183,14 @@ func (f *fakeAD) ces(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprint(w, soapHead+`<s:Fault><s:Code><s:Value>s:Receiver</s:Value><s:Subcode><s:Value>a:InternalServiceFault</s:Value></s:Subcode></s:Code><s:Reason><s:Text xml:lang="en">boom</s:Text></s:Reason></s:Fault>`+soapTail)
 		return
+	case "policydenied", "policydeniedunknown":
+		code := "-2146877422"
+		if f.mode == "policydeniedunknown" {
+			code = "-2147024809"
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, soapHead+`<s:Fault><s:Code><s:Value>s:Sender</s:Value><s:Subcode><s:Value>a:InvalidRequest</s:Value></s:Subcode></s:Code><s:Reason><s:Text xml:lang="en-US">Denied by Policy Module</s:Text></s:Reason><s:Detail><CertificateEnrollmentWSDetail xmlns="http://schemas.microsoft.com/windows/pki/2009/01/enrollment"><BinaryResponse></BinaryResponse><ErrorCode>`+code+`</ErrorCode><InvalidRequest>true</InvalidRequest><RequestID>123</RequestID></CertificateEnrollmentWSDetail></s:Detail></s:Fault>`+soapTail)
+		return
 	case "pending":
 		fmt.Fprint(w, rstResp("Taken Under Submission", "77", ""))
 		return
@@ -331,6 +339,16 @@ func TestIssue(t *testing.T) {
 		{"denied", func(e error) bool {
 			var d ErrDenied
 			return errors.As(e, &d) && strings.Contains(d.Disposition, "Denied")
+		}, 0},
+		{"policydenied", func(e error) bool {
+			var d ErrDenied
+			return errors.As(e, &d) && strings.Contains(d.Disposition, "Denied by Policy Module") &&
+				strings.Contains(d.Disposition, "0x80094012") && strings.Contains(d.Disposition, "permissions") &&
+				strings.Contains(d.Disposition, "request 123")
+		}, 0},
+		{"policydeniedunknown", func(e error) bool {
+			var d ErrDenied
+			return errors.As(e, &d) && strings.Contains(d.Disposition, "(0x80070057;") && strings.Contains(d.Disposition, "request 123")
 		}, 0},
 		{"401", func(e error) bool { return errors.Is(e, ErrAuth) }, 0},
 		{"fault", func(e error) bool { var f *Fault; return errors.As(e, &f) && f.Subcode == "a:InternalServiceFault" }, 0},
