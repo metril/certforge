@@ -2,6 +2,21 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.30.0](https://github.com/metril/certforge/compare/v0.29.1...v0.30.0) (2026-10-12)
+
+
+### Features
+
+* **deploy:** choose which pfSense services to restart per grant ([f11c3ef](https://github.com/metril/certforge/commit/f11c3efc6707a91c4fcedf0894446ef41b8f67a1))
+* **deploy:** choose which pfSense services to restart per server grant ([2b75220](https://github.com/metril/certforge/commit/2b75220f5052cf6c2d1a17852f240f77e20b7587))
+* **web:** choose pfSense services to restart in the server grant form ([8189cf9](https://github.com/metril/certforge/commit/8189cf9c974812aac5e561e671b3fbb92dca3ac9))
+
+
+### Bug Fixes
+
+* **web:** keep Save disabled until deploy targets load ([27123b7](https://github.com/metril/certforge/commit/27123b7e6a5cc561d0a1380fa8c40c360c66fc35))
+* **web:** start the pfSense restart mode from the target's restartServices ([9a6e895](https://github.com/metril/certforge/commit/9a6e895766148d778ee1076206f58cd52494a89d))
+
 ## [0.29.1](https://github.com/metril/certforge/compare/v0.29.0...v0.29.1) (2026-10-12)
 
 
