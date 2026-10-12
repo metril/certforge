@@ -368,7 +368,7 @@ export const help = {
   'layout.keyMode': { text: 'This file holds a private key and every user on the host can read it. Use 0640 or tighter.' },
   'hook.phase': { text: 'Pre-deploy runs before files are written, and a failure stops the deploy. Post-deploy runs after.' },
   'hook.kind': { text: 'Exec runs an allowlisted command. Restart restarts a Docker container or systemd unit the agent lists.', learnMore: 'guide/agents.md#restart-hooks' },
-  'hook.target': { text: 'docker:<container> or systemd:<unit>. The agent must list this exact value in CF_RESTART_ALLOW. Browse shows what an agent reports.', learnMore: 'guide/agents.md#restart-hooks' },
+  'hook.target': { text: 'docker:<container> or systemd:<unit>. The agent must list it in CF_RESTART_ALLOW.', learnMore: 'guide/agents.md#restart-hooks' },
   'hook.argv': { text: 'The executable, then one argument per row. It never runs through a shell.', learnMore: 'guide/agents.md#hooks-and-the-allowlist' },
   'hook.allowlist': { text: 'Agents run a hook only when this exact path is in their CF_HOOK_ALLOW. Otherwise the run is refused.', learnMore: 'guide/agents.md#hooks-and-the-allowlist' },
   'hook.timeout': { text: 'The hook and its child processes are stopped after this long.' },
