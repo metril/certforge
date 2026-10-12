@@ -26,7 +26,7 @@ func TestCAPemValidatedAndNormalized(t *testing.T) {
 	der, _ := x509.CreateCertificate(rand.Reader, tpl, tpl, &k.PublicKey, k)
 	good := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
 	base := map[string]map[string]any{
-		"pfsense":   {"url": "https://h.example/api/v2", "username": "a", "password": "p"},
+		"pfsense":   {"url": "https://h.example/api", "username": "a", "password": "p"},
 		"truenas":   {"url": "https://h.example", "apiKey": "k"},
 		"routeros":  {"url": "https://h.example", "username": "a", "password": "p", "hostKey": sshxtest.Start(t, nil).HostLine()},
 		"authentik": {"url": "https://h.example", "token": "t"},

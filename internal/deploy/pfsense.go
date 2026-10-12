@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"regexp"
 	"strings"
@@ -27,10 +28,12 @@ const TypePfSense = "pfsense"
 
 var pfNameRe = regexp.MustCompile(`^[A-Za-z0-9 ._-]{0,64}$`)
 
-// Paths relative to the configured URL (which carries any prefix such as
-// /api/v2). The Netgate API is pre-launch and may drift; keep every path here.
+// Paths relative to the configured URL (the Nexus API base, e.g. .../api).
+// System paths are served under /device/pfsense/{id}/api when Nexus manages
+// the firewall. Keep every path here.
 const (
 	pfLogin   = "/login"
+	pfDevices = "/mim/devices"
 	pfCerts   = "/system/certificates"
 	pfAdmin   = "/system/advanced/admin"
 	pfErrCap  = 200
@@ -42,6 +45,7 @@ type PfSenseConfig struct {
 	URL            string `json:"url"`
 	Username       string `json:"username"`
 	Password       string `json:"password"`
+	Device         string `json:"device,omitempty"`
 	CertName       string `json:"certName,omitempty"`
 	SetWebGuiCert  bool   `json:"setWebGuiCert,omitempty"`
 	CAPEM          string `json:"caPem,omitempty"`
@@ -51,15 +55,16 @@ type PfSenseConfig struct {
 const pfSenseSchema = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "pfSense Plus",
-  "description": "Pushes a certificate and its private key into pfSense Plus (25.03+) through its REST API, updating an existing certificate entry in place. Runs on the server.",
+  "description": "Pushes a certificate and its private key into pfSense Plus (25.03+) through the Netgate Nexus REST API, updating an existing certificate entry in place. Runs on the server.",
   "credentialKinds": ["password"],
   "type": "object",
   "additionalProperties": false,
   "required": ["url", "username", "password"],
   "properties": {
-    "url": {"type": "string", "format": "uri", "title": "API URL", "description": "https URL of the REST API including any prefix, e.g. https://fw.example.net/api/v2."},
+    "url": {"type": "string", "format": "uri", "title": "API URL", "description": "https URL of the Nexus API, e.g. https://fw.example.net:8443/api."},
     "username": {"type": "string", "title": "Username", "description": "pfSense user allowed to manage certificates."},
     "password": {"type": "string", "secret": true, "title": "Password"},
+    "device": {"type": "string", "default": "", "title": "Device", "description": "Name, alias or ID of the firewall in Nexus. Empty uses the only managed device."},
     "certName": {"type": "string", "pattern": "^[A-Za-z0-9 ._-]{0,64}$", "default": "", "title": "Certificate name", "description": "Description of the certificate in pfSense. Empty uses the certificate's name."},
     "setWebGuiCert": {"type": "boolean", "default": false, "title": "Use for the WebGUI", "description": "Also select this certificate for the pfSense web interface."},
     "caPem": {"type": "string", "format": "pem-bundle", "title": "CA certificate", "description": "PEM certificate(s) to trust for pfSense's TLS certificate, in addition to the system roots."},
@@ -162,6 +167,11 @@ func pfSame(x map[string]any, leafDER []byte) bool {
 	sum := sha256.Sum256(leafDER)
 	fp := hex.EncodeToString(sum[:])
 	b64 := base64.StdEncoding.EncodeToString(leafDER)
+	if info, ok := x["info"].(map[string]any); ok {
+		if f, _ := info["cert_fingerprint"].(string); f != "" && strings.EqualFold(strings.ReplaceAll(f, ":", ""), fp) {
+			return true
+		}
+	}
 	for k, v := range x {
 		s, ok := v.(string)
 		if !ok || s == "" {
@@ -217,6 +227,10 @@ func (PfSense) Deploy(ctx context.Context, req targets.Request) (targets.Result,
 	if err != nil {
 		return fail(err)
 	}
+	if client.HTTPClient().Jar == nil { // login sets a refresh cookie
+		jar, _ := cookiejar.New(nil)
+		client.HTTPClient().Jar = jar
+	}
 	base := strings.TrimRight(cfg.URL, "/")
 	token := ""
 	call := func(method, path string, body any) ([]byte, error) {
@@ -264,7 +278,9 @@ func (PfSense) Deploy(ctx context.Context, req targets.Request) (targets.Result,
 		return b, nil
 	}
 
-	b, err := call(http.MethodPost, pfLogin, map[string]string{"username": cfg.Username, "password": cfg.Password})
+	b, err := call(http.MethodPost, pfLogin, map[string]string{
+		"username": base64.StdEncoding.EncodeToString([]byte(cfg.Username)),
+		"password": base64.StdEncoding.EncodeToString([]byte(cfg.Password))})
 	if err != nil {
 		return fail(err)
 	}
@@ -277,7 +293,17 @@ func (PfSense) Deploy(ctx context.Context, req targets.Request) (targets.Result,
 	token = login.Token
 	secrets["token"] = token
 
-	b, err = call(http.MethodGet, pfCerts, nil)
+	b, err = call(http.MethodGet, pfDevices, nil)
+	if err != nil {
+		return fail(err)
+	}
+	prefix, err := pfPickDevice(b, cfg.Device)
+	if err != nil {
+		return fail(err)
+	}
+	certs, admin := prefix+pfCerts, prefix+pfAdmin
+
+	b, err = call(http.MethodGet, certs, nil)
 	if err != nil {
 		return fail(err)
 	}
@@ -303,11 +329,11 @@ func (PfSense) Deploy(ctx context.Context, req targets.Request) (targets.Result,
 		verb = "updated"
 		if match[0].Same {
 			verb = "unchanged"
-		} else if _, err := call(http.MethodPost, pfCerts+"/"+url.PathEscape(refid), body); err != nil {
+		} else if _, err := call(http.MethodPost, certs+"/"+url.PathEscape(refid), body); err != nil {
 			return fail(err)
 		}
 	} else {
-		b, err = call(http.MethodPut, pfCerts, body)
+		b, err = call(http.MethodPut, certs, body)
 		if err != nil {
 			return fail(err)
 		}
@@ -327,7 +353,7 @@ func (PfSense) Deploy(ctx context.Context, req targets.Request) (targets.Result,
 	detail := fmt.Sprintf("certificate %s %s", refid, verb)
 
 	if cfg.SetWebGuiCert {
-		b, err := call(http.MethodGet, pfAdmin, nil)
+		b, err := call(http.MethodGet, admin, nil)
 		if err != nil {
 			return fail(err)
 		}
@@ -335,19 +361,55 @@ func (PfSense) Deploy(ctx context.Context, req targets.Request) (targets.Result,
 		if err := json.Unmarshal(b, &obj); err != nil {
 			return fail(fmt.Errorf("decoding webgui settings: %w", err))
 		}
-		target := obj
-		if _, ok := obj["sslcertref"]; !ok {
-			if d, ok := obj["data"].(map[string]any); ok {
-				target = d
-			}
+		// SystemAdvAdminSetting is {"admin": {..., "ssl_certref": "..."}}.
+		adm, ok := obj["admin"].(map[string]any)
+		if !ok {
+			return fail(errors.New("webgui settings have no admin object"))
 		}
-		if cur, _ := target["sslcertref"].(string); cur != refid {
-			target["sslcertref"] = refid
-			if _, err := call(http.MethodPost, pfAdmin, target); err != nil {
+		if cur, _ := adm["ssl_certref"].(string); cur != refid {
+			adm["ssl_certref"] = refid
+			if _, err := call(http.MethodPost, admin, obj); err != nil {
 				return fail(err)
 			}
 			detail += ", webgui cert set"
 		}
 	}
 	return targets.Result{Detail: detail}, nil
+}
+
+// pfPickDevice resolves the Nexus device to manage from a GET /mim/devices
+// body and returns the path prefix for its system endpoints.
+func pfPickDevice(body []byte, want string) (string, error) {
+	var doc struct {
+		Devices []struct {
+			DeviceID string `json:"device_id"`
+			Name     string `json:"name"`
+			Alias    string `json:"alias"`
+		} `json:"devices"`
+	}
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return "", fmt.Errorf("decoding device list: %w", err)
+	}
+	if len(doc.Devices) == 0 {
+		// Unverified: assume the firewall serving the API manages itself and
+		// exposes the system endpoints directly under the base URL.
+		return "", nil
+	}
+	prefix := func(id string) string { return "/device/pfsense/" + url.PathEscape(id) + "/api" }
+	if want == "" {
+		if len(doc.Devices) == 1 {
+			return prefix(doc.Devices[0].DeviceID), nil
+		}
+		var names []string
+		for _, d := range doc.Devices {
+			names = append(names, d.Name)
+		}
+		return "", fmt.Errorf("Nexus manages %d devices (%s); set Device to one of them", len(names), strings.Join(names, ", "))
+	}
+	for _, d := range doc.Devices {
+		if strings.EqualFold(d.Name, want) || strings.EqualFold(d.Alias, want) || strings.EqualFold(d.DeviceID, want) {
+			return prefix(d.DeviceID), nil
+		}
+	}
+	return "", fmt.Errorf("no Nexus device matches %q", want)
 }
