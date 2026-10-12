@@ -119,6 +119,13 @@ test('AD CS template picker and test', async ({ page }) => {
     ok,
     blocking: true,
   });
+  const serverAuthReq = {
+    key: 'serverAuth',
+    label: 'Allows Server Authentication',
+    fix: 'Extensions tab: add Server Authentication.',
+    ok: false,
+    blocking: false,
+  };
   let created: { type?: string; config?: Record<string, unknown> } | undefined;
   await page.route('**/api/v1/orgs/*/cas/adcs/probe', async (route) => {
     const b = route.request().postDataJSON() as Record<string, unknown>;
@@ -130,6 +137,7 @@ test('AD CS template picker and test', async ({ page }) => {
           { ...tpl, name: 'CertForgeWeb', oid: '1.3.6.1.4.1.311.21.8.1.2', requirements: [subjectReq(true)] },
           { ...tpl, name: 'Held', oid: '', requiresApproval: true, requirements: [subjectReq(true)] },
           { ...tpl, name: 'NoSubject', oid: '', requirements: [subjectReq(false)] },
+          { ...tpl, name: 'NoServerAuth', oid: '', requirements: [subjectReq(true), serverAuthReq] },
         ],
         ...(b.template ? { selected: { name: b.template, usable: true } } : {}),
       },
@@ -160,9 +168,13 @@ test('AD CS template picker and test', async ({ page }) => {
   await picker.click();
   await expect(page.getByRole('option', { name: 'Held' })).toHaveAttribute('aria-disabled', 'true');
   await expect(page.getByRole('option', { name: /^CertForgeWeb/ })).toContainText('RSA ≥2048');
-  await page.getByRole('option', { name: /^NoSubject/ }).click();
-  const reqs = sheet.getByRole('region', { name: 'Requirements for NoSubject' });
-  await expect(reqs).toContainText('Supply in the request');
+  const noSubject = page.getByRole('option', { name: /^NoSubject/ });
+  await expect(noSubject).toHaveAttribute('aria-disabled', 'true');
+  await expect(noSubject).toContainText('Supply in the request');
+  await page.getByRole('option', { name: /^NoServerAuth/ }).click();
+  const reqs = sheet.getByRole('region', { name: 'Requirements for NoServerAuth' });
+  await expect(reqs).toContainText('Allows Server Authentication (not met)');
+  await expect(reqs).toContainText('Extensions tab: add Server Authentication.');
   await expect(reqs).toContainText('CertForge key types: RSA 2048, RSA 3072, RSA 4096');
   await snap(page, 'ca-adcs-requirements');
   await picker.click();
