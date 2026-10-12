@@ -260,3 +260,50 @@ func TestOIDCDiscoveryFailureCachedBriefly(t *testing.T) {
 		t.Fatalf("hits after TTL = %d, want 3", hits.Load())
 	}
 }
+
+func TestOIDCEmailVerified(t *testing.T) {
+	for _, slim := range []bool{false, true} {
+		o, p, cfg := oidcSetup(t)
+		p.SetClaimsInIDToken(!slim)
+		p.SetUser(oidctest.User{Subject: "s", Email: "a@x.test", EmailVerified: true})
+		id, _, err := o.Finish(context.Background(), cfg, testRedirect, runFlow(t, o, cfg, "/"))
+		if err != nil || !id.EmailVerified {
+			t.Fatalf("slim=%v verified=%v err=%v", slim, id.EmailVerified, err)
+		}
+	}
+	o, p, cfg := oidcSetup(t)
+	p.SetUser(oidctest.User{Subject: "s", Email: "a@x.test"})
+	if id, _, err := o.Finish(context.Background(), cfg, testRedirect, runFlow(t, o, cfg, "/")); err != nil || id.EmailVerified {
+		t.Fatalf("unverified read as verified: %v", err)
+	}
+}
+
+func TestOIDCDisplayNameOrder(t *testing.T) {
+	cases := []struct {
+		name  string
+		claim string
+		user  oidctest.User
+		want  string
+	}{
+		{"preferred_username wins", "", oidctest.User{Subject: "s", Email: "e@x.test", Name: "Ann Lee", PreferredUsername: "ann"}, "ann"},
+		{"name next", "", oidctest.User{Subject: "s", Email: "e@x.test", Name: "Ann Lee"}, "Ann Lee"},
+		{"email next", "", oidctest.User{Subject: "s", Email: "e@x.test"}, "e@x.test"},
+		{"sub last", "", oidctest.User{Subject: "s"}, "s"},
+		{"custom claim first", "nick", oidctest.User{Subject: "s", Name: "Ann", PreferredUsername: "ann", Extra: map[string]any{"nick": "annie"}}, "annie"},
+		{"custom claim missing falls back", "nick", oidctest.User{Subject: "s", Name: "Ann", PreferredUsername: "ann"}, "ann"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			o, p, cfg := oidcSetup(t)
+			cfg.UsernameClaim = c.claim
+			p.SetUser(c.user)
+			id, _, err := o.Finish(context.Background(), cfg, testRedirect, runFlow(t, o, cfg, "/"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if id.Name != c.want {
+				t.Fatalf("name %q, want %q", id.Name, c.want)
+			}
+		})
+	}
+}

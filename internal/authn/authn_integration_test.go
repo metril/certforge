@@ -202,10 +202,11 @@ func TestLoadPrincipalGroupBindings(t *testing.T) {
 	ctx := context.Background()
 	pool, q := dbtest.New(t)
 	org := dbtest.Org(t, pool)
-	u, err := q.UpsertOIDCUser(ctx, sqlcgen.UpsertOIDCUserParams{Issuer: "https://idp.test", Subject: "s1", DisplayName: "Ann", Groups: []string{"ops"}})
+	row, err := q.UpsertOIDCUser(ctx, sqlcgen.UpsertOIDCUserParams{Issuer: "https://idp.test", Subject: "s1", DisplayName: "Ann", Groups: []string{"ops"}})
 	if err != nil {
 		t.Fatal(err)
 	}
+	u := sqlcgen.User{ID: row.ID, DisplayName: row.DisplayName, Disabled: row.Disabled, OidcGroups: row.OidcGroups}
 	for _, g := range []string{"ops", "other"} {
 		if err := q.CreateRoleBinding(ctx, sqlcgen.CreateRoleBindingParams{SubjectType: "oidc_group", Subject: g, Role: "operator", OrgID: &org}); err != nil {
 			t.Fatal(err)

@@ -31,7 +31,7 @@ func mkGlobalAdmin(ctx context.Context, t *testing.T, q *sqlcgen.Queries, name s
 	if err := q.CreateRoleBinding(ctx, sqlcgen.CreateRoleBindingParams{SubjectType: "user", Subject: u.ID.String(), Role: "admin"}); err != nil {
 		t.Fatal(err)
 	}
-	return u
+	return sqlcgen.User{ID: u.ID, OidcIssuer: u.OidcIssuer, OidcSub: u.OidcSub, Email: u.Email, DisplayName: u.DisplayName, Disabled: u.Disabled}
 }
 
 // TestEnsureAnotherGlobalAdmin exercises the guard directly (sequentially):

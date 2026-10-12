@@ -151,7 +151,7 @@ it('disables org-scoped nav and lands on a no-organization empty state when the 
     expect(within(nav).getByText(name).closest('[aria-disabled="true"]')).not.toBeNull();
   }
   expect(within(nav).getByRole('link', { name: 'Settings' })).toBeInTheDocument();
-  expect(await screen.findByText(/no organization/i)).toBeInTheDocument();
+  expect(await screen.findByText(/not a member of any organization yet.*ask an administrator/i)).toBeInTheDocument();
 });
 
 it('lists every org in the switcher, with the active org named in the trigger, once there is more than one', async () => {

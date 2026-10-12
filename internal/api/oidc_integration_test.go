@@ -367,3 +367,98 @@ func findCookie(resp *http.Response, name string) *http.Cookie {
 	}
 	return nil
 }
+
+func putAuth(e *testEnv, csrf string, fake *oidctest.Provider, extra map[string]any) (int, []byte) {
+	body := map[string]any{"enabled": true, "issuer": fake.URL(), "clientId": oidctest.ClientID, "clientSecret": oidctest.ClientSecret}
+	for k, v := range extra {
+		body[k] = v
+	}
+	resp, b := e.do(http.MethodPut, "/api/v1/settings/authentication", body, csrf) //nolint:bodyclose // testEnv.doRaw closes the body
+	return resp.StatusCode, b
+}
+
+func userBindings(t *testing.T, e *testEnv, sub string) []sqlcgen.RoleBinding {
+	t.Helper()
+	var id string
+	if err := e.deps.Pool.QueryRow(context.Background(), `SELECT id::text FROM users WHERE oidc_sub = $1`, sub).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	rbs, err := e.deps.Queries.ListRoleBindingsForUser(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rbs
+}
+
+func TestOIDCFirstLoginDefaultBinding(t *testing.T) {
+	e := newTestEnv(t)
+	csrf, org := e.seedAdminSession()
+	fake := oidctest.New(t)
+	fake.SetUser(oidctest.User{Subject: "n1", Email: "new@corp.test", EmailVerified: true, PreferredUsername: "newbie"})
+	if code, b := putAuth(e, csrf, fake, map[string]any{"defaultOrgId": org.String(), "defaultRole": "operator",
+		"allowedEmailDomains": []string{"corp.test"}}); code != http.StatusOK {
+		t.Fatalf("put: %d %s", code, b)
+	}
+	b, _ := oidcLogin(t, e, "/")
+	rbs := userBindings(t, e, "n1")
+	if len(rbs) != 1 || rbs[0].Role != "operator" || rbs[0].OrgID == nil || *rbs[0].OrgID != org {
+		t.Fatalf("bindings %+v", rbs)
+	}
+	resp, body := e.doClient(b, http.MethodGet, "/api/v1/auth/me", nil, nil) //nolint:bodyclose // doClient closes the body
+	var me meBody
+	if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &me) != nil || me.User.DisplayName != "newbie" || len(me.Orgs) != 1 {
+		t.Fatalf("me %d %s", resp.StatusCode, body)
+	}
+	// A second login (existing user) adds nothing, even after the binding is removed.
+	if _, err := e.deps.Pool.Exec(context.Background(), `DELETE FROM role_bindings WHERE subject = (SELECT id::text FROM users WHERE oidc_sub = 'n1')`); err != nil {
+		t.Fatal(err)
+	}
+	oidcLogin(t, e, "/")
+	if rbs := userBindings(t, e, "n1"); len(rbs) != 0 {
+		t.Fatalf("existing user got a binding: %+v", rbs)
+	}
+}
+
+func TestOIDCFirstLoginDomainNotAllowed(t *testing.T) {
+	e := newTestEnv(t)
+	csrf, org := e.seedAdminSession()
+	fake := oidctest.New(t)
+	fake.SetUser(oidctest.User{Subject: "n2", Email: "x@other.test", EmailVerified: true, Name: "X"})
+	if code, b := putAuth(e, csrf, fake, map[string]any{"defaultOrgId": org.String(), "allowedEmailDomains": []string{"corp.test"}}); code != http.StatusOK {
+		t.Fatalf("put: %d %s", code, b)
+	}
+	oidcLogin(t, e, "/")
+	if rbs := userBindings(t, e, "n2"); len(rbs) != 0 {
+		t.Fatalf("bindings %+v", rbs)
+	}
+}
+
+func TestOIDCDefaultBindingSettingsValidated(t *testing.T) {
+	e := newTestEnv(t)
+	csrf, org := e.seedAdminSession()
+	fake := oidctest.New(t)
+	for name, extra := range map[string]map[string]any{
+		"unknown org": {"defaultOrgId": "00000000-0000-4000-8000-000000000000"},
+		"bad org id":  {"defaultOrgId": "nope"},
+		"bad role":    {"defaultOrgId": org.String(), "defaultRole": "root"},
+		"bad domain":  {"allowedEmailDomains": []string{"not a domain"}},
+	} {
+		if code, b := putAuth(e, csrf, fake, extra); code != http.StatusUnprocessableEntity {
+			t.Fatalf("%s: %d %s", name, code, b)
+		}
+	}
+}
+
+func TestOIDCFirstLoginUnverifiedEmail(t *testing.T) {
+	e := newTestEnv(t)
+	csrf, org := e.seedAdminSession()
+	fake := oidctest.New(t)
+	fake.SetUser(oidctest.User{Subject: "n3", Email: "x@corp.test", Name: "X"})
+	if code, b := putAuth(e, csrf, fake, map[string]any{"defaultOrgId": org.String(), "allowedEmailDomains": []string{"corp.test"}}); code != http.StatusOK {
+		t.Fatalf("put: %d %s", code, b)
+	}
+	oidcLogin(t, e, "/")
+	if rbs := userBindings(t, e, "n3"); len(rbs) != 0 {
+		t.Fatalf("unverified email got bindings %+v", rbs)
+	}
+}

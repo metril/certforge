@@ -13,7 +13,7 @@ function NoOrganization() {
   const navigate = useNavigate();
   return (
     <Card className="grid place-items-center gap-4 py-20 text-center">
-      <p className="text-sm text-ink-muted">No organization exists for your account yet.</p>
+      <p className="text-sm text-ink-muted">You are not a member of any organization yet. Ask an administrator to grant you access.</p>
       <Button variant="outline" onClick={() => logout.mutate(undefined, { onSettled: () => void navigate({ to: '/login' }) })}>
         Sign out
       </Button>

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -31,6 +32,10 @@ const authSchema = `{
     "clientSecret": {"type": "string", "title": "Client secret", "description": "Leave empty for a public client using PKCE only.", "secret": true, "maxLength": 1024},
     "scopes": {"type": "array", "title": "Scopes", "description": "Requested scopes; must include openid.", "items": {"type": "string"}, "default": ["openid", "profile", "email", "groups"]},
     "groupsClaim": {"type": "string", "title": "Groups claim", "description": "ID token claim listing the user's groups; group role bindings match these. A dotted path (realm_access.roles) reads a nested claim.", "default": "groups", "maxLength": 128},
+    "usernameClaim": {"type": "string", "title": "Username claim", "description": "Claim tried first for the display name; falls back to preferred_username, name, email, then the subject.", "default": "preferred_username", "maxLength": 128},
+    "defaultOrgId": {"type": "string", "title": "Default organisation", "description": "Organisation a user signing in for the first time is added to. Leave empty to grant nothing automatically.", "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})?$"},
+    "defaultRole": {"type": "string", "title": "Default role", "description": "Role granted in the default organisation on first sign-in.", "enum": ["admin", "org-admin", "operator", "viewer", "auditor"], "default": "viewer"},
+    "allowedEmailDomains": {"type": "array", "title": "Allowed email domains", "description": "When set, only first sign-ins with an email in one of these domains receive the default role.", "items": {"type": "string", "maxLength": 253}, "default": []},
     "sessionTtlHours": {"type": "integer", "title": "Session lifetime (hours)", "description": "How long a sign-in lasts. Applies to new sessions.", "minimum": 1, "maximum": 720, "default": 12},
     "trustedProxies": {"type": "array", "title": "Trusted proxies", "description": "Addresses or CIDRs of reverse proxies whose X-Forwarded-For is believed.", "items": {"type": "string"}, "default": [], "examples": [["10.0.0.0/8"]]},
     "loginRatePerMinute": {"type": "integer", "title": "Login rate limit (per minute)", "description": "Login attempts allowed per client address per minute. 0 disables the limit.", "minimum": 0, "default": 10},
@@ -43,17 +48,23 @@ const authSchema = `{
 // DefaultAPIKeyMaxActive is the default per-user active API key cap.
 const DefaultAPIKeyMaxActive = 50
 
-const authDefault = `{"enabled":false,"scopes":["openid","profile","email","groups"],"groupsClaim":"groups","sessionTtlHours":12,"trustedProxies":[],"loginRatePerMinute":10,"loginBurst":5,"apiKeyMaxLifetimeDays":0,"apiKeyMaxActivePerUser":50}`
+const authDefault = `{"enabled":false,"scopes":["openid","profile","email","groups"],"groupsClaim":"groups","usernameClaim":"preferred_username","defaultRole":"viewer","allowedEmailDomains":[],"sessionTtlHours":12,"trustedProxies":[],"loginRatePerMinute":10,"loginBurst":5,"apiKeyMaxLifetimeDays":0,"apiKeyMaxActivePerUser":50}`
 
 // AuthSettings is the decoded authentication section plus its secret.
 type AuthSettings struct {
-	Enabled         bool     `json:"enabled"`
-	Issuer          string   `json:"issuer"`
-	ClientID        string   `json:"clientId"`
-	Scopes          []string `json:"scopes"`
-	GroupsClaim     string   `json:"groupsClaim"`
-	SessionTTLHours int      `json:"sessionTtlHours"`
-	TrustedProxies  []string `json:"trustedProxies"`
+	Enabled       bool     `json:"enabled"`
+	Issuer        string   `json:"issuer"`
+	ClientID      string   `json:"clientId"`
+	Scopes        []string `json:"scopes"`
+	GroupsClaim   string   `json:"groupsClaim"`
+	UsernameClaim string   `json:"usernameClaim"`
+	// DefaultOrgID, DefaultRole and AllowedEmailDomains control the binding a
+	// first-time OIDC user receives; an empty DefaultOrgID grants nothing.
+	DefaultOrgID        string   `json:"defaultOrgId"`
+	DefaultRole         string   `json:"defaultRole"`
+	AllowedEmailDomains []string `json:"allowedEmailDomains"`
+	SessionTTLHours     int      `json:"sessionTtlHours"`
+	TrustedProxies      []string `json:"trustedProxies"`
 	// LoginRatePerMinute is the per-client login attempt limit; <= 0 disables
 	// the limit (matches Limiter's own semantics).
 	LoginRatePerMinute int `json:"loginRatePerMinute"`
@@ -94,6 +105,27 @@ func RegisterSettings(r *settings.Registry, allowInsecureIssuer bool) error {
 	return r.AddCheck(SettingsSection, func(raw json.RawMessage) error { return checkAuthSettings(raw, allowInsecureIssuer) })
 }
 
+var domainRe = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$`)
+
+// EmailAllowed reports whether a first-time user's email passes the
+// allowedEmailDomains filter; an empty list allows everyone.
+func (s AuthSettings) EmailAllowed(email string) bool {
+	if len(s.AllowedEmailDomains) == 0 {
+		return true
+	}
+	i := strings.LastIndex(email, "@")
+	if i < 0 {
+		return false
+	}
+	dom := email[i+1:]
+	for _, d := range s.AllowedEmailDomains {
+		if strings.EqualFold(strings.TrimSpace(d), dom) {
+			return true
+		}
+	}
+	return false
+}
+
 func checkAuthSettings(raw json.RawMessage, allowInsecureIssuer bool) error {
 	var s AuthSettings
 	if err := json.Unmarshal(raw, &s); err != nil {
@@ -107,6 +139,11 @@ func checkAuthSettings(raw json.RawMessage, allowInsecureIssuer bool) error {
 	}
 	if s.Enabled && (s.Issuer == "" || s.ClientID == "") {
 		return errors.New("issuer and clientId are required when single sign-on is enabled")
+	}
+	for _, d := range s.AllowedEmailDomains {
+		if !domainRe.MatchString(strings.TrimSpace(d)) {
+			return fmt.Errorf("allowedEmailDomains: %q is not a domain", d)
+		}
 	}
 	if len(s.Scopes) > 0 && !slices.Contains(s.Scopes, "openid") {
 		return errors.New("scopes must include openid")
@@ -158,6 +195,9 @@ func parseProxies(in []string) ([]netip.Prefix, error) {
 func (s *AuthSettings) normalize() {
 	if len(s.Scopes) == 0 {
 		s.Scopes = []string{"openid", "profile", "email", "groups"}
+	}
+	if s.DefaultRole == "" {
+		s.DefaultRole = "viewer"
 	}
 	if s.GroupsClaim == "" {
 		s.GroupsClaim = "groups"
