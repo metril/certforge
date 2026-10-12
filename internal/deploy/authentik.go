@@ -53,7 +53,7 @@ const authentikSchema = `{
     "url": {"type": "string", "format": "uri", "title": "URL", "description": "https URL of the Authentik instance."},
     "token": {"type": "string", "secret": true, "title": "API token", "description": "Authentik API token allowed to view, add and change certificate-key pairs."},
     "name": {"type": "string", "pattern": "^[A-Za-z0-9 ._-]{0,120}$", "default": "", "title": "Keypair name", "description": "Name of the keypair in Authentik. Empty uses the certificate's name."},
-    "caPem": {"type": "string", "title": "CA certificate", "description": "PEM certificate(s) to trust for Authentik's TLS certificate, in addition to the system roots."},
+    "caPem": {"type": "string", "format": "pem-bundle", "title": "CA certificate", "description": "PEM certificate(s) to trust for Authentik's TLS certificate, in addition to the system roots."},
     "timeoutSeconds": {"type": "integer", "minimum": 5, "maximum": 120, "default": 30, "title": "Timeout (seconds)"}
   }
 }`
@@ -102,6 +102,11 @@ func (t Authentik) Parse(raw json.RawMessage) (targets.Config, error) {
 	if c.TimeoutSeconds < 5 || c.TimeoutSeconds > 120 {
 		return targets.Config{}, &delivery.FieldError{Field: "config.timeoutSeconds", Msg: "must be between 5 and 120"}
 	}
+	ca, err := httpx.NormalizeCABundle(c.CAPEM)
+	if err != nil {
+		return targets.Config{}, &delivery.FieldError{Field: "config.caPem", Msg: err.Error()}
+	}
+	c.CAPEM = ca
 	canon, err := json.Marshal(c)
 	if err != nil {
 		return targets.Config{}, err

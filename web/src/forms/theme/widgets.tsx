@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CircleAlert, ListRestart, LoaderCircle } from 'lucide-react';
 import type { AdcsProbeTemplate } from '@/api/types';
 import { orgsQuery } from '@/api/queries/orgs';
+import { CaBundleInput, type CaBundleScope } from '@/components/CaBundleInput';
 import { ChipSet } from '@/components/ChipSet';
 import { Combobox, type ComboOption } from '@/components/Combobox';
 import { IconButton } from '@/components/IconButton';
@@ -222,8 +223,32 @@ function AdcsTemplateWidget(props: WidgetProps) {
   );
 }
 
+// `ui:widget: 'caBundle'` (every `format: pem-bundle` field, uiSchema.ts):
+// formContext.caBundle (caBundleScope) enables Fetch and From saved CA, and
+// `ui:options.urlKey` names the sibling field whose value prefills Fetch's
+// server (SchemaForm puts the live form data on formContext.formData).
+function CaBundleWidget({ id, value, onChange, disabled, readonly, placeholder, options, rawErrors, label, registry }: WidgetProps) {
+  const ctx = registry.formContext as { caBundle?: CaBundleScope; formData?: Record<string, unknown> } | undefined;
+  const urlKey = typeof options.urlKey === 'string' ? options.urlKey : undefined;
+  const url = urlKey ? ctx?.formData?.[urlKey] : undefined;
+  return (
+    <CaBundleInput
+      id={id}
+      label={label}
+      value={typeof value === 'string' ? value : ''}
+      onChange={(v) => onChange(v === '' ? options.emptyValue : v)}
+      placeholder={placeholder || undefined}
+      disabled={disabled || readonly}
+      invalid={!!rawErrors?.length}
+      url={typeof url === 'string' ? url : undefined}
+      scope={ctx?.caBundle}
+    />
+  );
+}
+
 export const widgets: RegistryWidgetsType = {
   adcsTemplate: AdcsTemplateWidget,
+  caBundle: CaBundleWidget,
   orgSelect: OrgSelectWidget,
   CheckboxWidget: SwitchWidget,
   CheckboxesWidget: (p: WidgetProps) => <SelectWidget {...p} multiple />,

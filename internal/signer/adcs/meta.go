@@ -21,7 +21,7 @@ const ConfigSchema = `{
     "template": {"type": "string", "minLength": 1, "title": "Template", "description": "Certificate template name; must permit Read+Enroll for the service account and supply the subject in the request."},
     "username": {"type": "string", "minLength": 1, "title": "Username", "description": "Service account (DOMAIN\\user or UPN)."},
     "password": {"type": "string", "secret": true, "title": "Password", "description": "Service account password. Never returned."},
-    "caBundlePem": {"type": "string", "format": "textarea", "title": "TLS CA bundle", "description": "PEM roots to trust for the web services' HTTPS certificate."},
+    "caBundlePem": {"type": "string", "format": "pem-bundle", "title": "TLS CA bundle", "description": "PEM roots to trust for the web services' HTTPS certificate."},
     "timeoutSeconds": {"type": "integer", "minimum": 5, "maximum": 300, "default": 30, "title": "Timeout (seconds)"}
   }
 }`

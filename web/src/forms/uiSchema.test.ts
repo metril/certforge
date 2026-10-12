@@ -111,3 +111,15 @@ it('headers maps to HeadersField', () => {
   } as unknown as RJSFSchema;
   expect(buildUiSchema(s).headers).toEqual({ 'ui:field': 'headers' });
 });
+
+it('renders a pem-bundle field as a multi-line widget even when short', () => {
+  const s = { type: 'object', properties: { caPem: { type: 'string', format: 'pem-bundle' } } } as unknown as RJSFSchema;
+  expect(buildUiSchema(s).caPem).toMatchObject({ 'ui:widget': 'caBundle' });
+});
+
+it('points a pem-bundle field at its form URL field for Fetch', () => {
+  const s = { type: 'object', properties: { cepUrl: { type: 'string', format: 'uri' }, caBundlePem: { type: 'string', format: 'pem-bundle' } } } as unknown as RJSFSchema;
+  expect(buildUiSchema(s).caBundlePem).toMatchObject({ 'ui:options': { urlKey: 'cepUrl' } });
+  const t = { type: 'object', properties: { endpoint: { type: 'string', format: 'uri' }, caPem: { type: 'string', format: 'pem-bundle' } } } as unknown as RJSFSchema;
+  expect(buildUiSchema(t).caPem).toMatchObject({ 'ui:options': { urlKey: 'endpoint' } });
+});

@@ -242,6 +242,13 @@ func (s *Service) validateInput(ctx context.Context, in ChannelInput, cfg map[st
 	if err := checkChannelURL(in.Type, cfg, allowLoopback); err != nil {
 		return resolvedInput{}, err
 	}
+	if ca, ok := cfg["caPem"].(string); ok {
+		norm, err := httpx.NormalizeCABundle(ca)
+		if err != nil {
+			return resolvedInput{}, &ValidationError{Field: "config.caPem", Msg: err.Error()}
+		}
+		cfg["caPem"] = norm
+	}
 	events := in.Events
 	if events == nil {
 		events = []string{}

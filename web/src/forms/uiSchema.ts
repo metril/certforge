@@ -24,6 +24,16 @@ function isHeaderMap(p: Prop): boolean {
   return p.type === 'object' && !p.properties && (typeof p.patternProperties === 'object' || typeof p.additionalProperties === 'object');
 }
 
+// The field a CA bundle's Fetch prefills its server from: the provider's own
+// address field (targets' url, AD CS's cepUrl, Vault's address, ntfy's
+// server, Home Assistant's baseUrl), else the first `format: uri` field.
+const URL_KEYS = ['url', 'cepUrl', 'address', 'server', 'baseUrl'];
+
+function urlKeyOf(schema: RJSFSchema): string | undefined {
+  const ps = props(schema);
+  return URL_KEYS.find((k) => ps.some(([key]) => key === k)) ?? ps.find(([, p]) => p.type === 'string' && p.format === 'uri')?.[0];
+}
+
 function props(schema: RJSFSchema): [string, Prop][] {
   return Object.entries(schema.properties ?? {}).filter((e): e is [string, Prop] => typeof e[1] === 'object');
 }
@@ -94,6 +104,9 @@ export function buildUiSchema(schema: RJSFSchema, opts: { storedSecrets?: string
 
     if (p.secret === true) {
       ui[key] = { ...base, 'ui:widget': 'secret', 'ui:options': { stored: stored.has(key) } };
+    } else if (p.type === 'string' && p.format === 'pem-bundle') {
+      const urlKey = urlKeyOf(schema);
+      ui[key] = { ...base, 'ui:widget': 'caBundle', ...(urlKey ? { 'ui:options': { urlKey } } : {}) };
     } else if (p.type === 'string' && (p.format === 'textarea' || (p.maxLength ?? 0) > 200)) {
       ui[key] = { ...base, 'ui:widget': 'textarea' };
     } else if (isPlainStringArray(p)) {

@@ -142,7 +142,7 @@ An **Active Directory (AD CS)** CA enrolls leaf certificates from a Microsoft en
    Install-AdcsEnrollmentWebService -CAConfig "<host>\<CA Name>" -AuthenticationType Username -SSLCertThumbprint <thumbprint>
    ```
 
-2. Bind a valid HTTPS certificate in IIS for those sites. CertForge must trust it: either it chains to a public or system root, or you paste its root into **TLS CA bundle**.
+2. Bind a valid HTTPS certificate in IIS for those sites. CertForge must trust it: either it chains to a public or system root, or you add its root to **TLS CA bundle** (see [Trusting a private CA](delivery.md#trusting-a-private-ca)).
 3. Constrained delegation is needed only when CES is not on the CA host.
 4. Create a low-privilege service account with **Read** and **Enroll** on the template.
 5. Duplicate the **Web Server** template, set **Subject Name** to **Supply in the request**, publish it on the CA and grant the account Read and Enroll. The template must issue automatically: do not enable **CA certificate manager approval**. CertForge rejects a template that holds requests for approval when you save the CA.

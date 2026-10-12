@@ -78,7 +78,7 @@ const routerOSSchema = `{
     "hostKey": {"type": "string", "title": "SSH host key", "description": "The router's SSH public key, e.g. from ssh-keyscan -t ed25519."},
     "certName": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,40}$", "default": "certforge", "title": "Certificate name prefix", "description": "Certificates are named <prefix>-<fingerprint>; older ones with this prefix are removed."},
     "services": {"type": "array", "uniqueItems": true, "items": {"type": "string", "enum": ["www-ssl", "api-ssl", "sstp", "ovpn"]}, "default": ["www-ssl", "api-ssl"], "title": "Services", "description": "Where to bind the certificate."},
-    "caPem": {"type": "string", "title": "CA certificate", "description": "PEM certificate(s) to trust for the router's REST TLS certificate, in addition to the system roots."},
+    "caPem": {"type": "string", "format": "pem-bundle", "title": "CA certificate", "description": "PEM certificate(s) to trust for the router's REST TLS certificate, in addition to the system roots."},
     "timeoutSeconds": {"type": "integer", "minimum": 10, "maximum": 300, "default": 90, "title": "Timeout (seconds)"}
   }
 }`
@@ -156,6 +156,11 @@ func (t RouterOS) Parse(raw json.RawMessage) (targets.Config, error) {
 	if c.TimeoutSeconds < 10 || c.TimeoutSeconds > 300 {
 		return targets.Config{}, &delivery.FieldError{Field: "config.timeoutSeconds", Msg: "must be between 10 and 300"}
 	}
+	ca, err := httpx.NormalizeCABundle(c.CAPEM)
+	if err != nil {
+		return targets.Config{}, &delivery.FieldError{Field: "config.caPem", Msg: err.Error()}
+	}
+	c.CAPEM = ca
 	canon, err := json.Marshal(c)
 	if err != nil {
 		return targets.Config{}, err

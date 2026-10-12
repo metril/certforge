@@ -45,6 +45,7 @@
     },
     "caPem": {
       "type": "string",
+      "format": "pem-bundle",
       "title": "CA bundle",
       "description": "Additional PEM-encoded certificates trusted for Vault's TLS, appended to the system root pool.",
       "maxLength": 65536

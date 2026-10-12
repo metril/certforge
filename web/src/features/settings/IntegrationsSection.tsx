@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CircleCheck, CircleX } from 'lucide-react';
 import type { ErrorSchema, RJSFSchema, UiSchema } from '@rjsf/utils';
@@ -14,7 +14,7 @@ import { ToneChip } from '@/components/StatusChip';
 import { fieldErrorFromMessage } from '@/forms/uiSchema';
 import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
-import { can } from '@/lib/permissions';
+import { caBundleScope, can } from '@/lib/permissions';
 import { PrometheusScrape } from './PrometheusScrape';
 import { SchemaSection } from './SchemaSection';
 import { SmtpTest } from './SmtpTest';
@@ -174,6 +174,13 @@ function mapSmtpSaveError(message: string, _value: Record<string, unknown>, sche
 
 export function IntegrationsSection() {
   const keysStatus = useQuery(keysStatusQuery);
+  const me = useMe();
+  // Vault settings are global; the CA bundle's Fetch and From saved CA act
+  // in an org, so use the first one that allows the peek.
+  const vaultContext = useMemo(() => {
+    const org = me.orgs.find((o) => caBundleScope(me, o.id).canPeek) ?? me.orgs[0];
+    return org ? { caBundle: caBundleScope(me, org.id) } : undefined;
+  }, [me]);
   return (
     <div className="grid max-w-[720px] gap-8">
       {keysStatus.data?.kind === 'vault-transit' && (
@@ -191,6 +198,7 @@ export function IntegrationsSection() {
         uiSchemaOverrides={vaultUiSchema}
         prepareBody={pruneAuthMethod}
         mapSaveError={mapVaultSaveError}
+        formContext={vaultContext}
         actions={(value) => <VaultTest value={value} />}
       />
       <SchemaSection

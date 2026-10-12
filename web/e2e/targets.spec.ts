@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { expect, signInLocal, test } from './auth';
 import { E2E } from './env';
 import { snap } from './screens';
@@ -8,6 +10,10 @@ import { cancelSheet, expectRunsOn, pickTargetType } from './targetType';
 // global), which doesn't exist under Playwright's own Node-based test runner
 // (same convention as vault.spec.ts's own KEY_ROW_TOOLTIP).
 const RUNS_ON_FORCED = 'This type can only run here.';
+const fixture = (name: string) => resolve(process.cwd(), 'e2e/fixtures', name);
+const CA_PEM = readFileSync(fixture('ca.pem'), 'utf8');
+const CA_FP = 'E3:C1:98:FD:06:FA:9C:E9:DE:CE:2B:72:6B:97:5C:AA:6A:05:DF:5A:E0:61:28:60:36:E5:21:25:37:B0:5F:BF';
+
 const RUNS_ON_LOCKED = 'Fixed once the target exists. Create a new target to change it.';
 
 test('vault-kv sheet runs on server', async ({ page }) => {
@@ -252,4 +258,75 @@ test('saved credential: attach to two targets, rotate, delete blocked, detach, d
     await c.getByRole('button', { name: 'Delete' }).click();
     await expect(c).toBeHidden();
   }
+});
+
+test('pfSense CA certificate: upload a DER file and fetch from the server', async ({ page }) => {
+  await page.goto('/login');
+  await signInLocal(page);
+  await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
+
+  // The fetch is mocked: no https service in the e2e stack is reachable from
+  // the server under the deploy-target address policy.
+  const leafPem = '-----BEGIN CERTIFICATE-----\nLEAF\n-----END CERTIFICATE-----\n';
+  await page.route(/\/api\/v1\/orgs\/[^/]+\/tls\/peek$/, (route) =>
+    route.fulfill({
+      json: {
+        ok: true,
+        verified: false,
+        chain: [
+          { subject: 'CN=fw.example.net', issuer: 'CN=CertForge Test Root,O=CertForge Test', notBefore: '2026-01-01T00:00:00Z', notAfter: '2027-01-01T00:00:00Z', sha256: 'AA:BB:CC', isCa: false, selfSigned: false, pem: leafPem },
+          { subject: 'CN=CertForge Test Root,O=CertForge Test', issuer: 'CN=CertForge Test Root,O=CertForge Test', notBefore: '2026-01-01T00:00:00Z', notAfter: '2126-01-01T00:00:00Z', sha256: CA_FP, isCa: true, selfSigned: true, pem: CA_PEM },
+        ],
+      },
+    }),
+  );
+
+  const name = `pw-pfsense-ca-${Math.random().toString(36).slice(2, 8)}`;
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
+  await page.getByRole('button', { name: 'Add target' }).first().click();
+  const sheet = page.getByRole('dialog', { name: 'Add deploy target' });
+  await pickTargetType(sheet, /^pfSense Plus/);
+  await sheet.getByLabel('Name', { exact: true }).fill(name);
+  await sheet.getByLabel('API URL').fill('https://fw.example.net/api/v2');
+  await sheet.getByLabel('Username', { exact: true }).fill('admin');
+  await sheet.getByLabel('Password', { exact: true }).fill('secret');
+
+  // Upload: DER converts to PEM in the browser.
+  const box = sheet.getByRole('textbox', { name: /CA certificate/ });
+  await sheet.getByLabel('Upload CA certificate').setInputFiles(fixture('ca.der'));
+  await expect(box).toHaveValue(CA_PEM);
+  await expect(sheet.getByText('CertForge Test Root')).toBeVisible();
+
+  // Fetch: the form URL prefills the server; the root is suggested and is
+  // already present, so adding the leaf too appends only the leaf.
+  await sheet.getByRole('button', { name: 'Fetch from server' }).click();
+  const dialog = page.getByRole('dialog', { name: /Fetch from server/ });
+  await expect(dialog.getByRole('textbox', { name: 'Server' })).toHaveValue('https://fw.example.net/api/v2');
+  await dialog.getByRole('button', { name: 'Fetch', exact: true }).click();
+  await expect(dialog.getByText(`SHA-256 ${CA_FP}`)).toBeVisible();
+  await expect(dialog.getByRole('button', { name: /CertForge Test Root.*Self-signed/ })).toHaveAttribute('aria-pressed', 'true');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  await snap(page, 'ca-bundle-fetch-375');
+  await dialog.getByRole('button', { name: /fw\.example\.net/ }).click();
+  await dialog.getByRole('button', { name: 'Add 2 certificates' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(box).toHaveValue(CA_PEM + leafPem);
+  await box.fill(CA_PEM);
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  await sheet.getByRole('button', { name: 'Save' }).click();
+  await expect(sheet).toBeHidden();
+
+  const table = page.getByRole('table', { name: 'Deploy targets' });
+  await table.getByRole('button', { name: `Edit ${name}` }).click();
+  const edit = page.getByRole('dialog', { name: `Edit ${name}` });
+  await expect(edit.getByRole('textbox', { name: /CA certificate/ })).toHaveValue(CA_PEM.trimEnd());
+  await cancelSheet(edit);
+
+  await table.getByRole('button', { name: `Delete ${name}` }).click();
+  const confirm = page.getByRole('dialog', { name: 'Delete deploy target' });
+  await confirm.getByLabel(name).fill(name);
+  await confirm.getByRole('button', { name: 'Delete' }).click();
+  await expect(confirm).toBeHidden();
 });

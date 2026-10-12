@@ -7,6 +7,7 @@ import { useProbeAdcs } from '@/api/queries/cas';
 import { settingsQuery } from '@/api/queries/settings';
 import { errorMessage } from '@/api/errors';
 import type { CA, CAPreset, ProviderSchema } from '@/api/types';
+import { CaBundleInput } from '@/components/CaBundleInput';
 import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
 import { ListInput } from '@/components/ListInput';
@@ -14,12 +15,11 @@ import { SecretInput } from '@/components/SecretInput';
 import { SwitchField } from '@/components/SwitchField';
 import { FormSection } from '@/components/FormSection';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
 import type { AdcsTemplateContext } from '@/forms/theme/widgets';
 import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
-import { can } from '@/lib/permissions';
+import { caBundleScope, can } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import { ADCS_PROBE_BLOCKED, adcsProbeRequest, adcsTemplateReason, type AcmeDraft, type CaDraft } from './caBody';
 
@@ -66,7 +66,7 @@ type Props = {
 
 export function CaKindBody({ orgId, draft, setDraft, ca, presets, signers, submitted, serverError, extraErrors, formRef, nameTouched }: Props) {
   if (draft.kind === 'acme') {
-    return <AcmeBody draft={draft} setDraft={setDraft} ca={ca} presets={presets} submitted={submitted} serverError={serverError} nameTouched={nameTouched} />;
+    return <AcmeBody orgId={orgId} draft={draft} setDraft={setDraft} ca={ca} presets={presets} submitted={submitted} serverError={serverError} nameTouched={nameTouched} />;
   }
   if (draft.kind === 'localca') {
     return <LocalCaBody draft={draft} setDraft={setDraft} ca={ca} signers={signers} extraErrors={extraErrors} formRef={formRef} />;
@@ -78,6 +78,7 @@ export function CaKindBody({ orgId, draft, setDraft, ca, presets, signers, submi
 }
 
 function AcmeBody({
+  orgId,
   draft,
   setDraft,
   ca,
@@ -93,7 +94,9 @@ function AcmeBody({
   submitted: boolean;
   serverError: { field: ServerField; message: string } | null;
   nameTouched: boolean;
+  orgId: string;
 }) {
+  const me = useMe();
   const form = draft.acme;
   const set = <K extends keyof AcmeDraft>(k: K, v: AcmeDraft[K]) => setDraft((d) => ({ ...d, acme: { ...d.acme, [k]: v } }));
 
@@ -183,13 +186,13 @@ function AcmeBody({
           </Field>
           {custom && (
             <Field id="ca-trust" label="Trust bundle" help="ca.importTrustBundle" optional>
-              <Textarea
+              <CaBundleInput
                 id="ca-trust"
-                rows={5}
-                className="font-mono text-xs"
+                label="Trust bundle"
                 value={form.trustBundlePem}
-                onChange={(e) => set('trustBundlePem', e.target.value)}
-                placeholder="-----BEGIN CERTIFICATE-----"
+                onChange={(v) => set('trustBundlePem', v)}
+                url={form.directoryUrl}
+                scope={caBundleScope(me, orgId)}
               />
             </Field>
           )}
@@ -361,6 +364,7 @@ function AdcsBody({
   // Rebuilt every render (probe state changes with it); RJSF re-renders the
   // form on any parent render anyway.
   const formContext = {
+      caBundle: caBundleScope(me, orgId),
       adcsTemplates: {
         templates,
         reasonOf: adcsTemplateReason,

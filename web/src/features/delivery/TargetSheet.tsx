@@ -23,7 +23,7 @@ import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
 import { fieldErrorFromMessage, secretKeys } from '@/forms/uiSchema';
 import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
-import { can } from '@/lib/permissions';
+import { caBundleScope, can } from '@/lib/permissions';
 import { stripSecretDefaults, storedSecretsFor, settledConfig } from '@/lib/secretForm';
 import { RUNS_ON_META, SSH_PRESETS, credentialKindsOf, defaultRunsOn, forcedRunsOn, keyGateBlocks, locationChanged, omitFields, toTargetInput, typeHelpKey, typeMeta } from '@/lib/targets';
 import { useMediaQuery } from '@/lib/useMediaQuery';
@@ -69,6 +69,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
   // Settled so the form's mount-time onChange (defaults, secret sentinels) is not an edit.
   const dirty = useDirty({ name, type, runsOn, credentialId, config: settledConfig(schema, config, storedSecrets) });
   const canExportKeys = can(me, 'keys:export', orgId);
+  const formContext = useMemo(() => ({ caBundle: caBundleScope(me, orgId) }), [me, orgId]);
   // Locked once the target exists (R3: runsOn/type are immutable after
   // create) or for a viewer opening it read-only.
   const locked = !!target || readOnly;
@@ -286,6 +287,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
               readonly={readOnly}
               extraErrors={extra ?? undefined}
               uiSchemaOverrides={includeKeyOverride}
+              formContext={formContext}
             />
             )}
           </div>

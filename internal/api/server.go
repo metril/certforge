@@ -191,6 +191,21 @@ func authorize(ctx context.Context, action authz.Action, orgID *uuid.UUID) (auth
 	return p, nil
 }
 
+// authorizeAny is authorize for an endpoint any one of several permissions
+// opens (the first is named in the 403).
+func authorizeAny(ctx context.Context, orgID *uuid.UUID, actions ...authz.Action) (authn.Principal, error) {
+	p, ok := authn.PrincipalFrom(ctx)
+	if !ok {
+		return authn.Principal{}, errUnauthenticated
+	}
+	for _, a := range actions {
+		if authz.Can(p, a, orgID) {
+			return p, nil
+		}
+	}
+	return p, &HTTPError{Status: http.StatusForbidden, Title: "Forbidden", Detail: fmt.Sprintf("missing permission %s", actions[0])}
+}
+
 // queries returns Deps.Queries, or queries over Deps.Pool when a test
 // fixture left it unset.
 func (s *Server) queries() *sqlcgen.Queries {

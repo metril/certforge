@@ -72,7 +72,9 @@ export const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaFor
     return merged;
   }, [schema, storedSecrets, uiSchemaOverrides]);
   const serverPath = useMemo(() => serverPathKeys(schema), [schema]);
-  const formContext = useMemo(() => ({ ...extraContext, onRevealSecret, revealDisabledReason }), [extraContext, onRevealSecret, revealDisabledReason]);
+  // formData: the live value, for a widget that reads a sibling field (the
+  // CA bundle's Fetch prefills its server from the form's URL field).
+  const formContext = useMemo(() => ({ ...extraContext, onRevealSecret, revealDisabledReason, formData: value }), [extraContext, onRevealSecret, revealDisabledReason, value]);
   useImperativeHandle(ref, () => ({ validate: () => formRef.current?.validateForm() ?? false }), []);
   return (
     <ThemedForm

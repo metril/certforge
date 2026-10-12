@@ -753,6 +753,41 @@ paths:
         "422": {$ref: "#/components/responses/UnprocessableEntity"}
         "500": {$ref: "#/components/responses/InternalError"}
         "503": {$ref: "#/components/responses/ServiceUnavailable"}
+  /orgs/{orgId}/tls/peek:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    post:
+      operationId: peekTLS
+      tags: [issuers]
+      summary: Fetch a server's TLS certificate chain
+      description: >-
+        Needs delivery:write or cas:write. Connects to url (an https:// URL or host:port, default
+        port 443) and returns the certificate chain the server presents, to pick a CA to trust.
+        The connection does not verify the chain; verified says whether it verifies against the
+        system roots for the host. The same address policy as deploy targets applies (loopback only
+        when the notifications allowLoopbackUrls setting is on; 422 naming url otherwise). A
+        connection that fails returns 200 with ok false. 10 second timeout; at most 2 peeks run at
+        once server-wide, beyond that this returns 503 with Retry-After. Recorded as tls.peek in the
+        audit log with the url only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TlsPeekRequest"}
+      responses:
+        "200":
+          description: Peek outcome.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TlsPeekResult"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
   /orgs/{orgId}/acme-accounts:
     parameters: [{$ref: "#/components/parameters/OrgId"}]
     get:
@@ -3862,6 +3897,38 @@ components:
         name: {type: string, description: Template name as published (or as requested when it is not published).}
         usable: {type: boolean, description: The template passes the create/update rules.}
         reason: {type: string, description: Why the template is not usable.}
+    TlsPeekRequest:
+      type: object
+      description: Server to read a certificate chain from.
+      required: [url]
+      properties:
+        url: {type: string, maxLength: 2048, description: "https:// URL or host:port (port defaults to 443)."}
+        sni: {type: string, maxLength: 253, description: Server name to send; defaults to the host in url.}
+    TlsPeekCertificate:
+      type: object
+      description: One certificate of a presented chain.
+      required: [subject, issuer, notBefore, notAfter, sha256, isCa, selfSigned, pem]
+      properties:
+        subject: {type: string, description: Subject distinguished name.}
+        issuer: {type: string, description: Issuer distinguished name.}
+        notBefore: {type: string, format: date-time, description: Start of validity.}
+        notAfter: {type: string, format: date-time, description: End of validity.}
+        sha256: {type: string, description: "SHA-256 fingerprint, upper-case hex pairs separated by colons."}
+        isCa: {type: boolean, description: The certificate is a CA (basic constraints).}
+        selfSigned: {type: boolean, description: Issued and signed by itself.}
+        pem: {type: string, description: PEM-encoded certificate.}
+    TlsPeekResult:
+      type: object
+      description: Outcome of a TLS peek.
+      required: [ok, chain, verified]
+      properties:
+        ok: {type: boolean, description: The handshake completed and a chain was read.}
+        error: {type: string, description: Why the connection failed, when ok is false.}
+        chain:
+          type: array
+          description: Certificates in the order presented (leaf first); empty when ok is false.
+          items: {$ref: "#/components/schemas/TlsPeekCertificate"}
+        verified: {type: boolean, description: The chain verifies against the system roots for the host.}
     AdcsProbeResult:
       type: object
       description: Outcome of an AD CS probe.
