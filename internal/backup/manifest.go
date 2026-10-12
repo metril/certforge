@@ -42,6 +42,9 @@ var Manifest = []string{
 
 	// 00024_enrollment_approval.sql
 	"enrollment_requests",
+
+	// 00031_deploy_credentials.sql
+	"deploy_credentials",
 }
 
 // TableSum is one table's row count and content hash, as recorded in the

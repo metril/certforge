@@ -171,17 +171,30 @@ type ClientCertGrant struct {
 	PostAction      []byte      `json:"post_action"`
 }
 
-type DeployTarget struct {
+type DeployCredential struct {
 	ID               uuid.UUID `json:"id"`
 	OrgID            uuid.UUID `json:"org_id"`
 	Name             string    `json:"name"`
-	Type             string    `json:"type"`
-	RunsOn           string    `json:"runs_on"`
-	Config           []byte    `json:"config"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	Kind             string    `json:"kind"`
+	Public           []byte    `json:"public"`
 	SecretCfg        []byte    `json:"secret_cfg"`
 	StoredSecretKeys []string  `json:"stored_secret_keys"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+type DeployTarget struct {
+	ID               uuid.UUID  `json:"id"`
+	OrgID            uuid.UUID  `json:"org_id"`
+	Name             string     `json:"name"`
+	Type             string     `json:"type"`
+	RunsOn           string     `json:"runs_on"`
+	Config           []byte     `json:"config"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	SecretCfg        []byte     `json:"secret_cfg"`
+	StoredSecretKeys []string   `json:"stored_secret_keys"`
+	CredentialID     *uuid.UUID `json:"credential_id"`
 }
 
 type Deployment struct {

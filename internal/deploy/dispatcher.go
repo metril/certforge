@@ -417,24 +417,40 @@ func (d *Dispatcher) deploy(ctx context.Context, grantID, versionID uuid.UUID, w
 		return d.fail(ctx, row, versionID, seq, nil, err)
 	}
 
-	needsKey, err := d.Reg.NeedsKey(row.TargetType, row.TargetConfig)
+	cred, err := targets.OpenCredential(ctx, d.Box.Open, row.CredentialKind, row.CredentialPublic, row.CredentialSecretCfg)
 	if err != nil {
 		return d.fail(ctx, row, versionID, seq, secrets, err)
+	}
+	// A credential's secrets are redacted from errors like the target's own.
+	redact := secrets
+	if cred != nil {
+		redact = make(map[string]string, len(secrets)+len(cred.Secrets))
+		for k, v := range secrets {
+			redact[k] = v
+		}
+		for k, v := range cred.Secrets {
+			redact["credential:"+k] = v
+		}
+	}
+
+	needsKey, err := d.Reg.NeedsKey(row.TargetType, row.TargetConfig)
+	if err != nil {
+		return d.fail(ctx, row, versionID, seq, redact, err)
 	}
 
 	m, err := d.Certs.Material(ctx, row.CertID, versionID, needsKey)
 	if err != nil {
-		return d.fail(ctx, row, versionID, seq, secrets, err)
+		return d.fail(ctx, row, versionID, seq, redact, err)
 	}
 
 	files, err := d.renderFiles(ctx, row, m, needsKey)
 	if err != nil {
-		return d.fail(ctx, row, versionID, seq, secrets, err)
+		return d.fail(ctx, row, versionID, seq, redact, err)
 	}
 
-	config, err := targets.Merge(row.TargetConfig, secrets)
+	config, err := targets.Resolve(row.TargetConfig, secrets, cred)
 	if err != nil {
-		return d.fail(ctx, row, versionID, seq, secrets, err)
+		return d.fail(ctx, row, versionID, seq, redact, err)
 	}
 
 	req := targets.Request{
@@ -454,15 +470,15 @@ func (d *Dispatcher) deploy(ctx context.Context, grantID, versionID uuid.UUID, w
 		req.Recorder = hookRecorder{d: d, grant: grantID, target: *row.DeployTargetID}
 	}
 	if _, err := target.Deploy(ctx, req); err != nil {
-		return d.fail(ctx, row, versionID, seq, secrets, err)
+		return d.fail(ctx, row, versionID, seq, redact, err)
 	}
 	pa, err := ParsePostAction(row.PostAction)
 	if err != nil {
-		return d.fail(ctx, row, versionID, seq, secrets, fmt.Errorf("deployed, but the post action is invalid: %w", err))
+		return d.fail(ctx, row, versionID, seq, redact, fmt.Errorf("deployed, but the post action is invalid: %w", err))
 	}
 	if pa != nil && row.DeployTargetID != nil {
 		if err := d.runPostAction(ctx, row, pa, req.HTTP.AllowLoopback); err != nil {
-			return d.fail(ctx, row, versionID, seq, secrets, fmt.Errorf("deployed, but %w", err))
+			return d.fail(ctx, row, versionID, seq, redact, fmt.Errorf("deployed, but %w", err))
 		}
 	}
 	return d.Q.MarkServerDeploymentDeployed(ctx, sqlcgen.MarkServerDeploymentDeployedParams{GrantID: grantID, VersionID: &versionID, DeploySeq: seq})

@@ -298,8 +298,8 @@ func TestPhase7SpecDeclared(t *testing.T) {
 		t.Error("SchemaEntry.keyPolicy missing")
 	}
 	rewrapTables := sw.Components.Schemas["RewrapTable"].Value.Enum
-	if len(rewrapTables) == 0 || rewrapTables[len(rewrapTables)-1] != "deploy_targets" {
-		t.Errorf("RewrapTable does not end with deploy_targets: %v", rewrapTables)
+	if len(rewrapTables) == 0 || rewrapTables[len(rewrapTables)-1] != "deploy_credentials" {
+		t.Errorf("RewrapTable does not end with deploy_credentials: %v", rewrapTables)
 	}
 }
 

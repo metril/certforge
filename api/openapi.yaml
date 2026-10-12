@@ -2046,6 +2046,139 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/deploy-credentials:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: listDeployCredentials
+      tags: [delivery]
+      summary: List deploy credentials
+      description: Credentials of the org sorted by name, without secrets. Needs deploycreds:read.
+      responses:
+        "200":
+          description: All deploy credentials of the org.
+          content:
+            application/json:
+              schema:
+                type: array
+                description: Credentials.
+                items: {$ref: "#/components/schemas/DeployCredential"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    post:
+      operationId: createDeployCredential
+      tags: [delivery]
+      summary: Add a deploy credential
+      description: Needs deploycreds:write (org-admin or admin). config is validated against the kind's schema from GET /meta/schemas (deployCredentials); fields with secret true are stored encrypted. Any target of a matching kind can then reference it by credentialId.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DeployCredentialInput"}
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DeployCredential"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/deploy-credentials/{id}:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    get:
+      operationId: getDeployCredential
+      tags: [delivery]
+      summary: Get a deploy credential
+      description: Secrets are never returned. Needs deploycreds:read.
+      responses:
+        "200":
+          description: The credential.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DeployCredential"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    put:
+      operationId: updateDeployCredential
+      tags: [delivery]
+      summary: Replace a deploy credential
+      description: >-
+        Needs deploycreds:write. config is replaced as a whole; a secret field set to __unchanged__
+        keeps its stored value and a secret field left out is removed. The kind cannot change.
+        Nothing is redeployed: server deploys use the new value next time, and the agent targets
+        that use the credential are re-synced in the same transaction.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DeployCredentialUpdate"}
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DeployCredential"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    delete:
+      operationId: deleteDeployCredential
+      tags: [delivery]
+      summary: Delete a deploy credential
+      description: Needs deploycreds:write. 409 listing the targets that use it.
+      responses:
+        "204":
+          description: Deleted.
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/deploy-credentials/{id}/reveal:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    post:
+      operationId: revealDeployCredentialSecret
+      tags: [delivery]
+      summary: Reveal a stored deploy credential secret
+      description: Needs deploycreds:reveal (global admin only). Returns one stored secret field in plaintext and records a deploy_credential.secret_revealed audit event (never containing the value); if the audit write fails the value is not returned. 422 if field is not a secret field of the kind; 404 if it is but has no stored value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DeployCredentialRevealRequest"}
+      responses:
+        "200":
+          description: The secret value.
+          headers:
+            Cache-Control: {description: no-store, schema: {type: string}}
+            Pragma: {description: no-cache, schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DeployCredentialRevealResult"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/deploy-targets:
     parameters: [{$ref: "#/components/parameters/OrgId"}]
     get:
@@ -3231,8 +3364,13 @@ components:
     MetaSchemas:
       type: object
       description: Pluggable type schemas grouped by kind.
-      required: [dnsProviders, deployTargets, notifiers, signers]
+      required: [dnsProviders, deployTargets, notifiers, signers, deployCredentials]
       properties:
+        deployCredentials:
+          type: array
+          description: Deploy credential kinds and their field schemas.
+          items:
+            $ref: "#/components/schemas/SchemaEntry"
         dnsProviders:
           type: array
           description: DNS-01 providers.
@@ -3407,8 +3545,8 @@ components:
         kekId: {type: string, description: Opaque id identifying this KEK, stable across restarts.}
     RewrapTable:
       type: string
-      enum: [settings, cas, acme_accounts, dns_provider_credentials, output_specs, agent_cas, certificate_versions, notification_channels, deploy_targets]
-      description: A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels covers secret_cfg and is walked before deploy_targets; deploy_targets covers its own secret_cfg and is walked last.
+      enum: [settings, cas, acme_accounts, dns_provider_credentials, output_specs, agent_cas, certificate_versions, notification_channels, deploy_targets, deploy_credentials]
+      description: A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels covers secret_cfg and is walked before deploy_targets; deploy_targets covers its own secret_cfg; deploy_credentials covers its own secret_cfg and is walked last.
     RewrapTableStatus:
       type: object
       description: Rewrap progress for one table.
@@ -4248,8 +4386,8 @@ components:
         disabled: {type: boolean, description: true disables the user and revokes their sessions.}
     ApiKeyScope:
       type: string
-      enum: ["certs:read", "certs:write", "certs:issue", "keys:export", "dnscreds:reveal", "clients:read", "clients:write", "delivery:read", "delivery:write", "alerts:read", "alerts:write", "admin"]
-      description: What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials (without secrets); dnscreds:reveal also reads DNS credentials and may reveal their stored secrets; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks; alerts covers notification channels, events and external monitors; admin is everything.
+      enum: ["certs:read", "certs:write", "certs:issue", "keys:export", "dnscreds:reveal", "deploycreds:reveal", "clients:read", "clients:write", "delivery:read", "delivery:write", "alerts:read", "alerts:write", "admin"]
+      description: What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials (without secrets); dnscreds:reveal also reads DNS credentials and may reveal their stored secrets; deploycreds:reveal also reads deploy credentials and may reveal their stored secrets; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks, and reads deploy credentials (without secrets); alerts covers notification channels, events and external monitors; admin is everything.
     ApiKey:
       type: object
       description: An API key without its secret.
@@ -4573,6 +4711,52 @@ components:
       required: [items]
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/Layout"}, description: Layouts sorted by name.}
+    DeployCredentialKind:
+      type: string
+      enum: [ssh, password, apiKey, token]
+      description: Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema.
+    DeployCredential:
+      type: object
+      description: A reusable deploy credential. Secret values are never returned.
+      required: [id, name, kind, config]
+      properties:
+        id: {type: string, format: uuid, description: Credential id.}
+        orgId: {type: string, format: uuid, description: Owning org.}
+        name: {type: string, description: Unique name in the org.}
+        kind: {$ref: "#/components/schemas/DeployCredentialKind"}
+        config: {type: object, additionalProperties: true, description: Non-secret field values.}
+        storedSecrets: {type: array, items: {type: string}, description: Secret fields that have a stored value.}
+        usedBy: {type: integer, description: Deploy targets that use this credential.}
+        createdAt: {type: string, format: date-time, description: Creation time.}
+        updatedAt: {type: string, format: date-time, description: Last change.}
+    DeployCredentialInput:
+      type: object
+      description: A new deploy credential.
+      required: [name, kind, config]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100, description: Unique name in the org.}
+        kind: {$ref: "#/components/schemas/DeployCredentialKind"}
+        config: {type: object, additionalProperties: true, description: Field values valid against the kind's schema.}
+    DeployCredentialUpdate:
+      type: object
+      description: Replacement name and config.
+      required: [name, config]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100, description: Unique name in the org.}
+        config: {type: object, additionalProperties: true, description: Full config; secret fields may be __unchanged__.}
+    DeployCredentialRevealRequest:
+      type: object
+      description: Which stored secret to reveal.
+      required: [field]
+      properties:
+        field: {type: string, maxLength: 128, description: Name of a stored secret field of the credential's kind.}
+    DeployCredentialRevealResult:
+      type: object
+      description: One stored secret in plaintext.
+      required: [field, value]
+      properties:
+        field: {type: string, description: The secret field name.}
+        value: {type: string, description: The stored plaintext value.}
     DeployTargetType:
       type: string
       enum: [traefik, vault-kv, authentik, pfsense, truenas, routeros, ssh]
@@ -4601,6 +4785,7 @@ components:
         runsOn: {$ref: "#/components/schemas/RunsOn"}
         config: {type: object, additionalProperties: true, description: Type-specific configuration, valid against the type's schema, with secret fields removed.}
         storedSecrets: {type: array, items: {type: string}, description: Secret fields that have a stored value.}
+        credentialId: {type: string, format: uuid, nullable: true, description: The deploy credential supplying this target's login fields; null when the target holds its own. The credential's fields are not in config.}
         grantCount: {type: integer, description: Live grants using it.}
         createdAt: {type: string, format: date-time, description: Creation time.}
         updatedAt: {type: string, format: date-time, description: Last change.}
@@ -4620,6 +4805,16 @@ components:
         type: {$ref: "#/components/schemas/DeployTargetType"}
         runsOn: {allOf: [{$ref: "#/components/schemas/RunsOn"}], description: "Required for a type whose own runsOn is either; optional and must match otherwise. Immutable after create."}
         config: {type: object, additionalProperties: true, description: Configuration valid against the type's schema.}
+        credentialId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >-
+            A deploy credential of the same org whose kind the type accepts (its schema's
+            credentialKinds). Its fields are overlaid on config, so config must not also set them
+            (422 naming the fields). Attaching or changing it, or changing the URL or host of a
+            target that has one, also needs deploycreds:write (403). Attaching clears the target's own
+            stored secrets. Omitted or null detaches it.
     DeployTargetList:
       type: object
       description: An org's deploy targets.

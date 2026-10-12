@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 
@@ -625,7 +626,7 @@ func (s *Server) targetOut(ctx context.Context, t sqlcgen.DeployTarget, grants i
 		names = []string{}
 	}
 	return gen.DeployTarget{Id: t.ID, OrgId: t.OrgID, Name: t.Name, Type: gen.DeployTargetType(t.Type), RunsOn: gen.RunsOn(t.RunsOn),
-		Config: cfg, StoredSecrets: names, GrantCount: grants, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt}, nil
+		Config: cfg, StoredSecrets: names, CredentialId: t.CredentialID, GrantCount: grants, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt}, nil
 }
 
 func (s *Server) targetsOut(ctx context.Context, rows []sqlcgen.DeployTarget) ([]gen.DeployTarget, error) {
@@ -729,6 +730,7 @@ type validatedTarget struct {
 	secretCfg  []byte   // sealed; nil when the config has no secrets
 	secretKeys []string // names of the sealed fields, stored in plaintext
 	needsKey   bool
+	credential *uuid.UUID // the attached deploy credential, if any
 }
 
 // validTarget validates and canonicalizes a deploy target input against
@@ -746,7 +748,7 @@ type validatedTarget struct {
 // allowed — an agent's own network is the operator's to reach); and the
 // resolved secrets are sealed (nil when there are none). old is nil on
 // create.
-func (s *Server) validTarget(ctx context.Context, orgID uuid.UUID, in *gen.DeployTargetInput, old *sqlcgen.DeployTarget) (validatedTarget, error) {
+func (s *Server) validTarget(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, in *gen.DeployTargetInput, old *sqlcgen.DeployTarget) (validatedTarget, error) {
 	if in == nil {
 		return validatedTarget{}, badRequest("missing body")
 	}
@@ -786,14 +788,48 @@ func (s *Server) validTarget(ctx context.Context, orgID uuid.UUID, in *gen.Deplo
 	if err != nil {
 		return validatedTarget{}, err
 	}
+	cred, credRow, err := s.targetCredential(ctx, q, orgID, target, in.CredentialId)
+	if err != nil {
+		return validatedTarget{}, err
+	}
+	if cred != nil {
+		// Attaching or switching a credential clears the target's own stored
+		// secrets; an edit that keeps the credential keeps them. Either way
+		// the target must not set a field the credential supplies.
+		if old == nil || old.CredentialID == nil || *old.CredentialID != credRow.ID {
+			stored = map[string]string{}
+		}
+		if bad, err := targets.Conflicts(raw, stored, cred); err != nil {
+			return validatedTarget{}, badRequest("config is not a JSON object")
+		} else if len(bad) > 0 {
+			return validatedTarget{}, unprocessable("config", "the credential already supplies: "+strings.Join(bad, ", "))
+		}
+		if raw, err = targets.Resolve(raw, nil, cred); err != nil {
+			return validatedTarget{}, unprocessable("config", "config is not valid with this credential")
+		}
+	}
 	cfg, reused, err := s.d.Targets.Parse(typ, raw, stored)
 	if err != nil {
 		return validatedTarget{}, mapTargetErr(err, target, raw, stored)
 	}
+	if cred != nil {
+		if err := s.requireCredentialWrite(ctx, orgID, q, typ, old, credRow, cred, cfg.URLs, cfg.Public); err != nil {
+			return validatedTarget{}, err
+		}
+		if cfg.Public, cfg.Secrets, err = cred.Strip(cfg.Public, cfg.Secrets); err != nil {
+			return validatedTarget{}, err
+		}
+	}
 	if old != nil && len(reused) > 0 {
-		oldCfg, _, err := s.d.Targets.Parse(typ, old.Config, stored)
+		oldRaw := old.Config
+		if cred != nil {
+			if oldRaw, err = targets.Resolve(old.Config, nil, cred); err != nil {
+				return validatedTarget{}, unprocessable("config", "config is not valid with this credential")
+			}
+		}
+		oldCfg, _, err := s.d.Targets.Parse(typ, oldRaw, stored)
 		if err != nil {
-			return validatedTarget{}, mapTargetErr(err, target, old.Config, stored)
+			return validatedTarget{}, mapTargetErr(err, target, oldRaw, stored)
 		}
 		if !sameURLSet(oldCfg.URLs, cfg.URLs) {
 			return validatedTarget{}, unprocessable("config", "re-enter the secret")
@@ -837,7 +873,72 @@ func (s *Server) validTarget(ctx context.Context, orgID uuid.UUID, in *gen.Deplo
 			return validatedTarget{}, err
 		}
 	}
-	return validatedTarget{name: name, side: side, public: cfg.Public, secretCfg: secretCfg, secretKeys: storedSecretKeys(cfg.Secrets), needsKey: cfg.NeedsKey}, nil
+	vt := validatedTarget{name: name, side: side, public: cfg.Public, secretCfg: secretCfg, secretKeys: storedSecretKeys(cfg.Secrets), needsKey: cfg.NeedsKey}
+	if credRow != nil {
+		vt.credential = &credRow.ID
+	}
+	return vt, nil
+}
+
+// targetCredential loads and checks the credential a target input names:
+// the same org, a kind the target type accepts. nil, nil, nil without one.
+// FOR KEY SHARE blocks a concurrent delete until the caller's transaction ends.
+func (s *Server) targetCredential(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, target targets.Target, id *uuid.UUID) (*targets.Credential, *sqlcgen.DeployCredential, error) {
+	if id == nil {
+		return nil, nil, nil
+	}
+	row, err := q.GetDeployCredential(ctx, sqlcgen.GetDeployCredentialParams{ID: *id, OrgID: orgID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil, unprocessable("credentialId", "deploy credential not found in this org")
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	if !slices.Contains(targets.AcceptedKinds(target.Schema()), row.Kind) {
+		return nil, nil, unprocessable("credentialId", fmt.Sprintf("a %s target does not accept a %s credential", target.Type(), row.Kind))
+	}
+	if _, err := q.LockDeployCredentialKeyShare(ctx, row.ID); err != nil {
+		return nil, nil, unprocessable("credentialId", "deploy credential not found in this org")
+	}
+	cred, err := targets.OpenCredential(ctx, s.d.Box.Open, &row.Kind, row.Public, row.SecretCfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	return cred, &row, nil
+}
+
+// requireCredentialWrite gates the credential-related edits behind
+// deploycreds:write on top of delivery:write: attaching a credential (or
+// switching to another), and changing the URL or host of a target that has
+// one, or its pinned host key — otherwise an operator could point a stored
+// secret at a host they control. urls is the new resolved URL set.
+func (s *Server) requireCredentialWrite(ctx context.Context, orgID uuid.UUID, q *sqlcgen.Queries, typ string, old *sqlcgen.DeployTarget, credRow *sqlcgen.DeployCredential, cred *targets.Credential, urls []string, public json.RawMessage) error {
+	needs := old == nil || old.CredentialID == nil || *old.CredentialID != credRow.ID
+	if !needs {
+		resolved, err := targets.Resolve(old.Config, nil, cred)
+		if err != nil {
+			needs = true
+		} else if oldCfg, _, err := s.d.Targets.Parse(typ, resolved, nil); err != nil || !sameURLSet(oldCfg.URLs, urls) {
+			needs = true
+		} else if pinnedHostKey(old.Config) != pinnedHostKey(public) {
+			// A swapped pinned host key would let a MITM capture the credential.
+			needs = true
+		}
+	}
+	if !needs {
+		return nil
+	}
+	_, err := authorize(ctx, authz.ActionDeployCredsWrite, &orgID)
+	return err
+}
+
+// pinnedHostKey returns a config's "hostKey" string, or "" when absent.
+func pinnedHostKey(cfg json.RawMessage) string {
+	var v struct {
+		HostKey string `json:"hostKey"`
+	}
+	_ = json.Unmarshal(cfg, &v)
+	return v.HostKey
 }
 
 // checkVaultKVOrgPath is S4's isolation gate: a principal without global
@@ -920,7 +1021,7 @@ func (s *Server) CreateDeployTarget(ctx context.Context, r gen.CreateDeployTarge
 	if _, err := authorize(ctx, authz.ActionDeliveryWrite, &r.OrgId); err != nil {
 		return nil, err
 	}
-	vt, err := s.validTarget(ctx, r.OrgId, r.Body, nil)
+	vt, err := s.validTarget(ctx, s.queries(), r.OrgId, r.Body, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -928,11 +1029,14 @@ func (s *Server) CreateDeployTarget(ctx context.Context, r gen.CreateDeployTarge
 		return nil, err
 	}
 	t, err := s.queries().CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: r.OrgId, Name: vt.name, Type: string(r.Body.Type),
-		RunsOn: string(vt.side), Config: vt.public, SecretCfg: vt.secretCfg, StoredSecretKeys: vt.secretKeys})
+		RunsOn: string(vt.side), Config: vt.public, SecretCfg: vt.secretCfg, StoredSecretKeys: vt.secretKeys, CredentialID: vt.credential})
 	switch pgCode(err) {
 	case pgUniqueViolation:
 		return nil, conflict("A deploy target named %q exists in this org.", vt.name)
 	case pgForeignKeyViolation:
+		if vt.credential != nil {
+			return nil, conflict("The deploy credential was just deleted; try again.")
+		}
 		return nil, notFound("org %s", r.OrgId)
 	}
 	if err != nil {
@@ -970,7 +1074,7 @@ func (s *Server) UpdateDeployTarget(ctx context.Context, r gen.UpdateDeployTarge
 	if err != nil {
 		return nil, err
 	}
-	vt, err := s.validTarget(ctx, r.OrgId, r.Body, &cur)
+	vt, err := s.validTarget(ctx, q, r.OrgId, r.Body, &cur)
 	if err != nil {
 		return nil, err
 	}
@@ -998,7 +1102,7 @@ func (s *Server) UpdateDeployTarget(ctx context.Context, r gen.UpdateDeployTarge
 			return nil, err
 		}
 	}
-	t, err := q.UpdateDeployTarget(ctx, sqlcgen.UpdateDeployTargetParams{Name: vt.name, Config: vt.public, SecretCfg: vt.secretCfg, StoredSecretKeys: vt.secretKeys, ID: r.Id, OrgID: r.OrgId})
+	t, err := q.UpdateDeployTarget(ctx, sqlcgen.UpdateDeployTargetParams{Name: vt.name, Config: vt.public, SecretCfg: vt.secretCfg, StoredSecretKeys: vt.secretKeys, CredentialID: vt.credential, ID: r.Id, OrgID: r.OrgId})
 	if pgCode(err) == pgUniqueViolation {
 		return nil, conflict("A deploy target named %q exists in this org.", vt.name)
 	}

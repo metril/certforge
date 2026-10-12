@@ -102,7 +102,11 @@ func (s *Service) Assignments(ctx context.Context, c sqlcgen.Client) (agentproto
 			if err != nil {
 				return agentproto.Assignments{}, err
 			}
-			if target, err = targetOf(r.TargetType, r.TargetConfig, secrets, r.TargetOptions); err != nil {
+			cred, err := s.openCredential(ctx, r.CredentialKind, r.CredentialPublic, r.CredentialSecretCfg)
+			if err != nil {
+				return agentproto.Assignments{}, err
+			}
+			if target, err = targetOf(r.TargetType, r.TargetConfig, secrets, cred, r.TargetOptions); err != nil {
 				return agentproto.Assignments{}, err
 			}
 		}

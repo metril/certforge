@@ -1,8 +1,8 @@
 import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, makeTarget, meWith, org, sshSchema, targetTestSecret, targetVaultKv, testSecretSchema, traefikSchema, url, vaultKvSchema } from '@/test/fixtures';
+import { authHandlers, deployCredentialKinds, makeDeployCredential, makeTarget, meWith, org, sshSchema, targetTestSecret, targetVaultKv, testSecretSchema, traefikSchema, url, vaultKvSchema } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let posted: unknown;
@@ -30,6 +30,7 @@ beforeEach(() => {
     ...authHandlers({ authed: true }),
     http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema], notifiers: [], signers: [] })),
     http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [makeTarget()] })),
+    http.get(url('/orgs/org-1/deploy-credentials'), () => HttpResponse.json([])),
     http.post(url('/orgs/org-1/deploy-targets'), async ({ request }) => {
       posted = await request.json();
       return HttpResponse.json(makeTarget({ id: 't-new' }), { status: 201 });
@@ -254,4 +255,85 @@ it('type field is radios with few types and a combobox with many', async () => {
   const sheet2 = await screen.findByRole('dialog', { name: 'Add deploy target' });
   expect(await within(sheet2).findByRole('combobox', { name: 'Type' })).toBeInTheDocument();
   expect(within(sheet2).queryByRole('radio', { name: /^Type 0/ })).not.toBeInTheDocument();
+});
+
+describe('saved credentials', () => {
+  const sshTarget = makeTarget({ id: 't-ssh', name: 'kvm', type: 'ssh', runsOn: 'server', credentialId: 'dc-1', config: { host: 'kvm.lan', port: 22, hostKey: 'ssh-ed25519 AAAA', files: [{ path: '/x.crt', content: 'fullchain', mode: '0644' }] } });
+  const useSsh = (targets = [makeTarget()]) =>
+    server.use(
+      http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, sshSchema], deployCredentials: deployCredentialKinds, notifiers: [], signers: [] })),
+      http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: targets })),
+      http.get(url('/orgs/org-1/deploy-credentials'), () =>
+        HttpResponse.json([makeDeployCredential(), makeDeployCredential({ id: 'dc-2', name: 'cloudflare', kind: 'token', config: {}, storedSecrets: ['token'] })]),
+      ),
+    );
+
+  it('picking a credential hides its fields and posts credentialId without them', async () => {
+    useSsh();
+    const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
+    const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+    expect(within(sheet).queryByRole('combobox', { name: 'Credential' })).not.toBeInTheDocument();
+    await user.click(within(sheet).getByRole('radio', { name: /^SSH/ }));
+    await user.click(within(sheet).getByRole('radio', { name: 'PiKVM / GL.iNet Comet' }));
+    await user.type(within(sheet).getByLabelText('Name'), 'kvm');
+    await user.type(within(sheet).getByLabelText('Host'), 'kvm.lan');
+    await user.type(within(sheet).getByLabelText('Username'), 'typed');
+    await user.type(within(sheet).getByLabelText('Host key'), 'ssh-ed25519 AAAA');
+    await user.click(within(sheet).getByRole('combobox', { name: 'Credential' }));
+    // Only kinds the type accepts are offered.
+    expect(screen.queryByRole('option', { name: /cloudflare/ })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('option', { name: /lab ssh/ }));
+    expect(within(sheet).queryByLabelText('Username')).not.toBeInTheDocument();
+    expect(within(sheet).queryByLabelText('Private key')).not.toBeInTheDocument();
+    expect(within(sheet).getByText('Password')).toBeInTheDocument();
+    await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(posted).toMatchObject({ type: 'ssh', credentialId: 'dc-1', config: { host: 'kvm.lan' } }));
+    expect((posted as { config: object }).config).not.toHaveProperty('username');
+    expect((posted as { config: object }).config).not.toHaveProperty('privateKey');
+  });
+
+  it('an operator cannot attach a credential or move a credential-backed target', async () => {
+    useSsh([sshTarget]);
+    server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'operator', orgId: org.id }]))));
+    const { user } = renderRoute('/o/acme/delivery/targets?edit=t-ssh');
+    const sheet = await screen.findByRole('dialog', { name: 'Edit kvm' });
+    const select = await within(sheet).findByRole('combobox', { name: 'Credential' });
+    expect(select).toBeDisabled();
+    expect(select).toHaveTextContent('lab ssh');
+    await user.hover(select.parentElement!.parentElement!);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Needs the deploycreds:write permission');
+    expect(within(sheet).queryByLabelText('Username')).not.toBeInTheDocument();
+    expect(within(sheet).getByRole('button', { name: 'Save' })).toBeEnabled();
+    await user.clear(within(sheet).getByLabelText('Host'));
+    await user.type(within(sheet).getByLabelText('Host'), 'evil.lan');
+    expect(within(sheet).getByRole('button', { name: 'Save' })).toBeDisabled();
+  });
+
+  it('editing keeps the credential', async () => {
+    useSsh([sshTarget]);
+    const { user } = renderRoute('/o/acme/delivery/targets?edit=t-ssh');
+    const sheet = await screen.findByRole('dialog', { name: 'Edit kvm' });
+    await within(sheet).findByRole('combobox', { name: 'Credential' });
+    await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(patched).toMatchObject({ credentialId: 'dc-1', config: { host: 'kvm.lan' } }));
+  });
+
+  it('detaching shows the credential fields again and sends null', async () => {
+    useSsh([sshTarget]);
+    const { user } = renderRoute('/o/acme/delivery/targets?edit=t-ssh');
+    const sheet = await screen.findByRole('dialog', { name: 'Edit kvm' });
+    await user.click(await within(sheet).findByRole('combobox', { name: 'Credential' }));
+    await user.click(await screen.findByRole('option', { name: 'Enter manually' }));
+    await user.type(within(sheet).getByLabelText('Username'), 'root');
+    await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(patched).toMatchObject({ credentialId: null, config: { username: 'root' } }));
+  });
+
+  it('the detail sheet links to the credential', async () => {
+    useSsh([sshTarget]);
+    renderRoute('/o/acme/delivery/targets?view=t-ssh');
+    const sheet = await screen.findByRole('dialog', { name: /kvm/ });
+    const link = await within(sheet).findByRole('link', { name: 'lab ssh' });
+    expect(link).toHaveAttribute('href', '/o/acme/delivery/credentials?edit=dc-1');
+  });
 });

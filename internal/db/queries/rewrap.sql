@@ -87,3 +87,11 @@ ORDER BY id LIMIT $1;
 
 -- name: RewrapDeployTargetsSecretCAS :execrows
 UPDATE deploy_targets SET secret_cfg = $2 WHERE id = $1 AND secret_cfg = $3;
+
+-- name: RewrapDeployCredentialsPage :many
+SELECT id, secret_cfg FROM deploy_credentials
+WHERE sqlc.narg(after)::uuid IS NULL OR id > sqlc.narg(after)
+ORDER BY id LIMIT $1;
+
+-- name: RewrapDeployCredentialsSecretCAS :execrows
+UPDATE deploy_credentials SET secret_cfg = $2 WHERE id = $1 AND secret_cfg = $3;

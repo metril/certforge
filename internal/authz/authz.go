@@ -46,7 +46,12 @@ const (
 	ActionDeliveryRead   Action = "delivery:read"
 	ActionDeliveryWrite  Action = "delivery:write"
 	ActionAlertsRead     Action = "alerts:read"
-	ActionAlertsWrite    Action = "alerts:write"
+	// Deploy credentials: write is org-admin and admin only (not operator);
+	// reveal returns a stored secret in plaintext (global admin only).
+	ActionDeployCredsRead   Action = "deploycreds:read"
+	ActionDeployCredsWrite  Action = "deploycreds:write"
+	ActionDeployCredsReveal Action = "deploycreds:reveal"
+	ActionAlertsWrite       Action = "alerts:write"
 )
 
 // Roles, matching the role_bindings.role check constraint.
@@ -69,11 +74,12 @@ var AllActions = []Action{
 	ActionAPIKeysRead, ActionAPIKeysWrite,
 	ActionDeliveryRead, ActionDeliveryWrite,
 	ActionAlertsRead, ActionAlertsWrite,
+	ActionDeployCredsRead, ActionDeployCredsWrite, ActionDeployCredsReveal,
 }
 
 var globalOnly = map[Action]bool{
 	ActionSettingsWrite: true, ActionOrgsWrite: true, ActionCAsWrite: true, ActionKeysExport: true, ActionUsersWrite: true,
-	ActionDNSCredsReveal: true,
+	ActionDNSCredsReveal: true, ActionDeployCredsReveal: true,
 }
 
 var sharedRead = map[Action]bool{ActionOrgsRead: true, ActionSettingsRead: true, ActionCAsRead: true, ActionUsersRead: true}
@@ -81,12 +87,12 @@ var sharedRead = map[Action]bool{ActionOrgsRead: true, ActionSettingsRead: true,
 var viewerActions = []Action{
 	ActionOrgsRead, ActionSettingsRead, ActionCAsRead, ActionAccountsRead,
 	ActionDNSCredsRead, ActionCertsRead, ActionClientsRead, ActionSitesRead,
-	ActionDeliveryRead, ActionAlertsRead,
+	ActionDeliveryRead, ActionAlertsRead, ActionDeployCredsRead,
 }
 
 // APIKeyScopes are the scopes an API key may carry (docs/internals/history/design.md, plus
 // Phase 3's clients:read and delivery scopes, and Phase 6A's alerts scopes).
-var APIKeyScopes = []string{"certs:read", "certs:write", "certs:issue", "keys:export", "dnscreds:reveal",
+var APIKeyScopes = []string{"certs:read", "certs:write", "certs:issue", "keys:export", "dnscreds:reveal", "deploycreds:reveal",
 	"clients:read", "clients:write", "delivery:read", "delivery:write",
 	"alerts:read", "alerts:write", "admin"}
 
@@ -94,24 +100,25 @@ var APIKeyScopes = []string{"certs:read", "certs:write", "certs:issue", "keys:ex
 // globally for an org-less key), to put a scope on a key.
 var ScopeGrant = map[string]Action{
 	"certs:read": ActionCertsRead, "certs:write": ActionCertsWrite, "certs:issue": ActionCertsIssue,
-	"keys:export": ActionKeysExport, "dnscreds:reveal": ActionDNSCredsReveal, "clients:read": ActionClientsRead, "clients:write": ActionClientsWrite,
+	"keys:export": ActionKeysExport, "dnscreds:reveal": ActionDNSCredsReveal, "deploycreds:reveal": ActionDeployCredsReveal, "clients:read": ActionClientsRead, "clients:write": ActionClientsWrite,
 	"delivery:read": ActionDeliveryRead, "delivery:write": ActionDeliveryWrite,
 	"alerts:read": ActionAlertsRead, "alerts:write": ActionAlertsWrite, "admin": ActionSettingsWrite,
 }
 
 var scopeActions = map[string][]Action{
-	"certs:read":      {ActionCertsRead, ActionOrgsRead, ActionSitesRead, ActionCAsRead, ActionAccountsRead, ActionDNSCredsRead},
-	"certs:write":     {ActionCertsWrite},
-	"certs:issue":     {ActionCertsIssue},
-	"keys:export":     {ActionKeysExport},
-	"dnscreds:reveal": {ActionDNSCredsRead, ActionDNSCredsReveal},
-	"clients:read":    {ActionClientsRead, ActionOrgsRead, ActionSitesRead},
-	"clients:write":   {ActionClientsRead, ActionClientsWrite},
-	"delivery:read":   {ActionDeliveryRead},
-	"delivery:write":  {ActionDeliveryRead, ActionDeliveryWrite},
-	"alerts:read":     {ActionAlertsRead},
-	"alerts:write":    {ActionAlertsRead, ActionAlertsWrite},
-	"admin":           AllActions,
+	"certs:read":         {ActionCertsRead, ActionOrgsRead, ActionSitesRead, ActionCAsRead, ActionAccountsRead, ActionDNSCredsRead},
+	"certs:write":        {ActionCertsWrite},
+	"certs:issue":        {ActionCertsIssue},
+	"keys:export":        {ActionKeysExport},
+	"dnscreds:reveal":    {ActionDNSCredsRead, ActionDNSCredsReveal},
+	"deploycreds:reveal": {ActionDeployCredsRead, ActionDeployCredsReveal},
+	"clients:read":       {ActionClientsRead, ActionOrgsRead, ActionSitesRead},
+	"clients:write":      {ActionClientsRead, ActionClientsWrite},
+	"delivery:read":      {ActionDeliveryRead, ActionDeployCredsRead},
+	"delivery:write":     {ActionDeliveryRead, ActionDeliveryWrite, ActionDeployCredsRead},
+	"alerts:read":        {ActionAlertsRead},
+	"alerts:write":       {ActionAlertsRead, ActionAlertsWrite},
+	"admin":              AllActions,
 }
 
 var roleActions = map[string]map[Action]bool{

@@ -511,11 +511,12 @@ const grantSources = `-- name: GrantSources :many
 SELECT g.id, g.client_id, g.cert_id, g.delivery, ce.name AS certificate_name,
        ce.common_name AS certificate_common_name, ce.sans AS certificate_sans, ce.current_version_id,
        o.files AS layout_files, o.password AS layout_password, o.extra_cert_ids AS layout_extra_cert_ids,
-       t.type AS target_type, t.config AS target_config, t.secret_cfg AS target_secret_cfg, g.target_options
+       t.type AS target_type, t.config AS target_config, t.secret_cfg AS target_secret_cfg, g.target_options, dc.kind AS credential_kind, dc.public AS credential_public, dc.secret_cfg AS credential_secret_cfg
 FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 LEFT JOIN output_specs o ON o.id = g.output_spec_id
 LEFT JOIN deploy_targets t ON t.id = g.deploy_target_id
+LEFT JOIN deploy_credentials dc ON dc.id = t.credential_id
 WHERE g.id = ANY($1::uuid[]) AND g.removed_at IS NULL
 `
 
@@ -535,6 +536,9 @@ type GrantSourcesRow struct {
 	TargetConfig          []byte      `json:"target_config"`
 	TargetSecretCfg       []byte      `json:"target_secret_cfg"`
 	TargetOptions         []byte      `json:"target_options"`
+	CredentialKind        *string     `json:"credential_kind"`
+	CredentialPublic      []byte      `json:"credential_public"`
+	CredentialSecretCfg   []byte      `json:"credential_secret_cfg"`
 }
 
 // t.secret_cfg AS target_secret_cfg (Phase 7A Task 6): Service.render opens
@@ -570,6 +574,9 @@ func (q *Queries) GrantSources(ctx context.Context, ids []uuid.UUID) ([]GrantSou
 			&i.TargetConfig,
 			&i.TargetSecretCfg,
 			&i.TargetOptions,
+			&i.CredentialKind,
+			&i.CredentialPublic,
+			&i.CredentialSecretCfg,
 		); err != nil {
 			return nil, err
 		}
@@ -1037,7 +1044,7 @@ func (q *Queries) LockServerGrant(ctx context.Context, arg LockServerGrantParams
 
 const lockServerTarget = `-- name: LockServerTarget :one
 
-SELECT id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg, stored_secret_keys FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR SHARE
+SELECT id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg, stored_secret_keys, credential_id FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR SHARE
 `
 
 type LockServerTargetParams struct {
@@ -1066,6 +1073,7 @@ func (q *Queries) LockServerTarget(ctx context.Context, arg LockServerTargetPara
 		&i.UpdatedAt,
 		&i.SecretCfg,
 		&i.StoredSecretKeys,
+		&i.CredentialID,
 	)
 	return i, err
 }

@@ -85,6 +85,18 @@ func TestOrgCRUD(t *testing.T) {
 		t.Fatalf("delete with channel and monitor %d %s", resp.StatusCode, out)
 	}
 
+	// Deploy credentials block the delete too.
+	withDC, err := e.deps.Queries.CreateOrg(ctx, sqlcgenOrg("with-dc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.deps.Pool.Exec(ctx, `INSERT INTO deploy_credentials (org_id, name, kind, public, secret_cfg) VALUES ($1, 'dc', 'token', '{}', '\x00')`, withDC.ID); err != nil {
+		t.Fatal(err)
+	}
+	if resp, out := e.do(http.MethodDelete, "/api/v1/orgs/"+withDC.ID.String(), nil, csrf); resp.StatusCode != http.StatusConflict || !strings.Contains(string(out), "1 deploy credential") { //nolint:bodyclose // testEnv.doRaw closes the body
+		t.Fatalf("delete with deploy credential %d %s", resp.StatusCode, out)
+	}
+
 	// An org whose only rows are its own issuance defaults and a revoked API
 	// key deletes cleanly; both cascade off the org row.
 	cleanup, err := e.deps.Queries.CreateOrg(ctx, sqlcgenOrg("cleanup"))

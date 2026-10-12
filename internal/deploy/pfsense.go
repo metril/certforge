@@ -52,6 +52,7 @@ const pfSenseSchema = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "pfSense Plus",
   "description": "Pushes a certificate and its private key into pfSense Plus (25.03+) through its REST API, updating an existing certificate entry in place. Runs on the server.",
+  "credentialKinds": ["password"],
   "type": "object",
   "additionalProperties": false,
   "required": ["url", "username", "password"],

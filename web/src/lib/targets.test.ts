@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import type { RJSFSchema } from '@rjsf/utils';
 import { me, meWith, org, testSecretSchema, traefikSchema, vaultKvSchema } from '@/test/fixtures';
-import { defaultRunsOn, forcedRunsOn, keyGateBlocks, needsKey, targetLocation, toTargetInput, typeHelpKey } from './targets';
+import { defaultRunsOn, forcedRunsOn, keyGateBlocks, locationChanged, needsKey, targetLocation, toTargetInput, typeHelpKey } from './targets';
 
 it('forced runs-on for server and agent types', () => {
   expect(forcedRunsOn(vaultKvSchema)).toBe('server');
@@ -51,4 +51,18 @@ it('input omits runsOn on update', () => {
   const update = toTargetInput(draft, schema, [], false);
   expect(update).not.toHaveProperty('runsOn');
   expect(update).toEqual({ name: 'edge', type: 'traefik', config: { dir: '/etc/traefik/dynamic' } });
+});
+
+it('locationChanged covers every field the server gates for credential-backed targets', () => {
+  const schema: RJSFSchema = {
+    type: 'object',
+    properties: { host: { type: 'string' }, port: { type: 'integer', default: 22 }, sshPort: { type: 'integer' }, hostKey: { type: 'string' }, files: { type: 'string' } },
+  };
+  const base = { host: 'a.example', hostKey: 'ssh-ed25519 AAAA', sshPort: 22 };
+  expect(locationChanged(schema, base, { ...base })).toBe(false);
+  expect(locationChanged(schema, base, { ...base, files: 'x' })).toBe(false);
+  expect(locationChanged(schema, base, { ...base, host: 'b.example' })).toBe(true);
+  expect(locationChanged(schema, base, { ...base, port: 2222 })).toBe(true);
+  expect(locationChanged(schema, base, { ...base, sshPort: 2222 })).toBe(true);
+  expect(locationChanged(schema, base, { ...base, hostKey: 'ssh-ed25519 BBBB' })).toBe(true);
 });

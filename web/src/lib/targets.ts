@@ -3,7 +3,7 @@ import type { RJSFSchema } from '@rjsf/utils';
 import type { DeployTargetInput, Me, ProviderSchema, RunsOn } from '@/api/types';
 import { help, type HelpKey } from '@/lib/help';
 import { can } from '@/lib/permissions';
-import { withStoredSentinels } from './secretForm';
+import { settledConfig, withStoredSentinels } from './secretForm';
 
 /** Where a deploy target type runs (`SchemaEntry.runsOn`, 7a-facts.md). */
 export type RunsOnMode = 'server' | 'agent' | 'either';
@@ -107,3 +107,30 @@ export const SSH_PRESETS: SshPreset[] = [
   { id: 'kvm-legacy', label: 'PiKVM (legacy paths)', config: { files: kvmFiles('/etc/kvmd/nginx/ssl'), preCommand: 'rw', postCommand: 'ro; systemctl restart kvmd-nginx' } },
   { id: 'custom', label: 'Custom', config: {} },
 ];
+
+/** The deploy credential kinds a target type accepts (its schema's credentialKinds). */
+export function credentialKindsOf(schema: unknown): string[] {
+  const k = (schema as { credentialKinds?: unknown } | null)?.credentialKinds;
+  return Array.isArray(k) ? k.filter((x): x is string => typeof x === 'string') : [];
+}
+
+/** The schema without the fields a saved credential supplies: they are hidden
+ * and no longer required. */
+export function omitFields(schema: RJSFSchema, fields: string[]): RJSFSchema {
+  if (fields.length === 0 || !schema.properties) return schema;
+  const properties = Object.fromEntries(Object.entries(schema.properties).filter(([k]) => !fields.includes(k)));
+  const required = schema.required?.filter((k) => !fields.includes(k));
+  return { ...schema, properties, required };
+}
+
+// Mirrors the server's requireCredentialWrite: where a saved credential's
+// secret is sent (url, host, port, RouterOS sshPort) and the pinned hostKey.
+const LOCATION_KEYS = ['url', 'host', 'port', 'sshPort', 'hostKey'];
+
+/** Whether the target's URL, host, port or pinned host key differs from the
+ * saved config (defaults filled on both sides). */
+export function locationChanged(schema: RJSFSchema, before: Record<string, unknown>, after: Record<string, unknown>): boolean {
+  const a = settledConfig(schema, before, []);
+  const b = settledConfig(schema, after, []);
+  return LOCATION_KEYS.some((k) => JSON.stringify(a[k] ?? null) !== JSON.stringify(b[k] ?? null));
+}

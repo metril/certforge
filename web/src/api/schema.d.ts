@@ -1648,6 +1648,91 @@ export interface paths {
         patch: operations["updateLayout"];
         trace?: never;
     };
+    "/orgs/{orgId}/deploy-credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List deploy credentials
+         * @description Credentials of the org sorted by name, without secrets. Needs deploycreds:read.
+         */
+        get: operations["listDeployCredentials"];
+        put?: never;
+        /**
+         * Add a deploy credential
+         * @description Needs deploycreds:write (org-admin or admin). config is validated against the kind's schema from GET /meta/schemas (deployCredentials); fields with secret true are stored encrypted. Any target of a matching kind can then reference it by credentialId.
+         */
+        post: operations["createDeployCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/deploy-credentials/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get a deploy credential
+         * @description Secrets are never returned. Needs deploycreds:read.
+         */
+        get: operations["getDeployCredential"];
+        /**
+         * Replace a deploy credential
+         * @description Needs deploycreds:write. config is replaced as a whole; a secret field set to __unchanged__ keeps its stored value and a secret field left out is removed. The kind cannot change. Nothing is redeployed: server deploys use the new value next time, and the agent targets that use the credential are re-synced in the same transaction.
+         */
+        put: operations["updateDeployCredential"];
+        post?: never;
+        /**
+         * Delete a deploy credential
+         * @description Needs deploycreds:write. 409 listing the targets that use it.
+         */
+        delete: operations["deleteDeployCredential"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/deploy-credentials/{id}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reveal a stored deploy credential secret
+         * @description Needs deploycreds:reveal (global admin only). Returns one stored secret field in plaintext and records a deploy_credential.secret_revealed audit event (never containing the value); if the audit write fails the value is not returned. 422 if field is not a secret field of the kind; 404 if it is but has no stored value.
+         */
+        post: operations["revealDeployCredentialSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orgs/{orgId}/deploy-targets": {
         parameters: {
             query?: never;
@@ -2469,6 +2554,8 @@ export interface components {
         };
         /** @description Pluggable type schemas grouped by kind. */
         MetaSchemas: {
+            /** @description Deploy credential kinds and their field schemas. */
+            deployCredentials: components["schemas"]["SchemaEntry"][];
             /** @description DNS-01 providers. */
             dnsProviders: components["schemas"]["SchemaEntry"][];
             /** @description Deploy targets. */
@@ -2625,10 +2712,10 @@ export interface components {
             kekId: string;
         };
         /**
-         * @description A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels covers secret_cfg and is walked before deploy_targets; deploy_targets covers its own secret_cfg and is walked last.
+         * @description A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels covers secret_cfg and is walked before deploy_targets; deploy_targets covers its own secret_cfg; deploy_credentials covers its own secret_cfg and is walked last.
          * @enum {string}
          */
-        RewrapTable: "settings" | "cas" | "acme_accounts" | "dns_provider_credentials" | "output_specs" | "agent_cas" | "certificate_versions" | "notification_channels" | "deploy_targets";
+        RewrapTable: "settings" | "cas" | "acme_accounts" | "dns_provider_credentials" | "output_specs" | "agent_cas" | "certificate_versions" | "notification_channels" | "deploy_targets" | "deploy_credentials";
         /** @description Rewrap progress for one table. */
         RewrapTableStatus: {
             table: components["schemas"]["RewrapTable"];
@@ -3757,10 +3844,10 @@ export interface components {
             disabled: boolean;
         };
         /**
-         * @description What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials (without secrets); dnscreds:reveal also reads DNS credentials and may reveal their stored secrets; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks; alerts covers notification channels, events and external monitors; admin is everything.
+         * @description What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials (without secrets); dnscreds:reveal also reads DNS credentials and may reveal their stored secrets; deploycreds:reveal also reads deploy credentials and may reveal their stored secrets; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks, and reads deploy credentials (without secrets); alerts covers notification channels, events and external monitors; admin is everything.
          * @enum {string}
          */
-        ApiKeyScope: "certs:read" | "certs:write" | "certs:issue" | "keys:export" | "dnscreds:reveal" | "clients:read" | "clients:write" | "delivery:read" | "delivery:write" | "alerts:read" | "alerts:write" | "admin";
+        ApiKeyScope: "certs:read" | "certs:write" | "certs:issue" | "keys:export" | "dnscreds:reveal" | "deploycreds:reveal" | "clients:read" | "clients:write" | "delivery:read" | "delivery:write" | "alerts:read" | "alerts:write" | "admin";
         /** @description An API key without its secret. */
         ApiKey: {
             /**
@@ -4295,6 +4382,76 @@ export interface components {
             items: components["schemas"]["Layout"][];
         };
         /**
+         * @description Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema.
+         * @enum {string}
+         */
+        DeployCredentialKind: "ssh" | "password" | "apiKey" | "token";
+        /** @description A reusable deploy credential. Secret values are never returned. */
+        DeployCredential: {
+            /**
+             * Format: uuid
+             * @description Credential id.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Owning org.
+             */
+            orgId?: string;
+            /** @description Unique name in the org. */
+            name: string;
+            kind: components["schemas"]["DeployCredentialKind"];
+            /** @description Non-secret field values. */
+            config: {
+                [key: string]: unknown;
+            };
+            /** @description Secret fields that have a stored value. */
+            storedSecrets?: string[];
+            /** @description Deploy targets that use this credential. */
+            usedBy?: number;
+            /**
+             * Format: date-time
+             * @description Creation time.
+             */
+            createdAt?: string;
+            /**
+             * Format: date-time
+             * @description Last change.
+             */
+            updatedAt?: string;
+        };
+        /** @description A new deploy credential. */
+        DeployCredentialInput: {
+            /** @description Unique name in the org. */
+            name: string;
+            kind: components["schemas"]["DeployCredentialKind"];
+            /** @description Field values valid against the kind's schema. */
+            config: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description Replacement name and config. */
+        DeployCredentialUpdate: {
+            /** @description Unique name in the org. */
+            name: string;
+            /** @description Full config; secret fields may be __unchanged__. */
+            config: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description Which stored secret to reveal. */
+        DeployCredentialRevealRequest: {
+            /** @description Name of a stored secret field of the credential's kind. */
+            field: string;
+        };
+        /** @description One stored secret in plaintext. */
+        DeployCredentialRevealResult: {
+            /** @description The secret field name. */
+            field: string;
+            /** @description The stored plaintext value. */
+            value: string;
+        };
+        /**
          * @description Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today.
          * @enum {string}
          */
@@ -4336,6 +4493,11 @@ export interface components {
             };
             /** @description Secret fields that have a stored value. */
             storedSecrets: string[];
+            /**
+             * Format: uuid
+             * @description The deploy credential supplying this target's login fields; null when the target holds its own. The credential's fields are not in config.
+             */
+            credentialId?: string | null;
             /** @description Live grants using it. */
             grantCount: number;
             /**
@@ -4360,6 +4522,11 @@ export interface components {
             config: {
                 [key: string]: unknown;
             };
+            /**
+             * Format: uuid
+             * @description A deploy credential of the same org whose kind the type accepts (its schema's credentialKinds). Its fields are overlaid on config, so config must not also set them (422 naming the fields). Attaching or changing it, or changing the URL or host of a target that has one, also needs deploycreds:write (403). Attaching clears the target's own stored secrets. Omitted or null detaches it.
+             */
+            credentialId?: string | null;
         };
         /** @description An org's deploy targets. */
         DeployTargetList: {
@@ -8228,6 +8395,205 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listDeployCredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All deploy credentials of the org. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeployCredential"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createDeployCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeployCredentialInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeployCredential"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getDeployCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The credential. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeployCredential"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateDeployCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeployCredentialUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeployCredential"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteDeployCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    revealDeployCredentialSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeployCredentialRevealRequest"];
+            };
+        };
+        responses: {
+            /** @description The secret value. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    /** @description no-cache */
+                    Pragma?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeployCredentialRevealResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             413: components["responses"]["PayloadTooLarge"];
             415: components["responses"]["UnsupportedMediaType"];
             422: components["responses"]["UnprocessableEntity"];

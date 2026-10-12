@@ -8,12 +8,13 @@ export const ACTIONS = [
   'dnscreds:reveal', 'certs:read', 'certs:write', 'certs:issue', 'keys:export', 'clients:read', 'clients:write', 'audit:read',
   'sites:read', 'sites:write', 'bindings:read', 'bindings:write', 'apikeys:read', 'apikeys:write',
   'delivery:read', 'delivery:write', 'alerts:read', 'alerts:write',
+  'deploycreds:read', 'deploycreds:write', 'deploycreds:reveal',
 ] as const;
 export type Action = (typeof ACTIONS)[number];
 
-const GLOBAL_ONLY = new Set<Action>(['settings:write', 'orgs:write', 'cas:write', 'keys:export', 'users:write', 'dnscreds:reveal']);
+const GLOBAL_ONLY = new Set<Action>(['settings:write', 'orgs:write', 'cas:write', 'keys:export', 'users:write', 'dnscreds:reveal', 'deploycreds:reveal']);
 const SHARED_READ = new Set<Action>(['orgs:read', 'settings:read', 'cas:read', 'users:read']);
-const VIEWER: Action[] = ['orgs:read', 'settings:read', 'cas:read', 'accounts:read', 'dnscreds:read', 'certs:read', 'clients:read', 'sites:read', 'delivery:read', 'alerts:read'];
+const VIEWER: Action[] = ['orgs:read', 'settings:read', 'cas:read', 'accounts:read', 'dnscreds:read', 'certs:read', 'clients:read', 'sites:read', 'delivery:read', 'alerts:read', 'deploycreds:read'];
 
 const ROLE_ACTIONS: Record<string, ReadonlySet<Action>> = {
   admin: new Set(ACTIONS),
@@ -65,7 +66,7 @@ export const API_KEY_SCOPES: ApiKeyScope[] = [
 // Mirror of authz.ScopeGrant.
 const SCOPE_GRANT: Record<ApiKeyScope, Action> = {
   'certs:read': 'certs:read', 'certs:write': 'certs:write', 'certs:issue': 'certs:issue',
-  'keys:export': 'keys:export', 'dnscreds:reveal': 'dnscreds:reveal', 'clients:read': 'clients:read', 'clients:write': 'clients:write',
+  'keys:export': 'keys:export', 'dnscreds:reveal': 'dnscreds:reveal', 'deploycreds:reveal': 'deploycreds:reveal', 'clients:read': 'clients:read', 'clients:write': 'clients:write',
   'delivery:read': 'delivery:read', 'delivery:write': 'delivery:write',
   'alerts:read': 'alerts:read', 'alerts:write': 'alerts:write', admin: 'settings:write',
 };

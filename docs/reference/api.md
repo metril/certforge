@@ -25,6 +25,7 @@ Create keys under **Settings → Access → API keys** (see [Access](../guide/ac
 | `certs:issue` | Renew now, confirm manual DNS. |
 | `keys:export` | Download private keys; create grants that deliver a key. |
 | `dnscreds:reveal` | Read DNS credentials and reveal one stored secret field. |
+| `deploycreds:reveal` | Read deploy credentials and reveal one stored secret field. |
 | `clients:read` / `clients:write` | Read, or read and change, clients and grants (read also covers organizations and sites). |
 | `delivery:read` / `delivery:write` | Read, or read and change, layouts, deploy targets and hooks. |
 | `alerts:read` / `alerts:write` | Read, or read and change, channels, monitors and events. |
@@ -37,7 +38,7 @@ Each operation checks one permission in the organization named by `{orgId}`, or 
 | Role | Allows |
 |---|---|
 | `admin` (global) | Everything. |
-| `org-admin` | Everything in its organization except the global-only permissions: `settings:write`, `orgs:write`, `cas:write`, `keys:export`, `users:write`, `dnscreds:reveal`. |
+| `org-admin` | Everything in its organization except the global-only permissions: `settings:write`, `orgs:write`, `cas:write`, `keys:export`, `users:write`, `dnscreds:reveal`, `deploycreds:reveal`. |
 | `operator` | Everything a viewer can read, plus write access to ACME accounts, DNS credentials, certificates (including renew), clients, delivery and alerts. |
 | `viewer` | Read access to organizations, settings, CAs, ACME accounts, DNS credentials, certificates, clients, sites, delivery and alerts. |
 | `auditor` | Viewer, plus `audit:read`. |

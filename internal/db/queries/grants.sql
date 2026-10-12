@@ -83,11 +83,12 @@ ON CONFLICT (grant_id) DO UPDATE SET version_id = EXCLUDED.version_id, state = '
 SELECT g.id, g.client_id, g.cert_id, g.delivery, ce.name AS certificate_name,
        ce.common_name AS certificate_common_name, ce.sans AS certificate_sans, ce.current_version_id,
        o.files AS layout_files, o.password AS layout_password, o.extra_cert_ids AS layout_extra_cert_ids,
-       t.type AS target_type, t.config AS target_config, t.secret_cfg AS target_secret_cfg, g.target_options
+       t.type AS target_type, t.config AS target_config, t.secret_cfg AS target_secret_cfg, g.target_options, dc.kind AS credential_kind, dc.public AS credential_public, dc.secret_cfg AS credential_secret_cfg
 FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 LEFT JOIN output_specs o ON o.id = g.output_spec_id
 LEFT JOIN deploy_targets t ON t.id = g.deploy_target_id
+LEFT JOIN deploy_credentials dc ON dc.id = t.credential_id
 WHERE g.id = ANY(sqlc.arg(ids)::uuid[]) AND g.removed_at IS NULL;
 
 -- name: LiveGrantIDsForCert :many

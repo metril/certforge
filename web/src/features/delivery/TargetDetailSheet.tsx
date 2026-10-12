@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { KeyRound, Lock, Pencil, Plus, RotateCw, Trash2 } from 'lucide-react';
+import { KeyRound, KeySquare, Lock, Pencil, Plus, RotateCw, Trash2 } from 'lucide-react';
 import { layoutsQuery, targetHookRunsInfinite } from '@/api/queries/delivery';
+import { deployCredentialsQuery } from '@/api/queries/deployCredentials';
 import { targetGrantsQuery, useDeleteGrant, useRedeployGrant } from '@/api/queries/grants';
 import type { DeployTarget, Grant, ProviderSchema } from '@/api/types';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
@@ -51,6 +52,8 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
   const q = useQuery(targetGrantsQuery(orgId, target.id));
   const layoutsQ = useQuery(layoutsQuery(orgId));
   const layouts = layoutsQ.data ?? [];
+  const credsQ = useQuery({ ...deployCredentialsQuery(orgId), enabled: !!target.credentialId });
+  const credName = credsQ.data?.find((c) => c.id === target.credentialId)?.name;
   const redeploy = useRedeployGrant(orgId);
   const del = useDeleteGrant(orgId);
 
@@ -175,6 +178,22 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
               <span className="text-xs text-ink-muted">{typeName}</span>
               <RunsOnChip mode="server" />
               {keyed && <ToneChip tone="neutral" icon={KeyRound} label="Includes key" />}
+              {target.credentialId && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link
+                      to="/o/$org/delivery/credentials"
+                      params={{ org: orgSlug }}
+                      search={{ edit: target.credentialId }}
+                      className="inline-flex max-w-48 items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-xs hover:bg-subtle"
+                    >
+                      <KeySquare className="size-3.5 shrink-0" aria-hidden />
+                      <span className="truncate">{credName ?? 'Saved credential'}</span>
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent>{help['target.credential'].text}</TooltipContent>
+                </Tooltip>
+              )}
               {target.storedSecrets.length > 0 && (
                 <Tooltip>
                   <TooltipTrigger asChild>

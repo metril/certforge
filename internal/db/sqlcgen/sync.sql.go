@@ -31,12 +31,13 @@ const clientAssignments = `-- name: ClientAssignments :many
 SELECT g.id, g.cert_id, ce.name AS certificate_name, ce.common_name AS certificate_common_name,
        ce.sans AS certificate_sans, g.delivery, g.hook_ids, g.removed_at, g.redeploy_seq,
        d.version_id, d.expected, cv.sha256_fp AS fingerprint, t.type AS target_type, t.config AS target_config,
-       t.secret_cfg AS target_secret_cfg, g.target_options
+       t.secret_cfg AS target_secret_cfg, g.target_options, dc.kind AS credential_kind, dc.public AS credential_public, dc.secret_cfg AS credential_secret_cfg
 FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 JOIN deployments d ON d.grant_id = g.id
 LEFT JOIN certificate_versions cv ON cv.id = d.version_id
 LEFT JOIN deploy_targets t ON t.id = g.deploy_target_id
+LEFT JOIN deploy_credentials dc ON dc.id = t.credential_id
 WHERE g.client_id = $1
 ORDER BY g.created_at, g.id
 `
@@ -58,6 +59,9 @@ type ClientAssignmentsRow struct {
 	TargetConfig          []byte      `json:"target_config"`
 	TargetSecretCfg       []byte      `json:"target_secret_cfg"`
 	TargetOptions         []byte      `json:"target_options"`
+	CredentialKind        *string     `json:"credential_kind"`
+	CredentialPublic      []byte      `json:"credential_public"`
+	CredentialSecretCfg   []byte      `json:"credential_secret_cfg"`
 }
 
 // t.secret_cfg AS target_secret_cfg (Phase 7A Task 6): agents.Service.Assignments
@@ -93,6 +97,9 @@ func (q *Queries) ClientAssignments(ctx context.Context, clientID *uuid.UUID) ([
 			&i.TargetConfig,
 			&i.TargetSecretCfg,
 			&i.TargetOptions,
+			&i.CredentialKind,
+			&i.CredentialPublic,
+			&i.CredentialSecretCfg,
 		); err != nil {
 			return nil, err
 		}

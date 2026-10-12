@@ -107,6 +107,17 @@ func TestCan(t *testing.T) {
 		{"write key dnscreds reveal", writeKey, ActionDNSCredsReveal, &org1, false},
 		{"export key dnscreds reveal", exportKey, ActionDNSCredsReveal, &org1, false},
 		{"admin key dnscreds reveal", apiKeyAdmin, ActionDNSCredsReveal, &org1, true},
+		{"admin deploycreds write", admin, ActionDeployCredsWrite, &org1, true},
+		{"org-admin deploycreds write", orgAdmin, ActionDeployCredsWrite, &org1, true},
+		{"operator deploycreds write", operator, ActionDeployCredsWrite, &org1, false},
+		{"operator deploycreds read", operator, ActionDeployCredsRead, &org1, true},
+		{"viewer deploycreds read", viewer, ActionDeployCredsRead, &org1, true},
+		{"viewer deploycreds write", viewer, ActionDeployCredsWrite, &org1, false},
+		{"admin deploycreds reveal", admin, ActionDeployCredsReveal, &org1, true},
+		{"org-admin deploycreds reveal", orgAdmin, ActionDeployCredsReveal, &org1, false},
+		{"operator deploycreds reveal", operator, ActionDeployCredsReveal, &org1, false},
+		{"reveal key deploycreds reveal", scoped("deploycreds:reveal"), ActionDeployCredsReveal, &org1, true},
+		{"write key deploycreds reveal", writeKey, ActionDeployCredsReveal, &org1, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -231,5 +242,14 @@ func TestDNSCredsRevealScope(t *testing.T) {
 	}
 	if !globalOnly[ActionDNSCredsReveal] || !slices.Contains(AllActions, ActionDNSCredsReveal) {
 		t.Fatal("dnscreds:reveal must be a global-only action in AllActions")
+	}
+}
+
+func TestDeployCredsRevealScope(t *testing.T) {
+	if !slices.Contains(APIKeyScopes, "deploycreds:reveal") || ScopeGrant["deploycreds:reveal"] != ActionDeployCredsReveal {
+		t.Fatal("deploycreds:reveal scope not registered")
+	}
+	if !globalOnly[ActionDeployCredsReveal] || !slices.Contains(AllActions, ActionDeployCredsReveal) {
+		t.Fatal("deploycreds:reveal must be a global-only action in AllActions")
 	}
 }

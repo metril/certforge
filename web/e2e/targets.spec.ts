@@ -154,3 +154,102 @@ test('targets at 375 px', async ({ page }) => {
   await confirm.getByRole('button', { name: 'Delete' }).click();
   await expect(confirm).toBeHidden();
 });
+
+test('saved credential: attach to two targets, rotate, delete blocked, detach, delete', async ({ page }) => {
+  await page.goto('/login');
+  await signInLocal(page);
+  await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
+
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const cred = `pw-cred-${suffix}`;
+  const targets = [`pw-pf-a-${suffix}`, `pw-pf-b-${suffix}`];
+
+  // Create a password credential.
+  await page.goto(`/o/${E2E.orgSlug}/delivery/credentials`);
+  await page.getByRole('button', { name: 'Add credential' }).first().click();
+  const add = page.getByRole('dialog', { name: 'Add credential' });
+  await add.getByLabel('Name', { exact: true }).fill(cred);
+  await add.getByRole('radio', { name: 'Password' }).click();
+  await add.getByLabel('Username', { exact: true }).fill('certforge');
+  await add.getByLabel('Password', { exact: true }).fill('first-secret');
+  await snap(page, 'deploy-credential-sheet');
+  await add.getByRole('button', { name: 'Save credential' }).click();
+  await expect(add).toBeHidden();
+  const credTable = page.getByRole('table', { name: 'Deploy credentials' });
+  await expect(credTable.getByRole('row', { name: new RegExp(cred) })).toBeVisible();
+
+  // Attach it to two pfSense targets; the login fields disappear.
+  for (const [i, name] of targets.entries()) {
+    await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
+    await page.getByRole('button', { name: 'Add target' }).first().click();
+    const sheet = page.getByRole('dialog', { name: 'Add deploy target' });
+    await pickTargetType(sheet, /^pfSense Plus/);
+    await sheet.getByLabel('Name', { exact: true }).fill(name);
+    await sheet.getByLabel('API URL').fill(`https://fw${i}.example.net/api/v2`);
+    await sheet.getByRole('combobox', { name: 'Credential' }).click();
+    await page.getByRole('option', { name: new RegExp(cred) }).click();
+    await expect(sheet.getByLabel('Username', { exact: true })).toHaveCount(0);
+    await expect(sheet.getByLabel('Password', { exact: true })).toHaveCount(0);
+    if (i === 0) await snap(page, 'target-sheet-credential');
+    await sheet.getByRole('button', { name: 'Save' }).click();
+    await expect(sheet).toBeHidden();
+    await expect(page.getByRole('table', { name: 'Deploy targets' }).getByRole('row', { name: new RegExp(`^${name}`) })).toContainText(`uses ${cred}`);
+  }
+
+  // The detail sheet links to the credential.
+  const targetsTable = page.getByRole('table', { name: 'Deploy targets' });
+  await targetsTable.getByRole('button', { name: `Grants ${targets[0]}` }).click();
+  const detail = page.getByRole('dialog', { name: new RegExp(targets[0]!) });
+  await expect(detail.getByRole('link', { name: cred })).toBeVisible();
+  await snap(page, 'target-detail-credential');
+  await page.keyboard.press('Escape');
+  await expect(detail).toBeHidden();
+
+  // Rotate: replace the stored password.
+  await page.goto(`/o/${E2E.orgSlug}/delivery/credentials`);
+  const credRow = credTable.getByRole('row', { name: new RegExp(cred) });
+  await expect(credRow).toContainText('2 targets');
+  await credRow.getByRole('button', { name: `Edit ${cred}` }).click();
+  const edit = page.getByRole('dialog', { name: `Edit ${cred}` });
+  await edit.getByRole('button', { name: 'Replace Password' }).click();
+  await edit.getByLabel('Password', { exact: true }).fill('second-secret');
+  await edit.getByRole('button', { name: 'Save credential' }).click();
+  await expect(edit).toBeHidden();
+
+  // Delete is blocked while targets use it.
+  const del = credRow.getByRole('button', { name: `Delete ${cred}` });
+  await expect(del).toHaveAttribute('aria-disabled', 'true');
+  await del.hover({ force: true });
+  await expect(page.getByRole('tooltip')).toContainText('Used by 2 targets');
+  await snap(page, 'deploy-credentials');
+
+  // Detach both targets (enter the login by hand), then delete them.
+  for (const name of targets) {
+    await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
+    await targetsTable.getByRole('button', { name: `Edit ${name}` }).click();
+    const sheet = page.getByRole('dialog', { name: `Edit ${name}` });
+    await sheet.getByRole('combobox', { name: 'Credential' }).click();
+    await page.getByRole('option', { name: 'Enter manually' }).click();
+    await sheet.getByLabel('Username', { exact: true }).fill('admin');
+    await sheet.getByLabel('Password', { exact: true }).fill('own-secret');
+    await sheet.getByRole('button', { name: 'Save' }).click();
+    await expect(sheet).toBeHidden();
+  }
+  await page.goto(`/o/${E2E.orgSlug}/delivery/credentials`);
+  await expect(credRow.getByText('2 targets')).toHaveCount(0);
+  await credRow.getByRole('button', { name: `Delete ${cred}` }).click();
+  const confirm = page.getByRole('dialog', { name: 'Delete credential' });
+  await confirm.getByLabel(cred).fill(cred);
+  await confirm.getByRole('button', { name: 'Delete credential' }).click();
+  await expect(confirm).toBeHidden();
+  await expect(credTable.getByRole('row', { name: new RegExp(cred) })).toHaveCount(0);
+
+  await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
+  for (const name of targets) {
+    await targetsTable.getByRole('button', { name: `Delete ${name}` }).click();
+    const c = page.getByRole('dialog', { name: 'Delete deploy target' });
+    await c.getByLabel(name).fill(name);
+    await c.getByRole('button', { name: 'Delete' }).click();
+    await expect(c).toBeHidden();
+  }
+});
