@@ -76,7 +76,14 @@ it('a server files[1].path error marks row 2 path invalid', async () => {
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(within(sheet).getByLabelText('File 2 remote path')).toHaveAttribute('aria-invalid', 'true'));
   expect(within(sheet).getByLabelText('File 1 remote path')).not.toHaveAttribute('aria-invalid', 'true');
-  expect(within(sheet).getAllByText(/must be an absolute path/).length).toBeGreaterThan(0);
+  expect(within(sheet).getAllByText(/must be an absolute path/)).toHaveLength(1);
+});
+
+it('a whole-field server error shows once below the rows', async () => {
+  server.use(http.patch(url('/orgs/org-1/deploy-targets/:id'), () => problem(422, 'files: required')));
+  const { user, sheet } = await open();
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(within(sheet).getAllByText(/files: required/)).toHaveLength(1));
 });
 
 it('saves files as path/content/mode objects', async () => {

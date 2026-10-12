@@ -74,3 +74,13 @@ it('creatable: a value outside the options shows on the trigger', () => {
   renderUI(<CreatableHarness initial="custom.pem" />);
   expect(screen.getByRole('combobox', { name: 'Content' })).toHaveTextContent('custom.pem');
 });
+
+it('creatable: Enter on a partial match picks the option, Enter on no match uses the typed text', async () => {
+  const { user } = renderUI(<CreatableHarness />);
+  await user.click(screen.getByRole('combobox', { name: 'Content' }));
+  await user.type(screen.getByPlaceholderText('Search'), 'full{Enter}');
+  expect(screen.getByTestId('v')).toHaveTextContent('fullchain');
+  await user.click(screen.getByRole('combobox', { name: 'Content' }));
+  await user.type(screen.getByPlaceholderText('Search'), 'haproxy.pem{Enter}');
+  expect(screen.getByTestId('v')).toHaveTextContent('haproxy.pem');
+});

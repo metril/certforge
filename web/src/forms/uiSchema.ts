@@ -132,7 +132,7 @@ export function buildUiSchema(schema: RJSFSchema, opts: { storedSecrets?: string
     } else if (p.type === 'string' && (p.format === 'textarea' || (p.maxLength ?? 0) > 200)) {
       ui[key] = { ...base, 'ui:widget': 'textarea' };
     } else if (isSshFileList(p)) {
-      ui[key] = { ...base, 'ui:field': 'sshFiles' };
+      ui[key] = { ...base, 'ui:field': 'sshFiles', 'ui:hideError': true };
     } else if (isPlainStringArray(p)) {
       ui[key] = { ...base, 'ui:field': 'listArray' };
     } else if (isHeaderMap(p)) {

@@ -88,19 +88,6 @@ export function Combobox({ id, value, onChange, options, placeholder, emptyText,
             )}
             <CommandList>
               <CommandEmpty>{emptyText}</CommandEmpty>
-              {canCreate && typedValid && (
-                <CommandItem
-                  value={`__create__${typed}`}
-                  forceMount
-                  onSelect={() => {
-                    onChange(typed);
-                    setOpen(false);
-                    setSearch('');
-                  }}
-                >
-                  <span className="truncate">Use “{typed}”</span>
-                </CommandItem>
-              )}
               <CommandGroup>
                 {options.map((o) => (
                   <OptionWithHint key={o.value} disabled={o.disabled} hint={o.hint}>
@@ -121,6 +108,19 @@ export function Combobox({ id, value, onChange, options, placeholder, emptyText,
                   </OptionWithHint>
                 ))}
               </CommandGroup>
+              {canCreate && typedValid && (
+                <CommandItem
+                  value={`__create__${typed}`}
+                  forceMount
+                  onSelect={() => {
+                    onChange(typed);
+                    setOpen(false);
+                    setSearch('');
+                  }}
+                >
+                  <span className="truncate">Use “{typed}”</span>
+                </CommandItem>
+              )}
             </CommandList>
             {footer && (
               <div className="border-t border-border p-1" onClick={() => setOpen(false)}>

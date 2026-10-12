@@ -70,6 +70,7 @@ export function SshFilesField({ fieldPathId, formData, onChange, disabled, reado
   const names = ((registry.formContext as { sshContentNames?: { name: string; layout: string }[] } | undefined)?.sshContentNames ?? []).filter((n) => !CANON_NAMES.includes(n.name));
   const options: ComboOption[] = [...CANON, ...names.map((n) => ({ value: n.name, label: n.name, hint: `Layout: ${n.layout}` }))];
   const server = serverErrors(rawErrors);
+  const unmatched = (rawErrors ?? []).filter((m) => !/files\[\d+\]\.(path|content|mode)/.test(m));
 
   function commit(next: Row[]) {
     setRows(next);
@@ -159,6 +160,11 @@ export function SshFilesField({ fieldPathId, formData, onChange, disabled, reado
           </div>
         );
       })}
+      {unmatched.map((m) => (
+        <p key={m} className="text-xs text-failed">
+          {m}
+        </p>
+      ))}
       <Button
         type="button"
         variant="outline"
