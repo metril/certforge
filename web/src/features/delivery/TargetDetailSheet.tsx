@@ -172,7 +172,7 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
     <Sheet open onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-2xl">
         <SheetHeader>
-          <div className="flex items-start justify-between gap-2">
+          <div className="flex items-start justify-between gap-2 pr-8">
             <div className="flex flex-wrap items-center gap-2">
               <SheetTitle>{target.name}</SheetTitle>
               <span className="text-xs text-ink-muted">{typeName}</span>

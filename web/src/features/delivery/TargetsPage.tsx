@@ -122,7 +122,7 @@ export function TargetsPage() {
                   <TableHead className="w-28">
                     <HintLabel id="target.usedBy">Used by</HintLabel>
                   </TableHead>
-                  <TableHead className="w-20">
+                  <TableHead className="w-28">
                     <span className="sr-only">Actions</span>
                   </TableHead>
                 </TableRow>
