@@ -2,6 +2,7 @@ import type { APIRequestContext } from '@playwright/test';
 import { adminApi, expect, signInLocal, test } from './auth';
 import { E2E } from './env';
 import { snap } from './screens';
+import { pickTargetType } from './targetType';
 
 type Org = { id: string; slug: string };
 type Me = { orgs: Org[] };
@@ -139,7 +140,7 @@ test('server grant', async ({ page }) => {
   await targetSheet.getByLabel('Name', { exact: true }).fill('e2e-vault-kv');
   // The segment's accessible name is the type name plus its RunsOnChip
   // label ("Vault KV" + "Server"), not the old parenthetical text.
-  await targetSheet.getByRole('radio', { name: /^Vault KV/ }).click();
+  await pickTargetType(targetSheet, /^Vault KV/);
   await targetSheet.getByRole('button', { name: 'Save' }).click();
   await expect(targetSheet).toBeHidden();
 
