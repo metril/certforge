@@ -2,11 +2,14 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -121,4 +124,94 @@ func (r *RestartRunner) dockerRestart(ctx context.Context, name string) (string,
 		return "", fmt.Errorf("no such container: %s", name)
 	}
 	return "", fmt.Errorf("docker returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+}
+
+const maxRestartTargets = 200
+
+// Targets lists what this agent can restart: every allowlisted entry (sorted,
+// first) and, when the Docker socket answers, each running container by its
+// primary name. Docker errors are logged at debug and ignored. Systemd units
+// are never enumerated. Browsing never widens Allow.
+func (r *RestartRunner) Targets(ctx context.Context) []agentproto.RestartTarget {
+	if r == nil || len(r.Allow) == 0 {
+		return nil
+	}
+	allowed := make([]string, 0, len(r.Allow))
+	for t := range r.Allow {
+		allowed = append(allowed, t)
+	}
+	sort.Strings(allowed)
+	running, err := r.dockerRunning(ctx)
+	if err != nil {
+		slog.Debug("restart targets: docker not listed", "err", err)
+	}
+	var out []agentproto.RestartTarget
+	seen := map[string]bool{}
+	for _, t := range allowed {
+		tg := agentproto.RestartTarget{Target: t, Allowed: true}
+		if err == nil && strings.HasPrefix(t, "docker:") {
+			v := running[t]
+			tg.Running = &v
+		}
+		seen[t] = true
+		out = append(out, tg)
+	}
+	names := make([]string, 0, len(running))
+	for t := range running {
+		names = append(names, t)
+	}
+	sort.Strings(names)
+	for _, t := range names {
+		if !seen[t] {
+			v := true
+			out = append(out, agentproto.RestartTarget{Target: t, Running: &v})
+		}
+	}
+	if len(out) > maxRestartTargets {
+		out = out[:maxRestartTargets]
+	}
+	return out
+}
+
+// dockerRunning returns "docker:<name>" for each running container.
+func (r *RestartRunner) dockerRunning(ctx context.Context) (map[string]bool, error) {
+	sock := r.DockerSocket
+	if sock == "" {
+		sock = defaultDockerSocket
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	tr := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, "unix", sock)
+	}}
+	defer tr.CloseIdleConnections()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://docker/v1.41/containers/json", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := (&http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("docker returned %d", resp.StatusCode)
+	}
+	var list []struct {
+		Names []string `json:"Names"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&list); err != nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	for _, c := range list {
+		if len(c.Names) == 0 {
+			continue
+		}
+		t := "docker:" + strings.TrimPrefix(c.Names[0], "/")
+		if delivery.RestartTargetRE.MatchString(t) {
+			out[t] = true
+		}
+	}
+	return out, nil
 }

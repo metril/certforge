@@ -126,6 +126,15 @@ func NewAgent(cfg Config, log *slog.Logger, id *Identity) *Agent {
 // capabilities lists what this agent tells the server it can do: traefik
 // always, hooks when CF_HOOK_ALLOW is set, restart when CF_RESTART_ALLOW is set, and http-01/tls-alpn-01 when the
 // matching challenge listener is configured.
+// heartbeat is the installed digests plus what this agent could restart.
+func (a *Agent) heartbeat(ctx context.Context) agentproto.Heartbeat {
+	hb := agentproto.Heartbeat{Installed: a.ID.Installed()}
+	if a.Deployer != nil {
+		hb.RestartTargets = a.Deployer.Restart.Targets(ctx)
+	}
+	return hb
+}
+
 func capabilities(cfg Config) []string {
 	caps := []string{"traefik"}
 	if len(cfg.HookAllow) > 0 {
@@ -190,7 +199,7 @@ func (a *Agent) pullOnce(ctx context.Context) error {
 		err = cl.Report(ctx, rep)
 	}
 	if err == nil {
-		err = cl.Heartbeat(ctx, agentproto.Heartbeat{Installed: a.ID.Installed()})
+		err = cl.Heartbeat(ctx, a.heartbeat(ctx))
 	}
 	if IsUnauthorized(err) {
 		return ErrRevoked
@@ -429,7 +438,7 @@ func (a *Agent) session(ctx context.Context, pull <-chan time.Time) error {
 				a.Challenge.CleanUp(v)
 			}
 		case <-heartbeat.C:
-			if err := send(agentproto.Heartbeat{Installed: a.ID.Installed()}); err != nil {
+			if err := send(a.heartbeat(ctx)); err != nil {
 				return err
 			}
 		case <-renew.C:
