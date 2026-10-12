@@ -2,6 +2,34 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.26.0](https://github.com/metril/certforge/compare/v0.25.0...v0.26.0) (2026-10-12)
+
+
+### Features
+
+* **adcs:** load templates from the CA and test the connection ([f445e3f](https://github.com/metril/certforge/commit/f445e3fa6f1b2cfe5b1bf693a1d4715e8a15c632))
+* **adcs:** template probe endpoint with shared template rules ([6b6e427](https://github.com/metril/certforge/commit/6b6e427d640cd5d0acb8aca9da010223f95b9048))
+* **api:** deploy credentials endpoints and credential resolution ([db32dbc](https://github.com/metril/certforge/commit/db32dbc1bda703a32c9d23a5e8943b790e530b53))
+* **authz:** deploy credential permissions ([2feada6](https://github.com/metril/certforge/commit/2feada64e22893772f9ddea651fd9558283fd50f))
+* **db:** deploy_credentials table and queries ([9fad5b5](https://github.com/metril/certforge/commit/9fad5b5f8107690d677e6ec3a3d2efc309d5c0e5))
+* **delivery:** attach deploy credentials to targets ([b23c5a5](https://github.com/metril/certforge/commit/b23c5a5fc8c3c507aa5ec817fd5214b69dc493ba))
+* **delivery:** reusable deploy credentials ([fc7ad52](https://github.com/metril/certforge/commit/fc7ad527e9476545e3ed0756fff9e2239a1f62bf))
+* **kek:** rewrap deploy credential secrets ([a67c8cf](https://github.com/metril/certforge/commit/a67c8cfc18b7d88e5961df8c394eb2156df436d8))
+* **targets:** deploy credential kinds and resolve ([69fc8b8](https://github.com/metril/certforge/commit/69fc8b855c06add3a90ab6c4c08e709468ca1911))
+* **web:** AD CS template picker and CA test ([e804cfa](https://github.com/metril/certforge/commit/e804cfaf12b39aa85963fa4d3dda1932f5c6730f))
+* **web:** attach saved credentials to deploy targets ([a45cd52](https://github.com/metril/certforge/commit/a45cd520e4a028c06e5aa507b59655a4bf5b19be))
+* **web:** deploy credentials tab ([458eb93](https://github.com/metril/certforge/commit/458eb9379f35a008059dd3cfa30364aa5bf2a10e))
+
+
+### Bug Fixes
+
+* **adcs:** require the password again when connection settings change ([32d896c](https://github.com/metril/certforge/commit/32d896c24772c728f9c4c879b8fe86cd7e19df37))
+* **agent:** negotiate Docker API version for restart hooks ([#80](https://github.com/metril/certforge/issues/80)) ([ebe2ec0](https://github.com/metril/certforge/commit/ebe2ec0e705b56757a67057514b896698344769f))
+* **api:** declare the deploycreds:reveal API key scope ([583a61d](https://github.com/metril/certforge/commit/583a61d5e3b000028c50028027f264fff7cabcdc))
+* **delivery:** gate host key changes and keep target secrets on credential edits ([88e2335](https://github.com/metril/certforge/commit/88e2335d997a0cf32063771ea5005b8b596e4b49))
+* **orgs:** count deploy credentials before deleting an org ([3fd6f47](https://github.com/metril/certforge/commit/3fd6f47817a863ead6c669afbab57bb1be461b9a))
+* **web:** gate host key and SSH port changes on credential-backed targets ([f18df15](https://github.com/metril/certforge/commit/f18df1544d9759bf0b372c91f9b72ce3cf012047))
+
 ## [0.25.0](https://github.com/metril/certforge/compare/v0.24.0...v0.25.0) (2026-10-12)
 
 
