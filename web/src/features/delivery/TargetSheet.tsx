@@ -25,7 +25,7 @@ import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { caBundleScope, can } from '@/lib/permissions';
 import { stripSecretDefaults, storedSecretsFor, settledConfig } from '@/lib/secretForm';
-import { RUNS_ON_META, SSH_PRESETS, credentialKindsOf, defaultRunsOn, forcedRunsOn, keyGateBlocks, locationChanged, omitFields, toTargetInput, typeHelpKey, typeMeta } from '@/lib/targets';
+import { PRESET_HIDDEN_KEYS, RUNS_ON_META, SSH_PRESETS, credentialKindsOf, defaultRunsOn, forcedRunsOn, keyGateBlocks, locationChanged, omitFields, presetFor, toTargetInput, typeHelpKey, typeMeta } from '@/lib/targets';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 
 function omitKeys(o: Record<string, unknown>, keys: string[]): Record<string, unknown> {
@@ -45,7 +45,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
   const initialMeta = typeMeta(types, target?.type ?? types[0]!.code) ?? types[0]!;
   const [runsOn, setRunsOn] = useState<'server' | 'agent'>(target?.runsOn ?? defaultRunsOn(initialMeta));
   const [config, setConfig] = useState<Record<string, unknown>>((target?.config as Record<string, unknown> | undefined) ?? {});
-  const [preset, setPreset] = useState('custom');
+  const [preset, setPreset] = useState(() => (target?.type === 'ssh' ? presetFor((target.config as Record<string, unknown> | undefined) ?? {}) : 'custom'));
   const [nameError, setNameError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [extra, setExtra] = useState<ErrorSchema | null>(null);
@@ -103,6 +103,10 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
     schema.properties && 'includeKey' in schema.properties
       ? { includeKey: { 'ui:description': help['target.includeKey'].text, 'ui:options': { permission: 'keys:export', allowed: runsOn !== 'server' || canExportKeys } } }
       : undefined;
+
+  const presetHidden =
+    type === 'ssh' && preset === 'kvm' ? Object.fromEntries(PRESET_HIDDEN_KEYS.map((k) => [k, { 'ui:widget': 'hidden' }])) : undefined;
+  const uiOverrides = includeKeyOverride || presetHidden ? { ...includeKeyOverride, ...presetHidden } : undefined;
 
   const blocked = keyGateBlocks(me, orgId, runsOn, meta.keyPolicy, config);
   // Attaching a credential, or moving a credential-backed target to another
@@ -217,7 +221,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
               ]}
             />
           </Field>
-          {type === 'ssh' && !locked && (
+          {type === 'ssh' && !readOnly && (
             <Field id="target-preset" label="Preset">
               <SegmentedControl<string>
                 id="target-preset"
@@ -227,11 +231,12 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
                   setPreset(v);
                   // Keep what is already typed (host, credentials); a preset only sets files and commands.
                   const p = SSH_PRESETS.find((x) => x.id === v);
-                  if (p) setConfig((c) => ({ ...c, files: undefined, preCommand: undefined, postCommand: undefined, ...p.config }));
+                  if (p && v !== 'custom') setConfig((c) => ({ ...c, files: undefined, preCommand: undefined, postCommand: undefined, ...p.config }));
                   setExtra(null);
                 }}
                 options={SSH_PRESETS.map((p) => ({ value: p.id, label: p.label }))}
               />
+              {SSH_PRESETS.find((p) => p.id === preset)?.summary && <p className="mt-1 text-xs text-ink-muted">{SSH_PRESETS.find((p) => p.id === preset)?.summary}</p>}
             </Field>
           )}
           {credKinds.length > 0 && (
@@ -286,7 +291,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
               storedSecrets={storedSecrets}
               readonly={readOnly}
               extraErrors={extra ?? undefined}
-              uiSchemaOverrides={includeKeyOverride}
+              uiSchemaOverrides={uiOverrides}
               formContext={formContext}
             />
             )}

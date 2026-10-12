@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import type { RJSFSchema } from '@rjsf/utils';
 import { me, meWith, org, testSecretSchema, traefikSchema, vaultKvSchema } from '@/test/fixtures';
-import { defaultRunsOn, forcedRunsOn, keyGateBlocks, locationChanged, needsKey, targetLocation, toTargetInput, typeHelpKey } from './targets';
+import { defaultRunsOn, forcedRunsOn, keyGateBlocks, locationChanged, needsKey, presetFor, SSH_PRESETS, targetLocation, toTargetInput, typeHelpKey } from './targets';
 
 it('forced runs-on for server and agent types', () => {
   expect(forcedRunsOn(vaultKvSchema)).toBe('server');
@@ -69,4 +69,13 @@ it('locationChanged covers every field the server gates for credential-backed ta
   expect(locationChanged(schema, base, { ...base, port: 2222 })).toBe(true);
   expect(locationChanged(schema, base, { ...base, sshPort: 2222 })).toBe(true);
   expect(locationChanged(schema, base, { ...base, hostKey: 'ssh-ed25519 BBBB' })).toBe(true);
+});
+
+it('presetFor matches the kvm preset and treats a missing mode as 0644', () => {
+  const kvm = SSH_PRESETS.find((p) => p.id === 'kvm')!.config;
+  expect(presetFor({ host: 'h', ...kvm })).toBe('kvm');
+  const files = (kvm.files as { path: string; content: string; mode: string }[]).map((f, i) => (i === 0 ? { path: f.path, content: f.content } : f));
+  expect(presetFor({ ...kvm, files })).toBe('kvm');
+  expect(presetFor({ ...kvm, preCommand: 'x' })).toBe('custom');
+  expect(presetFor({})).toBe('custom');
 });
