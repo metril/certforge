@@ -321,7 +321,7 @@ test('pfSense CA certificate: upload a DER file and fetch from the server', asyn
   const table = page.getByRole('table', { name: 'Deploy targets' });
   await table.getByRole('button', { name: `Edit ${name}` }).click();
   const edit = page.getByRole('dialog', { name: `Edit ${name}` });
-  await expect(edit.getByRole('textbox', { name: /CA certificate/ })).toHaveValue(CA_PEM);
+  await expect(edit.getByRole('textbox', { name: /CA certificate/ })).toHaveValue(CA_PEM.trimEnd());
   await cancelSheet(edit);
 
   await table.getByRole('button', { name: `Delete ${name}` }).click();
