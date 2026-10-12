@@ -21,6 +21,7 @@ import { rememberFromRules } from '@/lib/lastCredential';
 import { useOrg } from '@/lib/org';
 import { NamesStep } from './NamesStep';
 import { OptionsStep } from './OptionsStep';
+import { WizardIssuanceForm } from './WizardIssuanceForm';
 import { ReviewStep } from './ReviewStep';
 import { canContinueNames, effectiveCaId, fromCertificate, initialWizard, toCertificateInput, wizardReducer, type WizardAction } from './state';
 import { SummaryRail } from './SummaryRail';
@@ -104,7 +105,7 @@ export function CertificateWizard({ from, edit }: { from?: Certificate; edit?: C
   const [submitted, setSubmitted] = useState(false);
   const busy = saving.isPending || submitted;
 
-  // Task 4 (R12 deviation): the CA is picked in Options, after Verification,
+  // Task 4 (R12 deviation): the CA is picked on the Names step, before Verification,
   // so "Not needed" follows the *effective* CA (the cert override, else the
   // inherited default) and updates live as either changes.
   const effCa = cas.find((c) => c.id === effectiveCaId(state, eff ?? {}));
@@ -201,7 +202,18 @@ export function CertificateWizard({ from, edit }: { from?: Certificate; edit?: C
           )}
           <Card>
             <CardBody className="grid gap-6">
-          {step === 0 && <NamesStep state={state} dispatch={dispatch} />}
+          {step === 0 && <NamesStep
+              state={state}
+              dispatch={dispatch}
+              issuer={
+                <WizardIssuanceForm
+                  orgId={org.id}
+                  state={state}
+                  dispatch={dispatch}
+                  exclude={['accountId', 'preferredChain', 'keyType', 'renewPolicy', 'reuseKey', 'mustStaple', 'propagationSeconds', 'resolvers', 'verificationRules']}
+                />
+              }
+            />}
           {step === 1 && <VerificationStep orgId={org.id} state={state} dispatch={dispatch} inherited={inherited} privateCa={privateCa} />}
           {step === 2 && <OptionsStep orgId={org.id} state={state} dispatch={dispatch} />}
           {step === 3 && <ReviewStep orgId={org.id} state={state} dispatch={dispatch} inherited={inherited} />}

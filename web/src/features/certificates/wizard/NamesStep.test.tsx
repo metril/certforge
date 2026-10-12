@@ -133,3 +133,8 @@ it('makes another name the common name by dragging with the keyboard', async () 
     rectSpy.mockRestore();
   }
 });
+
+it('renders the issuer slot below the names', () => {
+  renderUI(<NamesStep state={initialWizard} dispatch={vi.fn()} issuer={<div>Issuer slot</div>} />);
+  expect(screen.getByText('Issuer slot')).toBeInTheDocument();
+});
