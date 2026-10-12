@@ -2022,6 +2022,9 @@ type Grant struct {
 	// LayoutId Output layout; null for a target-only grant.
 	LayoutId *openapi_types.UUID `json:"layoutId"`
 
+	// PostAction Command to run over SSH after a successful deploy; null when none. Server grants only.
+	PostAction *PostAction `json:"postAction"`
+
 	// RunsOn Where the target (and its grants) run — an enrolled agent, or this server (a server-side deploy target such as vault-kv).
 	RunsOn RunsOn `json:"runsOn"`
 
@@ -2084,6 +2087,9 @@ type GrantUpdate struct {
 
 	// LayoutId Output layout in the same org.
 	LayoutId *openapi_types.UUID `json:"layoutId"`
+
+	// PostAction Command to run over SSH after a successful deploy; null when none. Server grants only.
+	PostAction *PostAction `json:"postAction"`
 
 	// TargetOptions Per-type options for the deploy target
 	TargetOptions map[string]interface{} `json:"targetOptions"`
@@ -2158,7 +2164,7 @@ type HookList struct {
 // HookPhase pre_deploy runs before files are written (a failure stops the deploy); post_deploy runs after.
 type HookPhase string
 
-// HookRun One hook execution an agent reported.
+// HookRun One hook execution an agent reported, or a server-side command run for an ssh target or a grant's post action.
 type HookRun struct {
 	// Argv Command that ran.
 	Argv []string `json:"argv"`
@@ -2725,6 +2731,18 @@ type OutputPart string
 // P12Encoding PKCS#12 encryption; modern (AES) or legacy (RC2/3DES, for old consumers).
 type P12Encoding string
 
+// PostAction One command run over SSH after a server grant deploys, using an existing ssh deploy target's host, credentials and host key.
+type PostAction struct {
+	// Command Command to run on that host.
+	Command string `json:"command"`
+
+	// SshTargetId An ssh deploy target in the same org.
+	SshTargetId openapi_types.UUID `json:"sshTargetId"`
+
+	// TimeoutSeconds Time allowed for connecting and running.
+	TimeoutSeconds *int `json:"timeoutSeconds,omitempty"`
+}
+
 // Problem RFC 9457 problem details, sent with content type application/problem+json.
 type Problem struct {
 	// Detail Explanation specific to this occurrence.
@@ -2972,6 +2990,9 @@ type ServerGrantInput struct {
 
 	// LayoutId Output layout in the same org
 	LayoutId *openapi_types.UUID `json:"layoutId"`
+
+	// PostAction Command to run over SSH after a successful deploy; null when none. Server grants only.
+	PostAction *PostAction `json:"postAction"`
 }
 
 // ServerInfo The running server's identity.
@@ -3553,6 +3574,15 @@ type ListClientHookRunsParams struct {
 	Cursor *ListCursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
+// ListTargetHookRunsParams defines parameters for ListTargetHookRuns.
+type ListTargetHookRunsParams struct {
+	// Limit Page size, 1 to 500.
+	Limit *ListLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor nextCursor from the previous page.
+	Cursor *ListCursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
 // ListEventsParams defines parameters for ListEvents.
 type ListEventsParams struct {
 	// Kind Only these kinds; repeat the parameter for more than one. Omit for every kind.
@@ -4081,6 +4111,9 @@ type ClientInterface interface {
 	CreateServerGrantWithBody(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	CreateServerGrant(ctx context.Context, orgId OrgId, id Id, body CreateServerGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListTargetHookRuns request
+	ListTargetHookRuns(ctx context.Context, orgId OrgId, id Id, params *ListTargetHookRunsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListDNSCredentials request
 	ListDNSCredentials(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5510,6 +5543,18 @@ func (c *APIClient) CreateServerGrantWithBody(ctx context.Context, orgId OrgId, 
 
 func (c *APIClient) CreateServerGrant(ctx context.Context, orgId OrgId, id Id, body CreateServerGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateServerGrantRequest(c.Server, orgId, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) ListTargetHookRuns(ctx context.Context, orgId OrgId, id Id, params *ListTargetHookRunsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListTargetHookRunsRequest(c.Server, orgId, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -10467,6 +10512,85 @@ func NewCreateServerGrantRequestWithBody(server string, orgId OrgId, id Id, cont
 	return req, nil
 }
 
+// NewListTargetHookRunsRequest generates requests for ListTargetHookRuns
+func NewListTargetHookRunsRequest(server string, orgId OrgId, id Id, params *ListTargetHookRunsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/deploy-targets/%s/hook-runs", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "cursor", runtime.ParamLocationQuery, *params.Cursor); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListDNSCredentialsRequest generates requests for ListDNSCredentials
 func NewListDNSCredentialsRequest(server string, orgId OrgId) (*http.Request, error) {
 	var err error
@@ -13128,6 +13252,9 @@ type ClientWithResponsesInterface interface {
 
 	CreateServerGrantWithResponse(ctx context.Context, orgId OrgId, id Id, body CreateServerGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateServerGrantResponse, error)
 
+	// ListTargetHookRunsWithResponse request
+	ListTargetHookRunsWithResponse(ctx context.Context, orgId OrgId, id Id, params *ListTargetHookRunsParams, reqEditors ...RequestEditorFn) (*ListTargetHookRunsResponse, error)
+
 	// ListDNSCredentialsWithResponse request
 	ListDNSCredentialsWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*ListDNSCredentialsResponse, error)
 
@@ -15554,6 +15681,34 @@ func (r CreateServerGrantResponse) StatusCode() int {
 	return 0
 }
 
+type ListTargetHookRunsResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *HookRunList
+	ApplicationproblemJSON400 *BadRequest
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON422 *UnprocessableEntity
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r ListTargetHookRunsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListTargetHookRunsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListDNSCredentialsResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
@@ -17924,6 +18079,15 @@ func (c *ClientWithResponses) CreateServerGrantWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseCreateServerGrantResponse(rsp)
+}
+
+// ListTargetHookRunsWithResponse request returning *ListTargetHookRunsResponse
+func (c *ClientWithResponses) ListTargetHookRunsWithResponse(ctx context.Context, orgId OrgId, id Id, params *ListTargetHookRunsParams, reqEditors ...RequestEditorFn) (*ListTargetHookRunsResponse, error) {
+	rsp, err := c.ListTargetHookRuns(ctx, orgId, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListTargetHookRunsResponse(rsp)
 }
 
 // ListDNSCredentialsWithResponse request returning *ListDNSCredentialsResponse
@@ -23623,6 +23787,74 @@ func ParseCreateServerGrantResponse(rsp *http.Response) (*CreateServerGrantRespo
 			return nil, err
 		}
 		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListTargetHookRunsResponse parses an HTTP response from a ListTargetHookRunsWithResponse call
+func ParseListTargetHookRunsResponse(rsp *http.Response) (*ListTargetHookRunsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListTargetHookRunsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest HookRunList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest UnprocessableEntity

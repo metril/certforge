@@ -2122,6 +2122,28 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/deploy-targets/{id}/hook-runs:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    get:
+      operationId: listTargetHookRuns
+      tags: [clients]
+      summary: List a server-side deploy target's hook runs
+      description: Needs clients:read. Newest first; the ssh target's own pre and post commands and post actions of grants on the target. stdout and stderr are capped at 8 KiB each.
+      parameters:
+        - {$ref: "#/components/parameters/ListLimit"}
+        - {$ref: "#/components/parameters/ListCursor"}
+      responses:
+        "200":
+          description: One page of hook runs.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/HookRunList"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/deploy-targets/{id}/grants:
     parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
     get:
@@ -4608,6 +4630,11 @@ components:
           allOf:
             - $ref: "#/components/schemas/ServerDeployment"
           nullable: true
+        postAction:
+          description: Command to run over SSH after a successful deploy; null when none. Server grants only.
+          allOf:
+            - $ref: "#/components/schemas/PostAction"
+          nullable: true
         createdAt: {type: string, format: date-time, description: Creation time.}
         updatedAt: {type: string, format: date-time, description: Last change.}
     GrantInput:
@@ -4633,6 +4660,11 @@ components:
         targetOptions: {type: object, additionalProperties: true, description: Per-type options for the deploy target, validated against the type's grantSchema from GET /meta/schemas.}
         hookIds: {type: array, maxItems: 16, items: {type: string, format: uuid}, description: Hooks in run order.}
         autoRemediate: {type: boolean, description: Reinstall automatically on drift.}
+        postAction:
+          description: Command to run over SSH after a successful deploy; null when none. Server grants only.
+          allOf:
+            - $ref: "#/components/schemas/PostAction"
+          nullable: true
     GrantList:
       type: object
       description: A client's live grants.
@@ -4646,6 +4678,19 @@ components:
       properties:
         certificateId: {type: string, format: uuid, description: Certificate in the target's org.}
         layoutId: {type: string, format: uuid, nullable: true, description: Output layout in the same org, for a target that renders files from a layout.}
+        postAction:
+          description: Command to run over SSH after a successful deploy; null when none. Server grants only.
+          allOf:
+            - $ref: "#/components/schemas/PostAction"
+          nullable: true
+    PostAction:
+      type: object
+      description: One command run over SSH after a server grant deploys, using an existing ssh deploy target's host, credentials and host key.
+      required: [sshTargetId, command]
+      properties:
+        sshTargetId: {type: string, format: uuid, description: An ssh deploy target in the same org.}
+        command: {type: string, minLength: 1, maxLength: 512, description: Command to run on that host.}
+        timeoutSeconds: {type: integer, minimum: 5, maximum: 300, default: 60, description: Time allowed for connecting and running.}
     ServerDeploymentStatus:
       type: string
       enum: [pending, deployed, failed]
@@ -4686,7 +4731,7 @@ components:
         items: {type: array, items: {$ref: "#/components/schemas/CertificateDeployment"}, description: Deployments sorted by client name.}
     HookRun:
       type: object
-      description: One hook execution an agent reported.
+      description: One hook execution an agent reported, or a server-side command run for an ssh target or a grant's post action.
       required: [id, grantId, hookId, hookName, phase, argv, exitCode, durationMs, stdout, stderr, ranAt]
       properties:
         id: {type: string, format: uuid, description: Run id.}

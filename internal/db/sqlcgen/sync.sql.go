@@ -305,16 +305,16 @@ VALUES ($1, $2::uuid,
 `
 
 type InsertHookRunParams struct {
-	ClientID   uuid.UUID `json:"client_id"`
-	GrantID    uuid.UUID `json:"grant_id"`
-	HookID     uuid.UUID `json:"hook_id"`
-	OrgID      uuid.UUID `json:"org_id"`
-	Phase      string    `json:"phase"`
-	Argv       []string  `json:"argv"`
-	ExitCode   int32     `json:"exit_code"`
-	DurationMs int64     `json:"duration_ms"`
-	Stdout     string    `json:"stdout"`
-	Stderr     string    `json:"stderr"`
+	ClientID   *uuid.UUID `json:"client_id"`
+	GrantID    uuid.UUID  `json:"grant_id"`
+	HookID     uuid.UUID  `json:"hook_id"`
+	OrgID      uuid.UUID  `json:"org_id"`
+	Phase      string     `json:"phase"`
+	Argv       []string   `json:"argv"`
+	ExitCode   int32      `json:"exit_code"`
+	DurationMs int64      `json:"duration_ms"`
+	Stdout     string     `json:"stdout"`
+	Stderr     string     `json:"stderr"`
 }
 
 // hook_id is kept only when the agent-supplied id is one of the grant's own
@@ -336,6 +336,39 @@ func (q *Queries) InsertHookRun(ctx context.Context, arg InsertHookRunParams) er
 	return err
 }
 
+const insertServerHookRun = `-- name: InsertServerHookRun :exec
+INSERT INTO hook_runs (client_id, grant_id, deploy_target_id, phase, argv, exit_code, duration_ms, stdout, stderr)
+VALUES (NULL, $1::uuid, $2, $3, $4::text[],
+        $5, $6, $7, $8)
+`
+
+type InsertServerHookRunParams struct {
+	GrantID        *uuid.UUID `json:"grant_id"`
+	DeployTargetID *uuid.UUID `json:"deploy_target_id"`
+	Phase          string     `json:"phase"`
+	Argv           []string   `json:"argv"`
+	ExitCode       int32      `json:"exit_code"`
+	DurationMs     int64      `json:"duration_ms"`
+	Stdout         string     `json:"stdout"`
+	Stderr         string     `json:"stderr"`
+}
+
+// A server-side run (the ssh target's own pre/post command, or a grant's
+// post action): no client, tied to the grant and its deploy target.
+func (q *Queries) InsertServerHookRun(ctx context.Context, arg InsertServerHookRunParams) error {
+	_, err := q.db.Exec(ctx, insertServerHookRun,
+		arg.GrantID,
+		arg.DeployTargetID,
+		arg.Phase,
+		arg.Argv,
+		arg.ExitCode,
+		arg.DurationMs,
+		arg.Stdout,
+		arg.Stderr,
+	)
+	return err
+}
+
 const listHookRuns = `-- name: ListHookRuns :many
 SELECT r.id, r.client_id, r.grant_id, r.hook_id, r.phase, r.argv, r.exit_code, r.duration_ms, r.stdout, r.stderr, r.ran_at,
        COALESCE(h.name, '')::text AS hook_name
@@ -347,16 +380,16 @@ LIMIT $5::int
 `
 
 type ListHookRunsParams struct {
-	ClientID  uuid.UUID `json:"client_id"`
-	HasCursor bool      `json:"has_cursor"`
-	BeforeTs  time.Time `json:"before_ts"`
-	BeforeID  uuid.UUID `json:"before_id"`
-	PageLimit int32     `json:"page_limit"`
+	ClientID  *uuid.UUID `json:"client_id"`
+	HasCursor bool       `json:"has_cursor"`
+	BeforeTs  time.Time  `json:"before_ts"`
+	BeforeID  uuid.UUID  `json:"before_id"`
+	PageLimit int32      `json:"page_limit"`
 }
 
 type ListHookRunsRow struct {
 	ID         uuid.UUID  `json:"id"`
-	ClientID   uuid.UUID  `json:"client_id"`
+	ClientID   *uuid.UUID `json:"client_id"`
 	GrantID    *uuid.UUID `json:"grant_id"`
 	HookID     *uuid.UUID `json:"hook_id"`
 	Phase      string     `json:"phase"`
@@ -397,6 +430,71 @@ func (q *Queries) ListHookRuns(ctx context.Context, arg ListHookRunsParams) ([]L
 			&i.Stderr,
 			&i.RanAt,
 			&i.HookName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTargetHookRuns = `-- name: ListTargetHookRuns :many
+SELECT r.id, r.grant_id, r.phase, r.argv, r.exit_code, r.duration_ms, r.stdout, r.stderr, r.ran_at
+FROM hook_runs r
+WHERE r.deploy_target_id = $1
+  AND (NOT $2::bool OR (r.ran_at, r.id) < ($3::timestamptz, $4::uuid))
+ORDER BY r.ran_at DESC, r.id DESC
+LIMIT $5::int
+`
+
+type ListTargetHookRunsParams struct {
+	DeployTargetID *uuid.UUID `json:"deploy_target_id"`
+	HasCursor      bool       `json:"has_cursor"`
+	BeforeTs       time.Time  `json:"before_ts"`
+	BeforeID       uuid.UUID  `json:"before_id"`
+	PageLimit      int32      `json:"page_limit"`
+}
+
+type ListTargetHookRunsRow struct {
+	ID         uuid.UUID  `json:"id"`
+	GrantID    *uuid.UUID `json:"grant_id"`
+	Phase      string     `json:"phase"`
+	Argv       []string   `json:"argv"`
+	ExitCode   int32      `json:"exit_code"`
+	DurationMs int64      `json:"duration_ms"`
+	Stdout     string     `json:"stdout"`
+	Stderr     string     `json:"stderr"`
+	RanAt      time.Time  `json:"ran_at"`
+}
+
+func (q *Queries) ListTargetHookRuns(ctx context.Context, arg ListTargetHookRunsParams) ([]ListTargetHookRunsRow, error) {
+	rows, err := q.db.Query(ctx, listTargetHookRuns,
+		arg.DeployTargetID,
+		arg.HasCursor,
+		arg.BeforeTs,
+		arg.BeforeID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTargetHookRunsRow{}
+	for rows.Next() {
+		var i ListTargetHookRunsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.GrantID,
+			&i.Phase,
+			&i.Argv,
+			&i.ExitCode,
+			&i.DurationMs,
+			&i.Stdout,
+			&i.Stderr,
+			&i.RanAt,
 		); err != nil {
 			return nil, err
 		}

@@ -299,7 +299,7 @@ func (s *Service) Report(ctx context.Context, c sqlcgen.Client, rep agentproto.R
 				argv = append(argv, clip(a, 4096))
 			}
 			phase := clip(hr.Phase, 32)
-			if err := q.InsertHookRun(ctx, sqlcgen.InsertHookRunParams{ClientID: c.ID, GrantID: d.GrantID, HookID: hr.HookID, OrgID: c.OrgID,
+			if err := q.InsertHookRun(ctx, sqlcgen.InsertHookRunParams{ClientID: &c.ID, GrantID: d.GrantID, HookID: hr.HookID, OrgID: c.OrgID,
 				Phase: phase, Argv: argv, ExitCode: int32(hr.ExitCode), DurationMs: hr.DurationMS,
 				Stdout: clip(hr.Stdout, 8192), Stderr: clip(hr.Stderr, 8192)}); err != nil {
 				return err
