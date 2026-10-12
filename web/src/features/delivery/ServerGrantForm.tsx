@@ -13,6 +13,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 type Props = { orgId: string; targetId: string; editing?: Grant; onBack: () => void; onDone: () => void };
 
@@ -271,9 +272,22 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
         <Button type="button" variant="outline" onClick={onBack}>
           Back
         </Button>
-        <Button type="button" disabled={busy} onClick={() => void submit()}>
-          {editing ? 'Save' : 'Grant'}
-        </Button>
+        {targetsQ.data ? (
+          <Button type="button" disabled={busy} onClick={() => void submit()}>
+            {editing ? 'Save' : 'Grant'}
+          </Button>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0} className="inline-flex">
+                <Button type="button" disabled>
+                  {editing ? 'Save' : 'Grant'}
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>Loading targets…</TooltipContent>
+          </Tooltip>
+        )}
       </div>
     </div>
   );

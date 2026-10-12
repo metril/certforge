@@ -4,7 +4,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { help } from '@/lib/help';
 import { server } from '@/test/server';
 import { authHandlers, grantServer, makeCert, makeGrant, makeHookRun, makeLayout, makeTarget, meWith, NOW, org, targetTestSecret, targetVaultKv, testSecretSchema, traefikSchema, url, vaultKvSchema } from '@/test/fixtures';
-import { renderRoute } from '@/test/render';
+import { renderRoute, renderUI } from '@/test/render';
+import { ServerGrantForm } from './ServerGrantForm';
 
 let posted: unknown;
 let patched: unknown;
@@ -496,4 +497,21 @@ it('pfSense grant inherits restartServices false from the target and sends nothi
   await user.click(await screen.findByRole('option', { name: /^api/ }));
   await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
   await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null }));
+});
+
+it('Save stays disabled until the targets have loaded', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  server.use(
+    http.get(url('/orgs/org-1/deploy-targets'), async () => {
+      await gate;
+      return HttpResponse.json({ items: [pfTarget] });
+    }),
+  );
+  const editing = { ...grantServer, deployTargetId: 't-pf', targetOptions: { pfsenseRestart: { mode: 'none' } } };
+  renderUI(<ServerGrantForm orgId="org-1" targetId="t-pf" editing={editing} onBack={() => {}} onDone={() => {}} />);
+  expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+  release();
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled());
+  expect(screen.getByRole('radio', { name: 'None' })).toBeChecked();
 });
