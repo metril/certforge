@@ -23,6 +23,9 @@ func (s *Server) GetMetaSchemas(ctx context.Context, _ gen.GetMetaSchemasRequest
 	if out.DeployTargets, err = s.schemaEntries(meta.KindDeployTarget); err != nil {
 		return nil, err
 	}
+	if out.DeployCredentials, err = s.schemaEntries(meta.KindDeployCredential); err != nil {
+		return nil, err
+	}
 	if out.Notifiers, err = s.schemaEntries(meta.KindNotifier); err != nil {
 		return nil, err
 	}

@@ -45,6 +45,10 @@ const (
 	RefLayout RefKind = iota + 1
 	RefTarget
 	RefHook
+	// RefCredential is a deploy credential rotation: every live grant whose
+	// target uses it is re-rendered (the files and version are unchanged, so
+	// an agent reinstalls nothing).
+	RefCredential
 )
 
 func (in GrantInput) validate() error {
@@ -318,6 +322,12 @@ func (s *Service) memoSecretOpener() func(ctx context.Context, sealed []byte) (m
 	}
 }
 
+// openCredential opens a joined row's deploy credential (nil when the target
+// has none).
+func (s *Service) openCredential(ctx context.Context, kind *string, public, sealed []byte) (*targets.Credential, error) {
+	return targets.OpenCredential(ctx, s.Box.Open, kind, public, sealed)
+}
+
 // targetOf builds the agentproto.Target for one grant's target row: typ
 // nil means no target. secrets is the target's decrypted secret_cfg
 // (openTargetSecrets), merged back into cfg (targets.Merge) so both what
@@ -325,12 +335,13 @@ func (s *Service) memoSecretOpener() func(ctx context.Context, sealed []byte) (m
 // compute a grant's expected files see the same fully resolved config a
 // server-side Request.Config carries (Dispatcher.Deploy) — never just the
 // public fields, even though neither shipped type (traefik, vault-kv) has
-// a secret field today.
-func targetOf(typ *string, cfg []byte, secrets map[string]string, grantOpts []byte) (*agentproto.Target, error) {
+// a secret field today. cred is the target's deploy credential (nil for none),
+// overlaid by targets.Resolve.
+func targetOf(typ *string, cfg []byte, secrets map[string]string, cred *targets.Credential, grantOpts []byte) (*agentproto.Target, error) {
 	if typ == nil {
 		return nil, nil
 	}
-	merged, err := targets.Merge(json.RawMessage(cfg), secrets)
+	merged, err := targets.Resolve(json.RawMessage(cfg), secrets, cred)
 	if err != nil {
 		return nil, err
 	}
@@ -616,7 +627,11 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 			if err != nil {
 				return nil, nil, err
 			}
-			if target, err = targetOf(r.TargetType, r.TargetConfig, secrets, r.TargetOptions); err != nil {
+			cred, err := s.openCredential(ctx, r.CredentialKind, r.CredentialPublic, r.CredentialSecretCfg)
+			if err != nil {
+				return nil, nil, err
+			}
+			if target, err = targetOf(r.TargetType, r.TargetConfig, secrets, cred, r.TargetOptions); err != nil {
 				return nil, nil, err
 			}
 		}
@@ -1022,6 +1037,8 @@ func (s *Service) Resync(ctx context.Context, q *sqlcgen.Queries, ref RefKind, i
 		ids, err = q.LiveGrantIDsUsingTarget(ctx, &id)
 	case RefHook:
 		ids, err = q.LiveGrantIDsUsingHook(ctx, id)
+	case RefCredential:
+		ids, err = q.LiveGrantIDsUsingCredential(ctx, &id)
 	}
 	if err != nil {
 		return nil, err

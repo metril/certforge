@@ -76,6 +76,7 @@ An API key lets a script or `cfctl` call the API. A key can do at most what its 
 | `certs:read`, `certs:write`, `certs:issue` | View, edit and issue certificates |
 | `keys:export` | Download private keys |
 | `dnscreds:reveal` | Show a stored DNS credential secret |
+| `deploycreds:reveal` | Show a stored deploy credential secret |
 | `clients:read`, `clients:write` | View clients; create and change clients and grants |
 | `delivery:read`, `delivery:write` | View, and change layouts, targets and hooks |
 | `alerts:read`, `alerts:write` | View, and change channels and monitors |

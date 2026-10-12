@@ -15,8 +15,10 @@ type Kind string
 const (
 	KindDNSProvider  Kind = "dnsProviders"
 	KindDeployTarget Kind = "deployTargets"
-	KindNotifier     Kind = "notifiers"
-	KindSigner       Kind = "signers"
+	// KindDeployCredential lists the deploy credential kinds (internal/targets).
+	KindDeployCredential Kind = "deployCredentials"
+	KindNotifier         Kind = "notifiers"
+	KindSigner           Kind = "signers"
 )
 
 // Entry is one pluggable type and its configuration schema.

@@ -218,6 +218,34 @@ func (q *Queries) ListDeployCredentials(ctx context.Context, orgID uuid.UUID) ([
 	return items, nil
 }
 
+const liveGrantIDsUsingCredential = `-- name: LiveGrantIDsUsingCredential :many
+SELECT g.id FROM client_cert_grants g
+JOIN deploy_targets t ON t.id = g.deploy_target_id
+WHERE t.credential_id = $1 AND g.removed_at IS NULL AND g.client_id IS NOT NULL
+`
+
+// Live client grants whose target uses the credential: re-rendered when the
+// credential is rotated.
+func (q *Queries) LiveGrantIDsUsingCredential(ctx context.Context, credentialID *uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, liveGrantIDsUsingCredential, credentialID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockDeployCredential = `-- name: LockDeployCredential :one
 SELECT id, org_id, name, kind, public, secret_cfg, stored_secret_keys, created_at, updated_at FROM deploy_credentials WHERE id = $1 AND org_id = $2 FOR UPDATE
 `

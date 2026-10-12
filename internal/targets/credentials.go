@@ -1,10 +1,15 @@
 package targets
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
+
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 // Credential kinds. Field names match the target fields a credential supplies.
@@ -187,4 +192,97 @@ func Resolve(config json.RawMessage, targetSecrets map[string]string, cred *Cred
 		doc[k] = b
 	}
 	return json.Marshal(doc)
+}
+
+var (
+	credSchemaMu    sync.Mutex
+	credSchemaCache = map[string]*jsonschema.Schema{}
+)
+
+func compiledKindSchema(kind string) (*jsonschema.Schema, error) {
+	credSchemaMu.Lock()
+	defer credSchemaMu.Unlock()
+	if sc, ok := credSchemaCache[kind]; ok {
+		return sc, nil
+	}
+	raw, ok := credentialKindSchemas[kind]
+	if !ok {
+		return nil, fmt.Errorf("targets: unknown credential kind %q", kind)
+	}
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
+	}
+	url := "https://certforge.invalid/schemas/deploy-credentials/" + kind + ".json"
+	c := jsonschema.NewCompiler()
+	if err := c.AddResource(url, doc); err != nil {
+		return nil, err
+	}
+	sc, err := c.Compile(url)
+	if err != nil {
+		return nil, err
+	}
+	credSchemaCache[kind] = sc
+	return sc, nil
+}
+
+// ValidateCredential checks a credential's full config (secrets included)
+// against its kind's schema. The kind schemas carry no pattern, enum, const
+// or format keyword on a secret field, so the error never echoes a secret.
+func ValidateCredential(kind string, config json.RawMessage) error {
+	sc, err := compiledKindSchema(kind)
+	if err != nil {
+		return err
+	}
+	inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(config))
+	if err != nil {
+		return fmt.Errorf("targets: %w", err)
+	}
+	if err := sc.Validate(inst); err != nil {
+		return fmt.Errorf("targets: %w", err)
+	}
+	return nil
+}
+
+// SplitCredential separates a credential config into its public JSON and its
+// secret fields, by the kind's schema.
+func SplitCredential(kind string, config json.RawMessage) (json.RawMessage, map[string]string, error) {
+	schema, ok := credentialKindSchemas[kind]
+	if !ok {
+		return nil, nil, fmt.Errorf("targets: unknown credential kind %q", kind)
+	}
+	return Split(schema, config)
+}
+
+// SecretFields returns kind's secret property names, sorted; nil for an
+// unknown kind.
+func SecretFields(kind string) []string {
+	schema, ok := credentialKindSchemas[kind]
+	if !ok {
+		return nil
+	}
+	keys, err := SecretProps(schema)
+	if err != nil {
+		return nil
+	}
+	return keys
+}
+
+// OpenCredential builds a Credential from a joined row's columns; nil when
+// kind is nil (the target has no credential). open decrypts sealed.
+func OpenCredential(ctx context.Context, open func(context.Context, []byte) ([]byte, error), kind *string, public, sealed []byte) (*Credential, error) {
+	if kind == nil {
+		return nil, nil
+	}
+	c := &Credential{Kind: *kind, Public: public, Secrets: map[string]string{}}
+	if len(sealed) > 0 {
+		pt, err := open(ctx, sealed)
+		if err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(pt, &c.Secrets); err != nil {
+			return nil, fmt.Errorf("targets: credential secrets: %w", err)
+		}
+	}
+	return c, nil
 }

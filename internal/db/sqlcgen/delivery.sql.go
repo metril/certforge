@@ -12,18 +12,19 @@ import (
 )
 
 const createDeployTarget = `-- name: CreateDeployTarget :one
-INSERT INTO deploy_targets (org_id, name, type, runs_on, config, secret_cfg, stored_secret_keys)
-VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::text[], '{}')) RETURNING id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg, stored_secret_keys, credential_id
+INSERT INTO deploy_targets (org_id, name, type, runs_on, config, secret_cfg, stored_secret_keys, credential_id)
+VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::text[], '{}'), $8) RETURNING id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg, stored_secret_keys, credential_id
 `
 
 type CreateDeployTargetParams struct {
-	OrgID            uuid.UUID `json:"org_id"`
-	Name             string    `json:"name"`
-	Type             string    `json:"type"`
-	RunsOn           string    `json:"runs_on"`
-	Config           []byte    `json:"config"`
-	SecretCfg        []byte    `json:"secret_cfg"`
-	StoredSecretKeys []string  `json:"stored_secret_keys"`
+	OrgID            uuid.UUID  `json:"org_id"`
+	Name             string     `json:"name"`
+	Type             string     `json:"type"`
+	RunsOn           string     `json:"runs_on"`
+	Config           []byte     `json:"config"`
+	SecretCfg        []byte     `json:"secret_cfg"`
+	StoredSecretKeys []string   `json:"stored_secret_keys"`
+	CredentialID     *uuid.UUID `json:"credential_id"`
 }
 
 func (q *Queries) CreateDeployTarget(ctx context.Context, arg CreateDeployTargetParams) (DeployTarget, error) {
@@ -35,6 +36,7 @@ func (q *Queries) CreateDeployTarget(ctx context.Context, arg CreateDeployTarget
 		arg.Config,
 		arg.SecretCfg,
 		arg.StoredSecretKeys,
+		arg.CredentialID,
 	)
 	var i DeployTarget
 	err := row.Scan(
@@ -807,17 +809,18 @@ func (q *Queries) TargetKeylessGrantCertificate(ctx context.Context, id *uuid.UU
 
 const updateDeployTarget = `-- name: UpdateDeployTarget :one
 UPDATE deploy_targets SET name = $1, config = $2, secret_cfg = $3,
-       stored_secret_keys = COALESCE($4::text[], '{}'), updated_at = now()
-WHERE id = $5 AND org_id = $6 RETURNING id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg, stored_secret_keys, credential_id
+       stored_secret_keys = COALESCE($4::text[], '{}'), credential_id = $5, updated_at = now()
+WHERE id = $6 AND org_id = $7 RETURNING id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg, stored_secret_keys, credential_id
 `
 
 type UpdateDeployTargetParams struct {
-	Name             string    `json:"name"`
-	Config           []byte    `json:"config"`
-	SecretCfg        []byte    `json:"secret_cfg"`
-	StoredSecretKeys []string  `json:"stored_secret_keys"`
-	ID               uuid.UUID `json:"id"`
-	OrgID            uuid.UUID `json:"org_id"`
+	Name             string     `json:"name"`
+	Config           []byte     `json:"config"`
+	SecretCfg        []byte     `json:"secret_cfg"`
+	StoredSecretKeys []string   `json:"stored_secret_keys"`
+	CredentialID     *uuid.UUID `json:"credential_id"`
+	ID               uuid.UUID  `json:"id"`
+	OrgID            uuid.UUID  `json:"org_id"`
 }
 
 func (q *Queries) UpdateDeployTarget(ctx context.Context, arg UpdateDeployTargetParams) (DeployTarget, error) {
@@ -826,6 +829,7 @@ func (q *Queries) UpdateDeployTarget(ctx context.Context, arg UpdateDeployTarget
 		arg.Config,
 		arg.SecretCfg,
 		arg.StoredSecretKeys,
+		arg.CredentialID,
 		arg.ID,
 		arg.OrgID,
 	)

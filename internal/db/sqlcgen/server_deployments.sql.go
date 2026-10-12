@@ -162,12 +162,13 @@ func (q *Queries) MarkServerDeploymentFailed(ctx context.Context, arg MarkServer
 
 const serverDeployGrant = `-- name: ServerDeployGrant :one
 SELECT g.id, g.cert_id, g.deploy_target_id, t.org_id, o.slug AS org_slug, t.type AS target_type, t.config AS target_config,
-       t.secret_cfg AS target_secret_cfg, t.name AS target_name, g.post_action,
+       t.secret_cfg AS target_secret_cfg, dc.kind AS credential_kind, dc.public AS credential_public, dc.secret_cfg AS credential_secret_cfg, t.name AS target_name, g.post_action,
        ce.name AS certificate_name, ce.common_name AS certificate_common_name, ce.sans AS certificate_sans,
        ce.current_version_id, ol.files AS layout_files, ol.password AS layout_password, ol.extra_cert_ids AS layout_extra_cert_ids,
        sd.version_id AS pending_version_id, sd.deploy_seq AS pending_deploy_seq
 FROM client_cert_grants g
 JOIN deploy_targets t ON t.id = g.deploy_target_id
+LEFT JOIN deploy_credentials dc ON dc.id = t.credential_id
 JOIN orgs o ON o.id = t.org_id
 JOIN certificates ce ON ce.id = g.cert_id
 LEFT JOIN output_specs ol ON ol.id = g.output_spec_id
@@ -184,6 +185,9 @@ type ServerDeployGrantRow struct {
 	TargetType            string      `json:"target_type"`
 	TargetConfig          []byte      `json:"target_config"`
 	TargetSecretCfg       []byte      `json:"target_secret_cfg"`
+	CredentialKind        *string     `json:"credential_kind"`
+	CredentialPublic      []byte      `json:"credential_public"`
+	CredentialSecretCfg   []byte      `json:"credential_secret_cfg"`
 	TargetName            string      `json:"target_name"`
 	PostAction            []byte      `json:"post_action"`
 	CertificateName       string      `json:"certificate_name"`
@@ -222,6 +226,9 @@ func (q *Queries) ServerDeployGrant(ctx context.Context, id uuid.UUID) (ServerDe
 		&i.TargetType,
 		&i.TargetConfig,
 		&i.TargetSecretCfg,
+		&i.CredentialKind,
+		&i.CredentialPublic,
+		&i.CredentialSecretCfg,
 		&i.TargetName,
 		&i.PostAction,
 		&i.CertificateName,

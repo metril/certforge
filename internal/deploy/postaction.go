@@ -90,7 +90,25 @@ func (d *Dispatcher) runPostAction(ctx context.Context, row sqlcgen.ServerDeploy
 	if err != nil {
 		return errors.New("post action: ssh target secrets unavailable")
 	}
-	raw, err := targets.Merge(t.Config, secrets)
+	var cred *targets.Credential
+	redact := secrets
+	if t.CredentialID != nil {
+		dc, err := d.Q.GetDeployCredential(ctx, sqlcgen.GetDeployCredentialParams{ID: *t.CredentialID, OrgID: row.OrgID})
+		if err != nil {
+			return errors.New("post action: ssh target credential not found")
+		}
+		if cred, err = targets.OpenCredential(ctx, d.Box.Open, &dc.Kind, dc.Public, dc.SecretCfg); err != nil {
+			return errors.New("post action: ssh target credential unavailable")
+		}
+		redact = make(map[string]string, len(secrets)+len(cred.Secrets))
+		for k, v := range secrets {
+			redact[k] = v
+		}
+		for k, v := range cred.Secrets {
+			redact["credential:"+k] = v
+		}
+	}
+	raw, err := targets.Resolve(t.Config, secrets, cred)
 	if err != nil {
 		return errors.New("post action: ssh target config invalid")
 	}
@@ -108,7 +126,7 @@ func (d *Dispatcher) runPostAction(ctx context.Context, row sqlcgen.ServerDeploy
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	fail := func(err error) error {
-		msg := targets.Redact(err, secrets, 500)
+		msg := targets.Redact(err, redact, 500)
 		run.Duration, run.Stderr = time.Since(start), capRun([]byte(msg))
 		rec.RecordHook(ctx, run)
 		return errors.New("post action: " + msg)

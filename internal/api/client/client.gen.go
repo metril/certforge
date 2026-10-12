@@ -152,15 +152,23 @@ const (
 	DeliveryStatusPending   DeliveryStatus = "pending"
 )
 
+// Defines values for DeployCredentialKind.
+const (
+	DeployCredentialKindApiKey   DeployCredentialKind = "apiKey"
+	DeployCredentialKindPassword DeployCredentialKind = "password"
+	DeployCredentialKindSsh      DeployCredentialKind = "ssh"
+	DeployCredentialKindToken    DeployCredentialKind = "token"
+)
+
 // Defines values for DeployTargetType.
 const (
-	Authentik DeployTargetType = "authentik"
-	Pfsense   DeployTargetType = "pfsense"
-	Routeros  DeployTargetType = "routeros"
-	Ssh       DeployTargetType = "ssh"
-	Traefik   DeployTargetType = "traefik"
-	Truenas   DeployTargetType = "truenas"
-	VaultKv   DeployTargetType = "vault-kv"
+	DeployTargetTypeAuthentik DeployTargetType = "authentik"
+	DeployTargetTypePfsense   DeployTargetType = "pfsense"
+	DeployTargetTypeRouteros  DeployTargetType = "routeros"
+	DeployTargetTypeSsh       DeployTargetType = "ssh"
+	DeployTargetTypeTraefik   DeployTargetType = "traefik"
+	DeployTargetTypeTruenas   DeployTargetType = "truenas"
+	DeployTargetTypeVaultKv   DeployTargetType = "vault-kv"
 )
 
 // Defines values for DeploymentState.
@@ -358,6 +366,7 @@ const (
 	AgentCas               RewrapTable = "agent_cas"
 	Cas                    RewrapTable = "cas"
 	CertificateVersions    RewrapTable = "certificate_versions"
+	DeployCredentials      RewrapTable = "deploy_credentials"
 	DeployTargets          RewrapTable = "deploy_targets"
 	DnsProviderCredentials RewrapTable = "dns_provider_credentials"
 	NotificationChannels   RewrapTable = "notification_channels"
@@ -1525,6 +1534,75 @@ type DeliveryResult struct {
 // DeliveryStatus Outcome of one delivery attempt to one channel.
 type DeliveryStatus string
 
+// DeployCredential A reusable deploy credential. Secret values are never returned.
+type DeployCredential struct {
+	// Config Non-secret field values.
+	Config map[string]interface{} `json:"config"`
+
+	// CreatedAt Creation time.
+	CreatedAt *time.Time `json:"createdAt,omitempty"`
+
+	// Id Credential id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema.
+	Kind DeployCredentialKind `json:"kind"`
+
+	// Name Unique name in the org.
+	Name string `json:"name"`
+
+	// OrgId Owning org.
+	OrgId *openapi_types.UUID `json:"orgId,omitempty"`
+
+	// StoredSecrets Secret fields that have a stored value.
+	StoredSecrets *[]string `json:"storedSecrets,omitempty"`
+
+	// UpdatedAt Last change.
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+
+	// UsedBy Deploy targets that use this credential.
+	UsedBy *int `json:"usedBy,omitempty"`
+}
+
+// DeployCredentialInput A new deploy credential.
+type DeployCredentialInput struct {
+	// Config Field values valid against the kind's schema.
+	Config map[string]interface{} `json:"config"`
+
+	// Kind Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema.
+	Kind DeployCredentialKind `json:"kind"`
+
+	// Name Unique name in the org.
+	Name string `json:"name"`
+}
+
+// DeployCredentialKind Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema.
+type DeployCredentialKind string
+
+// DeployCredentialRevealRequest Which stored secret to reveal.
+type DeployCredentialRevealRequest struct {
+	// Field Name of a stored secret field of the credential's kind.
+	Field string `json:"field"`
+}
+
+// DeployCredentialRevealResult One stored secret in plaintext.
+type DeployCredentialRevealResult struct {
+	// Field The secret field name.
+	Field string `json:"field"`
+
+	// Value The stored plaintext value.
+	Value string `json:"value"`
+}
+
+// DeployCredentialUpdate Replacement name and config.
+type DeployCredentialUpdate struct {
+	// Config Full config; secret fields may be __unchanged__.
+	Config map[string]interface{} `json:"config"`
+
+	// Name Unique name in the org.
+	Name string `json:"name"`
+}
+
 // DeployTarget A deploy target the agent (or the server itself) drives after writing a grant's files.
 type DeployTarget struct {
 	// Config Type-specific configuration
@@ -1532,6 +1610,9 @@ type DeployTarget struct {
 
 	// CreatedAt Creation time.
 	CreatedAt time.Time `json:"createdAt"`
+
+	// CredentialId The deploy credential supplying this target's login fields; null when the target holds its own. The credential's fields are not in config.
+	CredentialId *openapi_types.UUID `json:"credentialId"`
 
 	// GrantCount Live grants using it.
 	GrantCount int `json:"grantCount"`
@@ -1562,6 +1643,9 @@ type DeployTarget struct {
 type DeployTargetInput struct {
 	// Config Configuration valid against the type's schema.
 	Config map[string]interface{} `json:"config"`
+
+	// CredentialId A deploy credential of the same org whose kind the type accepts (its schema's credentialKinds). Its fields are overlaid on config, so config must not also set them (422 naming the fields). Attaching or changing it, or changing the URL or host of a target that has one, also needs deploycreds:write (403). Attaching clears the target's own stored secrets. Omitted or null detaches it.
+	CredentialId *openapi_types.UUID `json:"credentialId"`
 
 	// Name Name
 	Name string `json:"name"`
@@ -2526,6 +2610,9 @@ type MeBinding struct {
 
 // MetaSchemas Pluggable type schemas grouped by kind.
 type MetaSchemas struct {
+	// DeployCredentials Deploy credential kinds and their field schemas.
+	DeployCredentials []SchemaEntry `json:"deployCredentials"`
+
 	// DeployTargets Deploy targets.
 	DeployTargets []SchemaEntry `json:"deployTargets"`
 
@@ -2884,7 +2971,7 @@ type RewrapStatus struct {
 	Tables []RewrapTableStatus `json:"tables"`
 }
 
-// RewrapTable A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels covers secret_cfg and is walked before deploy_targets; deploy_targets covers its own secret_cfg and is walked last.
+// RewrapTable A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels covers secret_cfg and is walked before deploy_targets; deploy_targets covers its own secret_cfg; deploy_credentials covers its own secret_cfg and is walked last.
 type RewrapTable string
 
 // RewrapTableStatus Rewrap progress for one table.
@@ -2898,7 +2985,7 @@ type RewrapTableStatus struct {
 	// Scanned Rows scanned so far.
 	Scanned int64 `json:"scanned"`
 
-	// Table A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels covers secret_cfg and is walked before deploy_targets; deploy_targets covers its own secret_cfg and is walked last.
+	// Table A table rewrapped by startRewrap, in this visit order; cas covers both eab_hmac and secret_cfg, counted together. notification_channels covers secret_cfg and is walked before deploy_targets; deploy_targets covers its own secret_cfg; deploy_credentials covers its own secret_cfg and is walked last.
 	Table RewrapTable `json:"table"`
 }
 
@@ -3694,6 +3781,15 @@ type UpdateClientJSONRequestBody = ClientUpdate
 // CreateGrantJSONRequestBody defines body for CreateGrant for application/json ContentType.
 type CreateGrantJSONRequestBody = GrantInput
 
+// CreateDeployCredentialJSONRequestBody defines body for CreateDeployCredential for application/json ContentType.
+type CreateDeployCredentialJSONRequestBody = DeployCredentialInput
+
+// UpdateDeployCredentialJSONRequestBody defines body for UpdateDeployCredential for application/json ContentType.
+type UpdateDeployCredentialJSONRequestBody = DeployCredentialUpdate
+
+// RevealDeployCredentialSecretJSONRequestBody defines body for RevealDeployCredentialSecret for application/json ContentType.
+type RevealDeployCredentialSecretJSONRequestBody = DeployCredentialRevealRequest
+
 // CreateDeployTargetJSONRequestBody defines body for CreateDeployTarget for application/json ContentType.
 type CreateDeployTargetJSONRequestBody = DeployTargetInput
 
@@ -4099,6 +4195,30 @@ type ClientInterface interface {
 
 	// RevokeClient request
 	RevokeClient(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListDeployCredentials request
+	ListDeployCredentials(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateDeployCredentialWithBody request with any body
+	CreateDeployCredentialWithBody(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateDeployCredential(ctx context.Context, orgId OrgId, body CreateDeployCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteDeployCredential request
+	DeleteDeployCredential(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetDeployCredential request
+	GetDeployCredential(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateDeployCredentialWithBody request with any body
+	UpdateDeployCredentialWithBody(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateDeployCredential(ctx context.Context, orgId OrgId, id Id, body UpdateDeployCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevealDeployCredentialSecretWithBody request with any body
+	RevealDeployCredentialSecretWithBody(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RevealDeployCredentialSecret(ctx context.Context, orgId OrgId, id Id, body RevealDeployCredentialSecretJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListDeployTargets request
 	ListDeployTargets(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5438,6 +5558,114 @@ func (c *APIClient) ReenrollClient(ctx context.Context, orgId OrgId, id Id, reqE
 
 func (c *APIClient) RevokeClient(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRevokeClientRequest(c.Server, orgId, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) ListDeployCredentials(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListDeployCredentialsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) CreateDeployCredentialWithBody(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateDeployCredentialRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) CreateDeployCredential(ctx context.Context, orgId OrgId, body CreateDeployCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateDeployCredentialRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) DeleteDeployCredential(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteDeployCredentialRequest(c.Server, orgId, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) GetDeployCredential(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDeployCredentialRequest(c.Server, orgId, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) UpdateDeployCredentialWithBody(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateDeployCredentialRequestWithBody(c.Server, orgId, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) UpdateDeployCredential(ctx context.Context, orgId OrgId, id Id, body UpdateDeployCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateDeployCredentialRequest(c.Server, orgId, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) RevealDeployCredentialSecretWithBody(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevealDeployCredentialSecretRequestWithBody(c.Server, orgId, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) RevealDeployCredentialSecret(ctx context.Context, orgId OrgId, id Id, body RevealDeployCredentialSecretJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevealDeployCredentialSecretRequest(c.Server, orgId, id, body)
 	if err != nil {
 		return nil, err
 	}
@@ -10215,6 +10443,277 @@ func NewRevokeClientRequest(server string, orgId OrgId, id Id) (*http.Request, e
 	return req, nil
 }
 
+// NewListDeployCredentialsRequest generates requests for ListDeployCredentials
+func NewListDeployCredentialsRequest(server string, orgId OrgId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/deploy-credentials", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateDeployCredentialRequest calls the generic CreateDeployCredential builder with application/json body
+func NewCreateDeployCredentialRequest(server string, orgId OrgId, body CreateDeployCredentialJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateDeployCredentialRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewCreateDeployCredentialRequestWithBody generates requests for CreateDeployCredential with any type of body
+func NewCreateDeployCredentialRequestWithBody(server string, orgId OrgId, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/deploy-credentials", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteDeployCredentialRequest generates requests for DeleteDeployCredential
+func NewDeleteDeployCredentialRequest(server string, orgId OrgId, id Id) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/deploy-credentials/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetDeployCredentialRequest generates requests for GetDeployCredential
+func NewGetDeployCredentialRequest(server string, orgId OrgId, id Id) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/deploy-credentials/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateDeployCredentialRequest calls the generic UpdateDeployCredential builder with application/json body
+func NewUpdateDeployCredentialRequest(server string, orgId OrgId, id Id, body UpdateDeployCredentialJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateDeployCredentialRequestWithBody(server, orgId, id, "application/json", bodyReader)
+}
+
+// NewUpdateDeployCredentialRequestWithBody generates requests for UpdateDeployCredential with any type of body
+func NewUpdateDeployCredentialRequestWithBody(server string, orgId OrgId, id Id, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/deploy-credentials/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRevealDeployCredentialSecretRequest calls the generic RevealDeployCredentialSecret builder with application/json body
+func NewRevealDeployCredentialSecretRequest(server string, orgId OrgId, id Id, body RevealDeployCredentialSecretJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRevealDeployCredentialSecretRequestWithBody(server, orgId, id, "application/json", bodyReader)
+}
+
+// NewRevealDeployCredentialSecretRequestWithBody generates requests for RevealDeployCredentialSecret with any type of body
+func NewRevealDeployCredentialSecretRequestWithBody(server string, orgId OrgId, id Id, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/deploy-credentials/%s/reveal", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListDeployTargetsRequest generates requests for ListDeployTargets
 func NewListDeployTargetsRequest(server string, orgId OrgId) (*http.Request, error) {
 	var err error
@@ -13240,6 +13739,30 @@ type ClientWithResponsesInterface interface {
 	// RevokeClientWithResponse request
 	RevokeClientWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*RevokeClientResponse, error)
 
+	// ListDeployCredentialsWithResponse request
+	ListDeployCredentialsWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*ListDeployCredentialsResponse, error)
+
+	// CreateDeployCredentialWithBodyWithResponse request with any body
+	CreateDeployCredentialWithBodyWithResponse(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDeployCredentialResponse, error)
+
+	CreateDeployCredentialWithResponse(ctx context.Context, orgId OrgId, body CreateDeployCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateDeployCredentialResponse, error)
+
+	// DeleteDeployCredentialWithResponse request
+	DeleteDeployCredentialWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*DeleteDeployCredentialResponse, error)
+
+	// GetDeployCredentialWithResponse request
+	GetDeployCredentialWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*GetDeployCredentialResponse, error)
+
+	// UpdateDeployCredentialWithBodyWithResponse request with any body
+	UpdateDeployCredentialWithBodyWithResponse(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateDeployCredentialResponse, error)
+
+	UpdateDeployCredentialWithResponse(ctx context.Context, orgId OrgId, id Id, body UpdateDeployCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateDeployCredentialResponse, error)
+
+	// RevealDeployCredentialSecretWithBodyWithResponse request with any body
+	RevealDeployCredentialSecretWithBodyWithResponse(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RevealDeployCredentialSecretResponse, error)
+
+	RevealDeployCredentialSecretWithResponse(ctx context.Context, orgId OrgId, id Id, body RevealDeployCredentialSecretJSONRequestBody, reqEditors ...RequestEditorFn) (*RevealDeployCredentialSecretResponse, error)
+
 	// ListDeployTargetsWithResponse request
 	ListDeployTargetsWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*ListDeployTargetsResponse, error)
 
@@ -15493,6 +16016,176 @@ func (r RevokeClientResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r RevokeClientResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListDeployCredentialsResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *[]DeployCredential
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r ListDeployCredentialsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListDeployCredentialsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateDeployCredentialResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON201                   *DeployCredential
+	ApplicationproblemJSON400 *BadRequest
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON409 *Conflict
+	ApplicationproblemJSON413 *PayloadTooLarge
+	ApplicationproblemJSON415 *UnsupportedMediaType
+	ApplicationproblemJSON422 *UnprocessableEntity
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateDeployCredentialResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateDeployCredentialResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteDeployCredentialResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON409 *Conflict
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteDeployCredentialResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteDeployCredentialResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetDeployCredentialResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *DeployCredential
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDeployCredentialResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDeployCredentialResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateDeployCredentialResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *DeployCredential
+	ApplicationproblemJSON400 *BadRequest
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON409 *Conflict
+	ApplicationproblemJSON413 *PayloadTooLarge
+	ApplicationproblemJSON415 *UnsupportedMediaType
+	ApplicationproblemJSON422 *UnprocessableEntity
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateDeployCredentialResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateDeployCredentialResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RevealDeployCredentialSecretResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *DeployCredentialRevealResult
+	ApplicationproblemJSON400 *BadRequest
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON413 *PayloadTooLarge
+	ApplicationproblemJSON415 *UnsupportedMediaType
+	ApplicationproblemJSON422 *UnprocessableEntity
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r RevealDeployCredentialSecretResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevealDeployCredentialSecretResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -18007,6 +18700,84 @@ func (c *ClientWithResponses) RevokeClientWithResponse(ctx context.Context, orgI
 		return nil, err
 	}
 	return ParseRevokeClientResponse(rsp)
+}
+
+// ListDeployCredentialsWithResponse request returning *ListDeployCredentialsResponse
+func (c *ClientWithResponses) ListDeployCredentialsWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*ListDeployCredentialsResponse, error) {
+	rsp, err := c.ListDeployCredentials(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListDeployCredentialsResponse(rsp)
+}
+
+// CreateDeployCredentialWithBodyWithResponse request with arbitrary body returning *CreateDeployCredentialResponse
+func (c *ClientWithResponses) CreateDeployCredentialWithBodyWithResponse(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDeployCredentialResponse, error) {
+	rsp, err := c.CreateDeployCredentialWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateDeployCredentialResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateDeployCredentialWithResponse(ctx context.Context, orgId OrgId, body CreateDeployCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateDeployCredentialResponse, error) {
+	rsp, err := c.CreateDeployCredential(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateDeployCredentialResponse(rsp)
+}
+
+// DeleteDeployCredentialWithResponse request returning *DeleteDeployCredentialResponse
+func (c *ClientWithResponses) DeleteDeployCredentialWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*DeleteDeployCredentialResponse, error) {
+	rsp, err := c.DeleteDeployCredential(ctx, orgId, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteDeployCredentialResponse(rsp)
+}
+
+// GetDeployCredentialWithResponse request returning *GetDeployCredentialResponse
+func (c *ClientWithResponses) GetDeployCredentialWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*GetDeployCredentialResponse, error) {
+	rsp, err := c.GetDeployCredential(ctx, orgId, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDeployCredentialResponse(rsp)
+}
+
+// UpdateDeployCredentialWithBodyWithResponse request with arbitrary body returning *UpdateDeployCredentialResponse
+func (c *ClientWithResponses) UpdateDeployCredentialWithBodyWithResponse(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateDeployCredentialResponse, error) {
+	rsp, err := c.UpdateDeployCredentialWithBody(ctx, orgId, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateDeployCredentialResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateDeployCredentialWithResponse(ctx context.Context, orgId OrgId, id Id, body UpdateDeployCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateDeployCredentialResponse, error) {
+	rsp, err := c.UpdateDeployCredential(ctx, orgId, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateDeployCredentialResponse(rsp)
+}
+
+// RevealDeployCredentialSecretWithBodyWithResponse request with arbitrary body returning *RevealDeployCredentialSecretResponse
+func (c *ClientWithResponses) RevealDeployCredentialSecretWithBodyWithResponse(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RevealDeployCredentialSecretResponse, error) {
+	rsp, err := c.RevealDeployCredentialSecretWithBody(ctx, orgId, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevealDeployCredentialSecretResponse(rsp)
+}
+
+func (c *ClientWithResponses) RevealDeployCredentialSecretWithResponse(ctx context.Context, orgId OrgId, id Id, body RevealDeployCredentialSecretJSONRequestBody, reqEditors ...RequestEditorFn) (*RevealDeployCredentialSecretResponse, error) {
+	rsp, err := c.RevealDeployCredentialSecret(ctx, orgId, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevealDeployCredentialSecretResponse(rsp)
 }
 
 // ListDeployTargetsWithResponse request returning *ListDeployTargetsResponse
@@ -23326,6 +24097,428 @@ func ParseRevokeClientResponse(rsp *http.Response) (*RevokeClientResponse, error
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListDeployCredentialsResponse parses an HTTP response from a ListDeployCredentialsWithResponse call
+func ParseListDeployCredentialsResponse(rsp *http.Response) (*ListDeployCredentialsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListDeployCredentialsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []DeployCredential
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateDeployCredentialResponse parses an HTTP response from a CreateDeployCredentialWithResponse call
+func ParseCreateDeployCredentialResponse(rsp *http.Response) (*CreateDeployCredentialResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateDeployCredentialResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest DeployCredential
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteDeployCredentialResponse parses an HTTP response from a DeleteDeployCredentialWithResponse call
+func ParseDeleteDeployCredentialResponse(rsp *http.Response) (*DeleteDeployCredentialResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteDeployCredentialResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetDeployCredentialResponse parses an HTTP response from a GetDeployCredentialWithResponse call
+func ParseGetDeployCredentialResponse(rsp *http.Response) (*GetDeployCredentialResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDeployCredentialResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DeployCredential
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateDeployCredentialResponse parses an HTTP response from a UpdateDeployCredentialWithResponse call
+func ParseUpdateDeployCredentialResponse(rsp *http.Response) (*UpdateDeployCredentialResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateDeployCredentialResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DeployCredential
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevealDeployCredentialSecretResponse parses an HTTP response from a RevealDeployCredentialSecretWithResponse call
+func ParseRevealDeployCredentialSecretResponse(rsp *http.Response) (*RevealDeployCredentialSecretResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevealDeployCredentialSecretResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DeployCredentialRevealResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalError

@@ -7,6 +7,10 @@ import "github.com/metril/certforge/internal/meta"
 // R8/R9: read by the API into SchemaEntry.runsOn/keyPolicy starting Task 4;
 // unread before that).
 func AddToMeta(reg *Registry, metaReg *meta.Registry) {
+	for _, k := range Kinds() {
+		schema, _ := KindSchema(k)
+		metaReg.Add(meta.KindDeployCredential, meta.Entry{Code: k, Name: k, Schema: schema})
+	}
 	reg.Each(func(t Target) {
 		e := meta.Entry{
 			Code:   t.Type(),

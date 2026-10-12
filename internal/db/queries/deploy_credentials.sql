@@ -40,3 +40,10 @@ GROUP BY dc.id;
 -- name: ListDeployCredentialDependentTargets :many
 SELECT id, name, type, runs_on FROM deploy_targets
 WHERE credential_id = $1 AND org_id = $2 ORDER BY lower(name), id;
+
+-- name: LiveGrantIDsUsingCredential :many
+-- Live client grants whose target uses the credential: re-rendered when the
+-- credential is rotated.
+SELECT g.id FROM client_cert_grants g
+JOIN deploy_targets t ON t.id = g.deploy_target_id
+WHERE t.credential_id = $1 AND g.removed_at IS NULL AND g.client_id IS NOT NULL;
