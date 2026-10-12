@@ -7,7 +7,7 @@ Environment variables, commands, files, transport modes and protocol limits for 
 | Variable | Default | Meaning |
 |---|---|---|
 | `CF_AGENT_DATA` | `/data` | Data directory for key, certificate, CA bundle and state. Created with mode 0700. |
-| `CF_AGENT_TOKEN` | none | Enrolment token. |
+| `CF_AGENT_TOKEN` | none | Enrollment token. |
 | `CF_AGENT_TOKEN_FILE` | none | File holding the token, for example a Docker secret. Used when `CF_AGENT_TOKEN` is empty. `run` waits for the file to appear, checking every 5 seconds. |
 | `CF_AGENT_TRANSPORT` | `auto` | Which TLS server certificates the agent accepts: `auto`, `mtls` or `proxy`. See [Transport](#transport). Any other value is an error. |
 | `SSL_CERT_FILE` | system roots | PEM file of CA certificates that replaces the system roots. Use it when a proxy's certificate comes from a private CA. Read by the Go runtime. |
@@ -24,10 +24,10 @@ An invalid value stops the agent with exit code 2.
 
 | Command | What it does |
 |---|---|
-| `certforge-agent run` | Enrol if needed, connect, reconcile on every nudge, send heartbeats, renew, reconnect with backoff. The container default. |
-| `certforge-agent enroll --token <token>` | Enrol and exit. Without `--token` it uses `CF_AGENT_TOKEN` or `CF_AGENT_TOKEN_FILE`. Waits for approval when approval is required. |
+| `certforge-agent run` | Enroll if needed, connect, reconcile on every nudge, send heartbeats, renew, reconnect with backoff. The container default. |
+| `certforge-agent enroll --token <token>` | Enroll and exit. Without `--token` it uses `CF_AGENT_TOKEN` or `CF_AGENT_TOKEN_FILE`. Waits for approval when approval is required. |
 | `certforge-agent pull` | Renew if due, reconcile once over plain requests, report, send one heartbeat, exit. No connection. |
-| `certforge-agent status` | Print client id, Agent URL, certificate serial and expiry, revision and grant count. Prints `Not enrolled` before enrolment. |
+| `certforge-agent status` | Print client id, Agent URL, certificate serial and expiry, revision and grant count. Prints `Not enrolled` before enrollment. |
 | `certforge-agent version` | Print the version. |
 
 Exit codes: 0 success, 1 failure (including a revoked client), 2 bad usage or configuration.
@@ -41,11 +41,11 @@ Exit codes: 0 success, 1 failure (including a revoked client), 2 bad usage or co
 | `agent.key` | 0600 | The agent's ECDSA P-256 private key. Created once and reused. |
 | `agent.crt` | | The agent certificate. Renewed at two thirds of its lifetime; the key stays the same. |
 | `ca.pem` | | The agent CA bundle. Updated on renewal and on trust updates. |
-| `state.json` | 0600 | Client id, Agent URL, hash of the enrolment token, last revision, and per-grant state. |
+| `state.json` | 0600 | Client id, Agent URL, hash of the enrollment token, last revision, and per-grant state. |
 
-If `agent.crt` is missing the agent is not enrolled. The agent enrols again whenever the configured token's hash differs from the one in `state.json`.
+If `agent.crt` is missing the agent is not enrolled. The agent enrolls again whenever the configured token's hash differs from the one in `state.json`.
 
-## Enrolment token
+## Enrollment token
 
 `cf1.<base64url(Agent URL)>.<CA SHA-256, 64 hex digits>.<secret>`. The Agent URL must be `https://host[:port]`. The agent checks the server's answer against the CA fingerprint in the token.
 
@@ -59,7 +59,7 @@ If `agent.crt` is missing the agent is not enrolled. The agent enrols again when
 | `mtls` | Issued by an agent CA. For the dedicated agent port only. |
 | `proxy` | Trusted by the system roots (or `SSL_CERT_FILE`). For a TLS-terminating proxy. |
 
-Enrolment accepts either a chain containing the token's CA or a system-trusted chain, whatever the mode. The agent presents no TLS client certificate in any mode; the server asks for none.
+Enrollment accepts either a chain containing the token's CA or a system-trusted chain, whatever the mode. The agent presents no TLS client certificate in any mode; the server asks for none.
 
 ## Protocol limits
 
@@ -67,14 +67,14 @@ Enrolment accepts either a chain containing the token's CA or a system-trusted c
 |---|---|
 | Clock difference accepted by the server | 60 seconds. Beyond it the agent reports that the system clocks differ. |
 | Replay protection | Each nonce is remembered for 120 seconds, in the server's memory, in one cache shared by the HTTP port and the agent listener. A restart forgets them. At 200,000 remembered nonces the server answers an unsigned `503` with `Retry-After` and logs an error until entries expire. |
-| Request rate | Sessions, WebSocket upgrades and enrolment polls: 600 a minute per client address (burst 120). Signed REST requests: 600 a minute per agent (burst 120), checked after the session lookup and before the body is read. Over the limit the server answers an unsigned `429`, and the agent retries with backoff (1, 2, 4 and 8 seconds). A request naming no live session is refused before its body is read. Fleets behind a proxy should set **Trusted proxies** so each agent has its own address. |
+| Request rate | Sessions, WebSocket upgrades and enrollment polls: 600 a minute per client address (burst 120). Signed REST requests: 600 a minute per agent (burst 120), checked after the session lookup and before the body is read. Over the limit the server answers an unsigned `429`, and the agent retries with backoff (1, 2, 4 and 8 seconds). A request naming no live session is refused before its body is read. Fleets behind a proxy should set **Trusted proxies** so each agent has its own address. |
 | Session lifetime | 10 minutes; the agent starts a new session after 9. |
 | Sessions per client | 16. The oldest is dropped. |
 | Messages per session | 1000 each way. The WebSocket reconnects shortly before the limit (close code 4003) for fresh keys. |
 | WebSocket message size | 8 MiB. |
 | Responder certificate | Valid 24 hours; the agent checks it on every response. |
-| Pending enrolments | 50 per organization. |
-| Enrolment poll interval | 2 to 30 seconds, doubling. The agent gives up after 10 failed polls in a row. |
+| Pending enrollments | 50 per organization. |
+| Enrollment poll interval | 2 to 30 seconds, doubling. The agent gives up after 10 failed polls in a row. |
 | Server ping | Every 25 seconds; closes after 75 seconds without traffic. |
 
 WebSocket close codes: 4000 a newer connection replaced this one, 4001 revoked or re-enrolled, 4002 idle, 4003 reconnect for fresh keys.

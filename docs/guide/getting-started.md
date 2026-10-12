@@ -87,7 +87,7 @@ The certificate opens on its own page and turns **Active** when issuance finishe
 Install the agent on the host that needs the certificate, then grant the certificate to that client.
 
 1. Make sure agents can reach the server by name: set `CF_BASE_URL`, or **Settings → Agents → Agent URL**, to an address reachable from the agent host. Every token carries it.
-2. Open **Clients** and select **Enrol client**. Enter a name, choose **Create token**, and copy the `docker run` line or Compose file.
+2. Open **Clients** and select **Enroll client**. Enter a name, choose **Create token**, and copy the `docker run` line or Compose file.
 3. Run it on the host.
 4. The agent connects and the panel shows **Agent enrolled. Awaiting approval.** Approval is on by default: select **Review**, compare the verification code with the agent's log, and approve. See [Clients](clients.md#approval).
 5. On the client, select **Grant certificate** and pick the certificate and where its files go. See [Delivery](delivery.md).

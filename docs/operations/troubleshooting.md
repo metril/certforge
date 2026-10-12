@@ -42,17 +42,17 @@ Agent messages appear in the agent's log. The server records agent events in the
 
 **The socket reconnects about every 1000 messages.** This is by design: each session carries at most 1000 messages per direction, then the agent reconnects for fresh keys.
 
-**The agent logs `ENROLMENT WAITING FOR APPROVAL`.** Approval is on. An administrator must open **Clients**, compare the verification code with the one in the log and approve. See [Clients](../guide/clients.md#approval).
+**The agent logs `ENROLLMENT WAITING FOR APPROVAL`.** Approval is on. An administrator must open **Clients**, compare the verification code with the one in the log and approve. See [Clients](../guide/clients.md#approval).
 
 **The agent says the verification code does not match.** The agent is not talking to the CertForge its token names, or the token is for another server. Do not approve. Check the **Agent URL** and DNS.
 
-**Enrolment says an administrator rejected the request, or it expired.** Create a new token (or re-enrol the client) and start the agent again. Pending requests expire after **Approval window (hours)** (`pendingTtlHours`, default 24).
+**Enrollment says an administrator rejected the request, or it expired.** Create a new token (or re-enroll the client) and start the agent again. Pending requests expire after **Approval window (hours)** (`pendingTtlHours`, default 24).
 
-**Enrolment fails with `409`.** There are already 50 pending requests in the organization, or the client has left the pending state. Approve or reject the waiting requests, or re-enrol the client.
+**Enrollment fails with `409`.** There are already 50 pending requests in the organization, or the client has left the pending state. Approve or reject the waiting requests, or re-enroll the client.
 
 **The agent says the responder chain does not contain the CA pinned by the token.** The token pins a CA that the server does not present (for example after a CA retire). Create a new token. See [Key management](key-management.md#agent-ca-rotation).
 
-**The client shows Revoked.** An administrator revoked it, or it was re-enrolled and this is the old certificate. The agent stops on a signed refusal or a sealed `revoked` message, never on an unsigned one. Re-enrol it.
+**The client shows Revoked.** An administrator revoked it, or it was re-enrolled and this is the old certificate. The agent stops on a signed refusal or a sealed `revoked` message, never on an unsigned one. Re-enroll it.
 
 **The client shows Offline but the agent runs.** The agent cannot reach the server within **Offline after (seconds)**. Check the Agent URL, the proxy and the clock.
 
@@ -67,7 +67,7 @@ Each guide ends with **Common problems**.
 | Issuing and renewing | [Certificates](../guide/certificates.md#troubleshooting) |
 | CAs and private CA | [Issuers](../guide/issuers.md#common-problems) |
 | DNS-01, HTTP-01, TLS-ALPN-01 | [Challenges](../guide/challenges.md#common-problems) |
-| Enrolment and approval | [Clients](../guide/clients.md#common-problems) |
+| Enrollment and approval | [Clients](../guide/clients.md#common-problems) |
 | Running the agent | [Agents](../guide/agents.md#common-problems) |
 | Deploy targets | [Delivery](../guide/delivery.md#common-problems) |
 | Channels and monitors | [Alerts](../guide/alerts.md#common-problems) |

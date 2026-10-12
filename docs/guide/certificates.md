@@ -107,7 +107,7 @@ CertForge fetches the window after each issue and every 6 hours after that, pace
 
 ## CAA
 
-Before ordering, CertForge reads each name's CAA records (stripping `*.` and climbing labels up to the top-level domain, as RFC 8659 describes). If no record set authorises the CA, the attempt fails at **CAA check** with `urn:ietf:params:acme:error:caa` and names the record to add. The CA re-checks CAA itself, so this only saves a doomed order. Turn it off with **Check CAA records** under **Settings → Issuance defaults → Global → Checks and limits** (`caaCheck`, default on). There is no per-certificate override. If the CA's directory publishes no CAA identity, the step passes without checking.
+Before ordering, CertForge reads each name's CAA records (stripping `*.` and climbing labels up to the top-level domain, as RFC 8659 describes). If no record set authorizes the CA, the attempt fails at **CAA check** with `urn:ietf:params:acme:error:caa` and names the record to add. The CA re-checks CAA itself, so this only saves a doomed order. Turn it off with **Check CAA records** under **Settings → Issuance defaults → Global → Checks and limits** (`caaCheck`, default on). There is no per-certificate override. If the CA's directory publishes no CAA identity, the step passes without checking.
 
 ## Rate limits
 

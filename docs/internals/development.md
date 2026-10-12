@@ -26,7 +26,7 @@ The `go` directive in `go.mod` pins the toolchain; leave `GOTOOLCHAIN` at its de
 | `internal/setup/` | First-run wizard and `bootstrap-admin` |
 | `internal/webui/` | Embedded web UI with SPA fallback |
 | `cmd/certforge-agent/` | Agent binary |
-| `internal/agent/` | Agent enrolment, client, reconcile, targets, hooks |
+| `internal/agent/` | Agent enrollment, client, reconcile, targets, hooks |
 | `internal/agentproto/` | Wire protocol shared by server and agent |
 | `internal/agentca/` | Agent CA and listener certificate |
 | `internal/agents/` | Server-side agents service |
@@ -76,12 +76,12 @@ The Go e2e tests (`test/e2e/`, build tag `e2e`) drive the running compose stack 
 | `issuance_test.go` | Create a CA, credential, account and certificate against Pebble, reach `active`, verify the chain, force a renewal, then break the credential and check the failure and backoff. The `e2e-challtestsrv` DNS provider exists only in `-tags e2e` builds, and the test compose builds the server with `GO_TAGS=e2e`. |
 | `oidc_test.go` | Single sign-on against the compose dex, user and API key lifecycle, role bindings, org and site CRUD, audit list and export. It sets `loginRatePerMinute: 0` right after the first admin login so repeated logins never hit the limit. |
 | `issuance_breadth_test.go` | HTTP-01 served by the server and by the agent, TLS-ALPN-01 via the agent, a mixed DNS-01 and HTTP-01 certificate, a PKCS#12 export, and an ARI window, against a Traefik service. |
-| `agent_test.go` | An enrolled agent through a TLS-terminating proxy (below): enrolment with approval, sessions, a deploy that matches the certificate's fingerprint, drift and automatic remediation, a server restart with the agent reconnecting, and grant deletion pruning the files. |
+| `agent_test.go` | An enrolled agent through a TLS-terminating proxy (below): enrollment with approval, sessions, a deploy that matches the certificate's fingerprint, drift and automatic remediation, a server restart with the agent reconnecting, and grant deletion pruning the files. |
 | `vault_test.go` | Vault Transit, private CAs, Vault PKI and Vault KV. It restarts the server onto Transit with the static key kept as previous, runs re-encryption, and checks the audit chain survives. Runs as its own invocation after the rest. |
 | `ops_test.go` | Webhook and SMTP delivery of `cert.issued`, an external monitor against Traefik, `/metrics`, `cfctl`, and a backup restored into a fresh database with the audit chain intact. Also runs as its own invocation. |
 
 ### The agent goes through Caddy
-The compose agent does not reach the server directly. `deploy/e2e/Caddyfile` runs Caddy (`caddy:2.8.4-alpine`, profile `e2e`) as a TLS-terminating proxy at `https://caddy:9443` with its internal CA, forwarding to the server's HTTP port only. The test sets the **Agent URL** to that address, so enrolment, approval, sessions, deploys and the WebSocket all cross a hop that sees plaintext HTTP. The agent trusts Caddy's root through `SSL_CERT_FILE`. The test reads Caddy's access log (`.e2e/caddy/access.log`) to confirm the agent's `hello`, `session` and `assignments` calls went through it.
+The compose agent does not reach the server directly. `deploy/e2e/Caddyfile` runs Caddy (`caddy:2.8.4-alpine`, profile `e2e`) as a TLS-terminating proxy at `https://caddy:9443` with its internal CA, forwarding to the server's HTTP port only. The test sets the **Agent URL** to that address, so enrollment, approval, sessions, deploys and the WebSocket all cross a hop that sees plaintext HTTP. The agent trusts Caddy's root through `SSL_CERT_FILE`. The test reads Caddy's access log (`.e2e/caddy/access.log`) to confirm the agent's `hello`, `session` and `assignments` calls went through it.
 
 The agent requires approval like any other, so `agent_test.go` polls `GET /orgs/{org}/enrollment-requests` and approves the request through the API. The agent runs as the host user (`CF_E2E_UID`, `CF_E2E_GID`, set by `make e2e`), so the test can tamper with and clean up its files. Its mounts (`.e2e/agent-data`, `.e2e/traefik`, `.e2e/ssl`, `.e2e/caddy`) live under the git-ignored `.e2e/` directory, which the `e2e` targets recreate on every run. Set `CF_AGENT_TRANSPORT` on the agent to pick its TLS roots; the Caddy setup uses the system roots path.
 
@@ -216,7 +216,7 @@ The web UI lives in `web/` (Vite, React 18, TypeScript strict, Tailwind 4, shadc
 
 Rules enforced in code:
 - Native checkboxes and radio buttons fail lint. Use `SwitchField`, `ChipSet`, or `SegmentedControl`.
-- Colours come only from `src/styles/tokens.css`; `tokens.test.ts` checks both themes for WCAG AA.
+- Colors come only from `src/styles/tokens.css`; `tokens.test.ts` checks both themes for WCAG AA.
 - Tooltip copy lives in `src/lib/help.ts`; `help.test.ts` rejects entries over two sentences and "Learn more" links to missing doc headings.
 - Theme is applied before first paint by `public/theme-init.js`, loaded synchronously in `<head>`.
 
@@ -253,7 +253,7 @@ docker compose -p certforge-e2e -f deploy/compose.yaml -f deploy/compose.test.ya
 | `oidc.spec.ts`, `audit.spec.ts` | Single sign-on; the audit log in both themes, chain chip, diff, CSV export. |
 | `certificates.spec.ts` | PKCS#12 download, upload, import dry run, wizard verification step, issuance defaults. |
 | `issuers.spec.ts`, `targets.spec.ts`, `vault.spec.ts` | Private CAs, server grants, deploy targets, Vault settings and the encryption key card. |
-| `clients.spec.ts` | Sets the **Agent URL** to the Caddy address, creates a layout, enrols a client, waits for **Awaiting approval**, compares the verification code, approves, then checks Online, a grant, the Deployed state and the PEM under `.e2e/ssl/`. Needs a fresh stack: the agent enrols once. |
+| `clients.spec.ts` | Sets the **Agent URL** to the Caddy address, creates a layout, enrolls a client, waits for **Awaiting approval**, compares the verification code, approves, then checks Online, a grant, the Deployed state and the PEM under `.e2e/ssl/`. Needs a fresh stack: the agent enrolls once. |
 | `approval.spec.ts` | The waiting panel, the navigation badge, the approval dialog, and the **Require approval** setting. |
 | `alerts.spec.ts`, `ops.spec.ts` | Channels, test events, monitors, SMTP via mailpit, `/metrics`, backup download. |
 | `flow.spec.ts` | The Flow view. |

@@ -7,7 +7,7 @@
 - [Certificates](guide/certificates.md): issue, renew, revoke, import, download.
 - [Issuers](guide/issuers.md): ACME CAs and accounts, the built-in private CA, Vault PKI.
 - [Challenges](guide/challenges.md): DNS-01, HTTP-01, TLS-ALPN-01, manual DNS, CNAME delegation.
-- [Clients](guide/clients.md): enrol hosts, approve or reject them, re-enrol, revoke.
+- [Clients](guide/clients.md): enroll hosts, approve or reject them, re-enroll, revoke.
 - [Agents](guide/agents.md): run the agent, hooks, file layouts, pull mode, drift, running behind a proxy.
 - [Delivery](guide/delivery.md): deploy targets, grants, secrets, redeploy.
 - [Alerts](guide/alerts.md): notification channels, the events feed, external monitors.

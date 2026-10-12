@@ -58,7 +58,7 @@ Reading the audit log with global `audit:read` shows every event. An organizatio
 
 **Audit export**: `GET /audit/export` streams the filtered log as CSV, at most 100 000 rows. `X-Audit-Truncated: true` means the cap was hit; a failure part-way writes a final `#error` row instead of a silently short file.
 
-## Enrolment requests
+## Enrollment requests
 
 When [Require approval](configuration.md#agents) is on, an agent that presents a valid token waits as a pending request until an administrator decides. See [Clients](../guide/clients.md#approval).
 
@@ -67,7 +67,7 @@ When [Require approval](configuration.md#agents) is on, an agent that presents a
 | `GET /enrollment-requests` | `clients:read` | Waiting requests across every organization you can read. Items carry `orgId`. |
 | `GET /orgs/{orgId}/enrollment-requests` | `clients:read` | Waiting requests in one organization, oldest first, not paginated. At most 50 wait per organization. Expired requests are not listed. |
 | `POST /orgs/{orgId}/enrollment-requests/{id}/approve` | `clients:write` | The agent receives its certificate at its next poll and the client becomes active. 204. |
-| `POST /orgs/{orgId}/enrollment-requests/{id}/reject` | `clients:write` | The agent is told it was rejected and stops. The token stays used, so re-enrol the client for a new one. 204. |
+| `POST /orgs/{orgId}/enrollment-requests/{id}/reject` | `clients:write` | The agent is told it was rejected and stops. The token stays used, so re-enroll the client for a new one. 204. |
 
 Approve and reject return 409 when the request was already decided or has expired, and 404 when it does not exist in this organization. They are audited as `client.enrol_approved` and `client.enrol_rejected`.
 
@@ -87,7 +87,7 @@ These are not under `/api/v1` and not in the OpenAPI document.
 
 ### Agent routes
 
-certforge-agent does not call `/api/v1`. It uses `/agent/v1/*`, served on the agent listener (`CF_LISTEN_AGENT`) and also on the HTTP listener, so agents work behind a TLS-terminating proxy. Agents do not authenticate with TLS client certificates. Each request is signed with the agent's key and travels inside a sealed session; enrolment proves possession of the one-time token. The routes are `GET /enroll/hello`, `POST /enroll`, `POST /enroll/{id}`, `POST /session`, `GET /ws`, then `POST /renew`, `GET /assignments`, `GET /grants/{id}/bundle`, `POST /report` and `POST /heartbeat`. The protocol is specified in [Architecture](../internals/architecture.md#agent-protocol) and the limits in [agent.md](agent.md).
+certforge-agent does not call `/api/v1`. It uses `/agent/v1/*`, served on the agent listener (`CF_LISTEN_AGENT`) and also on the HTTP listener, so agents work behind a TLS-terminating proxy. Agents do not authenticate with TLS client certificates. Each request is signed with the agent's key and travels inside a sealed session; enrollment proves possession of the one-time token. The routes are `GET /enroll/hello`, `POST /enroll`, `POST /enroll/{id}`, `POST /session`, `GET /ws`, then `POST /renew`, `GET /assignments`, `GET /grants/{id}/bundle`, `POST /report` and `POST /heartbeat`. The protocol is specified in [Architecture](../internals/architecture.md#agent-protocol) and the limits in [agent.md](agent.md).
 
 ## See also
 

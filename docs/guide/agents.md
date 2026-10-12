@@ -1,12 +1,12 @@
 # Agents
 
-`certforge-agent` runs on each host that needs certificates. It enrols once, keeps a connection to the server, writes the certificates granted to its client, runs allowlisted hooks, and reports what is installed so the server can detect drift. Create the client first: see [Clients](clients.md).
+`certforge-agent` runs on each host that needs certificates. It enrolls once, keeps a connection to the server, writes the certificates granted to its client, runs allowlisted hooks, and reports what is installed so the server can detect drift. Create the client first: see [Clients](clients.md).
 
 The agent talks to the server over HTTPS. Every request is signed and every body is encrypted by the agent protocol itself, so it also works through a reverse proxy that terminates TLS. The full list of variables and limits is in the [agent reference](../reference/agent.md).
 
 ## Before you start
 
-- A client and its token, from [Clients](clients.md#enrolment).
+- A client and its token, from [Clients](clients.md#enrollment).
 - A persistent volume or directory for the agent's data (`CF_AGENT_DATA`, default `/data`). It holds the agent's key and certificate.
 - Every directory the agent writes to must be mounted into the container and listed in `CF_WRITE_ALLOW`.
 
@@ -76,7 +76,7 @@ Use this when agents reach CertForge through a reverse proxy that terminates TLS
 
 1. **Choose the public name.** For example `certforge.example.com`. The proxy needs a TLS certificate for it. Agents must trust that certificate (step 5).
 2. **Point the proxy at the HTTP port.** Forward to the server's HTTP listener (`CF_LISTEN_HTTP`, default port 8080). That port serves `/agent/v1` as well as the UI. You do not need to publish the agent port (8443).
-3. **Set the Agent URL.** In **Settings → Agents**, set **Agent URL** (`agents.agentUrl`) to the proxy's address with no path, for example `https://certforge.example.com`. Every new token carries this address. Enrolled agents keep signing for the address they enrolled with, and the server keeps accepting it only while its host is in **Listener names**. So before you change the Agent URL, add the old host to **Listener names**, or re-enrol the agents ([Clients](clients.md#re-enrol-a-client)). The host of **Agent URL**, or of `CF_BASE_URL`, must match the name agents use.
+3. **Set the Agent URL.** In **Settings → Agents**, set **Agent URL** (`agents.agentUrl`) to the proxy's address with no path, for example `https://certforge.example.com`. Every new token carries this address. Enrolled agents keep signing for the address they enrolled with, and the server keeps accepting it only while its host is in **Listener names**. So before you change the Agent URL, add the old host to **Listener names**, or re-enroll the agents ([Clients](clients.md#re-enroll-a-client)). The host of **Agent URL**, or of `CF_BASE_URL`, must match the name agents use.
 4. **Configure the proxy.** It must forward the `Host` header unchanged, allow WebSocket upgrades, pass the request and response headers untouched (the agent adds `Signature`, `Signature-Input`, `Content-Digest` and `Cf-*` headers), and accept request bodies of up to 8 MiB.
 
    nginx:
@@ -131,9 +131,9 @@ Use this when agents reach CertForge through a reverse proxy that terminates TLS
      ghcr.io/metril/certforge-agent:<version>
    ```
 
-   `SSL_CERT_FILE` is read by the Go runtime and replaces the system CA list, so the file must contain every CA the agent should trust. It applies to enrolment and to later connections.
+   `SSL_CERT_FILE` is read by the Go runtime and replaces the system CA list, so the file must contain every CA the agent should trust. It applies to enrollment and to later connections.
 6. **Leave `CF_AGENT_TRANSPORT` unset.** It chooses which TLS certificates the agent accepts from the server: `auto` (the default) accepts the agent port's own certificate or, otherwise, a certificate trusted by the system roots; `proxy` accepts only system roots; `mtls` accepts only the agent port's certificate. Set `proxy` to refuse the agent port's certificate on purpose, and `mtls` when you never use a proxy. It does not change what is signed or encrypted. See the [agent reference](../reference/agent.md#transport).
-7. **Check it.** Enrol a client. The agent log shows the verification code, and after approval the client shows **Online**. In the proxy's access log you should see requests to `/agent/v1/enroll/hello`, `/agent/v1/session` and `/agent/v1/assignments`.
+7. **Check it.** Enroll a client. The agent log shows the verification code, and after approval the client shows **Online**. In the proxy's access log you should see requests to `/agent/v1/enroll/hello`, `/agent/v1/session` and `/agent/v1/assignments`.
 
 To see the real source address in the **Approve agent** dialog and the audit log, add the proxy under **Trusted proxies** in **Settings → Authentication**. Proxy setups for the whole server are in [Deploying](../operations/deploying.md).
 
@@ -170,7 +170,7 @@ A hook is a command defined under **Delivery → Hooks** and attached to grants.
 
 ## Restart hooks
 
-A **Restart** hook restarts a Docker container or a systemd unit by name, with no shell and no general-purpose `docker` binary in the agent. Set **Kind** to Restart and enter a target: `docker:<container>` or `systemd:<unit>`. Phases, failure behaviour, timeout and the **Hooks** tab work as for exec hooks; the run is shown as `restart docker:nginx`.
+A **Restart** hook restarts a Docker container or a systemd unit by name, with no shell and no general-purpose `docker` binary in the agent. Set **Kind** to Restart and enter a target: `docker:<container>` or `systemd:<unit>`. Phases, failure behavior, timeout and the **Hooks** tab work as for exec hooks; the run is shown as `restart docker:nginx`.
 
 The agent restarts only targets listed exactly in `CF_RESTART_ALLOW` (comma-separated, for example `docker:nginx,systemd:nginx.service`). With it empty, restart hooks are refused with exit code -1 and the agent does not advertise the `restart` capability.
 
@@ -214,7 +214,7 @@ Each heartbeat (**Heartbeat interval (seconds)**, default 60) carries the SHA-25
 
 ## Pull mode
 
-For hosts that should not keep a connection, run `certforge-agent pull` from cron or a systemd timer. It enrols if needed, renews its certificate when due, reconciles once, reports, sends one heartbeat and exits. Alternatively set `CF_AGENT_PULL_INTERVAL=15m` with `run` to reconcile on a schedule in addition to nudges. The schedule keeps working over plain requests while the connection is down, for example when a proxy refuses WebSocket upgrades.
+For hosts that should not keep a connection, run `certforge-agent pull` from cron or a systemd timer. It enrolls if needed, renews its certificate when due, reconciles once, reports, sends one heartbeat and exits. Alternatively set `CF_AGENT_PULL_INTERVAL=15m` with `run` to reconcile on a schedule in addition to nudges. The schedule keeps working over plain requests while the connection is down, for example when a proxy refuses WebSocket upgrades.
 
 Set a grant's **Delivery** to **Pull** for these hosts. If every grant is **Pull** and `CF_AGENT_PULL_INTERVAL` is `0`, deploys happen only when the agent reconnects or you run `pull`.
 
@@ -236,13 +236,13 @@ The server waits up to 30 seconds for the agent to confirm. An issuance attempt 
 
 Server-side symptoms are in [Troubleshooting](../operations/troubleshooting.md).
 
-**`enrol: 401 … invalid, already used or expired`.** Tokens work once and expire. Choose **Re-enrol** for a new one.
+**`enroll: 401 … invalid, already used or expired`.** Tokens work once and expire. Choose **Re-enroll** for a new one.
 
 **`the server's responder chain does not contain the CA pinned by the token`.** The agent reached something that is not your CertForge server, or the CA named in the token has been retired. Check the **Agent URL**; if an agent CA was rotated and retired since the token was made, issue a new token.
 
 **`the verification code from the server … does not match this agent's`.** The agent is not talking to the CA in its token. Do not approve; check the Agent URL and the network path.
 
-**The log says `ENROLMENT WAITING FOR APPROVAL` and nothing happens.** An administrator must approve it. See [Clients: Approval](clients.md#approval). If the log then says the request was rejected or expired, get a new token.
+**The log says `ENROLLMENT WAITING FOR APPROVAL` and nothing happens.** An administrator must approve it. See [Clients: Approval](clients.md#approval). If the log then says the request was rejected or expired, get a new token.
 
 **`x509: certificate signed by unknown authority` through a proxy.** The proxy's certificate comes from a private CA. Set `SSL_CERT_FILE` ([step 5](#behind-a-proxy)).
 
@@ -250,11 +250,11 @@ Server-side symptoms are in [Troubleshooting](../operations/troubleshooting.md).
 
 **`the system clocks differ by more than a minute`.** Signed requests are accepted only within 60 seconds of the server's clock. Fix time sync on the host (NTP).
 
-**The agent logs `the server refused this agent` and exits.** The client was revoked or re-enrolled. Re-enrol and start the agent with the new token.
+**The agent logs `the server refused this agent` and exits.** The client was revoked or re-enrolled. Re-enroll and start the agent with the new token.
 
 **The connection keeps dropping.** Behind a proxy, check that WebSocket upgrades and long read timeouts are allowed. The server pings every 25 seconds and closes after 75 seconds of silence. The agent also reconnects on purpose roughly every 1000 messages; this is normal. With upgrades blocked, use [Pull mode](#pull-mode).
 
-**The agent keeps failing after a long outage.** Its certificate may have expired (it renews at two thirds of its life). Re-enrol.
+**The agent keeps failing after a long outage.** Its certificate may have expired (it renews at two thirds of its life). Re-enroll.
 
 **A deployment stays Pending.** The agent is offline, the grant is **Pull** and no pull has run, or the certificate has no issued version. `certforge-agent status` shows the revision the agent last applied.
 
@@ -268,7 +268,7 @@ Server-side symptoms are in [Troubleshooting](../operations/troubleshooting.md).
 
 ## See also
 
-- [Clients](clients.md): create, approve, re-enrol, revoke.
+- [Clients](clients.md): create, approve, re-enroll, revoke.
 - [Agent reference](../reference/agent.md): variables, commands, transport, limits.
 - [Delivery](delivery.md): grants, deploy targets, Traefik.
 - [Deploying](../operations/deploying.md): reverse proxy for the server.

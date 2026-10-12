@@ -67,7 +67,7 @@ An API key lets a script or `cfctl` call the API. A key can do at most what its 
 1. Open **Settings → Access → API keys** and select **New API key**.
 2. Enter a **Name**, for example `ci-deploy`.
 3. Choose a **Scope**: one organization or **All orgs**.
-4. Tick the **Permissions** (shown as chips). Permissions outside your own role are greyed out.
+4. Tick the **Permissions** (shown as chips). Permissions outside your own role are grayed out.
 5. Choose **Expires**: 30 days, 90 days, 1 year, **Never**, or **Custom** date. If an administrator set a maximum lifetime, **Never** is not offered and the longest choice is that maximum.
 6. Save. The token appears once. Copy it, switch on **Stored safely**, and select **Done**. Only a hash is kept, so a lost key needs a new one.
 
@@ -115,8 +115,8 @@ CertForge signs users in through any OpenID Connect provider. Users are matched 
    | **Scopes** | Must include `openid` | `openid profile email groups` |
    | **Groups claim** | The claim that lists the user's groups, read from the ID token or, if absent there, from the provider's userinfo endpoint. A dotted path such as `realm_access.roles` reads a nested claim | `groups` |
    | **Username claim** | Claim tried first for the display name. If it is missing, CertForge uses `preferred_username`, then `name`, then the email, and only then the subject | `preferred_username` |
-   | **Default organisation** | Organisation a user signing in for the first time is added to. Empty grants nothing automatically | none |
-   | **Default role** | Role granted in the default organisation on first sign-in | `viewer` |
+   | **Default organization** | Organization a user signing in for the first time is added to. Empty grants nothing automatically | none |
+   | **Default role** | Role granted in the default organization on first sign-in | `viewer` |
    | **Allowed email domains** | When set, only first sign-ins with an email in one of these domains receive the default role | any |
    | **Session lifetime (hours)** | How long a sign-in lasts; applies to new sessions | 12 |
    | **Trusted proxies** | Addresses or CIDRs of reverse proxies whose `X-Forwarded-For` header is believed | none |
@@ -142,7 +142,7 @@ Claims (name, email, groups) are read from the ID token and completed from the p
 
 ### First sign-in
 
-When **Default organisation** is set, a user who signs in for the first time gets a role binding for **Default role** in that organisation (and an audit event). Existing users are never changed, and group mappings keep working alongside it. If **Allowed email domains** is set and the user's email is outside it, or the provider does not report it as verified (`email_verified`; Authentik marks emails verified by default), no binding is created and the user lands on a page asking them to contact an administrator.
+When **Default organization** is set, a user who signs in for the first time gets a role binding for **Default role** in that organization (and an audit event). Existing users are never changed, and group mappings keep working alongside it. If **Allowed email domains** is set and the user's email is outside it, or the provider does not report it as verified (`email_verified`; Authentik marks emails verified by default), no binding is created and the user lands on a page asking them to contact an administrator.
 
 A user gets the roles of every group listed at their last sign-in. Without any matching group or binding they have no access.
 

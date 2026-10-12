@@ -19,7 +19,7 @@ At the top of the sidebar:
 
 At the bottom, the account menu has a **Theme** control (**System**, **Light** or **Dark**) and **Sign out**. On a narrow screen the sidebar collapses to a menu button or an icon rail.
 
-The **Clients** item shows a count badge (a dot on the icon rail) when enrolments are waiting for your approval. See [Clients](clients.md#approval).
+The **Clients** item shows a count badge (a dot on the icon rail) when enrollments are waiting for your approval. See [Clients](clients.md#approval).
 
 ### All orgs
 
@@ -57,7 +57,7 @@ One card listing every problem that wants a look, most urgent first. Each row ha
 | **Overdue** | A certificate is past its renewal time | **Renew now** |
 | **Unreachable** | An external monitor cannot connect | **Check now** |
 | **Offline** | A client that holds grants is offline | **Open** |
-| **Agent certificate** | A client's identity certificate expires soon | **Re-enrol** |
+| **Agent certificate** | A client's identity certificate expires soon | **Re-enroll** |
 
 **Renew now** needs permission to issue certificates and is hidden under **All orgs**. Monitor rows appear only when you look at a single organization. With nothing to do the card says "Nothing needs attention." Under the list, **Upcoming renewals** shows certificates due in the next 7 days.
 
@@ -65,7 +65,7 @@ One card listing every problem that wants a look, most urgent first. Each row ha
 
 Two tabs:
 
-- **Expiry horizon** draws one tick per certificate at its expiry over the next 90 days, coloured by state, with the renewal window shaded behind it. Drag across the strip to list every certificate expiring in that range.
+- **Expiry horizon** draws one tick per certificate at its expiry over the next 90 days, colored by state, with the renewal window shaded behind it. Drag across the strip to list every certificate expiring in that range.
 - **Recent activity** shows the last 20 audit events; each links to the [Audit log](audit.md). Only roles that can read the audit log see this tab.
 
 ## Trace a certificate on the Flow map
@@ -108,7 +108,7 @@ Press `Ctrl K` (`Cmd K` on macOS) anywhere to open it, or select **Search** in t
 | A client name or hostname | Jump to that client |
 | A page name | **Overview**, **Flow**, **Certificates**, **Clients**, **Issuers: CAs**, **Issuers: ACME accounts**, **Issuers: DNS credentials**, **Delivery: Deploy targets**, **Delivery: File layouts**, **Delivery: Hooks**, **Alerts: Channels**, **Alerts: Monitors**, **Alerts: Events**, **Audit log** |
 | A settings section | **Settings: General**, **Access**, **Authentication**, **Issuance defaults**, **Agents**, **Integrations**, **Backups** |
-| An action | **New certificate**, **Import certificates**, **Upload certificate**, **Enrol client**, **Issuers: New private CA**, **Settings: Back up now**, and **Renew** `<certificate name>` |
+| An action | **New certificate**, **Import certificates**, **Upload certificate**, **Enroll client**, **Issuers: New private CA**, **Settings: Back up now**, and **Renew** `<certificate name>` |
 
 Entries you lack permission for are left out. Under **All orgs** only **Overview**, **Certificates**, **Clients**, **Audit log** and the settings pages are offered.
 
@@ -131,7 +131,7 @@ Long forms keep rarely changed fields in a collapsed **Advanced** section. Its b
 
 ## Common problems
 
-**A sidebar item is greyed out.** You are in **All orgs** and the page needs one organization, or your role cannot use it. Hover the item for the reason, then pick an organization from the switcher.
+**A sidebar item is grayed out.** You are in **All orgs** and the page needs one organization, or your role cannot use it. Hover the item for the reason, then pick an organization from the switcher.
 
 **There is no Recent activity tab.** Your role cannot read the audit log. You need the auditor or admin role.
 

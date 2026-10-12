@@ -1,6 +1,6 @@
 # Audit log
 
-The audit log is a permanent record of who did what in CertForge: sign-ins, setting changes, certificate actions, agent enrolments and deployments. Events cannot be edited or deleted, and a built-in check proves nobody has tampered with them. Open it from **Audit log** in the sidebar.
+The audit log is a permanent record of who did what in CertForge: sign-ins, setting changes, certificate actions, agent enrollments and deployments. Events cannot be edited or deleted, and a built-in check proves nobody has tampered with them. Open it from **Audit log** in the sidebar.
 
 ## Before you start
 
@@ -60,7 +60,7 @@ The **Action** filter offers each group and each action below. Several names are
 | Organizations and access | `org.create`, `org.update`, `org.delete`, `site.create`, `site.update`, `site.delete`, `user.update`, `user.delete` (a user was permanently removed; their sessions, role bindings and API keys went with them), `role_binding.create`, `role_binding.delete`, `api_key.create`, `api_key.revoke` |
 | Certificates | `certificate.create`, `certificate.update`, `certificate.delete`, `certificate.renew`, `certificate.revoked`, `certificate.import`, `certificate.manual_dns_confirmed`, `certificate.key_exported` (recorded before a key-bearing download) |
 | Issuers | `ca.create`, `ca.update`, `ca.delete`, `ca.rotate`, `acme_account.create`, `acme_account.delete`, `dns_credential.create`, `dns_credential.update`, `dns_credential.delete`, `dns_credential.test`, `dns_credential.secret_revealed` |
-| Clients and enrolment | `client.create`, `client.update`, `client.delete`, `client.revoke`, `client.reenroll` (a new token was issued), `client.enrol_requested` (an agent presented a valid token and awaits approval), `client.enrol_approved`, `client.enrol_rejected`, `client.enrolled` (the agent received its certificate), `client.cert_renewed` (an agent renewed its identity certificate) |
+| Clients and enrollment | `client.create`, `client.update`, `client.delete`, `client.revoke`, `client.reenroll` (a new token was issued), `client.enrol_requested` (an agent presented a valid token and awaits approval), `client.enrol_approved`, `client.enrol_rejected`, `client.enrolled` (the agent received its certificate), `client.cert_renewed` (an agent renewed its identity certificate) |
 | Agent CA | `agent_ca.rotate`, `agent_ca.retire` |
 | Delivery | `grant.create`, `grant.update`, `grant.delete`, `grant.redeploy`, `grant.bundle_fetched` (a client downloaded its files), `deployment.ok`, `deployment.failed`, `deployment.drift`, `layout.*`, `deploy_target.*`, `hook.create`, `hook.update`, `hook.delete`, `hook.run` |
 | Alerts | `channel.create`, `channel.update`, `channel.delete`, `channel.test`, `monitor.create`, `monitor.update`, `monitor.delete`, `monitor.check` |

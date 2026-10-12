@@ -1,6 +1,6 @@
 # Issuers
 
-An issuer is whatever signs your certificates. CertForge supports four kinds of certificate authority (CA): **ACME** (Let's Encrypt, ZeroSSL and others), a **Built-in CA** that CertForge runs itself, **Vault PKI**, which signs through your Vault or OpenBao, and **Active Directory (AD CS)**, which enrols from Microsoft Certificate Services. **Issuers** has three tabs: **CAs**, **ACME accounts** and **DNS credentials** (see [Challenges](challenges.md#dns-01)).
+An issuer is whatever signs your certificates. CertForge supports four kinds of certificate authority (CA): **ACME** (Let's Encrypt, ZeroSSL and others), a **Built-in CA** that CertForge runs itself, **Vault PKI**, which signs through your Vault or OpenBao, and **Active Directory (AD CS)**, which enrolls from Microsoft Certificate Services. **Issuers** has three tabs: **CAs**, **ACME accounts** and **DNS credentials** (see [Challenges](challenges.md#dns-01)).
 
 ## Before you start
 
@@ -131,7 +131,7 @@ CertForge reads the CA certificate from Vault at creation, so Vault must be reac
 
 ## Active Directory Certificate Services
 
-An **Active Directory (AD CS)** CA enrols leaf certificates from a Microsoft enterprise CA through the Certificate Enrollment Policy Web Service (CEP, MS-XCEP) and Certificate Enrollment Web Service (CES, MS-WSTEP) with username and password authentication over HTTPS. CertForge is not an intermediate CA: it submits a certificate request, then stores the leaf, chain and key like any other issued certificate.
+An **Active Directory (AD CS)** CA enrolls leaf certificates from a Microsoft enterprise CA through the Certificate Enrollment Policy Web Service (CEP, MS-XCEP) and Certificate Enrollment Web Service (CES, MS-WSTEP) with username and password authentication over HTTPS. CertForge is not an intermediate CA: it submits a certificate request, then stores the leaf, chain and key like any other issued certificate.
 
 ### Prerequisites on the Windows side
 
@@ -160,9 +160,9 @@ The default URLs are:
 4. Paste a **TLS CA bundle** if the web services use a private certificate. It is also used as the chain when CES returns only the leaf.
 5. Select **Save CA**.
 
-CertForge reads the policy at creation with those credentials, so the service must be reachable and the template must exist and allow the account to enrol. It stores the template's OID, takes the CA certificate from the policy as the trust bundle, and seals the password. When you edit the CA, leave **Password** untouched to keep the stored one; a changed URL, template, account or password reads the policy again.
+CertForge reads the policy at creation with those credentials, so the service must be reachable and the template must exist and allow the account to enroll. It stores the template's OID, takes the CA certificate from the policy as the trust bundle, and seals the password. When you edit the CA, leave **Password** untouched to keep the stored one; a changed URL, template, account or password reads the policy again.
 
-### Behaviour
+### Behavior
 
 - **Revocation is manual.** CES has no revocation call. Revoke in the AD CS console; CertForge refuses with a message saying so.
 - **Automatic issuance only.** A request the CA still holds or denies fails the attempt with the CA's message (for example `request 77 is pending CA manager approval`) and is retried on the usual backoff, so fix the template or permissions in AD CS.

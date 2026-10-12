@@ -3,7 +3,7 @@
 Status: accepted (Phase 2)
 
 ## Context
-Humans sign in through the organisation's identity provider; the local admin stays as break-glass. The server already keeps sessions in Postgres with a CSRF token per session.
+Humans sign in through the organization's identity provider; the local admin stays as break-glass. The server already keeps sessions in Postgres with a CSRF token per session.
 
 ## Decision
 - Auth code with PKCE (S256) and a nonce, via coreos/go-oidc and x/oauth2. Discovery is cached per issuer for 10 minutes and dropped when Settings → Authentication is saved.

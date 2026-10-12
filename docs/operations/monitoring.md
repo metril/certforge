@@ -69,7 +69,7 @@ Series with a `route` label use the route pattern (for example `/api/v1/orgs/{or
 
 Standard Go (`go_*`) and process (`process_*`) metrics are included. They are served from a dedicated registry. Database-backed series refresh at most every 15 s.
 
-No metric counts pending enrolments. Watch the **Awaiting approval** card or the `client.pending_approval` event ([Events](../reference/events.md)).
+No metric counts pending enrollments. Watch the **Awaiting approval** card or the `client.pending_approval` event ([Events](../reference/events.md)).
 
 Useful alerts:
 - Audit table rolled back or truncated: `resets(max(certforge_audit_head_id > 0)[1d:5m]) > 0`. The `> 0` ignores the brief 0 after a restart.

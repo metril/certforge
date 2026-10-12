@@ -20,5 +20,5 @@ A certificate can cover names in several DNS zones hosted by different providers
 
 - One certificate can span any number of DNS providers; ordering is explicit and visible in the UI.
 - Mixing DNS-01 with HTTP-01 or TLS-ALPN-01 in one certificate needs a per-authorization solver wrapper (Phase 4).
-- Provider construction is serialised; construction is fast, so contention is negligible at Phase 1 scale. A subprocess fallback stays possible if a provider ever reads the environment lazily.
+- Provider construction is serialized; construction is fast, so contention is negligible at Phase 1 scale. A subprocess fallback stays possible if a provider ever reads the environment lazily.
 - lego's `exec` and `manual` providers are not offered: one runs arbitrary programs on the server, the other reads stdin.
