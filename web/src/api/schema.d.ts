@@ -1611,6 +1611,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orgs/{orgId}/grants/{id}/pfsense-usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Show what uses a grant's certificate on pfSense
+         * @description Needs delivery:read. Asks the firewall of a server grant on a pfSense target which services use the grant's certificate. Nothing is changed. 422 when the grant's target is not a pfSense target; 502 when the firewall cannot be queried.
+         */
+        get: operations["getGrantPfSenseUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orgs/{orgId}/layouts": {
         parameters: {
             query?: never;
@@ -4781,7 +4806,7 @@ export interface components {
             runsOn: components["schemas"]["RunsOn"];
             /** @description Server-side deployment state; null for an agent grant (see deployment). */
             serverDeployment: components["schemas"]["ServerDeployment"] | null;
-            /** @description Command to run over SSH after a successful deploy; null when none. Server grants only. */
+            /** @description Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only. */
             postAction?: components["schemas"]["PostAction"] | null;
             /**
              * Format: date-time
@@ -4848,7 +4873,7 @@ export interface components {
             hookIds: string[];
             /** @description Reinstall automatically on drift. */
             autoRemediate: boolean;
-            /** @description Command to run over SSH after a successful deploy; null when none. Server grants only. */
+            /** @description Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only. */
             postAction?: components["schemas"]["PostAction"] | null;
         };
         /** @description A client's live grants. */
@@ -4868,16 +4893,22 @@ export interface components {
              * @description Output layout in the same org
              */
             layoutId?: string | null;
-            /** @description Command to run over SSH after a successful deploy; null when none. Server grants only. */
+            /** @description Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only. */
             postAction?: components["schemas"]["PostAction"] | null;
         };
-        /** @description One command run over SSH after a server grant deploys, using an existing ssh deploy target's host, credentials and host key. */
+        /** @description One command run after a server grant deploys. Kind ssh runs it over SSH using an existing ssh deploy target's host, credentials and host key. Kind pfsense runs it as a shell command on a firewall through an existing pfsense deploy target. */
         PostAction: {
             /**
-             * Format: uuid
-             * @description An ssh deploy target in the same org.
+             * @description What runs the command. Rows saved before kinds existed read as ssh.
+             * @default ssh
+             * @enum {string}
              */
-            sshTargetId: string;
+            kind: "ssh" | "pfsense";
+            /**
+             * Format: uuid
+             * @description A deploy target in the same org whose type matches the kind. Rows saved before kinds existed used the name sshTargetId; the server still reads that.
+             */
+            targetId: string;
             /** @description Command to run on that host. */
             command: string;
             /**
@@ -4885,6 +4916,13 @@ export interface components {
              * @default 60
              */
             timeoutSeconds: number;
+        };
+        /** @description The pfSense services that use a server grant's certificate. */
+        PfSenseUsage: {
+            /** @description The certificate's id on the firewall; null when the firewall does not hold it yet. */
+            refid: string | null;
+            /** @description Human labels such as WebGUI, OpenVPN server 1, IPsec, Captive portal zone x, package name. Empty when nothing uses it. */
+            services: string[];
         };
         /**
          * @description A server grant's deploy state.
@@ -8368,6 +8406,37 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+        };
+    };
+    getGrantPfSenseUsage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The services. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PfSenseUsage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+            502: components["responses"]["BadGateway"];
         };
     };
     listLayouts: {

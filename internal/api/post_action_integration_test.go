@@ -36,22 +36,22 @@ func TestServerGrantPostActionValidation(t *testing.T) {
 		return err
 	}
 	for name, pa := range map[string]*gen.PostAction{
-		"wrong type":    {SshTargetId: vaultT, Command: "true"},
-		"other org":     {SshTargetId: otherOrgSSH, Command: "true"},
-		"missing":       {SshTargetId: uuid.New(), Command: "true"},
-		"empty command": {SshTargetId: sshT, Command: "  "},
-		"long command":  {SshTargetId: sshT, Command: string(make([]byte, 600))},
+		"wrong type":    {TargetId: vaultT, Command: "true"},
+		"other org":     {TargetId: otherOrgSSH, Command: "true"},
+		"missing":       {TargetId: uuid.New(), Command: "true"},
+		"empty command": {TargetId: sshT, Command: "  "},
+		"long command":  {TargetId: sshT, Command: string(make([]byte, 600))},
 	} {
 		if err := create(pa); problemStatus(err) != 422 {
 			t.Errorf("%s: err = %v", name, err)
 		}
 	}
 	timeout := 2
-	if err := create(&gen.PostAction{SshTargetId: sshT, Command: "true", TimeoutSeconds: &timeout}); problemStatus(err) != 422 {
+	if err := create(&gen.PostAction{TargetId: sshT, Command: "true", TimeoutSeconds: &timeout}); problemStatus(err) != 422 {
 		t.Errorf("timeout 2: %v", err)
 	}
 	res, err := f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
-		Body: &gen.ServerGrantInput{CertificateId: certID, PostAction: &gen.PostAction{SshTargetId: sshT, Command: " reload "}}})
+		Body: &gen.ServerGrantInput{CertificateId: certID, PostAction: &gen.PostAction{TargetId: sshT, Command: " reload "}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestPostActionNeedsDeliveryWrite(t *testing.T) {
 	certID, _ := f.currentCert(t, "web")
 	cert2, _ := f.currentCert(t, "api")
 	sshT := f.sshTargetIn(t, f.org, "ssh")
-	pa := &gen.PostAction{SshTargetId: sshT, Command: "true"}
+	pa := &gen.PostAction{TargetId: sshT, Command: "true"}
 	narrow := apiKeyPrincipal(f.org, []string{"clients:write"})
 	wide := apiKeyPrincipal(f.org, []string{"clients:write", "delivery:write"})
 	in := func(c uuid.UUID, p *gen.PostAction) gen.CreateServerGrantRequestObject {

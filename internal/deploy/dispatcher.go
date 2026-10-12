@@ -477,7 +477,7 @@ func (d *Dispatcher) deploy(ctx context.Context, grantID, versionID uuid.UUID, w
 		return d.fail(ctx, row, versionID, seq, redact, fmt.Errorf("deployed, but the post action is invalid: %w", err))
 	}
 	if pa != nil && row.DeployTargetID != nil {
-		if err := d.runPostAction(ctx, row, pa, req.HTTP.AllowLoopback); err != nil {
+		if err := d.runPostAction(ctx, row, pa, req.HTTP); err != nil {
 			return d.fail(ctx, row, versionID, seq, redact, fmt.Errorf("deployed, but %w", err))
 		}
 	}

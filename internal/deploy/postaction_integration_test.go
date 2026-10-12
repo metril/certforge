@@ -83,7 +83,7 @@ func postActionSetup(t *testing.T, s *sshxtest.Server, pa func(ssh uuid.UUID) Po
 func TestPostActionSuccessRecorded(t *testing.T) {
 	s := sshxtest.Start(t, nil)
 	f, g, ver, target := postActionSetup(t, s, func(ssh uuid.UUID) PostAction {
-		return PostAction{SSHTargetID: ssh, Command: "systemctl reload nginx", TimeoutSeconds: 10}
+		return PostAction{TargetID: ssh, Command: "systemctl reload nginx", TimeoutSeconds: 10}
 	})
 	if err := f.disp.Deploy(context.Background(), g, ver); err != nil {
 		t.Fatal(err)
@@ -105,7 +105,7 @@ func TestPostActionNonZeroFailsDeployment(t *testing.T) {
 	s := sshxtest.Start(t, nil)
 	s.Exit = 3
 	f, g, ver, _ := postActionSetup(t, s, func(ssh uuid.UUID) PostAction {
-		return PostAction{SSHTargetID: ssh, Command: "false", TimeoutSeconds: 10}
+		return PostAction{TargetID: ssh, Command: "false", TimeoutSeconds: 10}
 	})
 	if err := f.disp.Deploy(context.Background(), g, ver); err == nil {
 		t.Fatal("expected error")
@@ -124,7 +124,7 @@ func TestPostActionNonZeroFailsDeployment(t *testing.T) {
 func TestPostActionDialFailureRecorded(t *testing.T) {
 	s := sshxtest.Start(t, nil)
 	f, g, ver, _ := postActionSetup(t, s, func(ssh uuid.UUID) PostAction {
-		return PostAction{SSHTargetID: ssh, Command: "true", TimeoutSeconds: 5}
+		return PostAction{TargetID: ssh, Command: "true", TimeoutSeconds: 5}
 	})
 	// Point the ssh target at a closed port.
 	if _, err := f.pool.Exec(context.Background(), `UPDATE deploy_targets SET config = jsonb_set(config, '{port}', '1') WHERE type = 'ssh'`); err != nil {

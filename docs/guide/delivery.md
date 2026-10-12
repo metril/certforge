@@ -246,13 +246,14 @@ A pfSense Plus target pushes a certificate into pfSense through the Netgate Nexu
 | **Username**, **Password** (`username`, `password`) | A pfSense user allowed to manage certificates. The password is stored encrypted. | None |
 | **Device** (`device`) | Name, alias or ID of the firewall in Nexus. | The only managed device |
 | **Certificate name** (`certName`) | Description of the certificate in pfSense, letters, digits, space, `.`, `_` and `-`. | The certificate's name |
-| **Use for the WebGUI** (`setWebGuiCert`) | Also select this certificate for the pfSense web interface and restart it so it takes effect. | Off |
+| **Use for the WebGUI** (`setWebGuiCert`) | Also select this certificate for the pfSense web interface. | Off |
+| **Restart services that use it** (`restartServices`) | After deploying, restart every pfSense service that uses this certificate: the WebGUI, OpenVPN, IPsec, captive portal and packages. | On |
 | **CA certificate** (`caPem`) | PEM to trust for pfSense's TLS certificate, on top of the system roots. | None |
 | **Timeout** (`timeoutSeconds`) | Seconds per request, 5 to 120. | 30 |
 
 Each deploy logs in, then looks the certificate up by its description. If it exists it is updated in place, so WebGUI, OpenVPN and HAProxy references keep pointing at it. Otherwise it is created. If two certificates share the name the deploy fails. When pfSense already holds the same certificate, nothing is written.
 
-With **Use for the WebGUI**, a deploy that changes the certificate then restarts the web interface by running `/etc/rc.restart_webgui` through the device API, because Nexus does not restart it itself. The user therefore needs permission to run shell commands (the diag command privilege). If the restart fails the deploy reports an error, although the certificate is already in place. An unchanged certificate triggers no restart.
+With **Restart services that use it** on, every deploy then asks pfSense which services use the certificate and restarts exactly those, because Nexus restarts none of them itself. This runs even when the certificate was unchanged, since an earlier deploy may have left a service on the old one. The deploy detail lists what was restarted. The pfSense user needs the privileges to run PHP and shell commands through the device API (the diag command privileges). If the restart fails the deploy reports an error, although the certificate is already in place.
 ## TrueNAS SCALE
 
 A TrueNAS target imports the certificate into TrueNAS SCALE 25.10 or later over its WebSocket API and can make it the web UI certificate. It runs on the server.
@@ -318,9 +319,13 @@ Per grant, three icon buttons sit on the row:
 
 ### Post actions
 
-A server grant can run one command after a successful deploy, for example `systemctl reload nginx` on the host that serves the certificate. Switch **Post action** on in the grant form, pick an existing [SSH](#ssh) target and enter the command (up to 512 characters) and a timeout of 5 to 300 seconds. The post action reuses that target's host, credentials and pinned host key; its files and own commands are not used. Any server-run target type can have one.
+A server grant can run one command after a successful deploy, for example `systemctl reload nginx` on the host that serves the certificate. Switch **Post action** on in the grant form, pick a **Kind** and an existing target of that kind, and enter the command (up to 512 characters) and a timeout of 5 to 300 seconds. The post action reuses that target's host, credentials and pinned host key; its files and own commands are not used. Any server-run target type can have one.
 
-The run is recorded on the **Hook runs** tab of the grant's target. A non-zero exit, or a connection failure, marks the deployment Failed: the error says the certificate deployed but the post action failed, and CertForge retries. An SSH target that grants use as a post action cannot be deleted until you remove those post actions.
+The **Kind** is **SSH** or **pfSense**. SSH runs the command over SSH, as above. pfSense runs it as a shell command on the firewall through a [pfSense Plus](#pfsense-plus) target's API, with the same login the target uses; picking it prefills `/etc/rc.restart_webgui`. The API reports no exit status, so a pfSense command counts as done once the firewall accepts it. The pfSense user needs the diag command privilege.
+
+The run is recorded on the **Hook runs** tab of the grant's target. A non-zero exit, or a connection failure, marks the deployment Failed: the error says the certificate deployed but the post action failed, and CertForge retries. A target that grants use as a post action cannot be deleted until you remove those post actions.
+
+On a pfSense target's grants, **Check usage** asks the firewall which services use the grant's certificate (WebGUI, OpenVPN, IPsec, captive portal, packages) without changing anything. These are the services the target restarts after each deploy when **Restart services that use it** is on. A certificate that is not on the firewall yet shows as such.
 
 Redeploy also exists for client grants. See [Clients](clients.md).
 

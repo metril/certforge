@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/metril/certforge/internal/render"
 	"github.com/metril/certforge/internal/targets"
@@ -25,14 +26,16 @@ type pfCall struct {
 }
 
 type fakePF struct {
-	mu         sync.Mutex
-	calls      []pfCall
-	list       string // JSON body for GET /system/certificates
-	webRef     string // current sslcertref
-	loginBad   bool
-	devices    string // JSON body for GET /mim/devices; default one device "d1"
-	restartBad bool
-	prefix     string // system path prefix; default /device/pfsense/d1/api
+	mu       sync.Mutex
+	calls    []pfCall
+	list     string // JSON body for GET /system/certificates
+	webRef   string // current sslcertref
+	loginBad bool
+	devices  string // JSON body for GET /mim/devices; default one device "d1"
+	phpOut   string // response for /diag/cmd/php; default no services
+	phpBad   bool
+	php      []string
+	prefix   string // system path prefix; default /device/pfsense/d1/api
 }
 
 const pfOneDevice = `{"devices":[{"device_id":"d1","name":"fw1","alias":"edge","state":"active"}]}`
@@ -90,12 +93,21 @@ func (f *fakePF) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"admin":{"webguiproto":"https","ssl_certref":"`+f.webRef+`"}}`)
 	case r.URL.Path == prefix+"/system/advanced/admin" && r.Method == "POST":
 		_, _ = io.WriteString(w, `{}`)
-	case r.URL.Path == prefix+"/diag/cmd/shell" && r.Method == "POST":
-		if f.restartBad {
+	case r.URL.Path == prefix+"/diag/cmd/php" && r.Method == "POST":
+		raw, _ := base64.StdEncoding.DecodeString(c.Body["cmd"].(string))
+		f.mu.Lock()
+		f.php = append(f.php, string(raw))
+		f.mu.Unlock()
+		if f.phpBad {
 			w.WriteHeader(500)
 			return
 		}
-		_, _ = io.WriteString(w, `{"response":""}`)
+		out := f.phpOut
+		if out == "" {
+			out = `CFJSON:{"webgui":false,"services":[],"packages":[]}`
+		}
+		resp, _ := json.Marshal(map[string]string{"response": "notice\n" + out + "\n"})
+		_, _ = w.Write(resp)
 	default:
 		w.WriteHeader(404)
 	}
@@ -103,7 +115,12 @@ func (f *fakePF) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func pfRequest(t *testing.T, url, ca string, web bool, m *render.Material) targets.Request {
 	t.Helper()
-	cfg, _ := json.Marshal(map[string]any{"url": url + "/api", "username": "admin", "password": pfPass, "caPem": ca, "setWebGuiCert": web, "timeoutSeconds": 5})
+	return pfRequestRS(t, url, ca, web, false, m)
+}
+
+func pfRequestRS(t *testing.T, url, ca string, web, restart bool, m *render.Material) targets.Request {
+	t.Helper()
+	cfg, _ := json.Marshal(map[string]any{"url": url + "/api", "username": "admin", "password": pfPass, "caPem": ca, "setWebGuiCert": web, "restartServices": restart, "timeoutSeconds": 5})
 	return targets.Request{CertName: "web", Material: m, Config: cfg, HTTP: targets.HTTPFactory{AllowLoopback: true}}
 }
 
@@ -178,10 +195,10 @@ func TestPfSenseWebGUI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Detail != "certificate abc updated, webgui cert set, webgui restarted" {
+	if res.Detail != "certificate abc updated, webgui cert set" {
 		t.Fatalf("detail = %q", res.Detail)
 	}
-	last := f.calls[len(f.calls)-2]
+	last := f.calls[len(f.calls)-1]
 	if last.Method != "POST" || last.Body["admin"].(map[string]any)["ssl_certref"] != "abc" || last.Body["admin"].(map[string]any)["webguiproto"] != "https" {
 		t.Fatalf("last = %+v", last)
 	}
@@ -190,7 +207,7 @@ func TestPfSenseWebGUI(t *testing.T) {
 	srv2 := httptest.NewServer(f2)
 	defer srv2.Close()
 	res, err = PfSense{}.Deploy(context.Background(), pfRequest(t, srv2.URL, "", true, m))
-	if err != nil || res.Detail != "certificate abc updated, webgui restarted" {
+	if err != nil || res.Detail != "certificate abc updated" {
 		t.Fatalf("res=%+v err=%v", res, err)
 	}
 }
@@ -292,65 +309,139 @@ func TestPfSenseNoDevicesCallsBase(t *testing.T) {
 	}
 }
 
-func pfRestarts(f *fakePF) []string {
-	var out []string
-	for _, c := range f.calls {
-		if strings.HasSuffix(c.Path, "/diag/cmd/shell") {
-			raw, _ := base64.StdEncoding.DecodeString(c.Body["cmd"].(string))
-			out = append(out, string(raw))
-		}
-	}
-	return out
-}
+const pfPHPOut = `CFJSON:{"webgui":true,"services":[{"name":"openvpn","extras":{"vpnmode":"server","id":"1"}},{"name":"openvpn","extras":{"vpnmode":"client","id":2}},{"name":"ipsec"},{"name":"captiveportal","extras":{"zone":"guest"}}],"packages":["haproxy"]}`
 
-func TestPfSenseRestartsWebGUIWhenChanged(t *testing.T) {
+func TestPfSenseRestartsServices(t *testing.T) {
 	m, _ := akMaterial(t)
-	f := &fakePF{list: `[{"refid":"abc","descr":"web"}]`, webRef: "abc"} // updated in place, ref already set
+	f := &fakePF{list: `[{"refid":"abc","descr":"web"}]`, phpOut: pfPHPOut}
 	srv := httptest.NewServer(f)
 	defer srv.Close()
-	res, err := PfSense{}.Deploy(context.Background(), pfRequest(t, srv.URL, "", true, m))
+	res, err := PfSense{}.Deploy(context.Background(), pfRequestRS(t, srv.URL, "", false, true, m))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := pfRestarts(f); len(got) != 1 || got[0] != "/etc/rc.restart_webgui" {
-		t.Fatalf("restarts = %v", got)
+	want := "certificate abc updated, restarted: WebGUI, OpenVPN server 1, OpenVPN client 2, IPsec, Captive portal zone guest, package haproxy"
+	if res.Detail != want {
+		t.Fatalf("detail = %q", res.Detail)
 	}
-	if f.calls[len(f.calls)-1].Body["timeout"] != float64(60) || !strings.Contains(res.Detail, "restarted") {
-		t.Fatalf("last=%+v detail=%q", f.calls[len(f.calls)-1], res.Detail)
+	if len(f.php) != 1 || !strings.Contains(f.php[0], `cert_get_all_services("abc")`) || !strings.Contains(f.php[0], "cert_restart_services($s)") {
+		t.Fatalf("php = %q", f.php)
 	}
 }
 
-func TestPfSenseNoRestartWhenUnchangedOrDisabled(t *testing.T) {
+func TestPfSenseRestartDefaultsOnAndRunsWhenUnchanged(t *testing.T) {
 	m, _ := akMaterial(t)
 	leaf := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: m.LeafDER}))
-	same := `{"certs":[{"refid":"abc","descr":"web","crt":"` + base64.StdEncoding.EncodeToString([]byte(leaf)) + `"}]}`
-	f := &fakePF{list: same, webRef: "abc"}
+	f := &fakePF{list: `{"certs":[{"refid":"abc","descr":"web","crt":"` + base64.StdEncoding.EncodeToString([]byte(leaf)) + `"}]}`}
 	srv := httptest.NewServer(f)
 	defer srv.Close()
-	if _, err := (PfSense{}).Deploy(context.Background(), pfRequest(t, srv.URL, "", true, m)); err != nil {
+	req := pfRequestRS(t, srv.URL, "", false, true, m)
+	var c map[string]any
+	_ = json.Unmarshal(req.Config, &c)
+	delete(c, "restartServices") // default
+	req.Config, _ = json.Marshal(c)
+	res, err := PfSense{}.Deploy(context.Background(), req)
+	if err != nil || res.Detail != "certificate abc unchanged, no services use it" || len(f.php) != 1 {
+		t.Fatalf("res=%+v err=%v php=%d", res, err, len(f.php))
+	}
+}
+
+func TestPfSenseRestartDisabled(t *testing.T) {
+	m, _ := akMaterial(t)
+	f := &fakePF{list: `[{"refid":"abc","descr":"web"}]`}
+	srv := httptest.NewServer(f)
+	defer srv.Close()
+	if _, err := (PfSense{}).Deploy(context.Background(), pfRequest(t, srv.URL, "", false, m)); err != nil {
 		t.Fatal(err)
 	}
-	if got := pfRestarts(f); len(got) != 0 {
-		t.Fatalf("unchanged restarted: %v", got)
-	}
-	f2 := &fakePF{list: `[{"refid":"abc","descr":"web"}]`}
-	srv2 := httptest.NewServer(f2)
-	defer srv2.Close()
-	if _, err := (PfSense{}).Deploy(context.Background(), pfRequest(t, srv2.URL, "", false, m)); err != nil {
-		t.Fatal(err)
-	}
-	if got := pfRestarts(f2); len(got) != 0 {
-		t.Fatalf("disabled restarted: %v", got)
+	if len(f.php) != 0 {
+		t.Fatalf("php ran: %q", f.php)
 	}
 }
 
 func TestPfSenseRestartFailureSurfaces(t *testing.T) {
 	m, _ := akMaterial(t)
-	f := &fakePF{list: `[{"refid":"abc","descr":"web"}]`, webRef: "old", restartBad: true}
+	f := &fakePF{list: `[{"refid":"abc","descr":"web"}]`, phpBad: true}
 	srv := httptest.NewServer(f)
 	defer srv.Close()
-	_, err := PfSense{}.Deploy(context.Background(), pfRequest(t, srv.URL, "", true, m))
-	if err == nil || !strings.Contains(err.Error(), "WebGUI restart failed") || !strings.Contains(err.Error(), "status 500") {
+	_, err := PfSense{}.Deploy(context.Background(), pfRequestRS(t, srv.URL, "", false, true, m))
+	if err == nil || !strings.Contains(err.Error(), "certificate deployed (certificate abc updated) but restarting its services failed") || !strings.Contains(err.Error(), "status 500") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestPfServicesLabelsTolerant(t *testing.T) {
+	var s pfServices
+	// PHP encodes empty arrays as [] and sparse arrays as objects.
+	if err := json.Unmarshal([]byte(`{"webgui":false,"services":[],"packages":{"1":"a","3":"b"}}`), &s); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Labels()) != 2 {
+		t.Fatalf("labels = %v", s.Labels())
+	}
+	if err := json.Unmarshal([]byte(`[]`), &s); err != nil || len(s.Labels()) != 0 {
+		t.Fatalf("empty: %v %v", err, s.Labels())
+	}
+}
+
+func pfUsageCfg(url string) json.RawMessage {
+	b, _ := json.Marshal(map[string]any{"url": url + "/api", "username": "admin", "password": pfPass, "timeoutSeconds": 5})
+	return b
+}
+
+func TestPfSenseUsage(t *testing.T) {
+	f := &fakePF{list: `[{"refid":"abc","descr":"web"}]`, phpOut: pfPHPOut}
+	srv := httptest.NewServer(f)
+	defer srv.Close()
+	hf := targets.HTTPFactory{AllowLoopback: true}
+	refid, labels, err := PfSenseUsage(context.Background(), hf, pfUsageCfg(srv.URL), "web")
+	if err != nil || refid != "abc" || len(labels) != 6 || labels[0] != "WebGUI" {
+		t.Fatalf("%q %v %v", refid, labels, err)
+	}
+	if len(f.php) != 1 || strings.Contains(f.php[0], "cert_restart_services") {
+		t.Fatalf("usage must not restart: %q", f.php)
+	}
+	refid, labels, err = PfSenseUsage(context.Background(), hf, pfUsageCfg(srv.URL), "other")
+	if err != nil || refid != "" || labels != nil || len(f.php) != 1 {
+		t.Fatalf("absent: %q %v %v", refid, labels, err)
+	}
+	f2 := &fakePF{list: `[{"refid":"abc","descr":"web"}]`, phpBad: true}
+	srv2 := httptest.NewServer(f2)
+	defer srv2.Close()
+	_, _, err = PfSenseUsage(context.Background(), hf, pfUsageCfg(srv2.URL), "web")
+	if err == nil || strings.Contains(err.Error(), pfPass) || strings.Contains(err.Error(), pfToken) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestPfSensePostActionTimeoutOutlastsTarget(t *testing.T) {
+	if got := pfPostActionHTTPTimeout(5, 60); got != 70 {
+		t.Fatalf("timeout = %d", got)
+	}
+	f := &fakePF{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/diag/cmd/shell") {
+			time.Sleep(1500 * time.Millisecond) // longer than the target's 1s timeout
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"response":"ok"}`)
+			return
+		}
+		f.ServeHTTP(w, r)
+	}))
+	defer srv.Close()
+	run := func(secs int) error {
+		cfg := PfSenseConfig{URL: srv.URL + "/api", Username: "admin", Password: pfPass, TimeoutSeconds: secs}
+		n, err := newNexusClient(context.Background(), targets.HTTPFactory{AllowLoopback: true}, cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = n.Shell(context.Background(), "true", 3)
+		return err
+	}
+	if err := run(1); err == nil {
+		t.Fatal("short target timeout should fail the slow shell")
+	}
+	if err := run(pfPostActionHTTPTimeout(1, 3)); err != nil {
+		t.Fatal(err)
 	}
 }

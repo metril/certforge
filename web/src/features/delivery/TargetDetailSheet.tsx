@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { KeyRound, KeySquare, Lock, Pencil, Plus, RotateCw, Trash2 } from 'lucide-react';
@@ -27,6 +27,7 @@ import { can } from '@/lib/permissions';
 import { needsKey, typeMeta } from '@/lib/targets';
 import { relTime } from '@/lib/time';
 import { useMediaQuery } from '@/lib/useMediaQuery';
+import { PfSenseUsage } from './PfSenseUsage';
 import { ServerGrantForm } from './ServerGrantForm';
 import { failedWithoutData } from '@/lib/queryState';
 import { IconButton } from '@/components/IconButton';
@@ -136,6 +137,7 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
                 {statusCell(g)}
               </div>
               <span className="truncate text-xs text-ink-muted">{layoutName(g.layoutId)}</span>
+              {target.type === 'pfsense' && <PfSenseUsage orgId={orgId} grantId={g.id} />}
               <div className="flex justify-end">{actions(g)}</div>
             </li>
           ))}
@@ -156,12 +158,21 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
         </TableHeader>
         <TableBody>
           {grants.map((g) => (
-            <TableRow key={g.id} className="h-9">
-              <TableCell className="py-1">{certLink(g)}</TableCell>
-              <TableCell className="truncate py-1">{layoutName(g.layoutId)}</TableCell>
-              <TableCell className="py-1">{statusCell(g)}</TableCell>
-              <TableCell className="py-1 text-right">{actions(g)}</TableCell>
-            </TableRow>
+            <Fragment key={g.id}>
+              <TableRow className="h-9">
+                <TableCell className="py-1">{certLink(g)}</TableCell>
+                <TableCell className="truncate py-1">{layoutName(g.layoutId)}</TableCell>
+                <TableCell className="py-1">{statusCell(g)}</TableCell>
+                <TableCell className="py-1 text-right">{actions(g)}</TableCell>
+              </TableRow>
+              {target.type === 'pfsense' && (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={4} className="py-1.5">
+                    <PfSenseUsage orgId={orgId} grantId={g.id} />
+                  </TableCell>
+                </TableRow>
+              )}
+            </Fragment>
           ))}
         </TableBody>
       </Table>

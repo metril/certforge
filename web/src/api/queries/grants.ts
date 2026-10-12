@@ -12,6 +12,16 @@ export const grantsQuery = (orgId: string, clientId: string) =>
     refetchInterval: (q) => livePoll(!!q.state.data?.some((g) => g.deployment?.state === 'pending')),
   });
 
+// Asks the firewall which services use a server grant's certificate. Never
+// fetched on its own (enabled: false): the caller refetches on demand.
+export const grantPfSenseUsageQuery = (orgId: string, grantId: string) =>
+  queryOptions({
+    queryKey: ['grants', orgId, 'pfsense-usage', grantId],
+    queryFn: () => call(api.GET('/orgs/{orgId}/grants/{id}/pfsense-usage', { params: { path: { orgId, id: grantId } } })),
+    enabled: false,
+    retry: false,
+  });
+
 export const certificateDeploymentsQuery = (orgId: string, certId: string) =>
   queryOptions({
     queryKey: ['deployments', orgId, certId],

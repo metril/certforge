@@ -337,6 +337,12 @@ const (
 	Modern P12Encoding = "modern"
 )
 
+// Defines values for PostActionKind.
+const (
+	Pfsense PostActionKind = "pfsense"
+	Ssh     PostActionKind = "ssh"
+)
+
 // Defines values for RateLimitName.
 const (
 	CertsPerRegisteredDomainPerWeek RateLimitName = "certsPerRegisteredDomainPerWeek"
@@ -2218,7 +2224,7 @@ type Grant struct {
 	// LayoutId Output layout; null for a target-only grant.
 	LayoutId *openapi_types.UUID `json:"layoutId"`
 
-	// PostAction Command to run over SSH after a successful deploy; null when none. Server grants only.
+	// PostAction Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only.
 	PostAction *PostAction `json:"postAction"`
 
 	// RunsOn Where the target (and its grants) run — an enrolled agent, or this server (a server-side deploy target such as vault-kv).
@@ -2284,7 +2290,7 @@ type GrantUpdate struct {
 	// LayoutId Output layout in the same org.
 	LayoutId *openapi_types.UUID `json:"layoutId"`
 
-	// PostAction Command to run over SSH after a successful deploy; null when none. Server grants only.
+	// PostAction Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only.
 	PostAction *PostAction `json:"postAction"`
 
 	// TargetOptions Per-type options for the deploy target
@@ -2930,17 +2936,32 @@ type OutputPart string
 // P12Encoding PKCS#12 encryption; modern (AES) or legacy (RC2/3DES, for old consumers).
 type P12Encoding string
 
-// PostAction One command run over SSH after a server grant deploys, using an existing ssh deploy target's host, credentials and host key.
+// PfSenseUsage The pfSense services that use a server grant's certificate.
+type PfSenseUsage struct {
+	// Refid The certificate's id on the firewall; null when the firewall does not hold it yet.
+	Refid *string `json:"refid"`
+
+	// Services Human labels such as WebGUI, OpenVPN server 1, IPsec, Captive portal zone x, package name. Empty when nothing uses it.
+	Services []string `json:"services"`
+}
+
+// PostAction One command run after a server grant deploys. Kind ssh runs it over SSH using an existing ssh deploy target's host, credentials and host key. Kind pfsense runs it as a shell command on a firewall through an existing pfsense deploy target.
 type PostAction struct {
 	// Command Command to run on that host.
 	Command string `json:"command"`
 
-	// SshTargetId An ssh deploy target in the same org.
-	SshTargetId openapi_types.UUID `json:"sshTargetId"`
+	// Kind What runs the command. Rows saved before kinds existed read as ssh.
+	Kind *PostActionKind `json:"kind,omitempty"`
+
+	// TargetId A deploy target in the same org whose type matches the kind. Rows saved before kinds existed used the name sshTargetId; the server still reads that.
+	TargetId openapi_types.UUID `json:"targetId"`
 
 	// TimeoutSeconds Time allowed for connecting and running.
 	TimeoutSeconds *int `json:"timeoutSeconds,omitempty"`
 }
+
+// PostActionKind What runs the command. Rows saved before kinds existed read as ssh.
+type PostActionKind string
 
 // Problem RFC 9457 problem details, sent with content type application/problem+json.
 type Problem struct {
@@ -3202,7 +3223,7 @@ type ServerGrantInput struct {
 	// LayoutId Output layout in the same org
 	LayoutId *openapi_types.UUID `json:"layoutId"`
 
-	// PostAction Command to run over SSH after a successful deploy; null when none. Server grants only.
+	// PostAction Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only.
 	PostAction *PostAction `json:"postAction"`
 }
 
@@ -4472,6 +4493,9 @@ type ClientInterface interface {
 	UpdateGrantWithBody(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	UpdateGrant(ctx context.Context, orgId OrgId, id Id, body UpdateGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetGrantPfSenseUsage request
+	GetGrantPfSenseUsage(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RedeployGrant request
 	RedeployGrant(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6226,6 +6250,18 @@ func (c *APIClient) UpdateGrantWithBody(ctx context.Context, orgId OrgId, id Id,
 
 func (c *APIClient) UpdateGrant(ctx context.Context, orgId OrgId, id Id, body UpdateGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateGrantRequest(c.Server, orgId, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) GetGrantPfSenseUsage(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetGrantPfSenseUsageRequest(c.Server, orgId, id)
 	if err != nil {
 		return nil, err
 	}
@@ -12072,6 +12108,47 @@ func NewUpdateGrantRequestWithBody(server string, orgId OrgId, id Id, contentTyp
 	return req, nil
 }
 
+// NewGetGrantPfSenseUsageRequest generates requests for GetGrantPfSenseUsage
+func NewGetGrantPfSenseUsageRequest(server string, orgId OrgId, id Id) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/grants/%s/pfsense-usage", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewRedeployGrantRequest generates requests for RedeployGrant
 func NewRedeployGrantRequest(server string, orgId OrgId, id Id) (*http.Request, error) {
 	var err error
@@ -14167,6 +14244,9 @@ type ClientWithResponsesInterface interface {
 	UpdateGrantWithBodyWithResponse(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateGrantResponse, error)
 
 	UpdateGrantWithResponse(ctx context.Context, orgId OrgId, id Id, body UpdateGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateGrantResponse, error)
+
+	// GetGrantPfSenseUsageWithResponse request
+	GetGrantPfSenseUsageWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*GetGrantPfSenseUsageResponse, error)
 
 	// RedeployGrantWithResponse request
 	RedeployGrantWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*RedeployGrantResponse, error)
@@ -17165,6 +17245,34 @@ func (r UpdateGrantResponse) StatusCode() int {
 	return 0
 }
 
+type GetGrantPfSenseUsageResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *PfSenseUsage
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON422 *UnprocessableEntity
+	ApplicationproblemJSON500 *InternalError
+	ApplicationproblemJSON502 *BadGateway
+}
+
+// Status returns HTTPResponse.Status
+func (r GetGrantPfSenseUsageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetGrantPfSenseUsageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type RedeployGrantResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
@@ -19447,6 +19555,15 @@ func (c *ClientWithResponses) UpdateGrantWithResponse(ctx context.Context, orgId
 		return nil, err
 	}
 	return ParseUpdateGrantResponse(rsp)
+}
+
+// GetGrantPfSenseUsageWithResponse request returning *GetGrantPfSenseUsageResponse
+func (c *ClientWithResponses) GetGrantPfSenseUsageWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*GetGrantPfSenseUsageResponse, error) {
+	rsp, err := c.GetGrantPfSenseUsage(ctx, orgId, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetGrantPfSenseUsageResponse(rsp)
 }
 
 // RedeployGrantWithResponse request returning *RedeployGrantResponse
@@ -26521,6 +26638,74 @@ func ParseUpdateGrantResponse(rsp *http.Response) (*UpdateGrantResponse, error) 
 			return nil, err
 		}
 		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetGrantPfSenseUsageResponse parses an HTTP response from a GetGrantPfSenseUsageWithResponse call
+func ParseGetGrantPfSenseUsageResponse(rsp *http.Response) (*GetGrantPfSenseUsageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetGrantPfSenseUsageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PfSenseUsage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest BadGateway
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
 
 	}
 

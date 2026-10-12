@@ -338,6 +338,7 @@ SELECT
   (SELECT count(*) FROM hooks WHERE hooks.id = ANY(sqlc.arg(hook_ids)::uuid[]) AND hooks.org_id = sqlc.arg(org_id))::bigint AS hooks_found;
 
 -- name: CountPostActionUsers :one
--- Live server grants whose post action runs over this ssh target.
+-- Live server grants whose post action runs on this target (ssh or pfsense;
+-- rows saved before kinds existed name it sshTargetId).
 SELECT count(*)::bigint FROM client_cert_grants g
-WHERE g.removed_at IS NULL AND g.client_id IS NULL AND g.post_action->>'sshTargetId' = sqlc.arg(id)::text;
+WHERE g.removed_at IS NULL AND g.client_id IS NULL AND coalesce(g.post_action->>'targetId', g.post_action->>'sshTargetId') = sqlc.arg(id)::text;

@@ -1171,7 +1171,7 @@ func (s *Server) DeleteDeployTarget(ctx context.Context, r gen.DeleteDeployTarge
 	if used, err := q.CountPostActionUsers(ctx, r.Id.String()); err != nil {
 		return nil, err
 	} else if used > 0 {
-		return nil, conflict("This target is the post action ssh target of %d server grant(s); remove the post action first.", used)
+		return nil, conflict("This target is the post action target of %d server grant(s); remove the post action first.", used)
 	}
 	n, err := q.DeleteDeployTarget(ctx, sqlcgen.DeleteDeployTargetParams{ID: r.Id, OrgID: r.OrgId})
 	if pgCode(err) == pgForeignKeyViolation {
