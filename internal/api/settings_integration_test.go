@@ -38,12 +38,12 @@ func TestSettingsGetPut(t *testing.T) {
 		t.Fatalf("stored should be null before any save, got %v", *sec.Stored)
 	}
 	// storedSecrets is a required array on the schema; general has no secret
-	// properties, so it must serialise as [], never null.
+	// properties, so it must serialize as [], never null.
 	if sec.StoredSecrets == nil || len(sec.StoredSecrets) != 0 {
 		t.Fatalf("storedSecrets should be an empty array, got %v", sec.StoredSecrets)
 	}
 	if !strings.Contains(string(body), `"storedSecrets":[]`) {
-		t.Fatalf("storedSecrets should serialise as [] not null: %s", body)
+		t.Fatalf("storedSecrets should serialize as [] not null: %s", body)
 	}
 
 	resp, body = e.do(http.MethodPut, "/api/v1/settings/general", map[string]string{"baseUrl": "https://certs.example.com"}, csrf) //nolint:bodyclose // testEnv.doRaw closes the body

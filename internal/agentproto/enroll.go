@@ -15,7 +15,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Enrolment is a one-off exchange that needs no session and no client
+// Enrollment is a one-off exchange that needs no session and no client
 // certificate, and gives a hostile proxy nothing to forge or read:
 //
 //  1. GET PathEnrollHello?nonce=N returns EnrollHello: a fresh server
@@ -34,6 +34,8 @@ const (
 	PathEnrollHello   = "/agent/v1/enroll/hello"
 	HeaderEnrollHello = "Cf-Enroll-Hello"
 
+	// Wire/stored: these HMAC labels keep their original spelling; changing them
+	// would break existing tokens (lookup ids are stored in the database).
 	popLabel    = "cf-enrol-v1"
 	lookupLabel = "cf-enrol-id"
 

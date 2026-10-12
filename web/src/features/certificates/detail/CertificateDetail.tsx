@@ -34,7 +34,7 @@ export function CertificateDetail({ id, tab }: { id: string; tab: Tab }) {
   // with a fresh issuance) has no `running` attempt yet for up to a couple
   // of seconds — the worker hasn't picked the job up — so `running` alone
   // misses that window and the new attempt wouldn't appear for up to 30s
-  // (the list-pace interval). `liveUntil` covers it: initialised already-hot
+  // (the list-pace interval). `liveUntil` covers it: initialized already-hot
   // when the wizard hands off here with something in flight (its `tab`
   // param is only ever 'attempts' when it just queued an issuance), and
   // reset by every renew handler on this page.

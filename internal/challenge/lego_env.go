@@ -10,7 +10,7 @@ import (
 )
 
 // lego providers read credentials from environment variables in their
-// NewDNSProvider constructors. envMu serialises construction; each build sees
+// NewDNSProvider constructors. envMu serializes construction; each build sees
 // only the credential's own values: every schema key (and its _FILE variant)
 // is unset first, so the server's own environment never leaks in, and the
 // previous environment is restored afterwards.

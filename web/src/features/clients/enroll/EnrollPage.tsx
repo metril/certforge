@@ -16,7 +16,7 @@ import { can } from '@/lib/permissions';
 import { TokenPanel } from './TokenPanel';
 import { WaitingPanel } from './WaitingPanel';
 
-export function EnrolPage() {
+export function EnrollPage() {
   const org = useOrg();
   const me = useMe();
   const canWrite = can(me, 'clients:write', org.id);
@@ -72,7 +72,7 @@ export function EnrolPage() {
           Clients
         </Link>
       </nav>
-      <PageHeader title="Enrol client" />
+      <PageHeader title="Enroll client" />
       {created ? (
         <div className="grid max-w-[720px] gap-6">
           <TokenPanel created={created} />

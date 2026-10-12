@@ -6,6 +6,7 @@ import type { Tone } from '@/lib/status';
 // internal/authn, internal/agent). B5: includes the legacy auth.* actions
 // alongside session.*. Phase 3 adds client/grant/deployment/layout/
 // deploy_target/hook/agent_ca actions.
+// Wire/stored values: `client.enrol_*` keep the old spelling on purpose.
 export const AUDIT_ACTIONS = [
   'acme_account.create', 'acme_account.delete', 'agent_ca.retire', 'agent_ca.rotate', 'api_key.create',
   'api_key.revoke', 'audit.anchor_initialized', 'audit.export', 'auth.local_admin_password_set', 'auth.login', 'auth.login_failed',
@@ -31,7 +32,15 @@ export const AUDIT_RESOURCE_TYPES = [
   'layout', 'monitor', 'org', 'role_binding', 'session', 'settings', 'site', 'user',
 ] as const;
 
-export const actionLabel = (a: string) => (a.endsWith('.') ? `${a}*` : a);
+// The stored `client.enrol_*` audit actions keep the old spelling (history and
+// filters depend on the value); only the displayed label is American.
+const ENROLL_LABELS: Record<string, string> = {
+  'client.enrol_requested': 'Enrollment requested',
+  'client.enrol_approved': 'Enrollment approved',
+  'client.enrol_rejected': 'Enrollment rejected',
+};
+
+export const actionLabel = (a: string) => ENROLL_LABELS[a] ?? (a.endsWith('.') ? `${a}*` : a);
 
 /** Tone/icon for the Overview's Recent activity chip: a quick visual cue by
  * verb family, not a full per-action taxonomy. */

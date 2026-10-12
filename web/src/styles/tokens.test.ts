@@ -68,7 +68,7 @@ describe.each([['light', light], ['dark', dark]] as const)('%s tokens', (_, t) =
     expect(contrast(t['control-track']!, t.surface!)).toBeGreaterThanOrEqual(3);
   });
   it('switch: the thumb (panel) reaches 3:1 against both the unchecked and checked track', () => {
-    // Switch renders its thumb in the panel colour against control-track
+    // Switch renders its thumb in the panel color against control-track
     // (unchecked) or primary (checked); both must clear 3:1.
     expect(contrast(t.panel!, t['control-track']!)).toBeGreaterThanOrEqual(3);
     expect(contrast(t.panel!, t.primary!)).toBeGreaterThanOrEqual(3);

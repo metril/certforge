@@ -106,7 +106,7 @@ export function ApproveDialog({
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
-            Approve agent <HelpTip id="enrol.approve" />
+            Approve agent <HelpTip id="enroll.approve" />
           </DialogTitle>
           <DialogDescription className="sr-only">Compare the verification code with the agent log, then approve or reject.</DialogDescription>
         </DialogHeader>
@@ -130,7 +130,7 @@ export function ApproveDialog({
             </dl>
             <div className={cn('grid justify-items-center gap-2 rounded-md border bg-subtle p-4', expired ? 'border-failed' : 'border-border')}>
               <span className="flex items-center gap-1.5 text-xs text-ink-muted">
-                Verification code <HelpTip id="enrol.code" />
+                Verification code <HelpTip id="enroll.code" />
               </span>
               <VerifyCode code={request.verifyCode} />
               {expired && <ToneChip tone="failed" icon={CircleX} label="Expired" />}
@@ -138,7 +138,7 @@ export function ApproveDialog({
             <SwitchField
               id="approve-matches"
               label="Code matches the agent log"
-              help="enrol.codeMatches"
+              help="enroll.codeMatches"
               checked={matches}
               onCheckedChange={setMatches}
               onText="Matches"

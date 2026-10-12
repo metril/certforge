@@ -8,7 +8,7 @@ SELECT * FROM agent_cas WHERE id = $1;
 SELECT * FROM agent_cas WHERE id = $1 FOR UPDATE;
 
 -- name: ShareAgentCA :one
--- A shared lock: concurrent enrolments/renewals against the same CA do not
+-- A shared lock: concurrent enrollments/renewals against the same CA do not
 -- serialize on each other, but still conflict with Retire's FOR UPDATE.
 SELECT * FROM agent_cas WHERE id = $1 FOR SHARE;
 

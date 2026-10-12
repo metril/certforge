@@ -61,7 +61,7 @@ export function rangeToDays(x0: number, x1: number): [number, number] {
 /** `beyond` is the server's count of every certificate expiring after the horizon; the briefs only carry the ones that qualified for other reasons. */
 type Props = { certs: CertBrief[]; beyond?: number; now: number; range: [number, number] | null; onRange: (r: [number, number] | null) => void };
 
-/** The 90-day expiry horizon: one coloured tick per certificate, the
+/** The 90-day expiry horizon: one colored tick per certificate, the
  * renewal window shaded behind it, and a drag-to-brush range that reports
  * back in whole days. `viewBox` with `preserveAspectRatio="none"` keeps it
  * inside the page width at any viewport (no horizontal scroll). */

@@ -52,7 +52,7 @@ Terminate TLS at the proxy and forward to `certforge:8080`. Three things matter 
 2. Allow WebSocket upgrades.
 3. Do not strip or rewrite the `Signature`, `Signature-Input`, `Content-Digest` and `Cf-*` headers, or change request and response bodies.
 
-Then set **Settings → Agents → Agent URL** to the proxy URL, for example `https://certforge.example.com`. Enrolment tokens carry that URL.
+Then set **Settings → Agents → Agent URL** to the proxy URL, for example `https://certforge.example.com`. Enrollment tokens carry that URL.
 
 **Caddy**
 
@@ -143,7 +143,7 @@ These protect public routes (`/auth/login`, `/setup/complete`) and agents from r
 | Concurrent password hashes | 4, server-wide (`503` with `Retry-After: 1`). |
 | Server timeouts | Header read 10 s, request read 30 s, idle 120 s. |
 | Login, OIDC and setup | Per client address, set in **Settings → Authentication**. |
-| Agent enrolment (`hello` and `enroll`) | Per client address, same defaults as login. |
+| Agent enrollment (`hello` and `enroll`) | Per client address, same defaults as login. |
 | Agent sessions, polls and sockets | 600 per minute per client address, burst 120. Signed agent REST requests: the same, per agent. |
 | Agent message size | 8 MiB per WebSocket message. |
 

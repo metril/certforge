@@ -2,7 +2,7 @@ import { expect, signInLocal, test } from './auth';
 import { E2E } from './env';
 import { setTheme, snap } from './screens';
 
-// The enrol, compare-code and approve path (waiting panel, nav badge, dialog,
+// The enroll, compare-code and approve path (waiting panel, nav badge, dialog,
 // 375 px and dark checks) is exercised end to end in clients.spec.ts, which
 // owns the one compose agent. A reject or expiry run needs a second agent
 // identity, which the compose stack does not provide; the admin API and the

@@ -20,7 +20,7 @@ export function clientAttentionItems(clients: Client[], now = Date.now(), pendin
   for (const c of clients) {
     if (c.status === 'revoked') continue;
     const req = awaiting.get(c.id);
-    if (req) out.push({ kind: 'awaiting-approval', client: c, cause: `Enrolment awaiting approval · expires ${relTime(req.expiresAt, now)}` });
+    if (req) out.push({ kind: 'awaiting-approval', client: c, cause: `Enrollment awaiting approval · expires ${relTime(req.expiresAt, now)}` });
     if (c.failedCount > 0) out.push({ kind: 'deploy-failed', client: c, cause: `${plural(c.failedCount, 'deployment')} failed` });
     if (c.driftCount > 0) out.push({ kind: 'drift', client: c, cause: `${plural(c.driftCount, 'grant')} drifted` });
     if (c.status === 'active' && !c.online && c.grantCount > 0) {

@@ -167,7 +167,7 @@ services:
       - /opt/docker/certs:/certs
 ```
 
-1. Enrol the agent. See [Clients](clients.md).
+1. Enroll the agent. See [Clients](clients.md).
 2. Create a Traefik target with `dir: /certs` and an empty `pathPrefix`.
 3. Grant each certificate to the target. Turn **Default certificate** on for exactly one. Set **Certificate directory on the agent** only when a certificate must keep a legacy location.
 4. Confirm `certforge-*.yml` files appear in `/certs` and Traefik serves the certificates.
@@ -359,7 +359,7 @@ Agent-run targets may always use loopback and link-local addresses. The setting 
 
 **A grant is refused with a path conflict (409).** Another grant of this target renders the same Vault path. Add `{name}` or `{cert}` to **Path**.
 
-**Layout choice is greyed out on a server grant.** It holds a non-PEM file. Pick a PEM-only layout.
+**Layout choice is grayed out on a server grant.** It holds a non-PEM file. Pick a PEM-only layout.
 
 **Delete is disabled on a target.** Grants still use it. The tooltip gives the count.
 

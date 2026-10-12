@@ -86,7 +86,7 @@ func TestSMTPNotifierSendsToConfiguredRecipients(t *testing.T) {
 // string ("not-an-email") passed create/update's schema check. Covered
 // here through ValidateConfig directly (the same layer channel create/
 // update calls, task-6 brief), not a live channel create, since this is
-// purely a schema-compiler behaviour.
+// purely a schema-compiler behavior.
 func TestSMTPValidateConfigRejectsBadEmail(t *testing.T) {
 	reg := notify.NewRegistry()
 	reg.Register(notify.SMTP{Settings: func(context.Context) (notify.SMTPSettings, string, error) {

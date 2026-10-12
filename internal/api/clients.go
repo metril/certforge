@@ -257,7 +257,7 @@ func (s *Server) GetClient(ctx context.Context, r gen.GetClientRequestObject) (g
 	return gen.GetClient200JSONResponse(out), nil
 }
 
-func (s *Server) enrolmentOut(ctx context.Context, e agents.Enrolment) (gen.ClientCreated, error) {
+func (s *Server) enrollmentOut(ctx context.Context, e agents.Enrollment) (gen.ClientCreated, error) {
 	c, err := s.clientOut(ctx, e.Client)
 	if err != nil {
 		return gen.ClientCreated{}, err
@@ -277,7 +277,7 @@ func (s *Server) CreateClient(ctx context.Context, r gen.CreateClientRequestObje
 	if err != nil {
 		return nil, mapAgentErr(err)
 	}
-	out, err := s.enrolmentOut(ctx, e)
+	out, err := s.enrollmentOut(ctx, e)
 	if err != nil {
 		return nil, err
 	}
@@ -342,7 +342,7 @@ func (s *Server) ReenrollClient(ctx context.Context, r gen.ReenrollClientRequest
 	if err != nil {
 		return nil, mapAgentErr(err)
 	}
-	out, err := s.enrolmentOut(ctx, e)
+	out, err := s.enrollmentOut(ctx, e)
 	if err != nil {
 		return nil, err
 	}

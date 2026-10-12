@@ -139,7 +139,7 @@ func (c *ChallengeServer) Start(ctx context.Context) error {
 
 // serveHTTP01 answers the exact well-known path from memory; an unknown,
 // expired or no-longer-present token is a 404, same as any other
-// unrecognised path.
+// unrecognized path.
 func (c *ChallengeServer) serveHTTP01(w http.ResponseWriter, r *http.Request) {
 	c.mu.Lock()
 	e, ok := c.tokens[r.PathValue("token")]

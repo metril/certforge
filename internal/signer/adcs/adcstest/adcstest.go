@@ -40,7 +40,7 @@ type Fake struct {
 	TLSCAPEM string
 	// CAPEM is the PEM of the fake's issuing CA certificate.
 	CAPEM string
-	// Issued counts successful enrolments.
+	// Issued counts successful enrollments.
 	Issued atomic.Int32
 	// EnrollmentFlags is published as the template's enrollmentFlags.
 	EnrollmentFlags atomic.Int32

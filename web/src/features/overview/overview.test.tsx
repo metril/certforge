@@ -134,7 +134,7 @@ it('queues client problems with one fix each', async () => {
   expect(offline).toHaveTextContent('Last seen 1 d ago');
   expect(within(offline).getByRole('link', { name: 'Open' })).toHaveAttribute('href', '/o/acme/clients/cl-2/certificates');
   const cert = within(queue).getByRole('link', { name: 'edge-1' }).closest('li')!;
-  expect(within(cert).getByRole('link', { name: 'Re-enrol' })).toHaveAttribute('href', '/o/acme/clients/cl-3/settings');
+  expect(within(cert).getByRole('link', { name: 'Re-enroll' })).toHaveAttribute('href', '/o/acme/clients/cl-3/settings');
   const deployFailed = within(queue).getByRole('link', { name: 'api-1' }).closest('li')!;
   expect(deployFailed).toHaveTextContent('Deploy failed');
   expect(within(deployFailed).getByRole('link', { name: 'Review' })).toHaveAttribute('href', '/o/acme/clients/cl-5/certificates');

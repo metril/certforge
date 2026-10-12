@@ -268,7 +268,7 @@ func TestAcmeShRSAAndECCPair(t *testing.T) {
 	}
 }
 
-// TestDetectDeepRoots: archives of a whole /etc or home tree are recognised a
+// TestDetectDeepRoots: archives of a whole /etc or home tree are recognized a
 // few levels down, but not arbitrarily deep.
 func TestDetectDeepRoots(t *testing.T) {
 	x := &fstest.MapFile{Data: []byte("x")}

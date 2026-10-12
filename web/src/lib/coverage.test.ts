@@ -17,7 +17,7 @@ it.each([
   ['anything.test', '*', true],
   ['EXAMPLE.com.', 'example.com', true],
   // IDNA: a Unicode name and a punycode pattern (or vice versa) for the
-  // same zone normalise to the same A-label and match, mirroring the
+  // same zone normalize to the same A-label and match, mirroring the
   // server's idna.Lookup.ToASCII normalization (preflight A31).
   ['xn--bcher-kva.example.com', 'bücher.example.com', true],
   ['bücher.example.com', 'xn--bcher-kva.example.com', true],

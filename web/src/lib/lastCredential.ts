@@ -13,7 +13,7 @@ function read(): Record<string, string> {
 }
 
 /**
- * Remembers, per normalised (lowercase, IDNA A-label) zone, the credential a
+ * Remembers, per normalized (lowercase, IDNA A-label) zone, the credential a
  * rule used. Fix round 1 (review): called once by the caller after a
  * certificate is actually created (Task 14), not on every keystroke while
  * editing rules — that would write a junk key per character typed into the

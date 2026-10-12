@@ -110,7 +110,7 @@ func (p *Provider) SetPublicClient(v bool) { p.mu.Lock(); p.publicClient = v; p.
 // claims in ID token".
 func (p *Provider) SetClaimsInIDToken(v bool) { p.mu.Lock(); p.slimIDToken = !v; p.mu.Unlock() }
 
-// SetUserinfoStatus forces /userinfo to answer with this HTTP status. 0 restores normal behaviour.
+// SetUserinfoStatus forces /userinfo to answer with this HTTP status. 0 restores normal behavior.
 func (p *Provider) SetUserinfoStatus(code int) { p.mu.Lock(); p.uiStatus = code; p.mu.Unlock() }
 
 // SetUserinfoUser makes /userinfo answer with u instead of the logged-in user

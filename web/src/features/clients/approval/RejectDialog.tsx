@@ -35,7 +35,7 @@ export function RejectDialog({
     <Dialog open={request !== null} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Reject enrolment from {request?.clientName}?</DialogTitle>
+          <DialogTitle>Reject enrollment from {request?.clientName}?</DialogTitle>
           <DialogDescription>The agent is refused and its token is spent. Issue a new token to try again.</DialogDescription>
         </DialogHeader>
         {error && (

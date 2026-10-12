@@ -34,11 +34,11 @@ import (
 	"github.com/metril/certforge/internal/db/sqlcgen"
 )
 
-var enrolFacts = agentproto.Facts{Hostname: "host-1", OS: "linux", Arch: "amd64", AgentVersion: "test"}
+var enrollFacts = agentproto.Facts{Hostname: "host-1", OS: "linux", Arch: "amd64", AgentVersion: "test"}
 
-// enrolSession is the agent half of one hello, written out by hand so tests
+// enrollSession is the agent half of one hello, written out by hand so tests
 // can tamper with every step.
-type enrolSession struct {
+type enrollSession struct {
 	e     *agentEnv
 	hc    *http.Client
 	base  string
@@ -82,9 +82,9 @@ func readAll(resp *http.Response) []byte {
 	return b
 }
 
-// newEnrolSession performs GET enroll/hello and verifies it. A non-200 answer
+// newEnrollSession performs GET enroll/hello and verifies it. A non-200 answer
 // is returned as its status with a nil session.
-func (e *agentEnv) newEnrolSession(t *testing.T, hc *http.Client, base string) (*enrolSession, int) {
+func (e *agentEnv) newEnrollSession(t *testing.T, hc *http.Client, base string) (*enrollSession, int) {
 	t.Helper()
 	nonce := agentproto.NewNonce()
 	hreq, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, base+agentproto.PathEnrollHello+"?nonce="+nonce, nil)
@@ -108,21 +108,21 @@ func (e *agentEnv) newEnrolSession(t *testing.T, hc *http.Client, base string) (
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &enrolSession{e: e, hc: hc, base: base, au: agentproto.Authority(base), hello: h, srv: pub, pool: e.trustedPool(t)}, http.StatusOK
+	return &enrollSession{e: e, hc: hc, base: base, au: agentproto.Authority(base), hello: h, srv: pub, pool: e.trustedPool(t)}, http.StatusOK
 }
 
 // submission builds the sealed plaintext for token and csr, with a fresh reply key.
-func (s *enrolSession) submission(token, csr string) (agentproto.EnrollSubmit, *ecdh.PrivateKey) {
+func (s *enrollSession) submission(token, csr string) (agentproto.EnrollSubmit, *ecdh.PrivateKey) {
 	reply, _ := ecdh.P256().GenerateKey(rand.Reader)
 	der, _ := agentproto.CSRDER(csr)
 	th := agentproto.TokenHash(token)
-	sub := agentproto.EnrollSubmit{LookupID: agentproto.LookupID(th), CSR: csr, Facts: enrolFacts, Created: time.Now().Unix(),
+	sub := agentproto.EnrollSubmit{LookupID: agentproto.LookupID(th), CSR: csr, Facts: enrollFacts, Created: time.Now().Unix(),
 		Nonce: agentproto.NewNonce(), Reply: base64.StdEncoding.EncodeToString(reply.PublicKey().Bytes())}
 	sub.Pop = agentproto.EnrollPop(th, der, s.au, sub.Created, sub.Nonce, sub.Reply)
 	return sub, reply
 }
 
-func (s *enrolSession) seal(t *testing.T, sub agentproto.EnrollSubmit) []byte {
+func (s *enrollSession) seal(t *testing.T, sub agentproto.EnrollSubmit) []byte {
 	t.Helper()
 	pt, _ := json.Marshal(sub)
 	ct, err := agentproto.HPKESeal(s.srv, agentproto.SealInfo(agentproto.DirC2S, agentproto.PathEnroll, s.hello.ID), pt)
@@ -132,7 +132,7 @@ func (s *enrolSession) seal(t *testing.T, sub agentproto.EnrollSubmit) []byte {
 	return ct
 }
 
-func (s *enrolSession) post(t *testing.T, sealed []byte) (*http.Response, []byte) {
+func (s *enrollSession) post(t *testing.T, sealed []byte) (*http.Response, []byte) {
 	t.Helper()
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, s.base+agentproto.PathEnroll, bytes.NewReader(sealed))
 	req.Header.Set("Content-Type", "application/octet-stream")
@@ -144,15 +144,15 @@ func (s *enrolSession) post(t *testing.T, sealed []byte) (*http.Response, []byte
 	return resp, readAll(resp)
 }
 
-// open verifies a signed enrol reply and opens it with the reply key.
-func (s *enrolSession) open(t *testing.T, resp *http.Response, raw []byte, reply *ecdh.PrivateKey, out any) {
+// open verifies a signed enroll reply and opens it with the reply key.
+func (s *enrollSession) open(t *testing.T, resp *http.Response, raw []byte, reply *ecdh.PrivateKey, out any) {
 	t.Helper()
 	if err := s.e.verifySigned(t, resp, raw, s.hello.ID); err != nil {
-		t.Fatalf("enrol reply (status %d) not signed: %v", resp.StatusCode, err)
+		t.Fatalf("enroll reply (status %d) not signed: %v", resp.StatusCode, err)
 	}
 	pt, err := agentproto.HPKEOpen(reply, agentproto.SealInfo(agentproto.DirS2C, agentproto.PathEnroll, s.hello.ID), raw)
 	if err != nil {
-		t.Fatalf("enrol reply not sealed to the reply key: %v", err)
+		t.Fatalf("enroll reply not sealed to the reply key: %v", err)
 	}
 	if out != nil {
 		if err := json.Unmarshal(pt, out); err != nil {
@@ -169,7 +169,7 @@ func (e *agentEnv) enrollRaw(t *testing.T, hc *http.Client, token, csr string) (
 }
 
 func (e *agentEnv) enrollRawT(t *testing.T, hc *http.Client, base, token, csr string) (int, agentproto.EnrollAccepted, error) {
-	s, code := e.newEnrolSession(t, hc, base)
+	s, code := e.newEnrollSession(t, hc, base)
 	if s == nil {
 		return code, agentproto.EnrollAccepted{}, nil
 	}
@@ -225,7 +225,7 @@ func (e *agentEnv) pollWith(t *testing.T, hc *http.Client, base string, key *ecd
 	return resp.StatusCode, out
 }
 
-// enroll enrols with token the way an agent does when an administrator approves
+// enroll enrolls with token the way an agent does when an administrator approves
 // at once, and returns the agent's TLS identity.
 func (e *agentEnv) enroll(t *testing.T, token string) (tls.Certificate, agentproto.EnrollPoll, int) {
 	t.Helper()
@@ -264,7 +264,7 @@ func (e *agentEnv) enroll(t *testing.T, token string) (tls.Certificate, agentpro
 
 // tokenAt issues a fresh token for en's client that names url as the agent URL
 // (the fixture's tokens name cf.example.test) and pins the CA the listener uses.
-func (e *agentEnv) tokenAt(t *testing.T, en agents.Enrolment, url string) string {
+func (e *agentEnv) tokenAt(t *testing.T, en agents.Enrollment, url string) string {
 	t.Helper()
 	ctx := context.Background()
 	oldest, err := e.ca.Oldest(ctx)
@@ -302,7 +302,7 @@ func (s *syncBuf) String() string {
 	return s.b.String()
 }
 
-func fastEnrolPolls(t *testing.T) {
+func fastEnrollPolls(t *testing.T) {
 	t.Helper()
 	oldMin, oldMax := agent.EnrollPollMin, agent.EnrollPollMax
 	agent.EnrollPollMin, agent.EnrollPollMax = 10*time.Millisecond, 30*time.Millisecond
@@ -321,7 +321,7 @@ func waitPending(t *testing.T, e *agentEnv, clientID uuid.UUID) sqlcgen.Enrollme
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatal("no pending enrolment request appeared")
+	t.Fatal("no pending enrollment request appeared")
 	return sqlcgen.EnrollmentRequest{}
 }
 
@@ -329,9 +329,9 @@ func waitPending(t *testing.T, e *agentEnv, clientID uuid.UUID) sqlcgen.Enrollme
 // administrator approves through the admin API, the poll returns the
 // certificate, and the signed, sealed session then works. Nothing the proxy
 // saw contained the token, the CSR or the certificate.
-func TestEnrolApprovalThroughTerminatingProxy(t *testing.T) {
+func TestEnrollApprovalThroughTerminatingProxy(t *testing.T) {
 	e := newAgentEnv(t)
-	fastEnrolPolls(t)
+	fastEnrollPolls(t)
 	proxy, tr := e.proxied(t)
 	ctx := context.Background()
 	en := e.newClient(t, "web-1")
@@ -345,7 +345,7 @@ func TestEnrolApprovalThroughTerminatingProxy(t *testing.T) {
 	}
 	done := make(chan result, 1)
 	go func() {
-		id, err := agent.EnrollWith(ctx, agent.EnrollOptions{Log: slog.New(slog.NewTextHandler(logs, nil)), Transport: rec}, t.TempDir(), token, enrolFacts)
+		id, err := agent.EnrollWith(ctx, agent.EnrollOptions{Log: slog.New(slog.NewTextHandler(logs, nil)), Transport: rec}, t.TempDir(), token, enrollFacts)
 		done <- result{id, err}
 	}()
 
@@ -355,7 +355,7 @@ func TestEnrolApprovalThroughTerminatingProxy(t *testing.T) {
 	}
 	select {
 	case r := <-done:
-		t.Fatalf("enrolment finished before approval: %+v", r)
+		t.Fatalf("enrollment finished before approval: %+v", r)
 	case <-time.After(100 * time.Millisecond):
 	}
 	if !strings.Contains(logs.String(), "WAITING FOR APPROVAL") || !strings.Contains(logs.String(), agentproto.FormatVerifyCode(req.VerifyCode)) {
@@ -401,12 +401,12 @@ func TestEnrolApprovalThroughTerminatingProxy(t *testing.T) {
 			submits++
 			for _, s := range []string{token, strings.Split(token, ".")[3], "BEGIN", "lookupId", "host-1", "csr"} {
 				if bytes.Contains(x.reqBody, []byte(s)) {
-					t.Errorf("enrol request shows %q", s)
+					t.Errorf("enroll request shows %q", s)
 				}
 			}
 			for _, s := range []string{"pollSecret", "verifyCode", "requestId"} {
 				if bytes.Contains(x.respBody, []byte(s)) {
-					t.Errorf("enrol reply shows %q", s)
+					t.Errorf("enroll reply shows %q", s)
 				}
 			}
 		case x.method == http.MethodPost && strings.HasPrefix(x.uri, agentproto.PathEnroll+"/"):
@@ -422,13 +422,13 @@ func TestEnrolApprovalThroughTerminatingProxy(t *testing.T) {
 		t.Fatalf("proxy saw %d submissions and %d polls", submits, polls)
 	}
 	if e.auditCount(t, "client.enrol_requested") != 1 || e.auditCount(t, "client.enrol_approved") != 1 || e.auditCount(t, "client.enrolled") != 1 {
-		t.Fatal("enrolment not audited")
+		t.Fatal("enrollment not audited")
 	}
 }
 
 // A stolen token buys a pending request and nothing else: no certificate until
 // an administrator approves, and the thief cannot poll as the real agent.
-func TestEnrolStolenTokenGetsNoCertWithoutApproval(t *testing.T) {
+func TestEnrollStolenTokenGetsNoCertWithoutApproval(t *testing.T) {
 	e := newAgentEnv(t)
 	ctx := context.Background()
 	en := e.newClient(t, "web-1")
@@ -474,7 +474,7 @@ func TestEnrolStolenTokenGetsNoCertWithoutApproval(t *testing.T) {
 
 // An eavesdropper who recovers the sealed plaintext (or a body bound to one
 // hello) cannot re-use it for another key or another hello.
-func TestEnrolStolenBodyWithDifferentCSRFails(t *testing.T) {
+func TestEnrollStolenBodyWithDifferentCSRFails(t *testing.T) {
 	e := newAgentEnv(t)
 	ctx := context.Background()
 	en := e.newClient(t, "web-1")
@@ -483,10 +483,10 @@ func TestEnrolStolenBodyWithDifferentCSRFails(t *testing.T) {
 	thief, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 
 	// The thief holds the honest plaintext (CSR, nonce, created, pop) but not the token.
-	s, _ := e.newEnrolSession(t, hc, e.ts.URL)
+	s, _ := e.newEnrollSession(t, hc, e.ts.URL)
 	stolen, _ := s.submission(en.Token, csrPEM(t, honest))
 
-	s2, _ := e.newEnrolSession(t, hc, e.ts.URL)
+	s2, _ := e.newEnrollSession(t, hc, e.ts.URL)
 	forged := stolen
 	forged.CSR = csrPEM(t, thief)
 	resp, _ := s2.post(t, s2.seal(t, forged))
@@ -494,7 +494,7 @@ func TestEnrolStolenBodyWithDifferentCSRFails(t *testing.T) {
 		t.Fatalf("stolen body with a different CSR: %d (signed: %v)", resp.StatusCode, resp.Header.Get(agentproto.HeaderSignerCert) != "")
 	}
 	// Nor with the reply key swapped, which would redirect the answer.
-	s3, _ := e.newEnrolSession(t, hc, e.ts.URL)
+	s3, _ := e.newEnrollSession(t, hc, e.ts.URL)
 	swapped := stolen
 	other, _ := ecdh.P256().GenerateKey(rand.Reader)
 	swapped.Reply = base64.StdEncoding.EncodeToString(other.PublicKey().Bytes())
@@ -502,7 +502,7 @@ func TestEnrolStolenBodyWithDifferentCSRFails(t *testing.T) {
 		t.Fatalf("stolen body with another reply key: %d", resp.StatusCode)
 	}
 	// Nor for another host.
-	s4, _ := e.newEnrolSession(t, hc, e.ts.URL)
+	s4, _ := e.newEnrollSession(t, hc, e.ts.URL)
 	s4.au = "evil.example.com"
 	hostSub, _ := s4.submission(en.Token, csrPEM(t, honest))
 	if resp, _ := s4.post(t, s4.seal(t, hostSub)); resp.StatusCode != http.StatusUnauthorized {
@@ -518,7 +518,7 @@ func TestEnrolStolenBodyWithDifferentCSRFails(t *testing.T) {
 
 	// The honest body, sent once, works; sent again (a replay) it does not,
 	// whether to the same hello or to a fresh one.
-	s5, _ := e.newEnrolSession(t, hc, e.ts.URL)
+	s5, _ := e.newEnrollSession(t, hc, e.ts.URL)
 	good, reply := s5.submission(en.Token, csrPEM(t, honest))
 	sealed := s5.seal(t, good)
 	resp, raw := s5.post(t, sealed)
@@ -529,7 +529,7 @@ func TestEnrolStolenBodyWithDifferentCSRFails(t *testing.T) {
 	if resp, _ := s5.post(t, sealed); resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("replayed sealed bytes: %d", resp.StatusCode)
 	}
-	s6, _ := e.newEnrolSession(t, hc, e.ts.URL)
+	s6, _ := e.newEnrollSession(t, hc, e.ts.URL)
 	resp, raw = s6.post(t, s6.seal(t, good))
 	var problem struct{ Detail string }
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -542,11 +542,11 @@ func TestEnrolStolenBodyWithDifferentCSRFails(t *testing.T) {
 }
 
 // The legacy {token} body is gone on both ports, with or without a hello.
-func TestEnrolLegacyBodyRejected(t *testing.T) {
+func TestEnrollLegacyBodyRejected(t *testing.T) {
 	e := newAgentEnv(t)
 	proxy, tr := e.proxied(t)
 	en := e.newClient(t, "web-1")
-	legacy, _ := json.Marshal(map[string]any{"token": en.Token, "csr": csrPEM(t, mustKey(t)), "facts": enrolFacts})
+	legacy, _ := json.Marshal(map[string]any{"token": en.Token, "csr": csrPEM(t, mustKey(t)), "facts": enrollFacts})
 	for name, c := range map[string]struct {
 		hc   *http.Client
 		base string
@@ -558,7 +558,7 @@ func TestEnrolLegacyBodyRejected(t *testing.T) {
 			req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, c.base+agentproto.PathEnroll, bytes.NewReader(legacy))
 			req.Header.Set("Content-Type", "application/json")
 			if hello == 1 {
-				s, code := e.newEnrolSession(t, c.hc, c.base)
+				s, code := e.newEnrollSession(t, c.hc, c.base)
 				if s == nil {
 					t.Fatalf("%s hello %d", name, code)
 				}
@@ -590,7 +590,7 @@ func mustKey(t *testing.T) *ecdsa.PrivateKey {
 }
 
 // Polls are signed requests: a replay of one and a tampered one are refused.
-func TestEnrolPollReplayAndTamper(t *testing.T) {
+func TestEnrollPollReplayAndTamper(t *testing.T) {
 	e := newAgentEnv(t)
 	en := e.newClient(t, "web-1")
 	hc := e.httpClient(t, nil)

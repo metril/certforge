@@ -27,7 +27,7 @@ export const CHIP: Record<Tone, string> = {
   neutral: 'border-border bg-subtle',
 };
 // Controller ruling: chip words use the `ink` token in both themes (the
-// pre-flight found `expiring` text directly in its tone colour fails AA on
+// pre-flight found `expiring` text directly in its tone color fails AA on
 // white). `expired` is the one filled/saturated chip, so it needs the
 // contrasting `on-status` token instead (proven in styles/tokens.test.ts).
 const TEXT: Record<Tone, string> = {

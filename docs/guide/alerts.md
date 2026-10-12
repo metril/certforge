@@ -84,7 +84,7 @@ With `starttls`, a server that does not offer STARTTLS is an error, not a silent
 
 ## Discord
 
-A **Discord** channel posts one embed per event to a Discord channel webhook. Create the webhook in Discord under **Server Settings → Integrations → Webhooks**, then paste it as **Webhook URL**. It must start with `https`. The embed's colour follows the severity. It never pings roles or `@everyone`.
+A **Discord** channel posts one embed per event to a Discord channel webhook. Create the webhook in Discord under **Server Settings → Integrations → Webhooks**, then paste it as **Webhook URL**. It must start with `https`. The embed's color follows the severity. It never pings roles or `@everyone`.
 
 ## ntfy
 
@@ -193,5 +193,5 @@ To delete a monitor, select **Delete** in its sheet and type its name. Past even
 
 - [Event reference](../reference/events.md) for kinds, payloads, dedupe keys and signatures
 - [Settings](settings.md) for SMTP, notifications and Prometheus sections
-- [Clients](clients.md) for approving enrolments
+- [Clients](clients.md) for approving enrollments
 - [Monitoring](../operations/monitoring.md) for health endpoints and Prometheus metrics

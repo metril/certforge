@@ -28,7 +28,7 @@ func waitUntil(ctx context.Context, t *testing.T, what string, cond func() bool)
 	}
 }
 
-// The whole agent against the real agent router: enrol, deploy, tamper,
+// The whole agent against the real agent router: enroll, deploy, tamper,
 // auto-remediate, revoke.
 func TestAgentRunEndToEnd(t *testing.T) {
 	hub := agenthub.New(slog.Default())
@@ -37,7 +37,7 @@ func TestAgentRunEndToEnd(t *testing.T) {
 	e.svc.Hub = hub
 	e.svc.Settings = agents.StaticSettings(agents.Settings{AgentURL: e.ts.URL, HeartbeatSeconds: 1}, "")
 	en := e.newClient(t, "web-1")
-	fastEnrolPolls(t)
+	fastEnrollPolls(t)
 	dir := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()

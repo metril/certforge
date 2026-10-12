@@ -77,7 +77,7 @@ func RegisterIssuanceSettings(r *settings.Registry) error {
 // not decode as that field's zero value — decoding starts from the
 // built-in defaults so json.Unmarshal only overwrites the fields the
 // stored document actually names, matching agents.Settings' own
-// Resolve-from-defaults behaviour.
+// Resolve-from-defaults behavior.
 func LoadIssuanceSettings(ctx context.Context, store *settings.Store) (IssuanceSettings, error) {
 	s := defaultIssuanceSettings()
 	err := store.Get(ctx, settings.SectionKey(SettingsSectionIssuance), &s)

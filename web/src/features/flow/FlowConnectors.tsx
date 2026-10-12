@@ -124,7 +124,7 @@ export function FlowConnectors({ containerRef, getEl, flow, path, hoverPath, sel
         hover: hov,
         d,
         // Idle lines are a thin neutral stroke. A selected path or connection is
-        // status-coloured and thicker; every other line fades back.
+        // status-colored and thicker; every other line fades back.
         reversed: !m.synthetic && lid !== m.a,
         cls: sel ? STROKE[st] : hov ? (m.synthetic ? 'stroke-ink-muted' : STROKE[pairStatus(m.edges, hoverPath.nodes)]) : m.synthetic && on ? 'stroke-ink-muted' : !on ? 'stroke-border' : STROKE[pairStatus(m.edges, path.nodes)],
         width: sel ? 3 : hov ? 2 : m.synthetic && on ? 1.5 : !selected && !selectedEdge ? 1 : on ? 2 : 1,

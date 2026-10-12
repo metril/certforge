@@ -9,7 +9,7 @@ export const Route = createFileRoute('/login')({
   // Adaptation (fix round 1, controller ruling): the return-URL search
   // param is `next` (matching client.ts's defaultUnauthorized, the
   // reference emitter), not `redirect`.
-  // Adaptation: no `.max(64)` on `error` — an overlong or unrecognised
+  // Adaptation: no `.max(64)` on `error` — an overlong or unrecognized
   // code must still reach oidcErrorMessage() so it falls back to the
   // generic "Single sign-on failed. Try again." line; discarding it here
   // (`.catch(undefined)`) would render no message at all instead.

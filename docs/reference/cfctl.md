@@ -132,7 +132,7 @@ $ cfctl --json audit list --action session.login --all
 
 ## Gaps
 
-`cfctl` has no commands for enrolment approval, grants, organizations or agent CAs. Use the web UI or the [API](api.md).
+`cfctl` has no commands for enrollment approval, grants, organizations or agent CAs. Use the web UI or the [API](api.md).
 
 ## See also
 

@@ -54,7 +54,7 @@ const smtpSchema = {
 };
 const notificationsSchema = {
   title: 'Notifications',
-  description: 'Behaviour shared by every notification channel: the SSRF policy for channel URLs, and the thresholds that trigger expiry and renewal-failure events.',
+  description: 'Behavior shared by every notification channel: the SSRF policy for channel URLs, and the thresholds that trigger expiry and renewal-failure events.',
   type: 'object',
   additionalProperties: false,
   properties: {

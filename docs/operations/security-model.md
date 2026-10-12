@@ -9,7 +9,7 @@ This page explains what CertForge trusts, what it protects and how. It is the su
 | The encryption key (KEK) holder | Decrypt every secret. | Keep a lost key recoverable: without the key, data and backups are lost. |
 | Browsers and API clients | Act within their role, organization and scopes. | Anything else. Every request is authorized again on the server. |
 | Agents | Install the files they are granted, on their own host. | Run hooks or write paths the agent operator has not allowlisted. |
-| A reverse proxy in front of CertForge | Terminate browser TLS. | Read, forge, replay or enrol agent traffic. See [Agent channel](#agent-channel). |
+| A reverse proxy in front of CertForge | Terminate browser TLS. | Read, forge, replay or enroll agent traffic. See [Agent channel](#agent-channel). |
 | The network | Carry bytes. | Anything. |
 
 ## Encryption key handling
@@ -33,12 +33,12 @@ Derived keys (the audit chain HMAC key, the OIDC state key, the backup stream ke
 Agents work through a proxy that terminates TLS, so nothing depends on TLS to be safe.
 - Each request is signed by the agent key and each response by the server's responder key. Bodies travel in a session sealed with keys from an ephemeral key exchange, so past traffic stays secret even if a key leaks later.
 - Replays, tampering and reordering are rejected. A proxy can only drop or delay traffic.
-- Enrolment sends no token: the agent proves it holds it. New clients wait for an administrator to approve them after comparing a verification code.
+- Enrollment sends no token: the agent proves it holds it. New clients wait for an administrator to approve them after comparing a verification code.
 - A client certificate alone admits nothing. The server checks on every request and WebSocket message that the client is active and the certificate is its newest one, so revocation takes effect at once without a CRL.
 - Protocol: [Architecture](../internals/architecture.md#agent-protocol). Threat model and reasons: [ADR 0020](../internals/adr/0020-agent-protocol-through-proxy.md).
 - Clocks: agents and server must agree within 60 s. Request nonces are kept in memory, in one cache shared by both ports, which is why CertForge runs a single replica. The cache holds at most 200,000 nonces; when full the server answers an unsigned `503` and logs it. Handshakes and sockets are rate limited per client address and signed REST requests per agent (600 a minute, burst 120 each), and a request naming no live session is refused before its body is read.
 
-Enrolment tokens are single use, stored only as a SHA-256 hash, and pin the agent CA fingerprint. Enrolment endpoints are rate limited per client address, separately from login.
+Enrollment tokens are single use, stored only as a SHA-256 hash, and pin the agent CA fingerprint. Enrollment endpoints are rate limited per client address, separately from login.
 
 ## Agent hooks and writes
 A compromised server could push any command or path to every agent, so both are off until the agent operator allows them locally. Hooks run only if `argv[0]` exactly matches an entry in `CF_HOOK_ALLOW` (never through a shell). Files are written only under directories in `CF_WRITE_ALLOW`, checked after resolving symlinks. With either variable empty, that action fails. Allow narrow executables, never a shell or interpreter. See [Agents](../guide/agents.md#hooks-and-the-allowlist).

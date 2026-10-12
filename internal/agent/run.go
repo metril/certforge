@@ -20,7 +20,7 @@ import (
 )
 
 // ErrRevoked stops the agent: the server refused this client.
-var ErrRevoked = errors.New("agent: the server refused this agent (revoked or re-enrolled); enrol it again with a new token")
+var ErrRevoked = errors.New("agent: the server refused this agent (revoked or re-enrolled); enroll it again with a new token")
 
 var (
 	errReconnect = errors.New("agent: reconnecting")
@@ -58,7 +58,7 @@ func EnsureEnrolled(ctx context.Context, cfg Config, log *slog.Logger) (*Identit
 		if cfg.TokenFile == "" {
 			return nil, errors.New("not enrolled: set CF_AGENT_TOKEN or CF_AGENT_TOKEN_FILE, or run certforge-agent enroll --token <token>")
 		}
-		log.Info("waiting for an enrolment token", "file", cfg.TokenFile)
+		log.Info("waiting for an enrollment token", "file", cfg.TokenFile)
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()

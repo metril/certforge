@@ -11,9 +11,9 @@ import (
 	"github.com/metril/certforge/internal/delivery"
 )
 
-// requireKeysExportIfKeyGrants requires keys:export to re-enrol a client
+// requireKeysExportIfKeyGrants requires keys:export to re-enroll a client
 // that holds a live grant delivering a private key (a key-bearing layout or
-// any agent deploy target): the fresh enrolment token lets a new agent pull
+// any agent deploy target): the fresh enrollment token lets a new agent pull
 // that key from the grant bundle, which clients:write alone must not allow.
 func (s *Server) requireKeysExportIfKeyGrants(ctx context.Context, orgID, clientID uuid.UUID) error {
 	views, err := s.queries().GrantViews(ctx, sqlcgen.GrantViewsParams{OrgID: orgID, ClientID: &clientID})

@@ -70,7 +70,7 @@ func newAgentEnv(t *testing.T, opts ...func(*Deps)) *agentEnv {
 // httpClient trusts the current agent CA bundle. With cert it speaks the
 // signed, sealed session protocol as that agent (the certificate also goes
 // out as the TLS client certificate, which the server must not rely on);
-// without, it is a bare TLS client (enrolment, unauthenticated probes).
+// without, it is a bare TLS client (enrollment, unauthenticated probes).
 func (e *agentEnv) httpClient(t *testing.T, cert *tls.Certificate) *http.Client {
 	t.Helper()
 	trusted, err := e.ca.Trusted(context.Background())
@@ -190,7 +190,7 @@ func TestEnrollAndRenew(t *testing.T) {
 	}
 }
 
-// Review Focus: a replayed or raced enrolment token.
+// Review Focus: a replayed or raced enrollment token.
 func TestEnrollTokenSingleUse(t *testing.T) {
 	e := newAgentEnv(t)
 	ctx := context.Background()
@@ -208,7 +208,7 @@ func TestEnrollTokenSingleUse(t *testing.T) {
 	got := []int{<-codes, <-codes}
 	slices.Sort(got)
 	if !slices.Equal(got, []int{http.StatusOK, http.StatusUnauthorized}) {
-		t.Fatalf("concurrent enrolments %v", got)
+		t.Fatalf("concurrent enrollments %v", got)
 	}
 	var requests int
 	if err := e.pool.QueryRow(ctx, `SELECT count(*) FROM enrollment_requests WHERE client_id = $1`, en.Client.ID).Scan(&requests); err != nil || requests != 1 {
@@ -233,7 +233,7 @@ func TestEnrollTokenSingleUse(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The listener keeps the oldest CA until it is retired, so a token from
-	// before the rotation still enrols, with a certificate from the new CA.
+	// before the rotation still enrolls, with a certificate from the new CA.
 	cert3, _, code := e.enroll(t, en3.Token)
 	if code != http.StatusOK {
 		t.Fatalf("token from before a rotation %d", code)
@@ -336,12 +336,12 @@ func waitForLockWait(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
 	t.Fatal("timed out waiting for a backend to block on a row lock")
 }
 
-// Review Focus: a CA retired while an enrolment or renewal is in flight must
+// Review Focus: a CA retired while an enrollment or renewal is in flight must
 // never leave a client anchored to it (Task 3 review carry-forward). Enroll
 // and Renew lock the signing CA row inside their own transaction, so they
 // serialize against agentca.Store.Retire's row lock on the same CA: a
 // concurrent transaction that locks the CA row and marks it retired before
-// enrol's row lock is granted must make enrol fail instead of activating
+// enroll's row lock is granted must make enroll fail instead of activating
 // the client against a CA nothing trusts any more.
 
 func TestEnrollBlocksOnConcurrentRetire(t *testing.T) {

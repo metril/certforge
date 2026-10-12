@@ -132,9 +132,9 @@ it('shows "No limit" with no meter for a limit with max 0', async () => {
   expect(container.querySelector('.bg-valid, .bg-expiring, .bg-failed')).toBeNull();
 });
 
-// Fix round 1 (review): the meter's colour thresholds (>= 80% expiring, >=
+// Fix round 1 (review): the meter's color thresholds (>= 80% expiring, >=
 // 100% failed) had no covering test.
-it('colours the meter expiring at 80% and failed at 100%', async () => {
+it('colors the meter expiring at 80% and failed at 100%', async () => {
   server.use(
     http.get(url('/orgs/org-1/certificates/c-1/attempts'), () => HttpResponse.json([failedRateLedger()])),
     http.get(url('/orgs/org-1/rate-ledger'), () =>

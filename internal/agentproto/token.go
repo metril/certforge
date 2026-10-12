@@ -11,8 +11,8 @@ import (
 	"strings"
 )
 
-// ErrBadToken means a string is not a well-formed enrolment token.
-var ErrBadToken = errors.New("agentproto: malformed enrolment token")
+// ErrBadToken means a string is not a well-formed enrollment token.
+var ErrBadToken = errors.New("agentproto: malformed enrollment token")
 
 var fpRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
 

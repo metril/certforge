@@ -55,7 +55,7 @@ func verifyPinned(raw [][]byte, fp string) error {
 
 // enrollTransport accepts a server whose TLS chain either contains the CA the
 // token pins or is trusted by the system roots (a public proxy certificate).
-// TLS is only hygiene here: the enrolment exchange authenticates the server
+// TLS is only hygiene here: the enrollment exchange authenticates the server
 // itself, so a hostile terminating proxy gains nothing from passing it.
 func enrollTransport(fp string) http.RoundTripper {
 	return &http.Transport{TLSClientConfig: &tls.Config{
@@ -101,7 +101,7 @@ var (
 )
 
 // maxPollFailures is how many polls in a row may fail to reach or verify the
-// server before enrolment gives up.
+// server before enrollment gives up.
 const maxPollFailures = 10
 
 // Enroll is EnrollWith with default options.
@@ -109,7 +109,7 @@ func Enroll(ctx context.Context, dir, token string, facts agentproto.Facts) (*Id
 	return EnrollWith(ctx, EnrollOptions{}, dir, token, facts)
 }
 
-// enroller holds one enrolment's connection state.
+// enroller holds one enrollment's connection state.
 type enroller struct {
 	hc      *http.Client
 	tok     agentproto.Token
@@ -194,7 +194,7 @@ func (e *enroller) hello(ctx context.Context) (agentproto.EnrollHello, *ecdh.Pub
 	}
 	pub, err := parseP256(h.Ephemeral)
 	if err != nil || h.ID == "" {
-		return h, nil, errors.New("agent: malformed enrolment hello")
+		return h, nil, errors.New("agent: malformed enrollment hello")
 	}
 	return h, pub, nil
 }
@@ -309,21 +309,21 @@ func (e *enroller) waitApproved(ctx context.Context, key *ecdsa.PrivateKey, acc 
 		var pe *ProblemError
 		switch {
 		case errors.As(err, &pe):
-			return res, fmt.Errorf("enrol: %w", err)
+			return res, fmt.Errorf("enroll: %w", err)
 		case err != nil:
 			if failures++; failures >= maxPollFailures || ctx.Err() != nil {
-				return res, fmt.Errorf("enrol: %w", err)
+				return res, fmt.Errorf("enroll: %w", err)
 			}
-			log.Warn("enrolment poll failed; retrying", "err", err)
+			log.Warn("enrollment poll failed; retrying", "err", err)
 		default:
 			failures = 0
 			switch res.Status {
 			case agentproto.EnrollApproved:
 				return res, nil
 			case agentproto.EnrollRejected:
-				return res, errors.New("enrol: an administrator rejected this agent's request; ask for a new token")
+				return res, errors.New("enroll: an administrator rejected this agent's request; ask for a new token")
 			case agentproto.EnrollExpired:
-				return res, errors.New("enrol: the request expired before it was approved; ask for a new token if this token has expired too, or start the agent again")
+				return res, errors.New("enroll: the request expired before it was approved; ask for a new token if this token has expired too, or start the agent again")
 			}
 		}
 		select {
@@ -335,7 +335,7 @@ func (e *enroller) waitApproved(ctx context.Context, key *ecdsa.PrivateKey, acc 
 }
 
 // Enroll exchanges a one-time token for this agent's certificate. The key is
-// created once (agent.key, 0600) and reused by later enrolments; grants
+// created once (agent.key, 0600) and reused by later enrollments; grants
 // already recorded in state.json are kept so a re-enrolled agent still
 // knows which files it wrote.
 //
@@ -373,22 +373,22 @@ func EnrollWith(ctx context.Context, opts EnrollOptions, dir, token string, fact
 		pool: x509.NewCertPool(), signers: map[string]*ecdsa.PublicKey{}, now: time.Now}
 	h, srvKey, err := e.hello(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("enrol: %w", err)
+		return nil, fmt.Errorf("enroll: %w", err)
 	}
 	acc, err := e.submit(ctx, h, srvKey, token, key, csr, facts)
 	if err != nil {
-		return nil, fmt.Errorf("enrol: %w", err)
+		return nil, fmt.Errorf("enroll: %w", err)
 	}
 	pubDER, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
 	if err != nil {
 		return nil, err
 	}
 	if want := agentproto.VerifyCode(pubDER, tok.CAFingerprint); want != acc.VerifyCode {
-		return nil, fmt.Errorf("enrol: the verification code from the server (%s) does not match this agent's (%s); it is not talking to the CA in its token",
+		return nil, fmt.Errorf("enroll: the verification code from the server (%s) does not match this agent's (%s); it is not talking to the CA in its token",
 			agentproto.FormatVerifyCode(acc.VerifyCode), agentproto.FormatVerifyCode(want))
 	}
 	if acc.Status == agentproto.EnrollPending {
-		log.Warn("ENROLMENT WAITING FOR APPROVAL: an administrator must approve this agent in CertForge (Clients, Pending approval) after checking that its verification code matches",
+		log.Warn("ENROLLMENT WAITING FOR APPROVAL: an administrator must approve this agent in CertForge (Clients, Pending approval) after checking that its verification code matches",
 			"verification_code", agentproto.FormatVerifyCode(acc.VerifyCode), "server", tok.AgentURL, "expires", acc.ExpiresAt.Format(time.RFC3339))
 	}
 	er, err := e.waitApproved(ctx, key, acc, log)
@@ -418,12 +418,12 @@ func EnrollWith(ctx context.Context, opts EnrollOptions, dir, token string, fact
 			id.State.Grants = map[uuid.UUID]GrantState{}
 		}
 	case errors.Is(err, fs.ErrNotExist):
-		// fresh enrolment: no prior grants to keep
+		// fresh enrollment: no prior grants to keep
 	default:
 		return nil, err
 	}
 	// Write order matters: ca.pem and state.json first, agent.crt last, so a
-	// crash mid-enrolment leaves ErrNotEnrolled rather than a half-written
+	// crash mid-enrollment leaves ErrNotEnrolled rather than a half-written
 	// identity that LoadIdentity would otherwise accept.
 	if err := id.commitBundle([]byte(er.TrustBundle)); err != nil {
 		return nil, err

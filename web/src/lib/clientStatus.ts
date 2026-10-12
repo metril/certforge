@@ -14,7 +14,7 @@ export function connection(c: Pick<Client, 'status' | 'online' | 'lastSeen'>): C
 }
 
 // Dot classes use tokens only; `never` is a hollow ring so it reads apart
-// from `offline` without relying on colour.
+// from `offline` without relying on color.
 export const CONNECTION_META: Record<Connection, { label: string; dot: string }> = {
   online: { label: 'Online', dot: 'bg-valid' },
   offline: { label: 'Offline', dot: 'bg-ink-muted' },
@@ -32,7 +32,7 @@ export function headerConnectionLabel(c: Pick<Client, 'status' | 'connected' | '
 
 // The client's own lifecycle status (Pending/Active/Revoked) — a separate,
 // sortable column from ConnectionDot's connection reading (I2: the two used
-// to share one "Connection" column sorted by `status`, conflating enrolment
+// to share one "Connection" column sorted by `status`, conflating enrollment
 // state with reachability).
 export const CLIENT_STATUS_META: Record<Client['status'], { label: string; tone: Tone; icon: LucideIcon }> = {
   pending: { label: 'Pending', tone: 'pending', icon: Hourglass },

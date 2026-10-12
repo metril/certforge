@@ -497,7 +497,7 @@ const lockCAByID = `-- name: LockCAByID :one
 SELECT id, org_id, name, type, preset, directory_url, trust_bundle_pem, eab_kid, eab_hmac, resolvers, shared, created_at, updated_at, config, secret_cfg, not_before, not_after, crl_number FROM cas WHERE id = $1 FOR UPDATE
 `
 
-// Serialises CRL signing for one CA (and with RevokeVersion's LockCA).
+// Serializes CRL signing for one CA (and with RevokeVersion's LockCA).
 func (q *Queries) LockCAByID(ctx context.Context, id uuid.UUID) (Ca, error) {
 	row := q.db.QueryRow(ctx, lockCAByID, id)
 	var i Ca

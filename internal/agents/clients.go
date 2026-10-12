@@ -16,8 +16,8 @@ import (
 	"github.com/metril/certforge/internal/db/sqlcgen"
 )
 
-// Enrolment is a pending client and its one-time token.
-type Enrolment struct {
+// Enrollment is a pending client and its one-time token.
+type Enrollment struct {
 	Client    sqlcgen.Client
 	Token     string
 	ExpiresAt time.Time
@@ -75,46 +75,46 @@ func (s *Service) tokenCA(ctx context.Context) (*agentca.CA, error) {
 	return s.CA.Oldest(ctx)
 }
 
-// CreateClient adds a pending client with a one-time enrolment token.
-func (s *Service) CreateClient(ctx context.Context, orgID uuid.UUID, name string, siteID *uuid.UUID) (Enrolment, error) {
+// CreateClient adds a pending client with a one-time enrollment token.
+func (s *Service) CreateClient(ctx context.Context, orgID uuid.UUID, name string, siteID *uuid.UUID) (Enrollment, error) {
 	name, err := cleanClientName(name)
 	if err != nil {
-		return Enrolment{}, err
+		return Enrollment{}, err
 	}
 	ca, err := s.tokenCA(ctx)
 	if err != nil {
-		return Enrolment{}, err
+		return Enrollment{}, err
 	}
 	st := s.CurrentSettings(ctx)
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
-		return Enrolment{}, err
+		return Enrollment{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.Q.WithTx(tx)
 	if err := s.checkSite(ctx, q, orgID, siteID); err != nil {
-		return Enrolment{}, err
+		return Enrollment{}, err
 	}
 	c, err := q.CreateClient(ctx, sqlcgen.CreateClientParams{OrgID: orgID, SiteID: siteID, Name: name})
 	switch pgCode(err) {
 	case pgUniqueViolation:
-		return Enrolment{}, conflict("A client named %q exists in this org.", name)
+		return Enrollment{}, conflict("A client named %q exists in this org.", name)
 	case pgForeignKeyViolation:
-		return Enrolment{}, notFound("org %s", orgID)
+		return Enrollment{}, notFound("org %s", orgID)
 	}
 	if err != nil {
-		return Enrolment{}, err
+		return Enrollment{}, err
 	}
 	tok, exp, err := s.issueToken(ctx, q, c.ID, st, ca)
 	if err != nil {
-		return Enrolment{}, err
+		return Enrollment{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return Enrolment{}, err
+		return Enrollment{}, err
 	}
 	s.audit(ctx, audit.Event{Action: "client.create", ResourceType: "client", ResourceID: c.ID.String(), OrgID: &orgID,
 		Details: map[string]any{"name": c.Name, "siteId": siteID, "tokenExpiresAt": exp}})
-	return Enrolment{Client: c, Token: tok, ExpiresAt: exp, AgentURL: st.AgentURL}, nil
+	return Enrollment{Client: c, Token: tok, ExpiresAt: exp, AgentURL: st.AgentURL}, nil
 }
 
 func (s *Service) lockClient(ctx context.Context, q *sqlcgen.Queries, orgID, id uuid.UUID) (sqlcgen.Client, error) {
@@ -127,38 +127,38 @@ func (s *Service) lockClient(ctx context.Context, q *sqlcgen.Queries, orgID, id 
 
 // ReenrollClient returns a client to pending with a fresh token and drops
 // its current agent certificate and socket.
-func (s *Service) ReenrollClient(ctx context.Context, orgID, id uuid.UUID) (Enrolment, error) {
+func (s *Service) ReenrollClient(ctx context.Context, orgID, id uuid.UUID) (Enrollment, error) {
 	ca, err := s.tokenCA(ctx)
 	if err != nil {
-		return Enrolment{}, err
+		return Enrollment{}, err
 	}
 	st := s.CurrentSettings(ctx)
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
-		return Enrolment{}, err
+		return Enrollment{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.Q.WithTx(tx)
 	cur, err := s.lockClient(ctx, q, orgID, id)
 	if err != nil {
-		return Enrolment{}, err
+		return Enrollment{}, err
 	}
 	if cur.Status == "revoked" {
-		return Enrolment{}, conflict("Revoked clients cannot re-enrol; create a new client.")
+		return Enrollment{}, conflict("Revoked clients cannot re-enroll; create a new client.")
 	}
 	c, err := q.SetClientPending(ctx, id)
 	if err != nil {
-		return Enrolment{}, err
+		return Enrollment{}, err
 	}
 	if err := q.DeleteEnrollmentRequestsForClient(ctx, id); err != nil {
-		return Enrolment{}, err
+		return Enrollment{}, err
 	}
 	tok, exp, err := s.issueToken(ctx, q, id, st, ca)
 	if err != nil {
-		return Enrolment{}, err
+		return Enrollment{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return Enrolment{}, err
+		return Enrollment{}, err
 	}
 	if s.Hub != nil {
 		s.Hub.Send(id, agentproto.Revoked{})
@@ -166,7 +166,7 @@ func (s *Service) ReenrollClient(ctx context.Context, orgID, id uuid.UUID) (Enro
 	}
 	s.audit(ctx, audit.Event{Action: "client.reenroll", ResourceType: "client", ResourceID: id.String(), OrgID: &orgID,
 		Details: map[string]any{"previousSerial": cur.AgentCertSerial, "previousStatus": cur.Status, "tokenExpiresAt": exp}})
-	return Enrolment{Client: c, Token: tok, ExpiresAt: exp, AgentURL: st.AgentURL}, nil
+	return Enrollment{Client: c, Token: tok, ExpiresAt: exp, AgentURL: st.AgentURL}, nil
 }
 
 // RevokeClient refuses the client's agent from now on. Idempotent.

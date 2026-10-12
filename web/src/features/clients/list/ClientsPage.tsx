@@ -111,18 +111,18 @@ export function ClientsPage() {
   const clearAll = () => void navigate({ search: {} });
   const emptyUnfiltered = !list.isPending && !list.isError && rows.length === 0 && chips.length === 0;
   const canWrite = !allOrgs && can(me, 'clients:write', org.id);
-  const enrol = canWrite ? (
+  const enroll = canWrite ? (
     <Button asChild>
       <Link to="/o/$org/clients/new" params={{ org: org.slug }}>
         <Plus className="size-4" aria-hidden />
-        Enrol client
+        Enroll client
       </Link>
     </Button>
   ) : (
     <PermissionTip allowed={false} action="clients:write">
       <Button disabled>
         <Plus className="size-4" aria-hidden />
-        Enrol client
+        Enroll client
       </Button>
     </PermissionTip>
   );
@@ -141,7 +141,7 @@ export function ClientsPage() {
       <PageHeader
         title="Clients"
         help="client.connection"
-        actions={emptyUnfiltered || allOrgs ? undefined : enrol}
+        actions={emptyUnfiltered || allOrgs ? undefined : enroll}
         activeFilters={chips.length}
         onClearFilters={clearAll}
         filterChips={<FilterChips chips={chips} onRemove={(k) => setSearch({ [k]: undefined })} onClear={clearAll} />}
@@ -192,7 +192,7 @@ export function ClientsPage() {
       />
       {!allOrgs && <ApprovalQueue />}
       {emptyUnfiltered ? (
-        <EmptyState message="No clients yet.">{!allOrgs && enrol}</EmptyState>
+        <EmptyState message="No clients yet.">{!allOrgs && enroll}</EmptyState>
       ) : (
         <>
           {cursorNotice && <p className="mb-3 text-xs text-ink-muted">The list changed since it was loaded; showing the first page again.</p>}

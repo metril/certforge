@@ -27,7 +27,7 @@ const (
 	discordDescriptionLimit = 4096
 )
 
-// discordColorBySeverity are the embed side-bar colours (Shared contract,
+// discordColorBySeverity are the embed side-bar colors (Shared contract,
 // Wire formats row).
 var discordColorBySeverity = map[string]int{
 	"info":     0x3B82F6,

@@ -108,7 +108,7 @@ export function useUpdateClient(orgId: string, id: string) {
   return useMutation({
     mutationFn: (body: ClientUpdate) => call(api.PATCH('/orgs/{orgId}/clients/{id}', { params: { path: { orgId, id } }, body })),
     meta: { silent: true, success: 'Client saved' },
-    // The renamed client's name is denormalised onto its grants
+    // The renamed client's name is denormalized onto its grants
     // (`Grant.clientName`) and deployments (`CertificateDeployment.clientName`).
     onSuccess: () => Promise.all([invalidateClients(qc, orgId), qc.invalidateQueries({ queryKey: ['grants', orgId] }), qc.invalidateQueries({ queryKey: ['deployments', orgId] })]),
   });

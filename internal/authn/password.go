@@ -44,7 +44,7 @@ const (
 )
 
 // Upper bounds on the argon2 cost read from a stored hash (VerifyPassword
-// honours the stored parameters), so a tampered row cannot make a login
+// honors the stored parameters), so a tampered row cannot make a login
 // allocate unbounded memory or time. m is in KiB: 1 GiB.
 const (
 	maxArgonMemory  uint32 = 1 << 20

@@ -222,7 +222,7 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-// withClientIP records the client address for audit events, honouring
+// withClientIP records the client address for audit events, honoring
 // X-Forwarded-For only from the authentication section's trusted proxies.
 func withClientIP(src *authn.SettingsSource) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {

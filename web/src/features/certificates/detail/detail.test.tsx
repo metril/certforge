@@ -112,7 +112,7 @@ it(
     // settles enough to render its own same-named button, so this test used
     // to click the header's button instead. Scoping to the visible tabpanel
     // (only the active tab's content matches `getByRole`'s default
-    // hidden-elements-excluded behaviour) guarantees this exercises the
+    // hidden-elements-excluded behavior) guarantees this exercises the
     // Versions tab's own `onRenew` wiring, not the header's.
     const panel = await screen.findByRole('tabpanel');
     await user.click(await within(panel).findByRole('button', { name: 'Renew now' }));

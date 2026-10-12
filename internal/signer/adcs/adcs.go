@@ -93,7 +93,7 @@ type Template struct {
 	MinKeySize int
 	// EnrollmentFlags are the template's msPKI-Enrollment-Flag bits.
 	EnrollmentFlags int
-	// CanEnroll reports whether the authenticated user may enrol.
+	// CanEnroll reports whether the authenticated user may enroll.
 	CanEnroll bool
 	// CAs are the authorities that issue the template.
 	CAs []CAInfo
@@ -213,7 +213,7 @@ func (s *Signer) post(ctx context.Context, url string, body []byte) (*respEnvelo
 	return env, perr
 }
 
-// Issue enrols a leaf: the CSR carries the template name extension, is sent
+// Issue enrolls a leaf: the CSR carries the template name extension, is sent
 // to CES as a WSTEP RST, and the PKCS#7 reply is split into the leaf (the
 // certificate matching the CSR key) and its chain. ErrPending and ErrDenied
 // report non-issued dispositions.

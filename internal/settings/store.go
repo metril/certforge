@@ -32,7 +32,7 @@ func (s *Store) SectionSecrets(ctx context.Context, sec *Section) (map[string]st
 }
 
 // StoredSecretKeys lists the secret properties that hold a value, sorted.
-// Always non-nil, so it serialises as [] rather than null when empty (the
+// Always non-nil, so it serializes as [] rather than null when empty (the
 // OpenAPI schema requires an array).
 func (s *Store) StoredSecretKeys(ctx context.Context, sec *Section) ([]string, error) {
 	m, err := s.SectionSecrets(ctx, sec)

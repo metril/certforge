@@ -19,7 +19,7 @@ Read by `certforge serve` and the other [server commands](server-cli.md). A bad 
 | `CF_BACKUP_SPOOL_DIR` | no | OS temp dir | Where a backup stages each table's unencrypted CSV (in a private `0700` subdirectory, deleted when the backup ends). Never the backup directory unless you set it so. If `/tmp` is a tmpfs the staged data sits in memory; point this at a disk path for that case. If no spool can be created the backup buffers tables in memory and logs a warning. |
 | `CF_ADMIN_PASSWORD` | no | – | Read only by `certforge bootstrap-admin`, as one-shot input. `serve` never reads it. See [server-cli.md](server-cli.md#bootstrap-admin). |
 
-The container image also honours Go's standard `SSL_CERT_FILE` and `SSL_CERT_DIR` for the system trust roots the server uses when it calls out (ACME CAs, webhooks, OIDC). DNS provider credentials use their own stored values, not the server's environment. The one exception is a credential that deliberately relies on the server's own cloud identity (an instance role, for example); only a global administrator can create one. See [DNS providers](dns-providers.md).
+The container image also honors Go's standard `SSL_CERT_FILE` and `SSL_CERT_DIR` for the system trust roots the server uses when it calls out (ACME CAs, webhooks, OIDC). DNS provider credentials use their own stored values, not the server's environment. The one exception is a credential that deliberately relies on the server's own cloud identity (an instance role, for example); only a global administrator can create one. See [DNS providers](dns-providers.md).
 
 ### The encryption key
 
@@ -169,10 +169,10 @@ The defaults match Let's Encrypt's published limits; a custom or staging CA may 
 
 | Field | Default | Bounds | Meaning |
 |---|---|---|---|
-| **Agent URL** (`agentUrl`) | `https://<CF_BASE_URL host>:8443` | `https://host[:port]`, no path | Where agents connect. Written into every enrolment token. When agents go through a proxy, enter the proxy's URL. Its host is always on the listener certificate. Enrolled agents keep signing for the old host: add it to Listener names before changing the URL, or re-enrol them. |
+| **Agent URL** (`agentUrl`) | `https://<CF_BASE_URL host>:8443` | `https://host[:port]`, no path | Where agents connect. Written into every enrollment token. When agents go through a proxy, enter the proxy's URL. Its host is always on the listener certificate. Enrolled agents keep signing for the old host: add it to Listener names before changing the URL, or re-enroll them. |
 | **Listener names** (`listenerNames`) | the `CF_BASE_URL` host and `localhost` | up to 20 entries, 253 characters each, DNS names or IPs | Extra names on the agent listener's certificate. Saving this section re-issues the certificate at once. |
-| **Enrolment token lifetime (hours)** (`tokenTtlHours`) | 24 | 1–720 | How long a new client's one-time token stays usable. |
-| **Require approval** (`requireApproval`) | on | – | An agent that presents a valid token waits for an administrator to approve its verification code. Off means a valid token alone enrols the agent. See [Clients](../guide/clients.md#approval). |
+| **Enrollment token lifetime (hours)** (`tokenTtlHours`) | 24 | 1–720 | How long a new client's one-time token stays usable. |
+| **Require approval** (`requireApproval`) | on | – | An agent that presents a valid token waits for an administrator to approve its verification code. Off means a valid token alone enrolls the agent. See [Clients](../guide/clients.md#approval). |
 | **Approval window (hours)** (`pendingTtlHours`) | 24 | 1–168 | How long a request waits for a decision, and then how long an approved agent has to collect its certificate. At most 50 requests wait per organization. |
 | **Agent certificate lifetime (days)** (`agentCertDays`) | 90 | 7–365 | Lifetime of an agent's identity certificate; agents renew at two thirds. |
 | **Heartbeat interval (seconds)** (`heartbeatSeconds`) | 60 | 15–3600 | How often agents report installed files for drift detection. |
@@ -206,7 +206,7 @@ Changing the host or port requires re-sending the password. **Send test email** 
 
 ### Notifications section
 
-**Settings → Integrations → Notifications** (`notifications`): behaviour shared by every notification channel.
+**Settings → Integrations → Notifications** (`notifications`): behavior shared by every notification channel.
 
 | Field | Default | Bounds | Meaning |
 |---|---|---|---|

@@ -315,7 +315,7 @@ func (s *Server) TestVaultSettings(ctx context.Context, req gen.TestVaultSetting
 	return gen.TestVaultSettings200JSONResponse(out), nil
 }
 
-// checkDefaultOrg rejects an authentication section whose default organisation does not exist.
+// checkDefaultOrg rejects an authentication section whose default organization does not exist.
 func (s *Server) checkDefaultOrg(ctx context.Context, raw json.RawMessage) error {
 	var v struct {
 		DefaultOrgID string `json:"defaultOrgId"`
@@ -328,7 +328,7 @@ func (s *Server) checkDefaultOrg(ctx context.Context, raw json.RawMessage) error
 		_, err = s.d.Queries.GetOrg(ctx, id)
 	}
 	if err != nil {
-		return &HTTPError{Status: http.StatusUnprocessableEntity, Title: "Invalid settings", Detail: "defaultOrgId: organisation not found"}
+		return &HTTPError{Status: http.StatusUnprocessableEntity, Title: "Invalid settings", Detail: "defaultOrgId: organization not found"}
 	}
 	return nil
 }

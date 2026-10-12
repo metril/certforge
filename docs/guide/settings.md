@@ -34,14 +34,14 @@ The **Global** scope also has a **Checks and limits** card with **Check CAA reco
 
 ## Agents
 
-**Settings → Agents** controls how client agents enrol and stay connected.
+**Settings → Agents** controls how client agents enroll and stay connected.
 
 | Field | What it does | Default |
 |---|---|---|
-| **Agent URL** (`agents.agentUrl`) | The address agents dial; it goes into every enrolment token. Only new enrolments pick up a change. Add the old host to Listener names first, or re-enrol the agents | `https://<host of CF_BASE_URL>:8443` |
+| **Agent URL** (`agents.agentUrl`) | The address agents dial; it goes into every enrollment token. Only new enrollments pick up a change. Add the old host to Listener names first, or re-enroll the agents | `https://<host of CF_BASE_URL>:8443` |
 | **Listener names** (`agents.listenerNames`) | Extra DNS names and IP addresses on the agent listener's certificate | none |
-| **Enrolment token lifetime (hours)** (`agents.tokenTtlHours`) | How long a new client's one-time token stays valid | 24 |
-| **Require approval** (`agents.requireApproval`) | New agents wait for an administrator to compare verification codes and approve. Off: any valid token enrols at once | on |
+| **Enrollment token lifetime (hours)** (`agents.tokenTtlHours`) | How long a new client's one-time token stays valid | 24 |
+| **Require approval** (`agents.requireApproval`) | New agents wait for an administrator to compare verification codes and approve. Off: any valid token enrolls at once | on |
 | **Approval window (hours)** (`agents.pendingTtlHours`) | How long a request waits for approval, and how long an approved agent has to collect its certificate. Greyed out when approval is off | 24 |
 | **Agent certificate lifetime (days)** (`agents.agentCertDays`) | Lifetime of an agent's identity certificate; agents renew at two thirds | 90 |
 | **Heartbeat interval (seconds)** (`agents.heartbeatSeconds`) | How often agents report installed files for drift detection | 60 |
@@ -78,7 +78,7 @@ Restoring is done on the command line with the server stopped; there is no resto
 
 **A secret field reads as stored but I need to change it.** Use **Replace**. For SMTP and Vault, changing the host, port, address or namespace means you must enter the secret again, because a stored secret is not sent to a different server.
 
-**My Agent URL change did not move existing agents.** Already enrolled agents keep the URL they enrolled with, and the server accepts the old host only while it is in Listener names. Add the old host there before changing the Agent URL, or re-enrol the agents ([Clients](clients.md)).
+**My Agent URL change did not move existing agents.** Already enrolled agents keep the URL they enrolled with, and the server accepts the old host only while it is in Listener names. Add the old host there before changing the Agent URL, or re-enroll the agents ([Clients](clients.md)).
 
 **The Agents section says the listener is not running.** The agent listener failed to start; check the server log for the cause and restart the server after fixing it.
 

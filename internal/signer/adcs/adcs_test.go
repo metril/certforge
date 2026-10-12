@@ -234,7 +234,7 @@ var maskRes = []*regexp.Regexp{
 	regexp.MustCompile(`(UsernameToken u:Id=")[^"]*`),
 }
 
-func normalise(s string) string {
+func normalize(s string) string {
 	s = regexp.MustCompile(`>\s+<`).ReplaceAllString(strings.TrimSpace(s), "><")
 	for _, re := range maskRes {
 		s = re.ReplaceAllString(s, "${1}MASKED")
@@ -245,7 +245,7 @@ func normalise(s string) string {
 func golden(t *testing.T, name, got string) {
 	t.Helper()
 	if os.Getenv("ADCS_UPDATE") != "" { // regenerate goldens: ADCS_UPDATE=1 go test
-		if err := os.WriteFile("testdata/"+name, []byte(normalise(got)+"\n"), 0o644); err != nil {
+		if err := os.WriteFile("testdata/"+name, []byte(normalize(got)+"\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -253,8 +253,8 @@ func golden(t *testing.T, name, got string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if normalise(got) != normalise(string(want)) {
-		t.Fatalf("%s mismatch:\n got: %s\nwant: %s", name, normalise(got), normalise(string(want)))
+	if normalize(got) != normalize(string(want)) {
+		t.Fatalf("%s mismatch:\n got: %s\nwant: %s", name, normalize(got), normalize(string(want)))
 	}
 }
 

@@ -65,7 +65,7 @@ it('raises awaiting-approval for a live request, ranked after expired and ahead 
     NOW,
     pending,
   );
-  expect(items.map((i) => [i.client.id, i.kind, i.cause])).toEqual([['p', 'awaiting-approval', 'Enrolment awaiting approval · expires in 3 h']]);
+  expect(items.map((i) => [i.client.id, i.kind, i.cause])).toEqual([['p', 'awaiting-approval', 'Enrollment awaiting approval · expires in 3 h']]);
   const certItems = attentionItems([makeCert({ id: 'x', status: 'failed', failureCount: 1, lastError: 'boom' })].map(briefOf), NOW);
   expect(attentionQueue(certItems, items).map((q) => q.item.kind)).toEqual(['awaiting-approval', 'failed']);
 });

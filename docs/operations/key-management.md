@@ -62,9 +62,9 @@ The agent CA signs every agent's identity certificate and the agent listener's c
 1. Open **Settings → Agents** and select **Rotate**. Type `rotate` to confirm.
 2. A new CA becomes **Active** and signs every new agent certificate. The old one becomes **Retiring**: it stays trusted and keeps signing the listener certificate, so every existing agent can still connect.
 3. Connected agents receive the new trust bundle, renew at once from the new CA, and reconnect.
-4. Agents in [pull mode](../guide/agents.md#pull-mode) and agents that were offline move when their certificate comes due for renewal (at two thirds of its lifetime, 60 days by default). The renew response carries the new trust bundle. To move one sooner, re-enrol it.
+4. Agents in [pull mode](../guide/agents.md#pull-mode) and agents that were offline move when their certificate comes due for renewal (at two thirds of its lifetime, 60 days by default). The renew response carries the new trust bundle. To move one sooner, re-enroll it.
 
-Unused enrolment tokens keep working until the old CA is retired.
+Unused enrollment tokens keep working until the old CA is retired.
 
 ### Retire the old CA
 
@@ -72,7 +72,7 @@ Unused enrolment tokens keep working until the old CA is retired.
 2. Select **Retire** next to it and type `retire` to confirm. **Retire** is disabled while any agent still uses the CA, and only a **Retiring** CA can be retired.
 3. The listener certificate is re-issued by the remaining oldest CA. By then every active agent trusts it.
 
-Enrolment tokens pin the CA that signs the listener certificate. A token created before the old CA was retired cannot be used afterwards, because the agent refuses a server chain that lacks the pinned CA. Re-enrol that client to get a new token.
+Enrollment tokens pin the CA that signs the listener certificate. A token created before the old CA was retired cannot be used afterwards, because the agent refuses a server chain that lacks the pinned CA. Re-enroll that client to get a new token.
 
 Rotate and retire are recorded as `agent_ca.rotate` and `agent_ca.retire`. The API is `GET /agents/ca`, `POST /agents/ca/rotate` and `POST /agents/ca/{id}/retire`; see the [API reference](../reference/api.md).
 
@@ -86,9 +86,9 @@ Rotate and retire are recorded as `agent_ca.rotate` and `agent_ca.retire`. The A
 
 **Startup says the previous key names the same key as the active key.** Remove `CF_KEK_PREVIOUS*` or set a different key.
 
-**Retire is disabled.** Some agents still hold a certificate from that CA. Wait for them to renew, or re-enrol them.
+**Retire is disabled.** Some agents still hold a certificate from that CA. Wait for them to renew, or re-enroll them.
 
-**An agent cannot enrol after a CA retire.** Its token pinned the retired CA. Re-enrol the client.
+**An agent cannot enroll after a CA retire.** Its token pinned the retired CA. Re-enroll the client.
 
 **The listener is not running.** The agent listener certificate could not be issued at startup. Fix the cause shown in the server log and restart the server.
 

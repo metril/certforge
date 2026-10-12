@@ -17,7 +17,7 @@ import (
 )
 
 // caaCritical is the CAA critical flag (RFC 8659 §4): a record with an
-// unrecognised tag and this bit set forbids issuance outright.
+// unrecognized tag and this bit set forbids issuance outright.
 const caaCritical = 0x80
 
 // CAARecord is one CAA resource record.
@@ -95,7 +95,7 @@ func caaFromAnswer(rrs []dns.RR) []CAARecord {
 	return out
 }
 
-// effectiveDNSServers normalises servers to host:port form, or reads
+// effectiveDNSServers normalizes servers to host:port form, or reads
 // /etc/resolv.conf when servers is empty.
 // DoH (https://) entries are skipped, falling back to the system resolvers
 // when nothing else remains: CAA lookups are advisory (the CA re-checks).
@@ -148,7 +148,7 @@ func effectiveDNSServers(servers []string) ([]string, error) {
 // lookup error fall back to a "success" detail, since the CA will still
 // evaluate CAA itself.
 func CheckCAA(ctx context.Context, r CAAResolver, names []string, identities []string, servers []string) (string, error) {
-	// Resolve the server list once: normalising an already-normalised list is
+	// Resolve the server list once: normalizing an already-normalized list is
 	// a no-op, so /etc/resolv.conf is read once per run, not once per lookup.
 	// On failure keep servers as given; each lookup then reports the same
 	// error itself, as it always did.
@@ -202,7 +202,7 @@ func CheckCAA(ctx context.Context, r CAAResolver, names []string, identities []s
 // caaParallelism bounds how many names CheckCAA climbs at once.
 const caaParallelism = 8
 
-// cachedCAAResolver memoises one CheckCAA run's lookups by label, so names
+// cachedCAAResolver memoizes one CheckCAA run's lookups by label, so names
 // sharing a parent (example.com for a.example.com and b.example.com) query
 // it once. Concurrent callers of the same label wait on its single lookup.
 type cachedCAAResolver struct {
@@ -266,7 +266,7 @@ func evaluateCAA(owner string, records []CAARecord, wildcard bool, identities []
 		}
 	}
 
-	// An unrecognised tag with the critical flag set forbids issuance
+	// An unrecognized tag with the critical flag set forbids issuance
 	// outright (RFC 8659 §4), regardless of what any issue/issuewild record
 	// says.
 	for _, rec := range records {

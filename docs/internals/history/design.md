@@ -7,7 +7,7 @@ Status: approved 2026-09-24. This is the source of truth for scope, architecture
 
 ## Context
 
-CertForge is a new, self-hosted certificate manager for a small team across several sites. It obtains certs from ACME CAs (Let's Encrypt and others) and from a private CA, stores them encrypted, and is the single place that decides which client gets which cert. Small agents on clients enrol with keypairs, connect over mTLS, and receive certs by push or pull. Humans log in via OIDC, machines via scoped API keys. Vault is optional for key wrapping, secret sync, and PKI signing. The outcome: never touch a cert by hand again, and see expiry and deployment state for everything at a glance.
+CertForge is a new, self-hosted certificate manager for a small team across several sites. It obtains certs from ACME CAs (Let's Encrypt and others) and from a private CA, stores them encrypted, and is the single place that decides which client gets which cert. Small agents on clients enroll with keypairs, connect over mTLS, and receive certs by push or pull. Humans log in via OIDC, machines via scoped API keys. Vault is optional for key wrapping, secret sync, and PKI signing. The outcome: never touch a cert by hand again, and see expiry and deployment state for everything at a glance.
 
 The repo at `projects/home-assistant/certforge` is empty (git init, no commits). Sibling project `meter-hunt` already uses pgx/v5, coder/websocket and a WebSocket agent protocol package (`internal/agentwire`) whose framing and pipe tests can be reused.
 
@@ -43,7 +43,7 @@ Everything else is a row in a `settings` table (typed key, JSON value, secrets e
 - **Settings → Authentication**: OIDC issuer, client id/secret, scopes, group claim, group-to-role mappings, session lifetime. Local admin login stays as break-glass.
 - **Settings → Integrations**: Vault (address, auth method, AppRole or token, namespace), SMTP, Prometheus toggle.
 - **Settings → Issuance defaults**: renewal policy, key type, preferred chain, ARI on/off, rate-limit thresholds, resolvers.
-- **Settings → Agents**: agent CA view and rotation, agent-listener TLS cert (self-signed, upload, or pick a CertForge-issued cert), enrolment token TTL, heartbeat interval, hook allowlist defaults.
+- **Settings → Agents**: agent CA view and rotation, agent-listener TLS cert (self-signed, upload, or pick a CertForge-issued cert), enrollment token TTL, heartbeat interval, hook allowlist defaults.
 - **Settings → Backup**: trigger backup, key reminder, restore upload.
 - **Entities with full CRUD screens**: orgs, sites, users and role bindings, API keys, CAs and ACME accounts, DNS credentials (form generated from provider schema), certificates, clients, grants and output specs, deploy targets, hooks, notification channels, external monitors, private CAs.
 
@@ -64,7 +64,7 @@ Every pluggable type (DNS provider, deploy target, notifier, signer) publishes a
 | `tls-alpn-01` | an agent that owns port 443 for that name | agent |
 | `manual-dns` | nothing; the UI shows the TXT records to add and waits for "I've added them" | operator |
 
-Example: `*.example.com` → dns-01 Cloudflare credential; `other.net` → dns-01 Route53 credential; `lab.local` → manual. A routing ChallengeProvider dispatches lego's Present/CleanUp per domain to the matching credential, so one cert can span several DNS providers. v1 constraint: one challenge method per cert (DNS credentials may differ per name); mixing dns-01 and http-01 in one cert is Phase 4, since lego picks the solver per authorization and needs a wrapper to honour per-name rules.
+Example: `*.example.com` → dns-01 Cloudflare credential; `other.net` → dns-01 Route53 credential; `lab.local` → manual. A routing ChallengeProvider dispatches lego's Present/CleanUp per domain to the matching credential, so one cert can span several DNS providers. v1 constraint: one challenge method per cert (DNS credentials may differ per name); mixing dns-01 and http-01 in one cert is Phase 4, since lego picks the solver per authorization and needs a wrapper to honor per-name rules.
 
 **Defaults and overrides.** Every issuance field exists at three levels: global defaults (Settings → Issuance defaults), org defaults, and the certificate. A null at a lower level inherits from the level above. The UI shows the effective value and an "inherited from global/org" badge, with a "override" toggle per field. Fields covered: CA, account, key type, renewal policy (days or percent, ARI), preferred chain, reuse key, must-staple, verification rules (catch-all), propagation timeout, resolvers, pre/post hooks, notification channels, deploy targets. Changing a default takes effect at the next renewal of every cert that inherits it.
 
@@ -132,9 +132,9 @@ certforge/
 3. Load or register ACME account (EAB if needed). `Signer.Issue` via lego with the ChallengeProvider and configured key type.
 4. Encrypt key, insert CertificateVersion. `next_renew_at` = ARI window if present, else `not_after` minus N days or a percentage of lifetime.
 5. Emit `cert.issued`: notifiers, server-side deploy targets, Vault KV sync, `sync` nudge to online agents with a grant.
-6. Failure: record attempt, back off `min(5m·2^n, 24h)` with ±20% jitter, honour `Retry-After` on rateLimited. Notify on 3rd failure or within 7 days of expiry. Daily ARI poll may pull renewal earlier.
+6. Failure: record attempt, back off `min(5m·2^n, 24h)` with ±20% jitter, honor `Retry-After` on rateLimited. Notify on 3rd failure or within 7 days of expiry. Daily ARI poll may pull renewal earlier.
 
-**Agent enrolment** (server runs an internal ECDSA P-256 CA for agent identity)
+**Agent enrollment** (server runs an internal ECDSA P-256 CA for agent identity)
 1. Operator creates a Client. Server returns one-time token `cf1.<server_url>.<agent-ca-sha256>.<secret>` (hashed at rest, 24h TTL).
 2. Agent generates ECDSA keypair (`/data/agent.key`, 0600) and CSR.
 3. `POST /agent/v1/enroll {token, csr, facts}` over TLS, server pinned by the CA fingerprint in the token (no trust-on-first-use).
@@ -192,8 +192,8 @@ URLs: `/login`, `/setup`, `/o/:org/{overview|certificates|clients|audit}`, `/o/:
 | `certificates` | Inventory | Name, names, status, validity bar, CA, next renew, grants | New certificate |
 | `certificates/new` | Issue | 4-step wizard | Issue certificate |
 | `certificates/:id` | Diagnose, manage | Tabs: Overview, Versions, Attempts, Deployments, Settings | Renew now |
-| `clients` | Fleet | Connection dot, site, agent version, grants, drift count, last seen | Enrol client |
-| `clients/new` | Enrol | Name, site → one-time token + `docker run` and compose snippets → live "waiting for agent" | Create token |
+| `clients` | Fleet | Connection dot, site, agent version, grants, drift count, last seen | Enroll client |
+| `clients/new` | Enroll | Name, site → one-time token + `docker run` and compose snippets → live "waiting for agent" | Create token |
 | `clients/:id` | Per-host state | Tabs: Certificates (grants), Hooks, Activity, Settings | Grant certificate |
 | `issuers/cas` | ACME + private endpoints | Preset cards (LE prod/staging, ZeroSSL, Buypass, GTS, SSL.com), Custom (directory URL, trust bundle, EAB) | Add CA |
 | `issuers/accounts` | ACME accounts | CA, email, status, registration URI | Register account |
@@ -207,7 +207,7 @@ URLs: `/login`, `/setup`, `/o/:org/{overview|certificates|clients|audit}`, `/o/:
 | `audit` | Evidence | Time, actor, action, resource, IP, JSON diff, filters, hash-chain status | Export CSV |
 | `settings/*` | Configuration | See nav table; every section has Save and, where relevant, "Test connection" or "Test login" | Save |
 
-**Dashboard.** Top to bottom: (1) health strip, shown only when something is wrong (scheduler stalled, KEK canary failed, Vault unreachable, listener cert under 14 days, no backup in 7 days); (2) needs-attention queue sorted by severity then time to impact, each row with cause, object, one inline fix (expired, issuance failed, waiting on manual-dns, renewal overdue, deploy failed, drift, client offline with grants, agent cert expiring); (3) 90-day expiry horizon, one tick per cert coloured by status, renewal window shaded, brushing filters the list; (4) upcoming renewals (7 days) beside recent activity (last 20). Count tiles are filters only. No vanity metrics.
+**Dashboard.** Top to bottom: (1) health strip, shown only when something is wrong (scheduler stalled, KEK canary failed, Vault unreachable, listener cert under 14 days, no backup in 7 days); (2) needs-attention queue sorted by severity then time to impact, each row with cause, object, one inline fix (expired, issuance failed, waiting on manual-dns, renewal overdue, deploy failed, drift, client offline with grants, agent cert expiring); (3) 90-day expiry horizon, one tick per cert colored by status, renewal window shaded, brushing filters the list; (4) upcoming renewals (7 days) beside recent activity (last 20). Count tiles are filters only. No vanity metrics.
 
 **Certificate create wizard.** Persistent summary rail on the right. Steps 3 and 4 skippable, so the fast path is paste names → pick credential → Issue.
 1. Names: multi-line paste box splitting on commas, spaces, newlines. Each name becomes a chip (wildcard = "DNS only", IP chip, invalid = red inline). First name is CN, drag to change. Grouped by registered domain.
@@ -223,7 +223,7 @@ manual-dns: amber action card on the detail page with a TXT table (name, type, v
 
 **Certificate detail.** Header: name, status chip, large validity bar with "renews in N d" marker, CA, account. Actions: Renew now, Download, Duplicate; overflow: Revoke (type name to confirm, reason code), Delete. Tabs: Overview (names, coverage, effective config, linked targets and channels); Versions (serial, validity, SHA-256, source, revoked, compare chains, download per version); Attempts (outcome, duration, ACME error type, expandable step timeline and log, next retry and backoff reason); Deployments (grant × client matrix with delivery, layout, target, state, installed vs current fingerprint, Redeploy); Settings (wizard steps as editable sections). Download sheet: version combobox, format segmented control (PEM, DER, PKCS#12 Modern2023 or legacy, JKS), part chips (cert, chain, fullchain, key, combined), generated password with copy for P12/JKS, key notice "recorded in audit log", key disabled without `keys:export`.
 
-**Client detail.** Header: connection dot and label (Online, Offline since, Never connected), hostname, site, agent version with "Update available" badge, capabilities, agent cert expiry. Tabs: Certificates (grants editor: cert, delivery, layout, target, auto-remediate, state; drift row expands to expected vs installed with Redeploy; "Grant certificate" picks several certs then a layout and target); Hooks (run history with phase, argv, exit code, duration, stdout/stderr); Activity (audit filtered to client); Settings (name, site, Re-enrol, Revoke with type-to-confirm).
+**Client detail.** Header: connection dot and label (Online, Offline since, Never connected), hostname, site, agent version with "Update available" badge, capabilities, agent cert expiry. Tabs: Certificates (grants editor: cert, delivery, layout, target, auto-remediate, state; drift row expands to expected vs installed with Redeploy; "Grant certificate" picks several certs then a layout and target); Hooks (run history with phase, argv, exit code, duration, stdout/stderr); Activity (audit filtered to client); Settings (name, site, Re-enroll, Revoke with type-to-confirm).
 
 **Controls: no checkboxes, no radio buttons.**
 - Booleans are toggle switches with the label on the left and state text on the right (On/Off, or the specific meaning such as "Rotate key on renewal").
@@ -246,8 +246,8 @@ manual-dns: amber action card on the detail page with a TXT table (name, type, v
 **Themes: dark and light.**
 - Both themes are first-class, designed together, not dark derived from light. Every token in the table below has a light and a dark value in `styles/tokens.css` under `:root` and `[data-theme="dark"]`, and `prefers-color-scheme` picks the default.
 - Toggle in the user menu with three options: System, Light, Dark. The choice persists per browser in localStorage and applies before first paint (inline script in `index.html`) to avoid a flash.
-- Status colours get separate dark values with the same hue so a chip reads the same in both themes. The validity bar, expiry horizon, and log viewer are checked in both themes as part of the Playwright smoke test (screenshot in each).
-- shadcn components are themed through the same tokens, so no component carries its own colours.
+- Status colors get separate dark values with the same hue so a chip reads the same in both themes. The validity bar, expiry horizon, and log viewer are checked in both themes as part of the Playwright smoke test (screenshot in each).
+- shadcn components are themed through the same tokens, so no component carries its own colors.
 - Surfaces form a four-step elevation ladder, darkest to lightest in dark and tinted greys in light: sidebar (`bg-sidebar`, with a right border) < page canvas (`bg-surface`) < card (`bg-panel` plus a border) < overlay (`bg-raised`: dialogs, sheets, popovers, menus, the palette). Shared components apply it: `Card`, a titled `FormSection`, `SchemaSection` and every table (`ui/table`, a framed container with a `bg-subtle` header) sit on the canvas as framed cards; a table or `FormSection` inside a `Card` drops its own frame. Nothing sits loose on the canvas, there is no borderless card variant, and no in-page shadow.
 
 **Cross-cutting patterns.**
@@ -256,8 +256,8 @@ manual-dns: amber action card on the detail page with a TXT table (name, type, v
 - Destructive: revoke and anything that orphans dependents require typing the name. Deleting a CA, credential, or layout lists dependents and is blocked while any exist.
 - Empty states give the next concrete step with a button.
 - Attempt log viewer: step timeline (CAA → rate ledger → account → order → per-name challenge → finalize → store), failing step expanded, ACME error type mapped to a plain explanation and fix link, raw log collapsible with search and copy.
-- Live status: TanStack Query polling. 2 s during an attempt or enrolment, 30 s on lists, paused when tab hidden. No SSE in v1.
-- Command palette (cmdk, Ctrl/Cmd-K): jump to any cert by any SAN, client, or settings page; actions New certificate, Enrol client, Renew x. Shortcuts `g o`, `g c`, `g l`, `n c`.
+- Live status: TanStack Query polling. 2 s during an attempt or enrollment, 30 s on lists, paused when tab hidden. No SSE in v1.
+- Command palette (cmdk, Ctrl/Cmd-K): jump to any cert by any SAN, client, or settings page; actions New certificate, Enroll client, Renew x. Shortcuts `g o`, `g c`, `g l`, `n c`.
 - Breakpoints: ≥1280 full sidebar, 768–1279 icon rail, <768 drawer nav and card lists (mobile targets triage, not configuration).
 **Visual direction.** Type: Atkinson Hyperlegible Next for UI, Atkinson Hyperlegible Mono for machine values only (FQDNs, fingerprints, paths, logs), chosen for 0/O and 1/l/I distinction. Scale 13/14/16/20/28, sentence case, no all-caps labels. Tokens (light / dark): ink `#1D2533` / `#E8EBF1`, surface `#F2F4F7` / `#0D1015`, panel `#FFFFFF` / `#171C25`, sidebar `#E8ECF1` / `#08090D`, raised `#FFFFFF` / `#1E2430`, border `#C5CCD8` / `#343E50`, primary `#2848B8` / `#7C97F0`, valid `#2E7D57` / `#5BC08A`, expiring `#B7791F` / `#E0A83F`, expired `#7F1D2D` / `#D9647A` filled, failed `#D0342C` / `#F0665E` outlined (an event, not a state), drift `#6B4BC8` / `#A48CF2`, pending `#4A6A8C` / `#8FAACB` animated dash. Contrast checked to WCAG AA in both themes. Density: 36 px rows, 6 px radius on controls, none on rows, no drop shadows in-page. Signature element: the **validity bar**, used everywhere a cert appears: thin track from not_before to not_after, shaded renewal window, "now" notch, ghost segment for the next version once issued.
 
@@ -279,7 +279,7 @@ web/src/
 |---|---|
 | 1 | Login (local admin), first-run wizard, Overview (cert tiles), Certificates list/detail/wizard (dns-01, manual-dns), PEM download, CAs, accounts, DNS credentials, Settings: General, Issuance defaults (Global + single org), Backup (KEK status). Org switcher hidden. |
 | 2 | Org/site switcher, All orgs, Settings: Access, Authentication, Audit log, orgs and sites CRUD |
-| 3 | Clients list/detail/enrol, grants editor, Deployments tab, File layouts, Deploy targets (Traefik), Hooks, drift and offline queue items, Settings → Agents |
+| 3 | Clients list/detail/enroll, grants editor, Deployments tab, File layouts, Deploy targets (Traefik), Hooks, drift and offline queue items, Settings → Agents |
 | 4 | DER/P12/JKS/bundles in Download, http-01 and tls-alpn-01 and per-rule method, Import and Upload screens, CAA and rate-ledger in attempt log, ARI field |
 | 5 | Private CAs, Settings → Integrations (Vault), KEK rotation and rewrap progress |
 | 6 | Alerts channels and monitors, SMTP and Prometheus, full Backup and restore |
@@ -366,7 +366,7 @@ Phase 7 delivered the target framework; vendor targets (Docker secrets, Kubernet
 | `docs/configuration.md` | Operators | Bootstrap env vars, first-run wizard, every Settings section with each field explained |
 | `docs/certificates.md` | Operators | Names, CAs and presets, EAB, verification methods and rules, defaults and overrides, renewal policy, ARI |
 | `docs/dns-providers.md` | Operators | Generated from lego schemas: one section per provider with required fields and notes |
-| `docs/agent.md` | Operators | Enrolment, docker run and compose examples, grants, file layouts, hooks and allowlist, Traefik integration, drift, troubleshooting |
+| `docs/agent.md` | Operators | Enrollment, docker run and compose examples, grants, file layouts, hooks and allowlist, Traefik integration, drift, troubleshooting |
 | `docs/deploy-targets.md` | Operators | One section per target with its fields and an example |
 | `docs/notifications.md` | Operators | Channels, event types, payload schemas for webhooks |
 | `docs/vault.md` | Operators | Transit, KV, PKI, auth methods, rotation |

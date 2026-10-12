@@ -171,11 +171,11 @@ it('says when the listener is not running, with the restart advice in a tooltip'
   expect(await screen.findByRole('dialog')).toHaveTextContent('Restart the server after fixing the cause.');
 });
 
-it('warns that the Agent URL only reaches new enrolments', async () => {
+it('warns that the Agent URL only reaches new enrollments', async () => {
   const { user } = renderRoute('/settings/agents');
   const field = (await screen.findByText('Agent URL')).closest('div')!;
   await user.hover(within(field).getByRole('button', { name: /^Help/ }));
-  expect(await screen.findByRole('tooltip')).toHaveTextContent('Only new enrolments pick up a changed URL');
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Only new enrollments pick up a changed URL');
 });
 
 it('greys out the approval window while approval is off, and shows tooltips', async () => {

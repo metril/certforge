@@ -103,7 +103,7 @@ func (a *agentAPI) limitEnroll(next http.Handler) http.Handler {
 		ip := audit.IPFrom(r.Context())
 		if ok, wait := a.d.EnrollLimiter.Allow(authn.LimitKey(ip)); !ok {
 			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
-			Write(w, http.StatusTooManyRequests, "Too many enrolment attempts", "Wait before trying again.")
+			Write(w, http.StatusTooManyRequests, "Too many enrollment attempts", "Wait before trying again.")
 			return
 		}
 		next.ServeHTTP(w, r)

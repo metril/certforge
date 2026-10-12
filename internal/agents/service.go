@@ -45,7 +45,7 @@ type Service struct {
 	Log      *slog.Logger
 	Now      func() time.Time
 
-	// OnPendingApproval, when set, is told about each enrolment request that
+	// OnPendingApproval, when set, is told about each enrollment request that
 	// starts waiting for an administrator (the client.pending_approval event).
 	OnPendingApproval func(ctx context.Context, e PendingApproval)
 

@@ -32,12 +32,12 @@ This applies when you upgrade from 0.8.0 or earlier to a release that includes t
 
 - **Old agents cannot talk to the new server**, and new agents cannot talk to an old server. The wire protocol is different: requests are signed, bodies are sealed, and the agent no longer authenticates with a TLS client certificate.
 - **Order:** upgrade the server first, then every agent. Until an agent is upgraded, its client shows **Offline** and its deployments stop updating. Files already on the host keep working; nothing is removed.
-- **Certificates stay valid.** Existing agent certificates, enrolled clients, grants and outstanding enrolment tokens keep working. Agents do not need to re-enrol.
-- **New enrolments need approval by default.** **Settings → Agents → Require approval** (`agents.requireApproval`) is on. A new agent waits in **Awaiting approval** until an administrator compares its verification code and approves. Existing clients are not affected. Turn the setting off if you rely on unattended enrolment. See [Clients](../guide/clients.md#approval).
+- **Certificates stay valid.** Existing agent certificates, enrolled clients, grants and outstanding enrollment tokens keep working. Agents do not need to re-enroll.
+- **New enrollments need approval by default.** **Settings → Agents → Require approval** (`agents.requireApproval`) is on. A new agent waits in **Awaiting approval** until an administrator compares its verification code and approves. Existing clients are not affected. Turn the setting off if you rely on unattended enrollment. See [Clients](../guide/clients.md#approval).
 - **A TLS-terminating proxy now works.** If you routed agents around your proxy only because of mutual TLS, you can send them through it. See [Deploying](deploying.md#put-a-reverse-proxy-in-front) and [Agents](../guide/agents.md#behind-a-proxy).
 - **Agent clocks must be within 60 s of the server.** Requests older or newer than that are refused. Enable NTP on agent hosts.
 - **Port 8443 is optional.** Agents may use the HTTP port. Keep 8443 published if agents still connect to it.
-- **Scripts that enrolled with a plain token body fail.** Only the shipped agent speaks the new enrolment exchange.
+- **Scripts that enrolled with a plain token body fail.** Only the shipped agent speaks the new enrollment exchange.
 
 Roll back by restoring the backup and the old images together.
 
@@ -59,7 +59,7 @@ UPDATE orgs SET slug = '<new-slug>' WHERE id = '<id>';
 
 **An upgraded agent logs `stale`.** Its clock is more than 60 s off. Fix the clock.
 
-**An upgraded agent logs `ENROLMENT WAITING FOR APPROVAL`.** It is enrolling again and approval is on. Approve it under **Clients**, or check why it lost its data directory.
+**An upgraded agent logs `ENROLLMENT WAITING FOR APPROVAL`.** It is enrolling again and approval is on. Approve it under **Clients**, or check why it lost its data directory.
 
 **The server does not start after the upgrade.** Read its log first. A wrong or missing encryption key stops it; see [Troubleshooting](troubleshooting.md#server).
 

@@ -57,7 +57,7 @@ func (h *enrollHellos) put(id string, priv *ecdh.PrivateKey, now time.Time) bool
 }
 
 // take removes and returns the key for id: each ephemeral key serves one
-// enrolment attempt, so a replayed body has nothing to open it.
+// enrollment attempt, so a replayed body has nothing to open it.
 func (h *enrollHellos) take(id string, now time.Time) (*ecdh.PrivateKey, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -113,7 +113,7 @@ func (a *agentAPI) enrollHello(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(out)
 }
 
-// sealedReply answers a verified enrolment request: v (or, for an error, a
+// sealedReply answers a verified enrollment request: v (or, for an error, a
 // problem) is HPKE-sealed to the agent's key and the response is signed over
 // the sealed bytes, bound to the request nonce.
 func (a *agentAPI) sealedReply(w http.ResponseWriter, status int, path, nonce string, to *ecdh.PublicKey, v any) {
@@ -141,7 +141,7 @@ func (a *agentAPI) sealedErr(w http.ResponseWriter, err error, path, nonce strin
 		a.sealedReply(w, he.Status, path, nonce, to, map[string]any{"title": he.Title, "status": he.Status, "detail": he.Detail})
 		return
 	}
-	a.d.Log.Error("agent enrolment failed", "err", err)
+	a.d.Log.Error("agent enrollment failed", "err", err)
 	a.sealedReply(w, http.StatusInternalServerError, path, nonce, to, map[string]any{"title": "Internal server error", "status": http.StatusInternalServerError})
 }
 
@@ -217,13 +217,13 @@ func (a *agentAPI) enroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The proof holds: from here the reply is sealed to the verified key and signed.
-	if fresh, nerr := a.nonces.Add("enrol|"+sub.LookupID+"|"+sub.Nonce, now); errors.Is(nerr, errNonceFull) {
+	if fresh, nerr := a.nonces.Add("enroll|"+sub.LookupID+"|"+sub.Nonce, now); errors.Is(nerr, errNonceFull) {
 		a.d.Log.Error("agent replay cache full; refusing signed requests until entries expire")
 		w.Header().Set("Retry-After", "5")
 		a.reject(w, http.StatusServiceUnavailable, "busy")
 		return
 	} else if nerr != nil || !fresh {
-		a.sealedReply(w, http.StatusUnauthorized, agentproto.PathEnroll, helloID, reply, map[string]any{"title": "Unauthorized", "status": http.StatusUnauthorized, "detail": "This enrolment request was already seen."})
+		a.sealedReply(w, http.StatusUnauthorized, agentproto.PathEnroll, helloID, reply, map[string]any{"title": "Unauthorized", "status": http.StatusUnauthorized, "detail": "This enrollment request was already seen."})
 		return
 	}
 	acc, err := a.d.Agents.SubmitEnrollment(r.Context(), tok, sub.CSR, sub.Facts, audit.IPFrom(r.Context()))

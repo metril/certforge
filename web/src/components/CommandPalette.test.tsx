@@ -258,7 +258,7 @@ it('closes on a second Ctrl-K pressed while its own search input has focus', asy
   await waitFor(() => expect(screen.queryByPlaceholderText('www.example.com')).toBeNull());
 });
 
-it('jumps to a client by hostname and offers Enrol client to writers', async () => {
+it('jumps to a client by hostname and offers Enroll client to writers', async () => {
   server.use(
     ...certificateHandlers(makeCert({ id: 'c-7', name: 'edge', commonName: 'edge.example.com' })),
     http.get(url('/orgs/org-1/clients'), () => HttpResponse.json({ items: [makeClient({ id: 'cl-4', name: 'db-1', hostname: 'db-1.rack-a.lan' })], nextCursor: null })),
@@ -269,7 +269,7 @@ it('jumps to a client by hostname and offers Enrol client to writers', async () 
   await screen.findByRole('heading', { name: 'Overview' });
   await user.keyboard('{Control>}k{/Control}');
   const dialog = await screen.findByRole('dialog');
-  expect(await within(dialog).findByText('Enrol client')).toBeInTheDocument();
+  expect(await within(dialog).findByText('Enroll client')).toBeInTheDocument();
   expect(within(dialog).getByText('Delivery: File layouts')).toBeInTheDocument();
   expect(within(dialog).getByText('Settings: Agents')).toBeInTheDocument();
   await user.type(within(dialog).getByPlaceholderText('www.example.com'), 'rack-a');
@@ -277,7 +277,7 @@ it('jumps to a client by hostname and offers Enrol client to writers', async () 
   await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/clients/cl-4/certificates'));
 });
 
-it('hides Enrol client and Delivery pages without the permissions', async () => {
+it('hides Enroll client and Delivery pages without the permissions', async () => {
   permissionOverride = { can: (a) => a === 'certs:read' || a === 'clients:read', canAnywhere: () => false };
   server.use(...certificateHandlers(makeCert({ id: 'c-7', name: 'edge', commonName: 'edge.example.com' })));
   const { user } = renderRoute('/o/acme/overview');
@@ -285,7 +285,7 @@ it('hides Enrol client and Delivery pages without the permissions', async () => 
   await user.keyboard('{Control>}k{/Control}');
   const dialog = await screen.findByRole('dialog');
   expect(await within(dialog).findByText('Clients')).toBeInTheDocument();
-  expect(within(dialog).queryByText('Enrol client')).not.toBeInTheDocument();
+  expect(within(dialog).queryByText('Enroll client')).not.toBeInTheDocument();
   expect(within(dialog).queryByText('Delivery: Deploy targets')).not.toBeInTheDocument();
 });
 

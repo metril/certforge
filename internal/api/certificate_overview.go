@@ -32,7 +32,7 @@ func (s *Server) GetCertificateOverview(ctx context.Context, r gen.GetCertificat
 }
 
 // GetAllCertificateOverview is GetCertificateOverview over every org the
-// caller can read, authorised like ListAllCertificates.
+// caller can read, authorized like ListAllCertificates.
 func (s *Server) GetAllCertificateOverview(ctx context.Context, _ gen.GetAllCertificateOverviewRequestObject) (gen.GetAllCertificateOverviewResponseObject, error) {
 	p, ok := authn.PrincipalFrom(ctx)
 	if !ok {

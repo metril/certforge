@@ -351,7 +351,7 @@ func sameCA(a, b *uuid.UUID) bool {
 }
 
 // checkMustStaple refuses mustStaple=true on a Defaults value whose effective
-// CA (caID, nil = none known) is private: only ACME CAs honour it. A stored
+// CA (caID, nil = none known) is private: only ACME CAs honor it. A stored
 // true sent back with an unchanged effective CA (storedCA) is grandfathered,
 // like an over-cap rule list, so an older row still saves; switching the CA
 // to a private one while keeping mustStaple on is refused.

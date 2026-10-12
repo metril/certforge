@@ -50,8 +50,8 @@ func enrollCSR(t *testing.T) (string, *ecdsa.PrivateKey) {
 }
 
 // tokenFor finds the stored token for a client created by CreateClient, the way
-// the enrol handler does after the proof of possession verified.
-func (f *syncFixture) tokenFor(t *testing.T, e Enrolment) EnrollToken {
+// the enroll handler does after the proof of possession verified.
+func (f *syncFixture) tokenFor(t *testing.T, e Enrollment) EnrollToken {
 	t.Helper()
 	tok, err := f.svc.EnrollTokenByLookup(context.Background(), agentproto.LookupIDBytes(agentproto.TokenHash(e.Token)))
 	if err != nil {
@@ -68,16 +68,16 @@ func kindOf(err error) Kind {
 	return 0
 }
 
-type enrolEnv struct {
+type enrollEnv struct {
 	*syncFixture
 	mu      sync.Mutex
 	now     time.Time
 	pending []PendingApproval
 }
 
-func newEnrolEnv(t *testing.T, st Settings) *enrolEnv {
+func newEnrollEnv(t *testing.T, st Settings) *enrollEnv {
 	t.Helper()
-	e := &enrolEnv{syncFixture: newSyncFixture(t), now: time.Now().UTC().Truncate(time.Second)}
+	e := &enrollEnv{syncFixture: newSyncFixture(t), now: time.Now().UTC().Truncate(time.Second)}
 	e.svc.Settings = StaticSettings(st, "https://cf.example.test")
 	e.svc.Now = func() time.Time { e.mu.Lock(); defer e.mu.Unlock(); return e.now }
 	e.svc.OnPendingApproval = func(_ context.Context, p PendingApproval) {
@@ -88,7 +88,7 @@ func newEnrolEnv(t *testing.T, st Settings) *enrolEnv {
 	return e
 }
 
-func (e *enrolEnv) submit(t *testing.T, name string) (Enrolment, agentproto.EnrollAccepted, string) {
+func (e *enrollEnv) submit(t *testing.T, name string) (Enrollment, agentproto.EnrollAccepted, string) {
 	t.Helper()
 	en, err := e.svc.CreateClient(context.Background(), e.org, name, nil)
 	if err != nil {
@@ -102,7 +102,7 @@ func (e *enrolEnv) submit(t *testing.T, name string) (Enrolment, agentproto.Enro
 	return en, acc, csr
 }
 
-func (e *enrolEnv) clientStatus(t *testing.T, id uuid.UUID) string {
+func (e *enrollEnv) clientStatus(t *testing.T, id uuid.UUID) string {
 	t.Helper()
 	c, err := e.q.GetClientByID(context.Background(), id)
 	if err != nil {
@@ -114,7 +114,7 @@ func (e *enrolEnv) clientStatus(t *testing.T, id uuid.UUID) string {
 // A token redeemed with approval on creates a pending request, notifies once,
 // issues nothing until approved, and the poll secret alone is not enough.
 func TestEnrollmentPendingApproveCollect(t *testing.T) {
-	e := newEnrolEnv(t, Settings{})
+	e := newEnrollEnv(t, Settings{})
 	ctx := context.Background()
 	en, acc, csr := e.submit(t, "web-1")
 	if acc.Status != agentproto.EnrollPending || len(acc.VerifyCode) != 8 || acc.PollSecret == "" || !acc.ExpiresAt.Equal(e.now.Add(24*time.Hour)) {
@@ -165,7 +165,7 @@ func TestEnrollmentPendingApproveCollect(t *testing.T) {
 }
 
 func TestEnrollmentReject(t *testing.T) {
-	e := newEnrolEnv(t, Settings{})
+	e := newEnrollEnv(t, Settings{})
 	ctx := context.Background()
 	en, acc, _ := e.submit(t, "web-1")
 	if err := e.svc.RejectEnrollment(ctx, uuid.New(), acc.ID); kindOf(err) != KindNotFound {
@@ -200,7 +200,7 @@ func TestEnrollmentReject(t *testing.T) {
 }
 
 func TestEnrollmentExpiry(t *testing.T) {
-	e := newEnrolEnv(t, Settings{PendingTTLHours: 2})
+	e := newEnrollEnv(t, Settings{PendingTTLHours: 2})
 	ctx := context.Background()
 	_, acc, _ := e.submit(t, "web-1")
 	if !acc.ExpiresAt.Equal(e.now.Add(2 * time.Hour)) {
@@ -229,7 +229,7 @@ func TestEnrollmentExpiry(t *testing.T) {
 }
 
 func TestEnrollmentPendingCap(t *testing.T) {
-	e := newEnrolEnv(t, Settings{})
+	e := newEnrollEnv(t, Settings{})
 	ctx := context.Background()
 	for i := range MaxPendingEnrollments {
 		e.submit(t, fmt.Sprintf("web-%d", i))
@@ -258,7 +258,7 @@ func TestEnrollmentPendingCap(t *testing.T) {
 
 func TestEnrollmentApprovalOff(t *testing.T) {
 	off := false
-	e := newEnrolEnv(t, Settings{RequireApproval: &off})
+	e := newEnrollEnv(t, Settings{RequireApproval: &off})
 	ctx := context.Background()
 	en, acc, _ := e.submit(t, "web-1")
 	if acc.Status != agentproto.EnrollApproved || len(e.pending) != 0 {
@@ -276,7 +276,7 @@ func TestEnrollmentApprovalOff(t *testing.T) {
 // The same key may redeem the request again (a lost reply) and gets a new poll
 // secret; another key may not, and the old secret stops working.
 func TestEnrollmentResubmit(t *testing.T) {
-	e := newEnrolEnv(t, Settings{})
+	e := newEnrollEnv(t, Settings{})
 	ctx := context.Background()
 	en, acc, csr := e.submit(t, "web-1")
 	again, err := e.svc.SubmitEnrollment(ctx, e.tokenFor(t, en), csr, agentproto.Facts{}, "")
@@ -299,7 +299,7 @@ func TestEnrollmentResubmit(t *testing.T) {
 }
 
 func TestEnrollmentUnknownTokenAndRevokedClient(t *testing.T) {
-	e := newEnrolEnv(t, Settings{})
+	e := newEnrollEnv(t, Settings{})
 	ctx := context.Background()
 	if _, err := e.svc.EnrollTokenByLookup(ctx, agentproto.LookupIDBytes(agentproto.TokenHash("cf1.unknown"))); kindOf(err) != KindUnauthorized {
 		t.Fatalf("unknown token: %v", err)
@@ -333,7 +333,7 @@ func TestEnrollmentUnknownTokenAndRevokedClient(t *testing.T) {
 
 // Concurrent submissions at the cap must not overshoot it.
 func TestEnrollmentPendingCapConcurrent(t *testing.T) {
-	e := newEnrolEnv(t, Settings{})
+	e := newEnrollEnv(t, Settings{})
 	ctx := context.Background()
 	for i := range MaxPendingEnrollments - 2 {
 		e.submit(t, fmt.Sprintf("web-%d", i))

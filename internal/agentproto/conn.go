@@ -1,6 +1,6 @@
 // Package agentproto is the wire protocol between the CertForge server and
 // certforge-agent: WebSocket message types, the REST bodies of /agent/v1/*,
-// the enrolment token format, and a transport-independent framing
+// the enrollment token format, and a transport-independent framing
 // interface. Authentication is mutual TLS on the agent listener (ADR 0009);
 // this package adds no cryptography of its own.
 package agentproto

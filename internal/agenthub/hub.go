@@ -92,7 +92,7 @@ func New(log *slog.Logger) *Hub {
 // until the session ends. Replies from handler are queued to the agent.
 //
 // verify, when non-nil, is called once right after registration, before
-// any message is processed: a revoke or re-enrolment that committed
+// any message is processed: a revoke or re-enrollment that committed
 // between the caller's own authentication check (for example requireAgent
 // verifying the TLS client certificate) and this call registering the
 // socket must not leave a connection open under a client id it no longer
@@ -192,7 +192,7 @@ func (h *Hub) write(ctx context.Context, c *conn, b []byte) error {
 
 // writer flushes queued application messages to the session and is the
 // only goroutine that closes it. keepalive writes ping frames to the same
-// session concurrently from its own goroutine; coder/websocket serialises
+// session concurrently from its own goroutine; coder/websocket serializes
 // writes (including pings) on the wire itself, so this is safe.
 func (h *Hub) writer(ctx context.Context, c *conn) {
 	for {

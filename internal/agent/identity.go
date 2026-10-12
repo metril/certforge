@@ -100,7 +100,7 @@ func clientIDFromCert(c *x509.Certificate) (uuid.UUID, error) {
 	return id, nil
 }
 
-// TokenHashHex is how state.json records the enrolment token.
+// TokenHashHex is how state.json records the enrollment token.
 func TokenHashHex(token string) string { return hex.EncodeToString(agentproto.TokenHash(token)) }
 
 // writeAtomic writes p through a temp file in the same directory: write,

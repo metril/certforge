@@ -229,7 +229,7 @@ export function highlightSet(flow: Flow, focusId: string | null | undefined, hov
 
 const traces = new WeakMap<Flow, Map<string, Set<string>>>();
 
-/** Node ids on the path through `id`, memoised per flow so re-filtering never re-traces. */
+/** Node ids on the path through `id`, memoized per flow so re-filtering never re-traces. */
 function tracedNodes(flow: Flow, id: string): Set<string> {
   let m = traces.get(flow);
   if (!m) traces.set(flow, (m = new Map()));

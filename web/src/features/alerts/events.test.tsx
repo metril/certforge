@@ -58,7 +58,7 @@ function captureQuery() {
   return seen;
 }
 
-it('kind multi-select sets kind params and summarises the trigger', async () => {
+it('kind multi-select sets kind params and summarizes the trigger', async () => {
   const seen = captureQuery();
   const { user } = renderRoute('/o/acme/alerts/events');
   const trigger = await screen.findByRole('combobox', { name: 'Kind' });

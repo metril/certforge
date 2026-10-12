@@ -39,7 +39,7 @@ const schema = {
     },
     groupsClaim: { type: 'string', title: 'Groups claim', description: "ID token claim listing the user's groups; group role bindings match these.", default: 'groups', maxLength: 128 },
     usernameClaim: { type: 'string', title: 'Username claim', description: 'Claim tried first for the display name.', default: 'preferred_username', maxLength: 128 },
-    defaultOrgId: { type: 'string', title: 'Default organisation', description: 'Organisation a first-time user is added to.' },
+    defaultOrgId: { type: 'string', title: 'Default organization', description: 'Organization a first-time user is added to.' },
     defaultRole: { type: 'string', title: 'Default role', description: 'Role granted on first sign-in.', enum: ['admin', 'org-admin', 'operator', 'viewer', 'auditor'], default: 'viewer' },
     allowedEmailDomains: { type: 'array', title: 'Allowed email domains', description: 'Only these domains receive the default role.', items: { type: 'string' }, default: [] },
     sessionTtlHours: { type: 'integer', title: 'Session lifetime (hours)', description: 'How long a sign-in lasts. Applies to new sessions.', minimum: 1, maximum: 720, default: 12 },
@@ -190,12 +190,12 @@ it('is read-only without settings:write', async () => {
   expect(screen.queryByRole('button', { name: 'Test connection' })).not.toBeInTheDocument();
 });
 
-it('picks the default organisation by name and sends its id with the role and domains', async () => {
+it('picks the default organization by name and sends its id with the role and domains', async () => {
   let put: Record<string, unknown> | undefined;
   server.use(...authHandlers({ authed: true }), ...handlers((b) => (put = b)));
   const { user } = renderRoute('/settings/authentication');
   await screen.findByText('Stored');
-  await user.click(screen.getByRole('combobox', { name: 'Default organisation' }));
+  await user.click(screen.getByRole('combobox', { name: 'Default organization' }));
   await user.click(await screen.findByText('Lab'));
   await user.click(screen.getByRole('radio', { name: 'operator' }));
   await user.type(screen.getByLabelText('Allowed email domains'), 'corp.test{Enter}');

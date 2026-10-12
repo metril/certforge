@@ -115,7 +115,7 @@ func SendMail(ctx context.Context, cfg SMTPSettings, password string, to []strin
 	}
 	defer func() { _ = client.Close() }()
 
-	// "starttls" is also the fallback for an empty/unrecognised Security —
+	// "starttls" is also the fallback for an empty/unrecognized Security —
 	// the schema's own default (smtp.schema.json: "security" default
 	// "starttls") — so an empty value behaves the same here as it does
 	// once the section has actually been saved.

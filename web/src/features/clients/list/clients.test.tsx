@@ -64,7 +64,7 @@ it('lists clients with status, connection, site, agent, grants, drift and last s
   expect(within(pending).getByText('Pending')).toBeInTheDocument();
   expect(within(pending).getByText('Never connected')).toBeInTheDocument();
   expect(within(pending).getByText('Never')).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Enrol client' })).toHaveAttribute('href', '/o/acme/clients/new');
+  expect(screen.getByRole('link', { name: 'Enroll client' })).toHaveAttribute('href', '/o/acme/clients/new');
 });
 
 it('shows a pull-only client seen 30 s ago as Online', async () => {
@@ -143,12 +143,12 @@ it('shows the stale-cursor notice from a background refetch too, not only a Load
   expect(rowOf(screen.getByRole('table', { name: 'Clients' }), 'web-1')).toBeInTheDocument();
 });
 
-it('shows one sentence and Enrol client when empty; a viewer gets it disabled', async () => {
+it('shows one sentence and Enroll client when empty; a viewer gets it disabled', async () => {
   items = [];
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))));
   renderRoute('/o/acme/clients');
   expect(await screen.findByText('No clients yet.')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Enrol client' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Enroll client' })).toBeDisabled();
 });
 
 it('renders card rows below md', async () => {
@@ -172,7 +172,7 @@ it('lists every org read-only under All orgs', async () => {
   const table = await findLoadedTable('Clients');
   expect(hit).toBe(true);
   expect(within(rowOf(table, 'lab-1')).getByText('Lab')).toBeInTheDocument();
-  expect(screen.queryByRole('link', { name: 'Enrol client' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Enroll client' })).not.toBeInTheDocument();
   expect(screen.queryByRole('combobox', { name: 'Site' })).not.toBeInTheDocument();
 });
 

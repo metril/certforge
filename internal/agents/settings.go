@@ -1,5 +1,5 @@
 // Package agents is the server side of certforge-agent: clients and
-// enrolment, grants and desired revisions, assignments, bundles, reports,
+// enrollment, grants and desired revisions, assignments, bundles, reports,
 // heartbeat drift, and the agents settings section.
 //
 // Global lock order: every transaction that can lock both a client row and a
@@ -41,10 +41,10 @@ const settingsSchema = `{
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "agentUrl": {"type": "string", "title": "Agent URL", "description": "The address agents dial, put into every enrolment token. Empty means https://<CF_BASE_URL host>:8443.", "pattern": "^(https://[^\\s/]+/?)?$", "examples": ["https://certforge.example.com:8443"]},
+    "agentUrl": {"type": "string", "title": "Agent URL", "description": "The address agents dial, put into every enrollment token. Empty means https://<CF_BASE_URL host>:8443.", "pattern": "^(https://[^\\s/]+/?)?$", "examples": ["https://certforge.example.com:8443"]},
     "listenerNames": {"type": "array", "title": "Listener names", "description": "DNS names and IP addresses on the agent listener's certificate. The Agent URL's host is always added. Empty means the CF_BASE_URL host and localhost.", "items": {"type": "string", "maxLength": 253}, "maxItems": 20, "default": []},
-    "tokenTtlHours": {"type": "integer", "title": "Enrolment token lifetime (hours)", "description": "How long a new client's one-time token stays usable.", "minimum": 1, "maximum": 720, "default": 24},
-    "agentCertDays": {"type": "integer", "title": "Agent certificate lifetime (days)", "description": "Lifetime of the client certificate an agent gets at enrolment; agents renew at two thirds.", "minimum": 7, "maximum": 365, "default": 90},
+    "tokenTtlHours": {"type": "integer", "title": "Enrollment token lifetime (hours)", "description": "How long a new client's one-time token stays usable.", "minimum": 1, "maximum": 720, "default": 24},
+    "agentCertDays": {"type": "integer", "title": "Agent certificate lifetime (days)", "description": "Lifetime of the client certificate an agent gets at enrollment; agents renew at two thirds.", "minimum": 7, "maximum": 365, "default": 90},
     "heartbeatSeconds": {"type": "integer", "title": "Heartbeat interval (seconds)", "description": "How often agents report installed files for drift detection.", "minimum": 15, "maximum": 3600, "default": 60},
     "offlineAfterSeconds": {"type": "integer", "title": "Offline after (seconds)", "description": "A client not seen for this long shows as offline.", "minimum": 30, "maximum": 86400, "default": 180},
     "requireApproval": {"type": "boolean", "title": "Require approval", "description": "An agent that presents a valid token waits for an administrator to approve its verification code before it receives a certificate. Turn off only if a token alone should be enough.", "default": true},
@@ -173,13 +173,13 @@ func (s Settings) Names() []string {
 	return out
 }
 
-// TokenTTL is the enrolment token lifetime.
+// TokenTTL is the enrollment token lifetime.
 func (s Settings) TokenTTL() time.Duration { return time.Duration(s.TokenTTLHours) * time.Hour }
 
 // ApprovalRequired reports whether a redeemed token waits for an administrator.
 func (s Settings) ApprovalRequired() bool { return s.RequireApproval == nil || *s.RequireApproval }
 
-// PendingTTL is how long an enrolment request waits for approval, and then
+// PendingTTL is how long an enrollment request waits for approval, and then
 // for collection.
 func (s Settings) PendingTTL() time.Duration { return time.Duration(s.PendingTTLHours) * time.Hour }
 

@@ -210,7 +210,7 @@ func TestWorkerCAAStepDisabled(t *testing.T) {
 // is only worth setting when useAri is on and the current version was
 // actually issued by the very CA this attempt is going to — an imported or
 // uploaded version, or one issued elsewhere, has nothing this CA would
-// recognise as ReplacesCertID.
+// recognize as ReplacesCertID.
 func TestReplacesEligible(t *testing.T) {
 	ca := uuid.New()
 	other := uuid.New()
