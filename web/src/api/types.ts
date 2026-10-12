@@ -97,6 +97,7 @@ export type DeploymentState = S['DeploymentState'];
 export type FileDigest = S['FileDigest'];
 export type CertificateDeployment = S['CertificateDeployment'];
 export type HookRun = S['HookRun'];
+export type HookRunList = S['HookRunList'];
 export type Layout = S['Layout'];
 export type LayoutInput = S['LayoutInput'];
 export type OutputFile = S['OutputFile'];
