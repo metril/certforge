@@ -3968,8 +3968,8 @@ type CreateSiteJSONRequestBody = SiteInput
 // UpdateSiteJSONRequestBody defines body for UpdateSite for application/json ContentType.
 type UpdateSiteJSONRequestBody = SiteInput
 
-// PeekTlsJSONRequestBody defines body for PeekTls for application/json ContentType.
-type PeekTlsJSONRequestBody = TlsPeekRequest
+// PeekTLSJSONRequestBody defines body for PeekTLS for application/json ContentType.
+type PeekTLSJSONRequestBody = TlsPeekRequest
 
 // CreateRoleBindingJSONRequestBody defines body for CreateRoleBinding for application/json ContentType.
 type CreateRoleBindingJSONRequestBody = RoleBindingInput
@@ -4530,10 +4530,10 @@ type ClientInterface interface {
 
 	UpdateSite(ctx context.Context, orgId OrgId, id Id, body UpdateSiteJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// PeekTlsWithBody request with any body
-	PeekTlsWithBody(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// PeekTLSWithBody request with any body
+	PeekTLSWithBody(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	PeekTls(ctx context.Context, orgId OrgId, body PeekTlsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	PeekTLS(ctx context.Context, orgId OrgId, body PeekTLSJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListRoleBindings request
 	ListRoleBindings(ctx context.Context, params *ListRoleBindingsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6608,8 +6608,8 @@ func (c *APIClient) UpdateSite(ctx context.Context, orgId OrgId, id Id, body Upd
 	return c.Client.Do(req)
 }
 
-func (c *APIClient) PeekTlsWithBody(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPeekTlsRequestWithBody(c.Server, orgId, contentType, body)
+func (c *APIClient) PeekTLSWithBody(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPeekTLSRequestWithBody(c.Server, orgId, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -6620,8 +6620,8 @@ func (c *APIClient) PeekTlsWithBody(ctx context.Context, orgId OrgId, contentTyp
 	return c.Client.Do(req)
 }
 
-func (c *APIClient) PeekTls(ctx context.Context, orgId OrgId, body PeekTlsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPeekTlsRequest(c.Server, orgId, body)
+func (c *APIClient) PeekTLS(ctx context.Context, orgId OrgId, body PeekTLSJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPeekTLSRequest(c.Server, orgId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -13128,19 +13128,19 @@ func NewUpdateSiteRequestWithBody(server string, orgId OrgId, id Id, contentType
 	return req, nil
 }
 
-// NewPeekTlsRequest calls the generic PeekTls builder with application/json body
-func NewPeekTlsRequest(server string, orgId OrgId, body PeekTlsJSONRequestBody) (*http.Request, error) {
+// NewPeekTLSRequest calls the generic PeekTLS builder with application/json body
+func NewPeekTLSRequest(server string, orgId OrgId, body PeekTLSJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewPeekTlsRequestWithBody(server, orgId, "application/json", bodyReader)
+	return NewPeekTLSRequestWithBody(server, orgId, "application/json", bodyReader)
 }
 
-// NewPeekTlsRequestWithBody generates requests for PeekTls with any type of body
-func NewPeekTlsRequestWithBody(server string, orgId OrgId, contentType string, body io.Reader) (*http.Request, error) {
+// NewPeekTLSRequestWithBody generates requests for PeekTLS with any type of body
+func NewPeekTLSRequestWithBody(server string, orgId OrgId, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -14225,10 +14225,10 @@ type ClientWithResponsesInterface interface {
 
 	UpdateSiteWithResponse(ctx context.Context, orgId OrgId, id Id, body UpdateSiteJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSiteResponse, error)
 
-	// PeekTlsWithBodyWithResponse request with any body
-	PeekTlsWithBodyWithResponse(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PeekTlsResponse, error)
+	// PeekTLSWithBodyWithResponse request with any body
+	PeekTLSWithBodyWithResponse(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PeekTLSResponse, error)
 
-	PeekTlsWithResponse(ctx context.Context, orgId OrgId, body PeekTlsJSONRequestBody, reqEditors ...RequestEditorFn) (*PeekTlsResponse, error)
+	PeekTLSWithResponse(ctx context.Context, orgId OrgId, body PeekTLSJSONRequestBody, reqEditors ...RequestEditorFn) (*PeekTLSResponse, error)
 
 	// ListRoleBindingsWithResponse request
 	ListRoleBindingsWithResponse(ctx context.Context, params *ListRoleBindingsParams, reqEditors ...RequestEditorFn) (*ListRoleBindingsResponse, error)
@@ -17822,7 +17822,7 @@ func (r UpdateSiteResponse) StatusCode() int {
 	return 0
 }
 
-type PeekTlsResponse struct {
+type PeekTLSResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
 	JSON200                   *TlsPeekResult
@@ -17838,7 +17838,7 @@ type PeekTlsResponse struct {
 }
 
 // Status returns HTTPResponse.Status
-func (r PeekTlsResponse) Status() string {
+func (r PeekTLSResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -17846,7 +17846,7 @@ func (r PeekTlsResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r PeekTlsResponse) StatusCode() int {
+func (r PeekTLSResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -19710,21 +19710,21 @@ func (c *ClientWithResponses) UpdateSiteWithResponse(ctx context.Context, orgId 
 	return ParseUpdateSiteResponse(rsp)
 }
 
-// PeekTlsWithBodyWithResponse request with arbitrary body returning *PeekTlsResponse
-func (c *ClientWithResponses) PeekTlsWithBodyWithResponse(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PeekTlsResponse, error) {
-	rsp, err := c.PeekTlsWithBody(ctx, orgId, contentType, body, reqEditors...)
+// PeekTLSWithBodyWithResponse request with arbitrary body returning *PeekTLSResponse
+func (c *ClientWithResponses) PeekTLSWithBodyWithResponse(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PeekTLSResponse, error) {
+	rsp, err := c.PeekTLSWithBody(ctx, orgId, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParsePeekTlsResponse(rsp)
+	return ParsePeekTLSResponse(rsp)
 }
 
-func (c *ClientWithResponses) PeekTlsWithResponse(ctx context.Context, orgId OrgId, body PeekTlsJSONRequestBody, reqEditors ...RequestEditorFn) (*PeekTlsResponse, error) {
-	rsp, err := c.PeekTls(ctx, orgId, body, reqEditors...)
+func (c *ClientWithResponses) PeekTLSWithResponse(ctx context.Context, orgId OrgId, body PeekTLSJSONRequestBody, reqEditors ...RequestEditorFn) (*PeekTLSResponse, error) {
+	rsp, err := c.PeekTLS(ctx, orgId, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParsePeekTlsResponse(rsp)
+	return ParsePeekTLSResponse(rsp)
 }
 
 // ListRoleBindingsWithResponse request returning *ListRoleBindingsResponse
@@ -28142,15 +28142,15 @@ func ParseUpdateSiteResponse(rsp *http.Response) (*UpdateSiteResponse, error) {
 	return response, nil
 }
 
-// ParsePeekTlsResponse parses an HTTP response from a PeekTlsWithResponse call
-func ParsePeekTlsResponse(rsp *http.Response) (*PeekTlsResponse, error) {
+// ParsePeekTLSResponse parses an HTTP response from a PeekTLSWithResponse call
+func ParsePeekTLSResponse(rsp *http.Response) (*PeekTLSResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &PeekTlsResponse{
+	response := &PeekTLSResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}

@@ -21,11 +21,11 @@ func TestPeekTLS(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	defer srv.Close()
 	peek := func(role, url string) (gen.TlsPeekResult, error) {
-		res, err := f.srv.PeekTls(f.as(role), gen.PeekTlsRequestObject{OrgId: f.org, Body: &gen.TlsPeekRequest{Url: url}})
+		res, err := f.srv.PeekTLS(f.as(role), gen.PeekTLSRequestObject{OrgId: f.org, Body: &gen.TlsPeekRequest{Url: url}})
 		if err != nil {
 			return gen.TlsPeekResult{}, err
 		}
-		return gen.TlsPeekResult(res.(gen.PeekTls200JSONResponse)), nil
+		return gen.TlsPeekResult(res.(gen.PeekTLS200JSONResponse)), nil
 	}
 
 	_, err := peek("viewer", srv.URL)

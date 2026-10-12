@@ -3975,8 +3975,8 @@ type CreateSiteJSONRequestBody = SiteInput
 // UpdateSiteJSONRequestBody defines body for UpdateSite for application/json ContentType.
 type UpdateSiteJSONRequestBody = SiteInput
 
-// PeekTlsJSONRequestBody defines body for PeekTls for application/json ContentType.
-type PeekTlsJSONRequestBody = TlsPeekRequest
+// PeekTLSJSONRequestBody defines body for PeekTLS for application/json ContentType.
+type PeekTLSJSONRequestBody = TlsPeekRequest
 
 // CreateRoleBindingJSONRequestBody defines body for CreateRoleBinding for application/json ContentType.
 type CreateRoleBindingJSONRequestBody = RoleBindingInput
@@ -4390,7 +4390,7 @@ type ServerInterface interface {
 	UpdateSite(w http.ResponseWriter, r *http.Request, orgId OrgId, id Id)
 	// Fetch a server's TLS certificate chain
 	// (POST /orgs/{orgId}/tls/peek)
-	PeekTls(w http.ResponseWriter, r *http.Request, orgId OrgId)
+	PeekTLS(w http.ResponseWriter, r *http.Request, orgId OrgId)
 	// List role bindings
 	// (GET /role-bindings)
 	ListRoleBindings(w http.ResponseWriter, r *http.Request, params ListRoleBindingsParams)
@@ -5215,7 +5215,7 @@ func (_ Unimplemented) UpdateSite(w http.ResponseWriter, r *http.Request, orgId 
 
 // Fetch a server's TLS certificate chain
 // (POST /orgs/{orgId}/tls/peek)
-func (_ Unimplemented) PeekTls(w http.ResponseWriter, r *http.Request, orgId OrgId) {
+func (_ Unimplemented) PeekTLS(w http.ResponseWriter, r *http.Request, orgId OrgId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -10430,8 +10430,8 @@ func (siw *ServerInterfaceWrapper) UpdateSite(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
-// PeekTls operation middleware
-func (siw *ServerInterfaceWrapper) PeekTls(w http.ResponseWriter, r *http.Request) {
+// PeekTLS operation middleware
+func (siw *ServerInterfaceWrapper) PeekTLS(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 
@@ -10453,7 +10453,7 @@ func (siw *ServerInterfaceWrapper) PeekTls(w http.ResponseWriter, r *http.Reques
 	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PeekTls(w, r, orgId)
+		siw.Handler.PeekTLS(w, r, orgId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -11332,7 +11332,7 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Patch(options.BaseURL+"/orgs/{orgId}/sites/{id}", wrapper.UpdateSite)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/orgs/{orgId}/tls/peek", wrapper.PeekTls)
+		r.Post(options.BaseURL+"/orgs/{orgId}/tls/peek", wrapper.PeekTLS)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/role-bindings", wrapper.ListRoleBindings)
@@ -21784,117 +21784,117 @@ func (response UpdateSite500ApplicationProblemPlusJSONResponse) VisitUpdateSiteR
 	return json.NewEncoder(w).Encode(response)
 }
 
-type PeekTlsRequestObject struct {
+type PeekTLSRequestObject struct {
 	OrgId OrgId `json:"orgId"`
-	Body  *PeekTlsJSONRequestBody
+	Body  *PeekTLSJSONRequestBody
 }
 
-type PeekTlsResponseObject interface {
-	VisitPeekTlsResponse(w http.ResponseWriter) error
+type PeekTLSResponseObject interface {
+	VisitPeekTLSResponse(w http.ResponseWriter) error
 }
 
-type PeekTls200JSONResponse TlsPeekResult
+type PeekTLS200JSONResponse TlsPeekResult
 
-func (response PeekTls200JSONResponse) VisitPeekTlsResponse(w http.ResponseWriter) error {
+func (response PeekTLS200JSONResponse) VisitPeekTLSResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type PeekTls400ApplicationProblemPlusJSONResponse struct {
+type PeekTLS400ApplicationProblemPlusJSONResponse struct {
 	BadRequestApplicationProblemPlusJSONResponse
 }
 
-func (response PeekTls400ApplicationProblemPlusJSONResponse) VisitPeekTlsResponse(w http.ResponseWriter) error {
+func (response PeekTLS400ApplicationProblemPlusJSONResponse) VisitPeekTLSResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(400)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type PeekTls401ApplicationProblemPlusJSONResponse struct {
+type PeekTLS401ApplicationProblemPlusJSONResponse struct {
 	UnauthorizedApplicationProblemPlusJSONResponse
 }
 
-func (response PeekTls401ApplicationProblemPlusJSONResponse) VisitPeekTlsResponse(w http.ResponseWriter) error {
+func (response PeekTLS401ApplicationProblemPlusJSONResponse) VisitPeekTLSResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(401)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type PeekTls403ApplicationProblemPlusJSONResponse struct {
+type PeekTLS403ApplicationProblemPlusJSONResponse struct {
 	ForbiddenApplicationProblemPlusJSONResponse
 }
 
-func (response PeekTls403ApplicationProblemPlusJSONResponse) VisitPeekTlsResponse(w http.ResponseWriter) error {
+func (response PeekTLS403ApplicationProblemPlusJSONResponse) VisitPeekTLSResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(403)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type PeekTls404ApplicationProblemPlusJSONResponse struct {
+type PeekTLS404ApplicationProblemPlusJSONResponse struct {
 	NotFoundApplicationProblemPlusJSONResponse
 }
 
-func (response PeekTls404ApplicationProblemPlusJSONResponse) VisitPeekTlsResponse(w http.ResponseWriter) error {
+func (response PeekTLS404ApplicationProblemPlusJSONResponse) VisitPeekTLSResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(404)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type PeekTls413ApplicationProblemPlusJSONResponse struct {
+type PeekTLS413ApplicationProblemPlusJSONResponse struct {
 	PayloadTooLargeApplicationProblemPlusJSONResponse
 }
 
-func (response PeekTls413ApplicationProblemPlusJSONResponse) VisitPeekTlsResponse(w http.ResponseWriter) error {
+func (response PeekTLS413ApplicationProblemPlusJSONResponse) VisitPeekTLSResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(413)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type PeekTls415ApplicationProblemPlusJSONResponse struct {
+type PeekTLS415ApplicationProblemPlusJSONResponse struct {
 	UnsupportedMediaTypeApplicationProblemPlusJSONResponse
 }
 
-func (response PeekTls415ApplicationProblemPlusJSONResponse) VisitPeekTlsResponse(w http.ResponseWriter) error {
+func (response PeekTLS415ApplicationProblemPlusJSONResponse) VisitPeekTLSResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(415)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type PeekTls422ApplicationProblemPlusJSONResponse struct {
+type PeekTLS422ApplicationProblemPlusJSONResponse struct {
 	UnprocessableEntityApplicationProblemPlusJSONResponse
 }
 
-func (response PeekTls422ApplicationProblemPlusJSONResponse) VisitPeekTlsResponse(w http.ResponseWriter) error {
+func (response PeekTLS422ApplicationProblemPlusJSONResponse) VisitPeekTLSResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(422)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type PeekTls500ApplicationProblemPlusJSONResponse struct {
+type PeekTLS500ApplicationProblemPlusJSONResponse struct {
 	InternalErrorApplicationProblemPlusJSONResponse
 }
 
-func (response PeekTls500ApplicationProblemPlusJSONResponse) VisitPeekTlsResponse(w http.ResponseWriter) error {
+func (response PeekTLS500ApplicationProblemPlusJSONResponse) VisitPeekTLSResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(500)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type PeekTls503ApplicationProblemPlusJSONResponse struct {
+type PeekTLS503ApplicationProblemPlusJSONResponse struct {
 	ServiceUnavailableApplicationProblemPlusJSONResponse
 }
 
-func (response PeekTls503ApplicationProblemPlusJSONResponse) VisitPeekTlsResponse(w http.ResponseWriter) error {
+func (response PeekTLS503ApplicationProblemPlusJSONResponse) VisitPeekTLSResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
 	w.WriteHeader(503)
@@ -23387,7 +23387,7 @@ type StrictServerInterface interface {
 	UpdateSite(ctx context.Context, request UpdateSiteRequestObject) (UpdateSiteResponseObject, error)
 	// Fetch a server's TLS certificate chain
 	// (POST /orgs/{orgId}/tls/peek)
-	PeekTls(ctx context.Context, request PeekTlsRequestObject) (PeekTlsResponseObject, error)
+	PeekTLS(ctx context.Context, request PeekTLSRequestObject) (PeekTLSResponseObject, error)
 	// List role bindings
 	// (GET /role-bindings)
 	ListRoleBindings(ctx context.Context, request ListRoleBindingsRequestObject) (ListRoleBindingsResponseObject, error)
@@ -27136,13 +27136,13 @@ func (sh *strictHandler) UpdateSite(w http.ResponseWriter, r *http.Request, orgI
 	}
 }
 
-// PeekTls operation middleware
-func (sh *strictHandler) PeekTls(w http.ResponseWriter, r *http.Request, orgId OrgId) {
-	var request PeekTlsRequestObject
+// PeekTLS operation middleware
+func (sh *strictHandler) PeekTLS(w http.ResponseWriter, r *http.Request, orgId OrgId) {
+	var request PeekTLSRequestObject
 
 	request.OrgId = orgId
 
-	var body PeekTlsJSONRequestBody
+	var body PeekTLSJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
 		return
@@ -27150,18 +27150,18 @@ func (sh *strictHandler) PeekTls(w http.ResponseWriter, r *http.Request, orgId O
 	request.Body = &body
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.PeekTls(ctx, request.(PeekTlsRequestObject))
+		return sh.ssi.PeekTLS(ctx, request.(PeekTLSRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "PeekTls")
+		handler = middleware(handler, "PeekTLS")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(PeekTlsResponseObject); ok {
-		if err := validResponse.VisitPeekTlsResponse(w); err != nil {
+	} else if validResponse, ok := response.(PeekTLSResponseObject); ok {
+		if err := validResponse.VisitPeekTLSResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -28274,46 +28274,46 @@ var swaggerSpec = []string{
 	"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",
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

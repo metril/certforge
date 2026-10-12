@@ -23,9 +23,9 @@ var tlsPeekSlots = make(chan struct{}, 2)
 var errTLSPeekBusy = &HTTPError{Status: http.StatusServiceUnavailable, Title: "Service busy",
 	Detail: "Too many concurrent certificate lookups; retry shortly."}
 
-// PeekTls returns the certificate chain a server presents. Connection
+// PeekTLS returns the certificate chain a server presents. Connection
 // failures are 200 with ok false.
-func (s *Server) PeekTls(ctx context.Context, r gen.PeekTlsRequestObject) (gen.PeekTlsResponseObject, error) {
+func (s *Server) PeekTLS(ctx context.Context, r gen.PeekTLSRequestObject) (gen.PeekTLSResponseObject, error) {
 	if _, err := authorizeAny(ctx, &r.OrgId, authz.ActionDeliveryWrite, authz.ActionCAsWrite); err != nil {
 		return nil, err
 	}
@@ -63,7 +63,7 @@ func (s *Server) PeekTls(ctx context.Context, r gen.PeekTlsRequestObject) (gen.P
 	}
 	s.audit(ctx, audit.Event{Action: "tls.peek", ResourceType: "org", OrgID: &r.OrgId,
 		Details: map[string]any{"url": r.Body.Url}})
-	return gen.PeekTls200JSONResponse(out), nil
+	return gen.PeekTLS200JSONResponse(out), nil
 }
 
 func hostPort(host, port string) string {

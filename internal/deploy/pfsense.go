@@ -113,11 +113,11 @@ func (t PfSense) Parse(raw json.RawMessage) (targets.Config, error) {
 	if c.TimeoutSeconds < 5 || c.TimeoutSeconds > 120 {
 		return targets.Config{}, &delivery.FieldError{Field: "config.timeoutSeconds", Msg: "must be between 5 and 120"}
 	}
-	if ca, err := httpx.NormalizeCABundle(c.CAPEM); err != nil {
+	ca, err := httpx.NormalizeCABundle(c.CAPEM)
+	if err != nil {
 		return targets.Config{}, &delivery.FieldError{Field: "config.caPem", Msg: err.Error()}
-	} else {
-		c.CAPEM = ca
 	}
+	c.CAPEM = ca
 	canon, err := json.Marshal(c)
 	if err != nil {
 		return targets.Config{}, err

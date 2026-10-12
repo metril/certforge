@@ -156,11 +156,11 @@ func (t RouterOS) Parse(raw json.RawMessage) (targets.Config, error) {
 	if c.TimeoutSeconds < 10 || c.TimeoutSeconds > 300 {
 		return targets.Config{}, &delivery.FieldError{Field: "config.timeoutSeconds", Msg: "must be between 10 and 300"}
 	}
-	if ca, err := httpx.NormalizeCABundle(c.CAPEM); err != nil {
+	ca, err := httpx.NormalizeCABundle(c.CAPEM)
+	if err != nil {
 		return targets.Config{}, &delivery.FieldError{Field: "config.caPem", Msg: err.Error()}
-	} else {
-		c.CAPEM = ca
 	}
+	c.CAPEM = ca
 	canon, err := json.Marshal(c)
 	if err != nil {
 		return targets.Config{}, err

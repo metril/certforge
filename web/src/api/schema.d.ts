@@ -582,7 +582,7 @@ export interface paths {
          * Fetch a server's TLS certificate chain
          * @description Needs delivery:write or cas:write. Connects to url (an https:// URL or host:port, default port 443) and returns the certificate chain the server presents, to pick a CA to trust. The connection does not verify the chain; verified says whether it verifies against the system roots for the host. The same address policy as deploy targets applies (loopback only when the notifications allowLoopbackUrls setting is on; 422 naming url otherwise). A connection that fails returns 200 with ok false. 10 second timeout; at most 2 peeks run at once server-wide, beyond that this returns 503 with Retry-After. Recorded as tls.peek in the audit log with the url only.
          */
-        post: operations["peekTls"];
+        post: operations["peekTLS"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6527,7 +6527,7 @@ export interface operations {
             503: components["responses"]["ServiceUnavailable"];
         };
     };
-    peekTls: {
+    peekTLS: {
         parameters: {
             query?: never;
             header?: never;

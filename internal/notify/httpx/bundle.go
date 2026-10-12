@@ -31,7 +31,7 @@ func NormalizeCABundle(s string) (string, error) {
 			return "", fmt.Errorf("contains a %q PEM block; only CERTIFICATE blocks are allowed", b.Type)
 		}
 		if _, err := x509.ParseCertificate(b.Bytes); err != nil {
-			return "", fmt.Errorf("certificate %d is not a valid X.509 certificate: %v", n+1, err)
+			return "", fmt.Errorf("certificate %d is not a valid X.509 certificate: %w", n+1, err)
 		}
 		n++
 	}

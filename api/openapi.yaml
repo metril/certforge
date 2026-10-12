@@ -756,7 +756,7 @@ paths:
   /orgs/{orgId}/tls/peek:
     parameters: [{$ref: "#/components/parameters/OrgId"}]
     post:
-      operationId: peekTls
+      operationId: peekTLS
       tags: [issuers]
       summary: Fetch a server's TLS certificate chain
       description: >-
