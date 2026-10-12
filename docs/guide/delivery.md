@@ -1,6 +1,6 @@
 # Delivery
 
-Delivery is how a certificate reaches the place that uses it. A **deploy target** says what to do with a certificate besides writing files, such as updating Traefik or storing the files in Vault. A **grant** links one certificate to one target or client. Open **Delivery** in the sidebar to manage targets, file layouts and hooks.
+Delivery is how a certificate reaches the place that uses it. A **deploy target** says what to do with a certificate besides writing files, such as updating Traefik or storing the files in Vault. A **grant** links one certificate to one target or client. Open **Delivery** in the sidebar to manage targets, file layouts, hooks and saved credentials.
 
 Three target types ship with CertForge:
 
@@ -26,10 +26,11 @@ Three target types ship with CertForge:
 1. Open **Delivery → Deploy targets** and select **Add target**.
 2. Enter a **Name**.
 3. Pick a **Type**. Each choice carries a chip for where it runs.
-4. Fill in the **Settings** the type shows. The fields are listed under [Traefik](#traefik) and [Vault KV](#vault-kv).
-5. Select **Save**.
+4. For SSH, pfSense Plus, TrueNAS SCALE, MikroTik RouterOS and Authentik, pick a **Credential**: **Enter manually**, or a [saved credential](#saved-credentials) of a kind the type accepts.
+5. Fill in the **Settings** the type shows. The fields are listed under [Traefik](#traefik) and [Vault KV](#vault-kv).
+6. Select **Save**.
 
-The list shows each target as its name over a muted line: the type, where it writes (a directory, path or URL), and "secrets stored" if it holds any. The **Runs on** column shows Server or Agent. **Used by** shows how many grants use it.
+The list shows each target as its name over a muted line: the type, where it writes (a directory, path or URL), and either the saved credential it uses or "secrets stored" if it holds its own. The **Runs on** column shows Server or Agent. **Used by** shows how many grants use it.
 
 To change a target, select the pencil on its row. To delete one, select the bin and type its name. A target that grants still use cannot be deleted. Remove those grants first.
 
@@ -332,6 +333,32 @@ The other two tabs of **Delivery** shape what an agent writes and runs for a gra
 - **Hooks** (**New hook**) are commands an agent runs before or after it writes the files. An agent runs one only if its path is in the agent's `CF_HOOK_ALLOW`. See [Agents](agents.md#hooks-and-the-allowlist). A hook of kind **Restart** restarts a Docker container or systemd unit instead, if the agent lists it in `CF_RESTART_ALLOW`; see [Restart hooks](agents.md#restart-hooks).
 
 A layout or hook that grants use cannot be deleted.
+
+## Saved credentials
+
+A saved credential holds a login once so many targets can use it. When the same SSH key or router password is on ten hosts, you rotate it in one place.
+
+1. Open **Delivery → Credentials** and select **Add credential**.
+2. Enter a **Name** and pick a **Kind**. The kind is fixed once the credential exists.
+3. Fill in its fields and select **Save credential**.
+
+| Kind | Fields | Accepted by |
+|---|---|---|
+| SSH | Username, plus a password, a private key or both | SSH |
+| Password | Username and password | SSH, pfSense Plus, MikroTik RouterOS |
+| API key | API key, optional username | TrueNAS SCALE |
+| Token | Token | Authentik |
+
+In a target, pick the credential under **Credential**. The fields it supplies are hidden and come from the credential at deploy time. Attaching a credential removes the target's own stored secrets. Pick **Enter manually** to detach it and type the login again. A target's detail sheet links to the credential it uses.
+
+Editing a credential redeploys nothing. Server targets use the new value on their next deploy, and agents that use it get it on their next sync. **Used by** counts the targets that use a credential. A credential in use cannot be deleted; detach it from those targets first.
+
+Permissions:
+
+- `deploycreds:read` lists credentials. Viewers and up have it.
+- `deploycreds:write` adds, edits and deletes them. Org admins and admins have it; operators do not.
+- Attaching a credential to a target, or changing the URL or host of a target that uses one, also needs `deploycreds:write`. Without it the **Credential** select and **Save** are disabled.
+- A global admin can show a stored value with the eye button (`deploycreds:reveal`). This is audited.
 
 ## Secrets
 

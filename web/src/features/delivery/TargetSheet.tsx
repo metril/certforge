@@ -1,16 +1,18 @@
 import { useDirty } from '@/lib/useDirty';
 import { useMemo, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
 import { CircleAlert, Cpu, Server as ServerIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError, errorMessage } from '@/api/errors';
 import { createDeployTarget, updateDeployTarget } from '@/api/queries/delivery';
 import { invalidateGrants } from '@/api/queries/grants';
+import { CREDENTIAL_KIND_LABEL, deployCredentialsQuery, suppliedFields } from '@/api/queries/deployCredentials';
 import type { DeployTarget, ProviderSchema } from '@/api/types';
 import { Combobox } from '@/components/Combobox';
 import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { PermissionTip } from '@/components/PermissionTip';
 import { RunsOnChip } from '@/components/RunsOnChip';
 import { SegmentedControl, type SegmentOption } from '@/components/SegmentedControl';
@@ -23,8 +25,12 @@ import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { stripSecretDefaults, storedSecretsFor, settledConfig } from '@/lib/secretForm';
-import { RUNS_ON_META, SSH_PRESETS, defaultRunsOn, forcedRunsOn, keyGateBlocks, toTargetInput, typeHelpKey, typeMeta } from '@/lib/targets';
+import { RUNS_ON_META, SSH_PRESETS, credentialKindsOf, defaultRunsOn, forcedRunsOn, keyGateBlocks, locationChanged, omitFields, toTargetInput, typeHelpKey, typeMeta } from '@/lib/targets';
 import { useMediaQuery } from '@/lib/useMediaQuery';
+
+function omitKeys(o: Record<string, unknown>, keys: string[]): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k)));
+}
 
 type Props = { orgId: string; target?: DeployTarget; types: ProviderSchema[]; readOnly: boolean; onOpenChange: (open: boolean) => void };
 
@@ -45,9 +51,23 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
   const [extra, setExtra] = useState<ErrorSchema | null>(null);
   const [saving, setSaving] = useState(false);
   const meta = useMemo(() => typeMeta(types, type) ?? types[0]!, [types, type]);
-  const schema = useMemo(() => stripSecretDefaults(meta.schema as RJSFSchema), [meta]);
+  const fullSchema = useMemo(() => stripSecretDefaults(meta.schema as RJSFSchema), [meta]);
+  // Saved credentials: a type with credentialKinds can take its login from one.
+  const credKinds = useMemo(() => credentialKindsOf(meta.schema), [meta]);
+  const canCredWrite = can(me, 'deploycreds:write', orgId);
+  const credsQ = useQuery({ ...deployCredentialsQuery(orgId), enabled: credKinds.length > 0 && can(me, 'deploycreds:read', orgId) });
+  const initialCredId = target?.credentialId ?? null;
+  const [credentialId, setCredentialId] = useState<string | null>(initialCredId);
+  const credentials = useMemo(() => (credsQ.data ?? []).filter((c) => credKinds.includes(c.kind)), [credsQ.data, credKinds]);
+  const credential = credentialId ? credentials.find((c) => c.id === credentialId) : undefined;
+  // Wait for the list before showing the form, so a credential's fields never flash in.
+  const credPending = !!credentialId && credsQ.isPending;
+  const supplied = useMemo(() => (credential ? suppliedFields(credential) : []), [credential]);
+  const schema = useMemo(() => omitFields(fullSchema, supplied), [fullSchema, supplied]);
+  // Attaching a credential clears the target's own stored secrets, so none are kept.
+  const storedSecrets = credentialId !== initialCredId ? [] : storedSecretsFor(target, type);
   // Settled so the form's mount-time onChange (defaults, secret sentinels) is not an edit.
-  const dirty = useDirty({ name, type, runsOn, config: settledConfig(schema, config, storedSecretsFor(target, type)) });
+  const dirty = useDirty({ name, type, runsOn, credentialId, config: settledConfig(schema, config, storedSecrets) });
   const canExportKeys = can(me, 'keys:export', orgId);
   // Locked once the target exists (R3: runsOn/type are immutable after
   // create) or for a viewer opening it read-only.
@@ -71,6 +91,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
     const newMeta = typeMeta(types, v) ?? types[0]!;
     setType(v);
     setConfig({});
+    setCredentialId(null);
     setPreset('custom');
     setRunsOn(defaultRunsOn(newMeta));
     setExtra(null);
@@ -83,6 +104,22 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
       : undefined;
 
   const blocked = keyGateBlocks(me, orgId, runsOn, meta.keyPolicy, config);
+  // Attaching a credential, or moving a credential-backed target to another
+  // host, also needs deploycreds:write (the server returns 403 otherwise).
+  const credBlocked =
+    !canCredWrite &&
+    ((credentialId !== null && credentialId !== initialCredId) ||
+      (initialCredId !== null && credentialId === initialCredId && locationChanged(schema, (target?.config as Record<string, unknown> | undefined) ?? {}, config)));
+
+  const pickCredential = (v: string | undefined) => {
+    const id = !v || v === 'manual' ? null : v;
+    setCredentialId(id);
+    const c = id ? credentials.find((x) => x.id === id) : undefined;
+    // Drop what the credential now supplies; the reduced schema rejects extra keys.
+    if (c) setConfig((prev) => omitKeys(prev, suppliedFields(c)));
+    setExtra(null);
+    setFormError(null);
+  };
 
   const submit = async () => {
     setFormError(null);
@@ -92,7 +129,8 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
     if (!nameOk || !formOk) return;
     setSaving(true);
     try {
-      const body = toTargetInput({ name, type, runsOn, config }, schema, storedSecretsFor(target, type), !target);
+      const body = toTargetInput({ name, type, runsOn, config: omitKeys(config, supplied) }, schema, storedSecrets, !target);
+      if (credKinds.length > 0) body.credentialId = credentialId;
       if (target) await updateDeployTarget(orgId, target.id, body);
       else await createDeployTarget(orgId, body);
       toast.success('Deploy target saved');
@@ -195,12 +233,48 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
               />
             </Field>
           )}
+          {credKinds.length > 0 && (
+            <Field id="target-credential" label="Credential" help="target.credential">
+              {(() => {
+                const select = (
+                  <Combobox
+                    id="target-credential"
+                    aria-label="Credential"
+                    value={credentialId ?? 'manual'}
+                    onChange={pickCredential}
+                    options={[
+                      { value: 'manual', label: 'Enter manually' },
+                      ...credentials.map((c) => ({ value: c.id, label: c.name, hint: CREDENTIAL_KIND_LABEL[c.kind] ?? c.kind })),
+                    ]}
+                    placeholder="Enter manually"
+                    emptyText="No saved credential matches."
+                    disabled={readOnly || !canCredWrite}
+                  />
+                );
+                if (readOnly || canCredWrite) return select;
+                return (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span tabIndex={0} className="grid">
+                        {select}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>Needs the deploycreds:write permission</TooltipContent>
+                  </Tooltip>
+                );
+              })()}
+            </Field>
+          )}
           <div className="grid gap-1.5">
             <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
               Settings
               {secretKeys(schema).length > 0 && <HelpTip id="target.secrets" />}
             </span>
+            {credPending ? (
+              <p className="py-4 text-sm text-ink-muted">Loading…</p>
+            ) : (
             <SchemaForm
+              key={credentialId ?? 'manual'}
               ref={formRef}
               schema={schema}
               value={config}
@@ -208,11 +282,12 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
                 setConfig(v);
                 setExtra(null);
               }}
-              storedSecrets={storedSecretsFor(target, type)}
+              storedSecrets={storedSecrets}
               readonly={readOnly}
               extraErrors={extra ?? undefined}
               uiSchemaOverrides={includeKeyOverride}
             />
+            )}
           </div>
           {formError && (
             <p role="alert" className="flex items-center gap-1.5 text-sm">
@@ -231,8 +306,8 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
               <SheetClose asChild>
                 <Button variant="outline">Cancel</Button>
               </SheetClose>
-              <PermissionTip allowed={!blocked} action="keys:export">
-                <Button disabled={blocked || saving} onClick={() => void submit()}>
+              <PermissionTip allowed={!blocked && !credBlocked} action={blocked ? 'keys:export' : 'deploycreds:write'}>
+                <Button disabled={blocked || credBlocked || saving || credPending} onClick={() => void submit()}>
                   Save
                 </Button>
               </PermissionTip>

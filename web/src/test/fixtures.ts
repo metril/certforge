@@ -1005,6 +1005,7 @@ export const sshSchema = {
   schema: {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
     title: 'SSH (files + commands)',
+    credentialKinds: ['ssh', 'password'],
     type: 'object',
     additionalProperties: false,
     required: ['host', 'username', 'hostKey', 'files'],

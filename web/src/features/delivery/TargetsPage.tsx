@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { errorMessage } from '@/api/errors';
 import { deployTargetsQuery, useDeleteDeployTarget } from '@/api/queries/delivery';
 import { metaSchemasQuery } from '@/api/queries/dns';
+import { deployCredentialsQuery } from '@/api/queries/deployCredentials';
 import type { DeployTarget } from '@/api/types';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { EmptyState } from '@/components/EmptyState';
@@ -36,6 +37,8 @@ export function TargetsPage() {
   const q = useQuery(deployTargetsQuery(org.id));
   const metaQ = useQuery(metaSchemasQuery);
   const del = useDeleteDeployTarget(org.id);
+  const credsQ = useQuery({ ...deployCredentialsQuery(org.id), enabled: (q.data ?? []).some((t) => t.credentialId) });
+  const credName = (id: string) => credsQ.data?.find((c) => c.id === id)?.name ?? 'saved credential';
   const [deleting, setDeleting] = useState<DeployTarget | null>(null);
   const openSheet = (id: string | undefined) =>
     void navigate({ search: (prev) => ({ ...prev, edit: id, view: undefined }), replace: id === undefined });
@@ -49,7 +52,7 @@ export function TargetsPage() {
   const targetMeta = (t: DeployTarget) => [
     typeName(t.type),
     targetLocation(t.config as Record<string, unknown>),
-    t.storedSecrets.length > 0 ? 'secrets stored' : '',
+    t.credentialId ? `uses ${credName(t.credentialId)}` : t.storedSecrets.length > 0 ? 'secrets stored' : '',
   ];
   // A hand-edited or stale `?edit=<id>` that no longer resolves (deleted
   // elsewhere) must not leave the page silently doing nothing — drop it
