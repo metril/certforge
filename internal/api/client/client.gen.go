@@ -526,6 +526,78 @@ type AdcsConfig struct {
 	Username string `json:"username"`
 }
 
+// AdcsProbeRequest Settings to probe; the AdcsConfig fields, with the write-only password and an optional template.
+type AdcsProbeRequest struct {
+	// CaBundlePem PEM bundle trusted for the service's TLS certificate.
+	CaBundlePem *string `json:"caBundlePem,omitempty"`
+
+	// CaId Saved adcs CA of the org whose stored password __unchanged__ refers to.
+	CaId *openapi_types.UUID `json:"caId,omitempty"`
+
+	// CepUrl https:// URL of the Certificate Enrollment Policy service.
+	CepUrl string `json:"cepUrl"`
+
+	// CesUrl Optional https:// enrollment service URL.
+	CesUrl *string `json:"cesUrl,omitempty"`
+
+	// Password Account password, or "__unchanged__" together with caId to reuse the saved CA's.
+	Password *string `json:"password,omitempty"`
+
+	// Template Template to judge with the create/update rules; optional.
+	Template *string `json:"template,omitempty"`
+
+	// TimeoutSeconds Per-request timeout; default 30.
+	TimeoutSeconds *int `json:"timeoutSeconds,omitempty"`
+
+	// Username Service account name.
+	Username string `json:"username"`
+}
+
+// AdcsProbeResult Outcome of an AD CS probe.
+type AdcsProbeResult struct {
+	// Error Why the policy could not be read
+	Error *string `json:"error,omitempty"`
+
+	// Ok The policy was read.
+	Ok bool `json:"ok"`
+
+	// Selected Verdict on the requested template, by the rules create/update apply.
+	Selected *AdcsProbeSelected `json:"selected,omitempty"`
+
+	// Templates Published templates; empty when ok is false.
+	Templates []AdcsProbeTemplate `json:"templates"`
+}
+
+// AdcsProbeSelected Verdict on the requested template, by the rules create/update apply.
+type AdcsProbeSelected struct {
+	// Name Template name as published (or as requested when it is not published).
+	Name string `json:"name"`
+
+	// Reason Why the template is not usable.
+	Reason *string `json:"reason,omitempty"`
+
+	// Usable The template passes the create/update rules.
+	Usable bool `json:"usable"`
+}
+
+// AdcsProbeTemplate A certificate template published by the enrollment policy.
+type AdcsProbeTemplate struct {
+	// CanEnroll The service account may enroll.
+	CanEnroll bool `json:"canEnroll"`
+
+	// MinKeySize Minimal key length in bits.
+	MinKeySize int `json:"minKeySize"`
+
+	// Name Template common name
+	Name string `json:"name"`
+
+	// Oid Template OID when published; may be empty.
+	Oid string `json:"oid"`
+
+	// RequiresApproval Requests are held for CA manager approval
+	RequiresApproval bool `json:"requiresApproval"`
+}
+
 // AgentCA One internal agent CA.
 type AgentCA struct {
 	// ActiveClientCerts Unexpired certificates of active clients issued by this CA.
@@ -3655,6 +3727,9 @@ type CreateAcmeAccountJSONRequestBody = AcmeAccountInput
 // CreateCaJSONRequestBody defines body for CreateCa for application/json ContentType.
 type CreateCaJSONRequestBody = CAInput
 
+// ProbeAdcsJSONRequestBody defines body for ProbeAdcs for application/json ContentType.
+type ProbeAdcsJSONRequestBody = AdcsProbeRequest
+
 // UpdateCaJSONRequestBody defines body for UpdateCa for application/json ContentType.
 type UpdateCaJSONRequestBody = CAInput
 
@@ -3958,6 +4033,11 @@ type ClientInterface interface {
 	CreateCaWithBody(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	CreateCa(ctx context.Context, orgId OrgId, body CreateCaJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ProbeAdcsWithBody request with any body
+	ProbeAdcsWithBody(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ProbeAdcs(ctx context.Context, orgId OrgId, body ProbeAdcsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteCa request
 	DeleteCa(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4826,6 +4906,30 @@ func (c *APIClient) CreateCaWithBody(ctx context.Context, orgId OrgId, contentTy
 
 func (c *APIClient) CreateCa(ctx context.Context, orgId OrgId, body CreateCaJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateCaRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) ProbeAdcsWithBody(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewProbeAdcsRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) ProbeAdcs(ctx context.Context, orgId OrgId, body ProbeAdcsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewProbeAdcsRequest(c.Server, orgId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -8192,6 +8296,53 @@ func NewCreateCaRequestWithBody(server string, orgId OrgId, contentType string, 
 	}
 
 	operationPath := fmt.Sprintf("/orgs/%s/cas", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewProbeAdcsRequest calls the generic ProbeAdcs builder with application/json body
+func NewProbeAdcsRequest(server string, orgId OrgId, body ProbeAdcsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewProbeAdcsRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewProbeAdcsRequestWithBody generates requests for ProbeAdcs with any type of body
+func NewProbeAdcsRequestWithBody(server string, orgId OrgId, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/cas/adcs/probe", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -13099,6 +13250,11 @@ type ClientWithResponsesInterface interface {
 
 	CreateCaWithResponse(ctx context.Context, orgId OrgId, body CreateCaJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateCaResponse, error)
 
+	// ProbeAdcsWithBodyWithResponse request with any body
+	ProbeAdcsWithBodyWithResponse(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ProbeAdcsResponse, error)
+
+	ProbeAdcsWithResponse(ctx context.Context, orgId OrgId, body ProbeAdcsJSONRequestBody, reqEditors ...RequestEditorFn) (*ProbeAdcsResponse, error)
+
 	// DeleteCaWithResponse request
 	DeleteCaWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*DeleteCaResponse, error)
 
@@ -14406,6 +14562,37 @@ func (r CreateCaResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r CreateCaResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ProbeAdcsResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *AdcsProbeResult
+	ApplicationproblemJSON400 *BadRequest
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON413 *PayloadTooLarge
+	ApplicationproblemJSON415 *UnsupportedMediaType
+	ApplicationproblemJSON422 *UnprocessableEntity
+	ApplicationproblemJSON500 *InternalError
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// Status returns HTTPResponse.Status
+func (r ProbeAdcsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ProbeAdcsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -17562,6 +17749,23 @@ func (c *ClientWithResponses) CreateCaWithResponse(ctx context.Context, orgId Or
 	return ParseCreateCaResponse(rsp)
 }
 
+// ProbeAdcsWithBodyWithResponse request with arbitrary body returning *ProbeAdcsResponse
+func (c *ClientWithResponses) ProbeAdcsWithBodyWithResponse(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ProbeAdcsResponse, error) {
+	rsp, err := c.ProbeAdcsWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseProbeAdcsResponse(rsp)
+}
+
+func (c *ClientWithResponses) ProbeAdcsWithResponse(ctx context.Context, orgId OrgId, body ProbeAdcsJSONRequestBody, reqEditors ...RequestEditorFn) (*ProbeAdcsResponse, error) {
+	rsp, err := c.ProbeAdcs(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseProbeAdcsResponse(rsp)
+}
+
 // DeleteCaWithResponse request returning *DeleteCaResponse
 func (c *ClientWithResponses) DeleteCaWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*DeleteCaResponse, error) {
 	rsp, err := c.DeleteCa(ctx, orgId, id, reqEditors...)
@@ -20716,6 +20920,95 @@ func ParseCreateCaResponse(rsp *http.Response) (*CreateCaResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseProbeAdcsResponse parses an HTTP response from a ProbeAdcsWithResponse call
+func ParseProbeAdcsResponse(rsp *http.Response) (*ProbeAdcsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ProbeAdcsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdcsProbeResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
 
 	}
 
