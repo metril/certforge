@@ -256,6 +256,39 @@ func (s pfServices) Labels() []string {
 	return out
 }
 
+// phpMarked runs code and returns the output that holds pfMarker. The response
+// may itself be base64, and some firmware only runs code that starts with an
+// opening tag, so it retries once with one.
+func (n *nexusClient) phpMarked(ctx context.Context, code string) (string, error) {
+	var raw string
+	for _, c := range []string{code, "<?php\n" + code} {
+		out, err := n.PHP(ctx, c)
+		if err != nil {
+			return "", err
+		}
+		if strings.Contains(out, pfMarker) {
+			return out, nil
+		}
+		if d, err := base64.StdEncoding.DecodeString(strings.TrimSpace(out)); err == nil && strings.Contains(string(d), pfMarker) {
+			return string(d), nil
+		}
+		raw = out
+	}
+	if len(raw) > 300 {
+		raw = raw[:300]
+	}
+	raw = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return ' '
+		}
+		return r
+	}, raw)
+	if n.token != "" {
+		raw = strings.ReplaceAll(raw, n.token, "***")
+	}
+	return "", fmt.Errorf("unexpected output from the PHP command: %q", raw)
+}
+
 func (n *nexusClient) certServices(ctx context.Context, refid string, restart bool) (pfServices, error) {
 	var none pfServices
 	if !pfRefidRe.MatchString(refid) {
@@ -266,14 +299,11 @@ func (n *nexusClient) certServices(ctx context.Context, refid string, restart bo
 		code += `cert_restart_services($s); `
 	}
 	code += `echo "` + pfMarker + `" . json_encode($s);`
-	out, err := n.PHP(ctx, code)
+	out, err := n.phpMarked(ctx, code)
 	if err != nil {
 		return none, err
 	}
 	i := strings.LastIndex(out, pfMarker)
-	if i < 0 {
-		return none, errors.New("unexpected output from the PHP command")
-	}
 	line := out[i+len(pfMarker):]
 	if j := strings.IndexAny(line, "\r\n"); j >= 0 {
 		line = line[:j]

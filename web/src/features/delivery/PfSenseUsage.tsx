@@ -14,12 +14,12 @@ export function PfSenseUsage({ orgId, grantId }: Props) {
   const q = useQuery(grantPfSenseUsageQuery(orgId, grantId));
   const data = q.data;
   return (
-    <div className="flex flex-wrap items-center gap-2 text-xs">
+    <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
       <span className="inline-flex items-center gap-1 text-ink-muted">
         Used on pfSense by <HelpTip id="grant.pfsenseUsage" />
       </span>
       {q.isError ? (
-        <span role="alert" className="text-failed">
+        <span role="alert" className="min-w-0 basis-full break-words text-failed">
           {errorMessage(q.error)}
         </span>
       ) : data ? (

@@ -150,7 +150,7 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
           <TableRow>
             <TableHead className="w-44">Certificate</TableHead>
             <TableHead>Layout</TableHead>
-            <TableHead className="w-40">Status</TableHead>
+            <TableHead className="w-56">Status</TableHead>
             <TableHead className="w-28">
               <span className="sr-only">Actions</span>
             </TableHead>
@@ -167,7 +167,7 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
               </TableRow>
               {target.type === 'pfsense' && (
                 <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={4} className="py-1.5">
+                  <TableCell colSpan={4} className="whitespace-normal py-1.5">
                     <PfSenseUsage orgId={orgId} grantId={g.id} />
                   </TableCell>
                 </TableRow>
