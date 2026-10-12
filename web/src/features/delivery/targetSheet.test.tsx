@@ -239,3 +239,19 @@ it('ssh preset fills files and commands; custom clears them', async () => {
   await user.click(within(sheet).getByRole('radio', { name: 'Custom' }));
   await waitFor(() => expect(within(sheet).queryByDisplayValue('rw')).not.toBeInTheDocument());
 });
+
+it('type field is radios with few types and a combobox with many', async () => {
+  server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema, testSecretSchema], notifiers: [], signers: [] })));
+  const few = renderRoute('/o/acme/delivery/targets?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  expect(within(sheet).getByRole('radio', { name: /^Vault KV/ })).toBeInTheDocument();
+  expect(within(sheet).queryByRole('combobox', { name: 'Type' })).not.toBeInTheDocument();
+  few.unmount();
+
+  const many = Array.from({ length: 7 }, (_, i) => ({ ...traefikSchema, code: `t${i}`, name: `Type ${i}` }));
+  server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: many, notifiers: [], signers: [] })));
+  renderRoute('/o/acme/delivery/targets?edit=new');
+  const sheet2 = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  expect(await within(sheet2).findByRole('combobox', { name: 'Type' })).toBeInTheDocument();
+  expect(within(sheet2).queryByRole('radio', { name: /^Type 0/ })).not.toBeInTheDocument();
+});

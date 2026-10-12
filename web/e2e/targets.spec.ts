@@ -1,6 +1,7 @@
 import { expect, signInLocal, test } from './auth';
 import { E2E } from './env';
 import { snap } from './screens';
+import { expectRunsOn, pickTargetType } from './targetType';
 
 // lib/help.ts's 'target.runsOnForced'/'target.runsOnLocked' text, copied
 // rather than imported: that module reads `import.meta.env` (a Vite-only
@@ -19,9 +20,8 @@ test('vault-kv sheet runs on server', async ({ page }) => {
   const sheet = page.getByRole('dialog', { name: 'Add deploy target' });
   await expect(sheet).toBeVisible();
 
-  const vaultKv = sheet.getByRole('radio', { name: /^Vault KV/ });
-  await vaultKv.click();
-  await expect(vaultKv.getByText('Server')).toBeVisible();
+  await pickTargetType(sheet, /^Vault KV/);
+  await expectRunsOn(sheet, 'Server');
 
   // exact: true — the type segment's own accessible name ("Vault KV Server")
   // otherwise substring-matches the bare "Server"/"Agent" runs-on radios too.
@@ -61,9 +61,8 @@ test('traefik target runs on agent', async ({ page }) => {
   const sheet = page.getByRole('dialog', { name: 'Add deploy target' });
   await expect(sheet).toBeVisible();
 
-  const traefik = sheet.getByRole('radio', { name: /^Traefik/ });
-  await traefik.click();
-  await expect(traefik.getByText('Agent')).toBeVisible();
+  await pickTargetType(sheet, /^Traefik/);
+  await expectRunsOn(sheet, 'Agent');
   // exact: true — the Vault KV type segment's own name ("Vault KV Server")
   // otherwise substring-matches the bare runs-on "Server" radio too.
   await expect(sheet.getByRole('radio', { name: 'Server', exact: true })).toBeDisabled();
@@ -119,7 +118,7 @@ test('targets at 375 px', async ({ page }) => {
   await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
   await page.getByRole('button', { name: 'Add target' }).click();
   const addSheet = page.getByRole('dialog', { name: 'Add deploy target' });
-  await addSheet.getByRole('radio', { name: /^Traefik/ }).click();
+  await pickTargetType(addSheet, /^Traefik/);
   await addSheet.getByLabel('Name', { exact: true }).fill(name);
   await addSheet.getByLabel('Directory on the agent').fill('/etc/traefik/dynamic');
   await addSheet.getByRole('button', { name: 'Save' }).click();
@@ -135,11 +134,10 @@ test('targets at 375 px', async ({ page }) => {
   const sheet = page.getByRole('dialog', { name: 'Add deploy target' });
   await expect(sheet).toBeVisible();
 
-  // Below sm, the type segment's RunsOnChip is compact: icon + aria-label,
-  // no visible word (so two segments fit at 375px — UI conventions).
-  const traefik = sheet.getByRole('radio', { name: /^Traefik/ });
-  await expect(traefik.getByText('Agent', { exact: true })).toHaveCount(0);
-  await expect(traefik.locator('[aria-label="Agent"]')).toHaveCount(1);
+  // With 7 types the Type field is a combobox (no per-segment chip); pick
+  // one to check the open popover and chosen state still fit at 375px.
+  await pickTargetType(sheet, /^Traefik/);
+  await expectRunsOn(sheet, 'Agent');
 
   expect(await page.evaluate(() => document.scrollingElement!.scrollWidth)).toBeLessThanOrEqual(375);
   // batch-2 review: the sheet is a fixed, overflow-y-auto panel — content
