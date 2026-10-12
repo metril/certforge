@@ -566,6 +566,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orgs/{orgId}/tls/peek": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fetch a server's TLS certificate chain
+         * @description Needs delivery:write or cas:write. Connects to url (an https:// URL or host:port, default port 443) and returns the certificate chain the server presents, to pick a CA to trust. The connection does not verify the chain; verified says whether it verifies against the system roots for the host. The same address policy as deploy targets applies (loopback only when the notifications allowLoopbackUrls setting is on; 422 naming url otherwise). A connection that fails returns 200 with ok false. 10 second timeout; at most 2 peeks run at once server-wide, beyond that this returns 503 with Retry-After. Recorded as tls.peek in the audit log with the url only.
+         */
+        post: operations["peekTls"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orgs/{orgId}/acme-accounts": {
         parameters: {
             query?: never;
@@ -3169,6 +3192,49 @@ export interface components {
             usable: boolean;
             /** @description Why the template is not usable. */
             reason?: string;
+        };
+        /** @description Server to read a certificate chain from. */
+        TlsPeekRequest: {
+            /** @description https:// URL or host:port (port defaults to 443). */
+            url: string;
+            /** @description Server name to send; defaults to the host in url. */
+            sni?: string;
+        };
+        /** @description One certificate of a presented chain. */
+        TlsPeekCertificate: {
+            /** @description Subject distinguished name. */
+            subject: string;
+            /** @description Issuer distinguished name. */
+            issuer: string;
+            /**
+             * Format: date-time
+             * @description Start of validity.
+             */
+            notBefore: string;
+            /**
+             * Format: date-time
+             * @description End of validity.
+             */
+            notAfter: string;
+            /** @description SHA-256 fingerprint, upper-case hex pairs separated by colons. */
+            sha256: string;
+            /** @description The certificate is a CA (basic constraints). */
+            isCa: boolean;
+            /** @description Issued and signed by itself. */
+            selfSigned: boolean;
+            /** @description PEM-encoded certificate. */
+            pem: string;
+        };
+        /** @description Outcome of a TLS peek. */
+        TlsPeekResult: {
+            /** @description The handshake completed and a chain was read. */
+            ok: boolean;
+            /** @description Why the connection failed */
+            error?: string;
+            /** @description Certificates in the order presented (leaf first); empty when ok is false. */
+            chain: components["schemas"]["TlsPeekCertificate"][];
+            /** @description The chain verifies against the system roots for the host. */
+            verified: boolean;
         };
         /** @description Outcome of an AD CS probe. */
         AdcsProbeResult: {
@@ -6448,6 +6514,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdcsProbeResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    peekTls: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TlsPeekRequest"];
+            };
+        };
+        responses: {
+            /** @description Peek outcome. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TlsPeekResult"];
                 };
             };
             400: components["responses"]["BadRequest"];

@@ -3272,6 +3272,57 @@ type SubjectType string
 // TargetRunsOn Where a deploy target type runs — always the server, always an agent, or either (the operator chooses at create time).
 type TargetRunsOn string
 
+// TlsPeekCertificate One certificate of a presented chain.
+type TlsPeekCertificate struct {
+	// IsCa The certificate is a CA (basic constraints).
+	IsCa bool `json:"isCa"`
+
+	// Issuer Issuer distinguished name.
+	Issuer string `json:"issuer"`
+
+	// NotAfter End of validity.
+	NotAfter time.Time `json:"notAfter"`
+
+	// NotBefore Start of validity.
+	NotBefore time.Time `json:"notBefore"`
+
+	// Pem PEM-encoded certificate.
+	Pem string `json:"pem"`
+
+	// SelfSigned Issued and signed by itself.
+	SelfSigned bool `json:"selfSigned"`
+
+	// Sha256 SHA-256 fingerprint, upper-case hex pairs separated by colons.
+	Sha256 string `json:"sha256"`
+
+	// Subject Subject distinguished name.
+	Subject string `json:"subject"`
+}
+
+// TlsPeekRequest Server to read a certificate chain from.
+type TlsPeekRequest struct {
+	// Sni Server name to send; defaults to the host in url.
+	Sni *string `json:"sni,omitempty"`
+
+	// Url https:// URL or host:port (port defaults to 443).
+	Url string `json:"url"`
+}
+
+// TlsPeekResult Outcome of a TLS peek.
+type TlsPeekResult struct {
+	// Chain Certificates in the order presented (leaf first); empty when ok is false.
+	Chain []TlsPeekCertificate `json:"chain"`
+
+	// Error Why the connection failed
+	Error *string `json:"error,omitempty"`
+
+	// Ok The handshake completed and a chain was read.
+	Ok bool `json:"ok"`
+
+	// Verified The chain verifies against the system roots for the host.
+	Verified bool `json:"verified"`
+}
+
 // User A CertForge user.
 type User struct {
 	// DisplayName Name shown in the UI.
@@ -3917,6 +3968,9 @@ type CreateSiteJSONRequestBody = SiteInput
 // UpdateSiteJSONRequestBody defines body for UpdateSite for application/json ContentType.
 type UpdateSiteJSONRequestBody = SiteInput
 
+// PeekTlsJSONRequestBody defines body for PeekTls for application/json ContentType.
+type PeekTlsJSONRequestBody = TlsPeekRequest
+
 // CreateRoleBindingJSONRequestBody defines body for CreateRoleBinding for application/json ContentType.
 type CreateRoleBindingJSONRequestBody = RoleBindingInput
 
@@ -4475,6 +4529,11 @@ type ClientInterface interface {
 	UpdateSiteWithBody(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	UpdateSite(ctx context.Context, orgId OrgId, id Id, body UpdateSiteJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PeekTlsWithBody request with any body
+	PeekTlsWithBody(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PeekTls(ctx context.Context, orgId OrgId, body PeekTlsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListRoleBindings request
 	ListRoleBindings(ctx context.Context, params *ListRoleBindingsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6539,6 +6598,30 @@ func (c *APIClient) UpdateSiteWithBody(ctx context.Context, orgId OrgId, id Id, 
 
 func (c *APIClient) UpdateSite(ctx context.Context, orgId OrgId, id Id, body UpdateSiteJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateSiteRequest(c.Server, orgId, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) PeekTlsWithBody(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPeekTlsRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) PeekTls(ctx context.Context, orgId OrgId, body PeekTlsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPeekTlsRequest(c.Server, orgId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -13045,6 +13128,53 @@ func NewUpdateSiteRequestWithBody(server string, orgId OrgId, id Id, contentType
 	return req, nil
 }
 
+// NewPeekTlsRequest calls the generic PeekTls builder with application/json body
+func NewPeekTlsRequest(server string, orgId OrgId, body PeekTlsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPeekTlsRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewPeekTlsRequestWithBody generates requests for PeekTls with any type of body
+func NewPeekTlsRequestWithBody(server string, orgId OrgId, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/tls/peek", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListRoleBindingsRequest generates requests for ListRoleBindings
 func NewListRoleBindingsRequest(server string, params *ListRoleBindingsParams) (*http.Request, error) {
 	var err error
@@ -14094,6 +14224,11 @@ type ClientWithResponsesInterface interface {
 	UpdateSiteWithBodyWithResponse(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSiteResponse, error)
 
 	UpdateSiteWithResponse(ctx context.Context, orgId OrgId, id Id, body UpdateSiteJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSiteResponse, error)
+
+	// PeekTlsWithBodyWithResponse request with any body
+	PeekTlsWithBodyWithResponse(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PeekTlsResponse, error)
+
+	PeekTlsWithResponse(ctx context.Context, orgId OrgId, body PeekTlsJSONRequestBody, reqEditors ...RequestEditorFn) (*PeekTlsResponse, error)
 
 	// ListRoleBindingsWithResponse request
 	ListRoleBindingsWithResponse(ctx context.Context, params *ListRoleBindingsParams, reqEditors ...RequestEditorFn) (*ListRoleBindingsResponse, error)
@@ -17687,6 +17822,37 @@ func (r UpdateSiteResponse) StatusCode() int {
 	return 0
 }
 
+type PeekTlsResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *TlsPeekResult
+	ApplicationproblemJSON400 *BadRequest
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON413 *PayloadTooLarge
+	ApplicationproblemJSON415 *UnsupportedMediaType
+	ApplicationproblemJSON422 *UnprocessableEntity
+	ApplicationproblemJSON500 *InternalError
+	ApplicationproblemJSON503 *ServiceUnavailable
+}
+
+// Status returns HTTPResponse.Status
+func (r PeekTlsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PeekTlsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListRoleBindingsResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
@@ -19542,6 +19708,23 @@ func (c *ClientWithResponses) UpdateSiteWithResponse(ctx context.Context, orgId 
 		return nil, err
 	}
 	return ParseUpdateSiteResponse(rsp)
+}
+
+// PeekTlsWithBodyWithResponse request with arbitrary body returning *PeekTlsResponse
+func (c *ClientWithResponses) PeekTlsWithBodyWithResponse(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PeekTlsResponse, error) {
+	rsp, err := c.PeekTlsWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePeekTlsResponse(rsp)
+}
+
+func (c *ClientWithResponses) PeekTlsWithResponse(ctx context.Context, orgId OrgId, body PeekTlsJSONRequestBody, reqEditors ...RequestEditorFn) (*PeekTlsResponse, error) {
+	rsp, err := c.PeekTls(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePeekTlsResponse(rsp)
 }
 
 // ListRoleBindingsWithResponse request returning *ListRoleBindingsResponse
@@ -27953,6 +28136,95 @@ func ParseUpdateSiteResponse(rsp *http.Response) (*UpdateSiteResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePeekTlsResponse parses an HTTP response from a PeekTlsWithResponse call
+func ParsePeekTlsResponse(rsp *http.Response) (*PeekTlsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PeekTlsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TlsPeekResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest ServiceUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
 
 	}
 
