@@ -69,7 +69,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
   // Settled so the form's mount-time onChange (defaults, secret sentinels) is not an edit.
   const dirty = useDirty({ name, type, runsOn, credentialId, config: settledConfig(schema, config, storedSecrets) });
   const canExportKeys = can(me, 'keys:export', orgId);
-  const formContext = useMemo(() => ({ caBundle: caBundleScope(me, orgId) }), [me, orgId]);
+  const formContext = useMemo(() => ({ caBundle: caBundleScope(me, orgId), sshHostKey: { orgId, canPeek: can(me, 'delivery:write', orgId) } }), [me, orgId]);
   // Locked once the target exists (R3: runsOn/type are immutable after
   // create) or for a viewer opening it read-only.
   const locked = !!target || readOnly;
@@ -105,7 +105,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
       : undefined;
 
   const presetHidden =
-    type === 'ssh' && preset === 'kvm' ? Object.fromEntries(PRESET_HIDDEN_KEYS.map((k) => [k, { 'ui:widget': 'hidden' }])) : undefined;
+    type === 'ssh' && preset === 'kvm' && !readOnly ? Object.fromEntries(PRESET_HIDDEN_KEYS.map((k) => [k, { 'ui:widget': 'hidden' }])) : undefined;
   const uiOverrides = includeKeyOverride || presetHidden ? { ...includeKeyOverride, ...presetHidden } : undefined;
 
   const blocked = keyGateBlocks(me, orgId, runsOn, meta.keyPolicy, config);

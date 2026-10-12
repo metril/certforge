@@ -4,7 +4,6 @@ import { Check, CircleAlert, Globe, LoaderCircle } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { usePeekSshHostKey } from '@/api/queries/ssh';
 import type { SshPeekHostKey } from '@/api/types';
-import type { CaBundleScope } from '@/components/CaBundleInput';
 import { HelpTip } from '@/components/HelpTip';
 import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
@@ -13,6 +12,9 @@ import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { help } from '@/lib/help';
 import { cn } from '@/lib/utils';
+
+/** Where Fetch acts: the org, and whether the caller holds delivery:write there (the ssh peek endpoint's gate). */
+export type HostKeyScope = { orgId: string; canPeek: boolean };
 
 type Props = {
   id: string;
@@ -26,10 +28,10 @@ type Props = {
   /** Prefills Fetch's port; defaults to 22. */
   port?: number;
   /** Without one, only paste is offered. */
-  scope?: CaBundleScope;
+  scope?: HostKeyScope;
 };
 
-const PEEK_DENIED = 'Needs the delivery:write or cas:write permission';
+const PEEK_DENIED = 'Needs the delivery:write permission';
 
 function hostOf(v: string | undefined): string {
   const s = (v ?? '').trim();

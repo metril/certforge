@@ -5,7 +5,7 @@ import type { RJSFSchema } from '@rjsf/utils';
 import { expect, it } from 'vitest';
 import type { SshPeekRequest } from '@/api/types';
 import { SchemaForm } from '@/forms/SchemaForm';
-import type { CaBundleScope } from './CaBundleInput';
+import type { HostKeyScope } from './HostKeyInput';
 import { url } from '@/test/fixtures';
 import { renderUI } from '@/test/render';
 import { server } from '@/test/server';
@@ -19,15 +19,15 @@ const schema = {
   },
 } as RJSFSchema;
 
-const full: CaBundleScope = { orgId: 'org-1', canPeek: true, canReadCas: false };
+const full: HostKeyScope = { orgId: 'org-1', canPeek: true };
 const ED = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIED';
 const RSA = 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABRSA';
 
-function Harness({ scope, initial = {} }: { scope?: CaBundleScope | null; initial?: Record<string, unknown> }) {
+function Harness({ scope, initial = {} }: { scope?: HostKeyScope | null; initial?: Record<string, unknown> }) {
   const [v, setV] = useState<Record<string, unknown>>(initial);
   return (
     <>
-      <SchemaForm schema={schema} value={v} onChange={setV} formContext={scope === null ? {} : { caBundle: scope ?? full }} />
+      <SchemaForm schema={schema} value={v} onChange={setV} formContext={scope === null ? {} : { sshHostKey: scope ?? full }} />
       <output data-testid="value">{String(v.hostKey ?? '')}</output>
     </>
   );
