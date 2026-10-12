@@ -483,3 +483,17 @@ it('Only these with nothing picked is refused', async () => {
   expect(await within(dialog).findByText('Pick at least one service, or choose None.')).toBeInTheDocument();
   expect(patched).toBeUndefined();
 });
+
+it('pfSense grant inherits restartServices false from the target and sends nothing until changed', async () => {
+  pfGrantRoutes();
+  server.use(http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [{ ...pfTarget, config: { url: 'https://fw.example.net/api', restartServices: false } }] })));
+  const { user } = renderRoute('/o/acme/delivery/targets?view=t-pf');
+  const dialog = await screen.findByRole('dialog', { name: 'edge fw' });
+  await user.click(await within(dialog).findByRole('button', { name: 'New server grant' }));
+  expect(await within(dialog).findByRole('radio', { name: 'None' })).toBeChecked();
+  expect(within(dialog).getByText('(target default)')).toBeInTheDocument();
+  await user.click(within(dialog).getByRole('combobox', { name: 'Certificate' }));
+  await user.click(await screen.findByRole('option', { name: /^api/ }));
+  await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
+  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null }));
+});

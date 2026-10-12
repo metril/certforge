@@ -54,7 +54,10 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
   const [formError, setFormError] = useState<string | null>(null);
   const isPf = targetsQ.data?.find((t) => t.id === targetId)?.type === 'pfsense';
   const stored = storedRestart(editing);
-  const [restartMode, setRestartMode] = useState<RestartMode>(stored?.mode ?? 'all');
+  const [pickedMode, setRestartMode] = useState<RestartMode | undefined>(undefined);
+  const targetDefault: RestartMode = targetsQ.data?.find((t) => t.id === targetId)?.config?.restartServices === false ? 'none' : 'all';
+  const restartMode: RestartMode = pickedMode ?? stored?.mode ?? targetDefault;
+  const inherited = !stored && pickedMode === undefined;
   const [restartKeys, setRestartKeys] = useState<string[]>(stored?.services ?? []);
   const [restartError, setRestartError] = useState<string | null>(null);
   // Never fetched on its own (enabled: false): "Only these" asks the firewall once.
@@ -115,9 +118,9 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
       ? undefined
       : restartMode === 'selected'
         ? { pfsenseRestart: { mode: 'selected', services: restartKeys } }
-        : restartMode === 'none' || stored
-          ? { pfsenseRestart: { mode: restartMode } }
-          : {};
+        : inherited
+          ? {}
+          : { pfsenseRestart: { mode: restartMode } };
     let postAction: PostAction | undefined;
     if (postOn) {
       const secs = Number(timeout);
@@ -199,6 +202,7 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
                 { value: 'none', label: 'None' },
               ]}
             />
+            {inherited && <p className="text-xs text-ink-muted">(target default)</p>}
             {!editing && <p className="text-xs text-ink-muted">Choosing services is available after the first deploy; until then every service that uses the certificate restarts.</p>}
             {restartMode === 'selected' && editing && (
               <div className="grid gap-1.5">
