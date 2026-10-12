@@ -123,3 +123,11 @@ it('points a pem-bundle field at its form URL field for Fetch', () => {
   const t = { type: 'object', properties: { endpoint: { type: 'string', format: 'uri' }, caPem: { type: 'string', format: 'pem-bundle' } } } as unknown as RJSFSchema;
   expect(buildUiSchema(t).caPem).toMatchObject({ 'ui:options': { urlKey: 'endpoint' } });
 });
+
+it('routes an ssh-host-key field to the host key widget with its host and port fields', () => {
+  const f = { type: 'string', format: 'ssh-host-key' };
+  const a = { type: 'object', properties: { host: { type: 'string' }, port: { type: 'integer' }, hostKey: f } } as unknown as RJSFSchema;
+  expect(buildUiSchema(a).hostKey).toMatchObject({ 'ui:widget': 'sshHostKey', 'ui:options': { hostKey: 'host', portKey: 'port' } });
+  const b = { type: 'object', properties: { url: { type: 'string', format: 'uri' }, hostKey: f } } as unknown as RJSFSchema;
+  expect(buildUiSchema(b).hostKey).toMatchObject({ 'ui:widget': 'sshHostKey', 'ui:options': { hostKey: 'url' } });
+});

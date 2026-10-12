@@ -116,6 +116,11 @@ export function buildUiSchema(schema: RJSFSchema, opts: { storedSecrets?: string
     } else if (p.type === 'string' && p.format === 'pem-bundle') {
       const urlKey = urlKeyOf(schema);
       ui[key] = { ...base, 'ui:widget': 'caBundle', ...(urlKey ? { 'ui:options': { urlKey } } : {}) };
+    } else if (p.type === 'string' && p.format === 'ssh-host-key') {
+      const has = (k: string) => key !== k && props(schema).some(([n]) => n === k);
+      const hostKey = ['host', 'url'].find(has);
+      const portKey = ['port', 'sshPort'].find(has);
+      ui[key] = { ...base, 'ui:widget': 'sshHostKey', 'ui:options': { ...(hostKey ? { hostKey } : {}), ...(portKey ? { portKey } : {}) } };
     } else if (p.type === 'string' && (p.format === 'textarea' || (p.maxLength ?? 0) > 200)) {
       ui[key] = { ...base, 'ui:widget': 'textarea' };
     } else if (isPlainStringArray(p)) {

@@ -5,6 +5,7 @@ import type { AdcsProbeTemplate } from '@/api/types';
 import { orgsQuery } from '@/api/queries/orgs';
 import { AdcsTemplateRequirements } from '@/features/issuers/AdcsTemplateRequirements';
 import { CaBundleInput, type CaBundleScope } from '@/components/CaBundleInput';
+import { HostKeyInput } from '@/components/HostKeyInput';
 import { ChipSet } from '@/components/ChipSet';
 import { Combobox, type ComboOption } from '@/components/Combobox';
 import { IconButton } from '@/components/IconButton';
@@ -258,7 +259,30 @@ function CaBundleWidget({ id, value, onChange, disabled, readonly, placeholder, 
   );
 }
 
+// The host key input; `ui:options.hostKey` and `portKey` name the sibling
+// fields whose values prefill Fetch's host and port.
+function SshHostKeyWidget({ id, value, onChange, disabled, readonly, options, rawErrors, label, registry }: WidgetProps) {
+  const ctx = registry.formContext as { caBundle?: CaBundleScope; formData?: Record<string, unknown> } | undefined;
+  const at = (k: unknown) => (typeof k === 'string' ? ctx?.formData?.[k] : undefined);
+  const host = at(options.hostKey);
+  const port = at(options.portKey);
+  return (
+    <HostKeyInput
+      id={id}
+      label={label}
+      value={typeof value === 'string' ? value : ''}
+      onChange={(v) => onChange(v === '' ? options.emptyValue : v)}
+      disabled={disabled || readonly}
+      invalid={!!rawErrors?.length}
+      host={typeof host === 'string' ? host : undefined}
+      port={typeof port === 'number' ? port : undefined}
+      scope={ctx?.caBundle}
+    />
+  );
+}
+
 export const widgets: RegistryWidgetsType = {
+  sshHostKey: SshHostKeyWidget,
   adcsTemplate: AdcsTemplateWidget,
   caBundle: CaBundleWidget,
   orgSelect: OrgSelectWidget,

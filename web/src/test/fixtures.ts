@@ -1017,7 +1017,7 @@ export const sshSchema = {
       username: { type: 'string', title: 'Username' },
       password: { type: 'string', secret: true, title: 'Password' },
       privateKey: { type: 'string', secret: true, maxLength: 8192, title: 'Private key' },
-      hostKey: { type: 'string', maxLength: 2048, title: 'Host key' },
+      hostKey: { type: 'string', format: 'ssh-host-key', maxLength: 2048, title: 'Host key' },
       files: {
         type: 'array', minItems: 1, maxItems: 16, title: 'Files',
         items: {
