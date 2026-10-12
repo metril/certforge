@@ -404,7 +404,7 @@ func pfPickDevice(body []byte, want string) (string, error) {
 		for _, d := range doc.Devices {
 			names = append(names, d.Name)
 		}
-		return "", fmt.Errorf("Nexus manages %d devices (%s); set Device to one of them", len(names), strings.Join(names, ", "))
+		return "", fmt.Errorf("the Nexus controller manages %d devices (%s); set Device to one of them", len(names), strings.Join(names, ", "))
 	}
 	for _, d := range doc.Devices {
 		if strings.EqualFold(d.Name, want) || strings.EqualFold(d.Alias, want) || strings.EqualFold(d.DeviceID, want) {
