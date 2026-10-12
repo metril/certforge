@@ -32,12 +32,13 @@ var pfNameRe = regexp.MustCompile(`^[A-Za-z0-9 ._-]{0,64}$`)
 // System paths are served under /device/pfsense/{id}/api when Nexus manages
 // the firewall. Keep every path here.
 const (
-	pfLogin   = "/login"
-	pfDevices = "/mim/devices"
-	pfCerts   = "/system/certificates"
-	pfAdmin   = "/system/advanced/admin"
-	pfErrCap  = 200
-	pfMaxBody = 1 << 20
+	pfLogin      = "/login"
+	pfDevices    = "/mim/devices"
+	pfCerts      = "/system/certificates"
+	pfAdmin      = "/system/advanced/admin"
+	pfRestartGUI = "/diag/cmd/shell"
+	pfErrCap     = 200
+	pfMaxBody    = 1 << 20
 )
 
 // PfSenseConfig is a pfsense target's config; Password is the secret.
@@ -66,7 +67,7 @@ const pfSenseSchema = `{
     "password": {"type": "string", "secret": true, "title": "Password"},
     "device": {"type": "string", "default": "", "title": "Device", "description": "Name, alias or ID of the firewall in Nexus. Empty uses the only managed device."},
     "certName": {"type": "string", "pattern": "^[A-Za-z0-9 ._-]{0,64}$", "default": "", "title": "Certificate name", "description": "Description of the certificate in pfSense. Empty uses the certificate's name."},
-    "setWebGuiCert": {"type": "boolean", "default": false, "title": "Use for the WebGUI", "description": "Also select this certificate for the pfSense web interface."},
+    "setWebGuiCert": {"type": "boolean", "default": false, "title": "Use for the WebGUI", "description": "Also select this certificate for the pfSense web interface and restart it so it takes effect."},
     "caPem": {"type": "string", "format": "pem-bundle", "title": "CA certificate", "description": "PEM certificate(s) to trust for pfSense's TLS certificate, in addition to the system roots."},
     "timeoutSeconds": {"type": "integer", "minimum": 5, "maximum": 120, "default": 30, "title": "Timeout (seconds)"}
   }
@@ -366,12 +367,24 @@ func (PfSense) Deploy(ctx context.Context, req targets.Request) (targets.Result,
 		if !ok {
 			return fail(errors.New("webgui settings have no admin object"))
 		}
+		changed := verb != "unchanged"
 		if cur, _ := adm["ssl_certref"].(string); cur != refid {
 			adm["ssl_certref"] = refid
 			if _, err := call(http.MethodPost, admin, obj); err != nil {
 				return fail(err)
 			}
 			detail += ", webgui cert set"
+			changed = true
+		}
+		if changed {
+			// Nexus does not restart the webConfigurator itself.
+			_, err := call(http.MethodPost, prefix+pfRestartGUI, map[string]any{
+				"cmd":     base64.StdEncoding.EncodeToString([]byte("/etc/rc.restart_webgui")),
+				"timeout": 60})
+			if err != nil {
+				return fail(fmt.Errorf("certificate deployed (%s) but the WebGUI restart failed: %w", detail, err))
+			}
+			detail += ", webgui restarted"
 		}
 	}
 	return targets.Result{Detail: detail}, nil
