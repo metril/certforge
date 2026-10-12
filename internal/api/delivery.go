@@ -1082,7 +1082,7 @@ func (s *Server) DeleteDeployTarget(ctx context.Context, r gen.DeleteDeployTarge
 // ---- hooks ----
 
 func hookOut(h sqlcgen.Hook, grants int) gen.Hook {
-	return gen.Hook{Id: h.ID, OrgId: h.OrgID, Name: h.Name, Phase: gen.HookPhase(h.Phase), Argv: h.Argv,
+	return gen.Hook{Id: h.ID, OrgId: h.OrgID, Name: h.Name, Phase: gen.HookPhase(h.Phase), Kind: gen.HookKind(h.Kind), Target: h.Target, Argv: h.Argv,
 		TimeoutSeconds: int(h.TimeoutSeconds), GrantCount: grants, CreatedAt: h.CreatedAt, UpdatedAt: h.UpdatedAt}
 }
 
@@ -1103,22 +1103,41 @@ func (s *Server) hooksOut(ctx context.Context, rows []sqlcgen.Hook) ([]gen.Hook,
 	return out, nil
 }
 
-func validHook(in *gen.HookInput) (string, int32, error) {
+// hookFields is a validated hook definition ready for the queries.
+type hookFields struct {
+	name, kind, target string
+	argv               []string
+	timeout            int32
+}
+
+func validHook(in *gen.HookInput) (hookFields, error) {
 	if in == nil {
-		return "", 0, badRequest("missing body")
+		return hookFields{}, badRequest("missing body")
 	}
 	name, err := cleanName("name", in.Name)
 	if err != nil {
-		return "", 0, err
+		return hookFields{}, err
+	}
+	kind := "exec"
+	if in.Kind != nil {
+		kind = string(*in.Kind)
+	}
+	target := ""
+	if in.Target != nil {
+		target = *in.Target
+	}
+	argv := in.Argv
+	if argv == nil {
+		argv = []string{}
 	}
 	timeout := 60
 	if in.TimeoutSeconds != nil {
 		timeout = *in.TimeoutSeconds
 	}
-	if err := delivery.ValidateHook(string(in.Phase), in.Argv, timeout); err != nil {
-		return "", 0, mapDeliveryErr(err)
+	if err := delivery.ValidateHook(kind, string(in.Phase), target, argv, timeout); err != nil {
+		return hookFields{}, mapDeliveryErr(err)
 	}
-	return name, int32(timeout), nil
+	return hookFields{name: name, kind: kind, target: target, argv: argv, timeout: int32(timeout)}, nil
 }
 
 // ListHooks returns an org's hooks.
@@ -1161,11 +1180,12 @@ func (s *Server) CreateHook(ctx context.Context, r gen.CreateHookRequestObject) 
 	if _, err := authorize(ctx, authz.ActionDeliveryWrite, &r.OrgId); err != nil {
 		return nil, err
 	}
-	name, timeout, err := validHook(r.Body)
+	hf, err := validHook(r.Body)
 	if err != nil {
 		return nil, err
 	}
-	h, err := s.queries().CreateHook(ctx, sqlcgen.CreateHookParams{OrgID: r.OrgId, Name: name, Phase: string(r.Body.Phase), Argv: r.Body.Argv, TimeoutSeconds: timeout})
+	name := hf.name
+	h, err := s.queries().CreateHook(ctx, sqlcgen.CreateHookParams{OrgID: r.OrgId, Name: name, Phase: string(r.Body.Phase), Argv: hf.argv, Kind: hf.kind, Target: hf.target, TimeoutSeconds: hf.timeout})
 	switch pgCode(err) {
 	case pgUniqueViolation:
 		return nil, conflict("A hook named %q exists in this org.", name)
@@ -1176,7 +1196,7 @@ func (s *Server) CreateHook(ctx context.Context, r gen.CreateHookRequestObject) 
 		return nil, err
 	}
 	s.audit(ctx, audit.Event{Action: "hook.create", ResourceType: "hook", ResourceID: h.ID.String(), OrgID: &h.OrgID,
-		Details: map[string]any{"name": h.Name, "phase": h.Phase, "argv": h.Argv, "timeoutSeconds": h.TimeoutSeconds}})
+		Details: map[string]any{"name": h.Name, "phase": h.Phase, "kind": h.Kind, "target": h.Target, "argv": h.Argv, "timeoutSeconds": h.TimeoutSeconds}})
 	return gen.CreateHook201JSONResponse(hookOut(h, 0)), nil
 }
 
@@ -1185,10 +1205,11 @@ func (s *Server) UpdateHook(ctx context.Context, r gen.UpdateHookRequestObject) 
 	if _, err := authorize(ctx, authz.ActionDeliveryWrite, &r.OrgId); err != nil {
 		return nil, err
 	}
-	name, timeout, err := validHook(r.Body)
+	hf, err := validHook(r.Body)
 	if err != nil {
 		return nil, err
 	}
+	name := hf.name
 	tx, err := s.d.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -1202,7 +1223,7 @@ func (s *Server) UpdateHook(ctx context.Context, r gen.UpdateHookRequestObject) 
 	if err != nil {
 		return nil, err
 	}
-	h, err := q.UpdateHook(ctx, sqlcgen.UpdateHookParams{Name: name, Phase: string(r.Body.Phase), Argv: r.Body.Argv, TimeoutSeconds: timeout, ID: r.Id, OrgID: r.OrgId})
+	h, err := q.UpdateHook(ctx, sqlcgen.UpdateHookParams{Name: name, Phase: string(r.Body.Phase), Argv: hf.argv, Kind: hf.kind, Target: hf.target, TimeoutSeconds: hf.timeout, ID: r.Id, OrgID: r.OrgId})
 	if pgCode(err) == pgUniqueViolation {
 		return nil, conflict("A hook named %q exists in this org.", name)
 	}
@@ -1219,8 +1240,8 @@ func (s *Server) UpdateHook(ctx context.Context, r gen.UpdateHookRequestObject) 
 	nudge()
 	s.audit(ctx, audit.Event{Action: "hook.update", ResourceType: "hook", ResourceID: h.ID.String(), OrgID: &h.OrgID,
 		Details: map[string]any{
-			"before": map[string]any{"name": cur.Name, "phase": cur.Phase, "argv": cur.Argv, "timeoutSeconds": cur.TimeoutSeconds},
-			"after":  map[string]any{"name": h.Name, "phase": h.Phase, "argv": h.Argv, "timeoutSeconds": h.TimeoutSeconds}}})
+			"before": map[string]any{"name": cur.Name, "phase": cur.Phase, "kind": cur.Kind, "target": cur.Target, "argv": cur.Argv, "timeoutSeconds": cur.TimeoutSeconds},
+			"after":  map[string]any{"name": h.Name, "phase": h.Phase, "kind": h.Kind, "target": h.Target, "argv": h.Argv, "timeoutSeconds": h.TimeoutSeconds}}})
 	out, err := s.hooksOut(ctx, []sqlcgen.Hook{h})
 	if err != nil {
 		return nil, err

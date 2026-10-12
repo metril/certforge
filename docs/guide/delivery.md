@@ -321,7 +321,7 @@ Agent targets are granted from the client, in its grant editor, together with a 
 The other two tabs of **Delivery** shape what an agent writes and runs for a grant:
 
 - **File layouts** (**New layout**) describe the files an agent writes: path, format (PEM, DER, PKCS#12 or JKS), owner, group and mode. See [Agents](agents.md#file-layouts).
-- **Hooks** (**New hook**) are commands an agent runs before or after it writes the files. An agent runs one only if its path is in the agent's `CF_HOOK_ALLOW`. See [Agents](agents.md#hooks-and-the-allowlist).
+- **Hooks** (**New hook**) are commands an agent runs before or after it writes the files. An agent runs one only if its path is in the agent's `CF_HOOK_ALLOW`. See [Agents](agents.md#hooks-and-the-allowlist). A hook of kind **Restart** restarts a Docker container or systemd unit instead, if the agent lists it in `CF_RESTART_ALLOW`; see [Restart hooks](agents.md#restart-hooks).
 
 A layout or hook that grants use cannot be deleted.
 

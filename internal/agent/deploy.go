@@ -22,6 +22,7 @@ import (
 type Deployer struct {
 	Files      *FileWriter
 	Hooks      *HookRunner
+	Restart    *RestartRunner
 	Log        *slog.Logger
 	WriteAllow []string
 	// Reg is the agent's deploy target registry (NewTargetsRegistry): every
@@ -177,9 +178,20 @@ func (d *Deployer) writeFiles(files []delivery.File) ([]agentproto.FileSpec, err
 	return specs, nil
 }
 
+// runHook runs one hook by kind; restart hooks never reach the exec runner.
+func (d *Deployer) runHook(ctx context.Context, h agentproto.HookSpec, env []string) agentproto.HookRun {
+	if h.Kind == "restart" {
+		return d.Restart.Run(ctx, h)
+	}
+	return d.Hooks.Run(ctx, h, env)
+}
+
 // hookName is h's program for a failure message; a hook without an argv
 // has none (Hooks.Run fails it with exit -1) and must not panic the message.
 func hookName(h agentproto.HookSpec) string {
+	if h.Kind == "restart" {
+		return "restart " + h.Target
+	}
 	if len(h.Argv) == 0 {
 		return "(no command)"
 	}
@@ -270,7 +282,7 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 		if h.Phase != "pre_deploy" {
 			continue
 		}
-		run := d.Hooks.Run(ctx, h, env)
+		run := d.runHook(ctx, h, env)
 		res.HookRuns = append(res.HookRuns, run)
 		if run.ExitCode != 0 {
 			return fail("pre_deploy hook %s exited %d; files were not written", hookName(h), run.ExitCode)
@@ -303,7 +315,7 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 		if h.Phase != "post_deploy" {
 			continue
 		}
-		run := d.Hooks.Run(ctx, h, env)
+		run := d.runHook(ctx, h, env)
 		res.HookRuns = append(res.HookRuns, run)
 		if run.ExitCode != 0 && res.State == agentproto.StateOK {
 			res.State, res.Error = agentproto.StateFailed, fmt.Sprintf("post_deploy hook %s exited %d; the files are installed", hookName(h), run.ExitCode)

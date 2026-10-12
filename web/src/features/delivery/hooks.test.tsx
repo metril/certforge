@@ -67,7 +67,7 @@ it('lists hooks with phase, command and timeout', async () => {
   renderRoute('/o/acme/delivery/hooks');
   const table = await screen.findByRole('table', { name: 'Hooks' });
   const row = within(table).getByText('reload nginx').closest('tr')!;
-  for (const text of ['Post-deploy · 60 s', '/usr/sbin/nginx -s reload', '1 grant']) expect(within(row).getByText(text)).toBeInTheDocument();
+  for (const text of ['Post-deploy · Exec · 60 s', '/usr/sbin/nginx -s reload', '1 grant']) expect(within(row).getByText(text)).toBeInTheDocument();
   expect(within(table).getByRole('button', { name: 'Warning' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Delete reload nginx' })).toHaveAttribute('aria-disabled', 'true');
 });
@@ -88,7 +88,31 @@ it('creates a pre-deploy hook from argv rows', async () => {
   await user.clear(within(sheet).getByLabelText('Timeout'));
   await user.type(within(sheet).getByLabelText('Timeout'), '30');
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
-  await waitFor(() => expect(posted).toEqual({ name: 'test config', phase: 'pre_deploy', argv: ['/usr/sbin/nginx', '-q', '-t'], timeoutSeconds: 30 }));
+  await waitFor(() => expect(posted).toEqual({ name: 'test config', phase: 'pre_deploy', kind: 'exec', argv: ['/usr/sbin/nginx', '-q', '-t'], timeoutSeconds: 30 }));
+});
+
+it('creates a restart hook from a target', async () => {
+  const { user } = renderRoute('/o/acme/delivery/hooks?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'New hook' });
+  await user.type(within(sheet).getByLabelText('Name'), 'restart web');
+  await user.click(within(sheet).getByRole('radio', { name: 'Restart' }));
+  expect(within(sheet).queryByLabelText('Executable')).not.toBeInTheDocument();
+  const target = within(sheet).getByLabelText('Target');
+  expect(target).toHaveValue('docker:');
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  expect(within(sheet).getByText('Use docker:<container> or systemd:<unit>.')).toBeInTheDocument();
+  expect(posted).toBeUndefined();
+  await user.type(target, 'nginx');
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(posted).toEqual({ name: 'restart web', phase: 'post_deploy', kind: 'restart', target: 'docker:nginx', argv: [], timeoutSeconds: 60 }));
+});
+
+it('lists a restart hook by its target', async () => {
+  server.use(http.get(url('/orgs/org-1/hooks'), () => HttpResponse.json({ items: [makeHook({ kind: 'restart', target: 'systemd:nginx.service', argv: [] })] })));
+  renderRoute('/o/acme/delivery/hooks');
+  const table = await screen.findByRole('table', { name: 'Hooks' });
+  expect(within(table).getByText('restart systemd:nginx.service')).toBeInTheDocument();
+  expect(within(table).getByText('Post-deploy · Restart · 60 s')).toBeInTheDocument();
 });
 
 it('refuses a relative executable and a bad timeout', async () => {
@@ -134,7 +158,7 @@ it('edits a hook with a PATCH carrying the full body', async () => {
   const { user } = renderRoute('/o/acme/delivery/hooks?edit=h-1');
   const sheet = await screen.findByRole('dialog', { name: 'Edit reload nginx' });
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
-  await waitFor(() => expect(patched).toEqual({ name: 'reload nginx', phase: 'post_deploy', argv: ['/usr/sbin/nginx', '-s', 'reload'], timeoutSeconds: 60 }));
+  await waitFor(() => expect(patched).toEqual({ name: 'reload nginx', phase: 'post_deploy', kind: 'exec', argv: ['/usr/sbin/nginx', '-s', 'reload'], timeoutSeconds: 60 }));
 });
 
 it('deletes an unused hook via the confirm dialog', async () => {

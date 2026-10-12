@@ -621,7 +621,7 @@ export const targetTestSecret = {
 
 export function makeHook(p: Partial<Hook> = {}): Hook {
   return {
-    id: 'h-1', orgId: org.id, name: 'reload nginx', phase: 'post_deploy', argv: ['/usr/sbin/nginx', '-s', 'reload'],
+    id: 'h-1', orgId: org.id, name: 'reload nginx', phase: 'post_deploy', kind: 'exec', target: '', argv: ['/usr/sbin/nginx', '-s', 'reload'],
     timeoutSeconds: 60, grantCount: 0, createdAt: iso(-5), updatedAt: iso(-5), ...p,
   };
 }

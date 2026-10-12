@@ -256,12 +256,14 @@ func (q *Queries) GrantForBundle(ctx context.Context, arg GrantForBundleParams) 
 }
 
 const hooksByIDs = `-- name: HooksByIDs :many
-SELECT id, phase, argv, timeout_seconds FROM hooks WHERE id = ANY($1::uuid[])
+SELECT id, phase, kind, target, argv, timeout_seconds FROM hooks WHERE id = ANY($1::uuid[])
 `
 
 type HooksByIDsRow struct {
 	ID             uuid.UUID `json:"id"`
 	Phase          string    `json:"phase"`
+	Kind           string    `json:"kind"`
+	Target         string    `json:"target"`
 	Argv           []string  `json:"argv"`
 	TimeoutSeconds int32     `json:"timeout_seconds"`
 }
@@ -278,6 +280,8 @@ func (q *Queries) HooksByIDs(ctx context.Context, ids []uuid.UUID) ([]HooksByIDs
 		if err := rows.Scan(
 			&i.ID,
 			&i.Phase,
+			&i.Kind,
+			&i.Target,
 			&i.Argv,
 			&i.TimeoutSeconds,
 		); err != nil {

@@ -215,7 +215,7 @@ func TestGrantRejectsCrossOrgReferences(t *testing.T) {
 	}
 	files, _ := json.Marshal([]delivery.OutputFile{{Path: "/x.pem", Format: "pem", Parts: []string{"cert"}, Mode: "0644"}})
 	ol, _ := f.q.CreateLayout(ctx, sqlcgen.CreateLayoutParams{OrgID: other, Name: "theirs", Files: files})
-	oh, _ := f.q.CreateHook(ctx, sqlcgen.CreateHookParams{OrgID: other, Name: "theirs", Phase: "post_deploy", Argv: []string{"/bin/true"}, TimeoutSeconds: 60})
+	oh, _ := f.q.CreateHook(ctx, sqlcgen.CreateHookParams{OrgID: other, Name: "theirs", Kind: "exec", Phase: "post_deploy", Argv: []string{"/bin/true"}, TimeoutSeconds: 60})
 	for name, in := range map[string]gen.GrantInput{
 		"cert":     {CertificateId: oc.ID, Delivery: push(), LayoutId: &layout},
 		"layout":   {CertificateId: certID, Delivery: push(), LayoutId: &ol.ID},
@@ -329,7 +329,7 @@ func TestGrantVsDeleteHookNoDangling(t *testing.T) {
 	certID, _ := f.currentCert(t, "web")
 	layout := f.layout(t, "pem", "/etc/ssl/web.pem")
 	for i := 0; i < 10; i++ {
-		h, err := f.q.CreateHook(ctx, sqlcgen.CreateHookParams{OrgID: f.org, Name: "h", Phase: "post_deploy", Argv: []string{"/bin/true"}, TimeoutSeconds: 60})
+		h, err := f.q.CreateHook(ctx, sqlcgen.CreateHookParams{OrgID: f.org, Name: "h", Kind: "exec", Phase: "post_deploy", Argv: []string{"/bin/true"}, TimeoutSeconds: 60})
 		if err != nil {
 			t.Fatal(err)
 		}

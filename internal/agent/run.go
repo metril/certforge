@@ -118,18 +118,21 @@ func NewTargetsRegistry() *targets.Registry {
 func NewAgent(cfg Config, log *slog.Logger, id *Identity) *Agent {
 	files := NewFileWriter(log)
 	return &Agent{Cfg: cfg, Log: log, ID: id, Now: time.Now,
-		Deployer: &Deployer{Files: files, Hooks: &HookRunner{Allow: cfg.HookAllow}, Log: log, WriteAllow: cfg.WriteAllow,
+		Deployer: &Deployer{Files: files, Hooks: &HookRunner{Allow: cfg.HookAllow}, Restart: &RestartRunner{Allow: cfg.RestartAllow}, Log: log, WriteAllow: cfg.WriteAllow,
 			Reg: NewTargetsRegistry(), HTTP: targets.HTTPFactory{AllowLoopback: true}},
 		Challenge: NewChallengeServer(cfg, files, log)}
 }
 
 // capabilities lists what this agent tells the server it can do: traefik
-// always, hooks when CF_HOOK_ALLOW is set, and http-01/tls-alpn-01 when the
+// always, hooks when CF_HOOK_ALLOW is set, restart when CF_RESTART_ALLOW is set, and http-01/tls-alpn-01 when the
 // matching challenge listener is configured.
 func capabilities(cfg Config) []string {
 	caps := []string{"traefik"}
 	if len(cfg.HookAllow) > 0 {
 		caps = append(caps, "hooks")
+	}
+	if len(cfg.RestartAllow) > 0 {
+		caps = append(caps, "restart")
 	}
 	if cfg.HTTP01Listen != "" {
 		caps = append(caps, "http-01")

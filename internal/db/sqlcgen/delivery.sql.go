@@ -53,7 +53,7 @@ func (q *Queries) CreateDeployTarget(ctx context.Context, arg CreateDeployTarget
 }
 
 const createHook = `-- name: CreateHook :one
-INSERT INTO hooks (org_id, name, phase, argv, timeout_seconds) VALUES ($1, $2, $3, $4, $5) RETURNING id, org_id, name, phase, argv, timeout_seconds, created_at, updated_at
+INSERT INTO hooks (org_id, name, phase, argv, timeout_seconds, kind, target) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, org_id, name, phase, argv, timeout_seconds, created_at, updated_at, kind, target
 `
 
 type CreateHookParams struct {
@@ -62,6 +62,8 @@ type CreateHookParams struct {
 	Phase          string    `json:"phase"`
 	Argv           []string  `json:"argv"`
 	TimeoutSeconds int32     `json:"timeout_seconds"`
+	Kind           string    `json:"kind"`
+	Target         string    `json:"target"`
 }
 
 func (q *Queries) CreateHook(ctx context.Context, arg CreateHookParams) (Hook, error) {
@@ -71,6 +73,8 @@ func (q *Queries) CreateHook(ctx context.Context, arg CreateHookParams) (Hook, e
 		arg.Phase,
 		arg.Argv,
 		arg.TimeoutSeconds,
+		arg.Kind,
+		arg.Target,
 	)
 	var i Hook
 	err := row.Scan(
@@ -82,6 +86,8 @@ func (q *Queries) CreateHook(ctx context.Context, arg CreateHookParams) (Hook, e
 		&i.TimeoutSeconds,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Kind,
+		&i.Target,
 	)
 	return i, err
 }
@@ -307,7 +313,7 @@ func (q *Queries) GetDeployTarget(ctx context.Context, arg GetDeployTargetParams
 }
 
 const getHook = `-- name: GetHook :one
-SELECT id, org_id, name, phase, argv, timeout_seconds, created_at, updated_at FROM hooks WHERE id = $1 AND org_id = $2
+SELECT id, org_id, name, phase, argv, timeout_seconds, created_at, updated_at, kind, target FROM hooks WHERE id = $1 AND org_id = $2
 `
 
 type GetHookParams struct {
@@ -327,6 +333,8 @@ func (q *Queries) GetHook(ctx context.Context, arg GetHookParams) (Hook, error) 
 		&i.TimeoutSeconds,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Kind,
+		&i.Target,
 	)
 	return i, err
 }
@@ -596,7 +604,7 @@ func (q *Queries) ListDeployTargets(ctx context.Context, orgID uuid.UUID) ([]Dep
 }
 
 const listHooks = `-- name: ListHooks :many
-SELECT id, org_id, name, phase, argv, timeout_seconds, created_at, updated_at FROM hooks WHERE org_id = $1 ORDER BY lower(name), id
+SELECT id, org_id, name, phase, argv, timeout_seconds, created_at, updated_at, kind, target FROM hooks WHERE org_id = $1 ORDER BY lower(name), id
 `
 
 func (q *Queries) ListHooks(ctx context.Context, orgID uuid.UUID) ([]Hook, error) {
@@ -617,6 +625,8 @@ func (q *Queries) ListHooks(ctx context.Context, orgID uuid.UUID) ([]Hook, error
 			&i.TimeoutSeconds,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Kind,
+			&i.Target,
 		); err != nil {
 			return nil, err
 		}
@@ -704,7 +714,7 @@ func (q *Queries) LockCertsForExtra(ctx context.Context, arg LockCertsForExtraPa
 }
 
 const lockHook = `-- name: LockHook :one
-SELECT id, org_id, name, phase, argv, timeout_seconds, created_at, updated_at FROM hooks WHERE id = $1 AND org_id = $2 FOR UPDATE
+SELECT id, org_id, name, phase, argv, timeout_seconds, created_at, updated_at, kind, target FROM hooks WHERE id = $1 AND org_id = $2 FOR UPDATE
 `
 
 type LockHookParams struct {
@@ -728,6 +738,8 @@ func (q *Queries) LockHook(ctx context.Context, arg LockHookParams) (Hook, error
 		&i.TimeoutSeconds,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Kind,
+		&i.Target,
 	)
 	return i, err
 }
@@ -831,14 +843,16 @@ func (q *Queries) UpdateDeployTarget(ctx context.Context, arg UpdateDeployTarget
 
 const updateHook = `-- name: UpdateHook :one
 UPDATE hooks SET name = $1, phase = $2, argv = $3,
-       timeout_seconds = $4, updated_at = now()
-WHERE id = $5 AND org_id = $6 RETURNING id, org_id, name, phase, argv, timeout_seconds, created_at, updated_at
+       kind = $4, target = $5, timeout_seconds = $6, updated_at = now()
+WHERE id = $7 AND org_id = $8 RETURNING id, org_id, name, phase, argv, timeout_seconds, created_at, updated_at, kind, target
 `
 
 type UpdateHookParams struct {
 	Name           string    `json:"name"`
 	Phase          string    `json:"phase"`
 	Argv           []string  `json:"argv"`
+	Kind           string    `json:"kind"`
+	Target         string    `json:"target"`
 	TimeoutSeconds int32     `json:"timeout_seconds"`
 	ID             uuid.UUID `json:"id"`
 	OrgID          uuid.UUID `json:"org_id"`
@@ -849,6 +863,8 @@ func (q *Queries) UpdateHook(ctx context.Context, arg UpdateHookParams) (Hook, e
 		arg.Name,
 		arg.Phase,
 		arg.Argv,
+		arg.Kind,
+		arg.Target,
 		arg.TimeoutSeconds,
 		arg.ID,
 		arg.OrgID,
@@ -863,6 +879,8 @@ func (q *Queries) UpdateHook(ctx context.Context, arg UpdateHookParams) (Hook, e
 		&i.TimeoutSeconds,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Kind,
+		&i.Target,
 	)
 	return i, err
 }

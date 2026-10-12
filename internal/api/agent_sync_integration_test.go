@@ -275,11 +275,11 @@ func TestHookRunKeepsOnlyGrantHooks(t *testing.T) {
 	e := newAgentEnv(t)
 	ctx := context.Background()
 	cert, c, gid := e.enrolledWithGrant(t, "web-1", false)
-	mine, err := e.q.CreateHook(ctx, sqlcgen.CreateHookParams{OrgID: e.org, Name: "mine", Phase: "post_deploy", Argv: []string{"/bin/true"}, TimeoutSeconds: 60})
+	mine, err := e.q.CreateHook(ctx, sqlcgen.CreateHookParams{OrgID: e.org, Name: "mine", Kind: "exec", Phase: "post_deploy", Argv: []string{"/bin/true"}, TimeoutSeconds: 60})
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := e.q.CreateHook(ctx, sqlcgen.CreateHookParams{OrgID: e.org, Name: "not-on-this-grant", Phase: "post_deploy", Argv: []string{"/bin/true"}, TimeoutSeconds: 60})
+	other, err := e.q.CreateHook(ctx, sqlcgen.CreateHookParams{OrgID: e.org, Name: "not-on-this-grant", Kind: "exec", Phase: "post_deploy", Argv: []string{"/bin/true"}, TimeoutSeconds: 60})
 	if err != nil {
 		t.Fatal(err)
 	}

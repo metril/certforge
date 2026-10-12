@@ -168,6 +168,28 @@ A hook is a command defined under **Delivery → Hooks** and attached to grants.
 - Stdout and stderr are kept up to 8 KiB each and shown on the client's **Hooks** tab.
 - The distroless image has no shell, libc or dynamic linker. A hook mounted into it must be a static binary (`CGO_ENABLED=0 go build`). A dynamic one fails to start with no useful error. Mount the executables you allow.
 
+## Restart hooks
+
+A **Restart** hook restarts a Docker container or a systemd unit by name, with no shell and no general-purpose `docker` binary in the agent. Set **Kind** to Restart and enter a target: `docker:<container>` or `systemd:<unit>`. Phases, failure behaviour, timeout and the **Hooks** tab work as for exec hooks; the run is shown as `restart docker:nginx`.
+
+The agent restarts only targets listed exactly in `CF_RESTART_ALLOW` (comma-separated, for example `docker:nginx,systemd:nginx.service`). With it empty, restart hooks are refused with exit code -1 and the agent does not advertise the `restart` capability.
+
+For Docker the agent calls the engine API on `/var/run/docker.sock` (`POST /containers/<name>/restart`), so mount the socket:
+
+```yaml
+services:
+  certforge-agent:
+    image: ghcr.io/metril/certforge-agent
+    environment:
+      CF_RESTART_ALLOW: docker:nginx
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+```
+
+The Docker socket is root-equivalent on the host. Keep `CF_RESTART_ALLOW` as short as you can and list exact container names only.
+
+A `systemd:` target (templated units such as `foo@bar.service` are allowed) runs `/usr/bin/systemctl restart <unit>` and so works only for agents installed on the host, not in the distroless container image.
+
 ## Grants and reconcile
 
 A grant gives one client one certificate, with a layout, a deploy target or both, plus hooks. Every change on the server (a new certificate version, an edit to a grant, layout, target or hook, a redeploy) raises the client's desired revision.

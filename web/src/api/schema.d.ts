@@ -4254,6 +4254,11 @@ export interface components {
             items: components["schemas"]["DeployTarget"][];
         };
         /**
+         * @description exec runs an allowlisted command; restart restarts a Docker container or systemd unit listed in the agent's CF_RESTART_ALLOW.
+         * @enum {string}
+         */
+        HookKind: "exec" | "restart";
+        /**
          * @description pre_deploy runs before files are written (a failure stops the deploy); post_deploy runs after.
          * @enum {string}
          */
@@ -4265,6 +4270,9 @@ export interface components {
              * @description Hook id.
              */
             id: string;
+            kind: components["schemas"]["HookKind"];
+            /** @description For a restart hook, docker:<container> or systemd:<unit>; empty for exec. */
+            target: string;
             /**
              * Format: uuid
              * @description Owning org.
@@ -4294,8 +4302,15 @@ export interface components {
         HookInput: {
             /** @description Name */
             name: string;
+            /**
+             * @description exec (default) or restart.
+             * @default exec
+             */
+            kind: components["schemas"]["HookKind"];
+            /** @description Required for restart: docker:<container> or systemd:<unit>. */
+            target?: string;
             phase: components["schemas"]["HookPhase"];
-            /** @description Absolute executable path */
+            /** @description Exec only. Absolute executable path */
             argv: string[];
             /**
              * @description Seconds before the hook is killed.

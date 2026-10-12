@@ -153,11 +153,11 @@ SELECT * FROM hooks WHERE id = $1 AND org_id = $2;
 SELECT * FROM hooks WHERE id = $1 AND org_id = $2 FOR UPDATE;
 
 -- name: CreateHook :one
-INSERT INTO hooks (org_id, name, phase, argv, timeout_seconds) VALUES ($1, $2, $3, $4, $5) RETURNING *;
+INSERT INTO hooks (org_id, name, phase, argv, timeout_seconds, kind, target) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *;
 
 -- name: UpdateHook :one
 UPDATE hooks SET name = sqlc.arg(name), phase = sqlc.arg(phase), argv = sqlc.arg(argv),
-       timeout_seconds = sqlc.arg(timeout_seconds), updated_at = now()
+       kind = sqlc.arg(kind), target = sqlc.arg(target), timeout_seconds = sqlc.arg(timeout_seconds), updated_at = now()
 WHERE id = sqlc.arg(id) AND org_id = sqlc.arg(org_id) RETURNING *;
 
 -- name: DeleteHook :execrows

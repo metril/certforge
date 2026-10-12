@@ -62,10 +62,14 @@ type Target struct {
 
 // HookSpec is one hook a grant runs.
 type HookSpec struct {
-	ID             uuid.UUID `json:"id"`
-	Phase          string    `json:"phase"`
-	Argv           []string  `json:"argv"`
-	TimeoutSeconds int       `json:"timeoutSeconds"`
+	ID    uuid.UUID `json:"id"`
+	Phase string    `json:"phase"`
+	Argv  []string  `json:"argv"`
+	// Kind is "exec" (default when empty) or "restart"; Target names what a
+	// restart hook restarts ("docker:<name>" or "systemd:<unit>").
+	Kind           string `json:"kind,omitempty"`
+	Target         string `json:"target,omitempty"`
+	TimeoutSeconds int    `json:"timeoutSeconds"`
 }
 
 // Assignment is one live grant with an issued version.

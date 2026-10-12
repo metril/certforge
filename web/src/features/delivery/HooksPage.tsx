@@ -85,11 +85,11 @@ export function HooksPage() {
             </TableHeader>
             <TableBody>
               {hooks.map((h) => {
-                const command = h.argv.join(' ');
+                const command = h.kind === 'restart' ? `restart ${h.target}` : h.argv.join(' ');
                 return (
                   <TableRow key={h.id}>
                     <TableCell className={cn('py-1.5', stickyCol)}>
-                      <PrimaryCell primary={h.name} meta={[PHASE_LABEL[h.phase], `${h.timeoutSeconds} s`]} />
+                      <PrimaryCell primary={h.name} meta={[PHASE_LABEL[h.phase], h.kind === 'restart' ? 'Restart' : 'Exec', `${h.timeoutSeconds} s`]} />
                     </TableCell>
                     <TableCell className="py-1">
                       <Tooltip>

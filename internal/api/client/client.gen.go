@@ -237,6 +237,12 @@ const (
 	Push GrantDelivery = "push"
 )
 
+// Defines values for HookKind.
+const (
+	Exec    HookKind = "exec"
+	Restart HookKind = "restart"
+)
+
 // Defines values for HookPhase.
 const (
 	PostDeploy HookPhase = "post_deploy"
@@ -2097,6 +2103,9 @@ type Hook struct {
 	// Id Hook id.
 	Id openapi_types.UUID `json:"id"`
 
+	// Kind exec runs an allowlisted command; restart restarts a Docker container or systemd unit listed in the agent's CF_RESTART_ALLOW.
+	Kind HookKind `json:"kind"`
+
 	// Name Name
 	Name string `json:"name"`
 
@@ -2105,6 +2114,9 @@ type Hook struct {
 
 	// Phase pre_deploy runs before files are written (a failure stops the deploy); post_deploy runs after.
 	Phase HookPhase `json:"phase"`
+
+	// Target For a restart hook, docker:<container> or systemd:<unit>; empty for exec.
+	Target string `json:"target"`
 
 	// TimeoutSeconds The process group is killed after this long.
 	TimeoutSeconds int `json:"timeoutSeconds"`
@@ -2115,8 +2127,11 @@ type Hook struct {
 
 // HookInput A hook's definition.
 type HookInput struct {
-	// Argv Absolute executable path
+	// Argv Exec only. Absolute executable path
 	Argv []string `json:"argv"`
+
+	// Kind exec (default) or restart.
+	Kind *HookKind `json:"kind,omitempty"`
 
 	// Name Name
 	Name string `json:"name"`
@@ -2124,9 +2139,15 @@ type HookInput struct {
 	// Phase pre_deploy runs before files are written (a failure stops the deploy); post_deploy runs after.
 	Phase HookPhase `json:"phase"`
 
+	// Target Required for restart: docker:<container> or systemd:<unit>.
+	Target *string `json:"target,omitempty"`
+
 	// TimeoutSeconds Seconds before the hook is killed.
 	TimeoutSeconds *int `json:"timeoutSeconds,omitempty"`
 }
+
+// HookKind exec runs an allowlisted command; restart restarts a Docker container or systemd unit listed in the agent's CF_RESTART_ALLOW.
+type HookKind string
 
 // HookList An org's hooks.
 type HookList struct {

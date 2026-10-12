@@ -11,6 +11,7 @@ Environment variables, commands, files, transport modes and protocol limits for 
 | `CF_AGENT_TOKEN_FILE` | none | File holding the token, for example a Docker secret. Used when `CF_AGENT_TOKEN` is empty. `run` waits for the file to appear, checking every 5 seconds. |
 | `CF_AGENT_TRANSPORT` | `auto` | Which TLS server certificates the agent accepts: `auto`, `mtls` or `proxy`. See [Transport](#transport). Any other value is an error. |
 | `SSL_CERT_FILE` | system roots | PEM file of CA certificates that replaces the system roots. Use it when a proxy's certificate comes from a private CA. Read by the Go runtime. |
+| `CF_RESTART_ALLOW` | empty (restart hooks off) | Comma-separated exact `docker:<container>` or `systemd:<unit>` targets restart hooks may restart. Docker needs `/var/run/docker.sock` mounted. |
 | `CF_HOOK_ALLOW` | empty (hooks off) | Colon-separated absolute paths of executables hooks may run. Must be clean absolute paths. |
 | `CF_WRITE_ALLOW` | empty (every deploy fails) | Colon-separated absolute directory prefixes the agent may write or remove files under. `/` is rejected. |
 | `CF_AGENT_PULL_INTERVAL` | `0` | Reconcile on this schedule too, for example `15m`. `0`, or a duration of at least `1m`. `0` means only on server nudges and at connect. |
@@ -95,7 +96,7 @@ No other variable of the agent is passed on.
 
 ## Capabilities
 
-The agent tells the server what it can do. The client header lists them: `traefik` always, `hooks` when `CF_HOOK_ALLOW` is set, `http-01` when `CF_AGENT_HTTP01_LISTEN` is set, and `tls-alpn-01` when `CF_AGENT_TLSALPN_LISTEN` is set.
+The agent tells the server what it can do. The client header lists them: `traefik` always, `hooks` when `CF_HOOK_ALLOW` is set, `restart` when `CF_RESTART_ALLOW` is set, `http-01` when `CF_AGENT_HTTP01_LISTEN` is set, and `tls-alpn-01` when `CF_AGENT_TLSALPN_LISTEN` is set.
 
 ## See also
 
