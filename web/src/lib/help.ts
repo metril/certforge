@@ -345,6 +345,7 @@ export const help = {
     text: "Optional; without one, the target's own key names are used. Only PEM layouts work here.",
     learnMore: 'guide/delivery.md#vault-kv',
   },
+  'grant.postAction': { text: 'After a successful deploy, run one command on an SSH target’s host, such as a service reload.', learnMore: 'guide/delivery.md#post-actions' },
   'layout.path': { text: 'Absolute path on the client host, one per file.', learnMore: 'guide/agents.md#file-layouts' },
   'layout.parts': { text: "Joined in the order picked. extra adds each extra certificate's leaf and chain." },
   'layout.format': {

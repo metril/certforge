@@ -3,7 +3,7 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { help } from '@/lib/help';
 import { server } from '@/test/server';
-import { authHandlers, grantServer, makeCert, makeGrant, makeLayout, makeTarget, meWith, NOW, org, targetTestSecret, targetVaultKv, testSecretSchema, traefikSchema, url, vaultKvSchema } from '@/test/fixtures';
+import { authHandlers, grantServer, makeCert, makeGrant, makeHookRun, makeLayout, makeTarget, meWith, NOW, org, targetTestSecret, targetVaultKv, testSecretSchema, traefikSchema, url, vaultKvSchema } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let posted: unknown;
@@ -301,4 +301,56 @@ it('stops polling when settled', async () => {
   await tick(10_000);
   expect(getCalls).toBe(afterSettle);
   vi.useRealTimers();
+});
+
+const sshTarget = makeTarget({ id: 't-ssh', name: 'bastion', type: 'ssh', runsOn: 'server', config: { host: 'h' } });
+
+it('create posts the post action', async () => {
+  server.use(http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [makeTarget(), targetVaultKv, sshTarget] })));
+  const { user } = openDetail();
+  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  await user.click(await within(dialog).findByRole('button', { name: 'New server grant' }));
+  await user.click(within(dialog).getByRole('combobox', { name: 'Certificate' }));
+  await user.click(await screen.findByRole('option', { name: /^api/ }));
+  await user.click(within(dialog).getByRole('switch', { name: 'Post action' }));
+  await user.click(within(dialog).getByRole('combobox', { name: 'SSH target' }));
+  const opts = await screen.findAllByRole('option');
+  expect(opts.map((o) => o.textContent)).toEqual(['bastion']);
+  await user.click(opts[0]!);
+  await user.type(within(dialog).getByLabelText('Command'), 'systemctl reload nginx');
+  await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
+  await waitFor(() =>
+    expect(posted).toEqual({
+      certificateId: 'c-2',
+      layoutId: null,
+      postAction: { sshTargetId: 't-ssh', command: 'systemctl reload nginx', timeoutSeconds: 60 },
+    }),
+  );
+});
+
+it('post action needs a target and command', async () => {
+  const { user } = openDetail();
+  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  await user.click(await within(dialog).findByRole('button', { name: 'New server grant' }));
+  await user.click(within(dialog).getByRole('combobox', { name: 'Certificate' }));
+  await user.click(await screen.findByRole('option', { name: /^api/ }));
+  await user.click(within(dialog).getByRole('switch', { name: 'Post action' }));
+  await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
+  expect(await within(dialog).findByText('Pick an SSH target and enter a command.')).toBeInTheDocument();
+  expect(posted).toBeUndefined();
+});
+
+it('hook runs tab lists the target runs', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/deploy-targets/t-vault-1/hook-runs'), () =>
+      HttpResponse.json({ items: [makeHookRun({ id: 'hr-s', hookId: null, hookName: '', argv: ['ssh', 'bastion', 'systemctl reload nginx'], exitCode: 3, stderr: 'boom' })], nextCursor: null }),
+    ),
+  );
+  const { user } = openDetail();
+  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  await user.click(within(dialog).getByRole('tab', { name: 'Hook runs' }));
+  const list = await within(dialog).findByRole('list', { name: 'Hook runs' });
+  expect(within(list).getByText('SSH command')).toBeInTheDocument();
+  expect(within(list).getByText('ssh bastion systemctl reload nginx')).toBeInTheDocument();
+  expect(within(list).getByText('3')).toBeInTheDocument();
 });

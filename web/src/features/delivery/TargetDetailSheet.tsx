@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { KeyRound, Lock, Pencil, Plus, RotateCw, Trash2 } from 'lucide-react';
-import { layoutsQuery } from '@/api/queries/delivery';
+import { layoutsQuery, targetHookRunsInfinite } from '@/api/queries/delivery';
 import { targetGrantsQuery, useDeleteGrant, useRedeployGrant } from '@/api/queries/grants';
 import type { DeployTarget, Grant, ProviderSchema } from '@/api/types';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
@@ -14,6 +14,8 @@ import { RunsOnChip } from '@/components/RunsOnChip';
 import { ServerDeploymentChip } from '@/components/ServerDeploymentChip';
 import { ToneChip } from '@/components/StatusChip';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { HookRunsList } from '@/features/clients/detail/HookRunsTab';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -31,6 +33,12 @@ import { IconButton } from '@/components/IconButton';
 type Props = { orgId: string; orgSlug: string; target: DeployTarget; types: ProviderSchema[]; onEdit: () => void; onOpenChange: (open: boolean) => void };
 
 type Mode = { kind: 'list' } | { kind: 'form'; editing?: Grant };
+
+// Mounted only while its tab is open, so the runs are fetched (and polled) on demand.
+function TargetRuns({ orgId, targetId }: { orgId: string; targetId: string }) {
+  const q = useInfiniteQuery(targetHookRunsInfinite(orgId, targetId));
+  return <HookRunsList q={q} nameOf={() => 'SSH command'} empty={<EmptyState message="No hook runs yet." />} />;
+}
 
 export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpenChange }: Props) {
   const me = useMe();
@@ -189,15 +197,24 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
           {mode.kind === 'form' ? (
             <ServerGrantForm orgId={orgId} targetId={target.id} editing={mode.editing} onBack={backToList} onDone={backToList} />
           ) : (
-            <>
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="flex items-center gap-1.5 text-sm font-semibold">
-                  Grants <HelpTip id="grant.server" />
-                </h3>
-                {(q.data?.length ?? 0) > 0 && newGrantButton}
-              </div>
-              {grantsList()}
-            </>
+            <Tabs defaultValue="grants">
+              <TabsList>
+                <TabsTrigger value="grants">Grants</TabsTrigger>
+                <TabsTrigger value="runs">Hook runs</TabsTrigger>
+              </TabsList>
+              <TabsContent value="grants" className="grid gap-4 pt-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+                    Grants <HelpTip id="grant.server" />
+                  </h3>
+                  {(q.data?.length ?? 0) > 0 && newGrantButton}
+                </div>
+                {grantsList()}
+              </TabsContent>
+              <TabsContent value="runs" className="pt-3">
+                <TargetRuns orgId={orgId} targetId={target.id} />
+              </TabsContent>
+            </Tabs>
           )}
         </div>
       </SheetContent>

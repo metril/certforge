@@ -1,10 +1,10 @@
 import { Card } from '@/components/Card';
-import { useState } from 'react';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useState, type ReactNode } from 'react';
+import { useInfiniteQuery, type InfiniteData, type UseInfiniteQueryResult } from '@tanstack/react-query';
 import { Ban, ChevronDown, CircleAlert, CircleCheck, Clock } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { hookRunsInfinite } from '@/api/queries/clients';
-import type { HookRun } from '@/api/types';
+import type { HookRun, HookRunList } from '@/api/types';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { HelpTip } from '@/components/HelpTip';
@@ -63,19 +63,36 @@ function Output({ run }: { run: HookRun }) {
 
 export function HookRunsTab({ orgId, clientId, onOpenCertificates }: { orgId: string; clientId: string; onOpenCertificates: () => void }) {
   const q = useInfiniteQuery(hookRunsInfinite(orgId, clientId));
+  return (
+    <HookRunsList
+      q={q}
+      empty={
+        <EmptyState message="No hook runs yet.">
+          <Button variant="outline" onClick={onOpenCertificates}>
+            Open certificates
+          </Button>
+        </EmptyState>
+      }
+    />
+  );
+}
+
+/** The run rows shared by a client's Hook runs tab and a server target's:
+ * `nameOf` labels the Hook column (default: the hook's name). */
+export function HookRunsList({
+  q,
+  empty,
+  nameOf = (r) => r.hookName || 'Deleted hook',
+}: {
+  q: UseInfiniteQueryResult<InfiniteData<HookRunList>>;
+  empty: ReactNode;
+  nameOf?: (r: HookRun) => string;
+}) {
   const [open, setOpen] = useState<string | null>(null);
   if (failedWithoutData(q)) return <ErrorState message={`Couldn't load hook runs. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />;
   if (q.isPending) return <p className="text-ink-muted">Loading…</p>;
   const runs = q.data.pages.flatMap((p) => p.items);
-  if (runs.length === 0) {
-    return (
-      <EmptyState message="No hook runs yet.">
-        <Button variant="outline" onClick={onOpenCertificates}>
-          Open certificates
-        </Button>
-      </EmptyState>
-    );
-  }
+  if (runs.length === 0) return <>{empty}</>;
   return (
     <Card className="grid gap-2 p-4">
       {/* Not aria-hidden: it holds the focusable hook.exit tip. */}
@@ -92,7 +109,7 @@ export function HookRunsTab({ orgId, clientId, onOpenCertificates }: { orgId: st
       </div>
       <ul aria-label="Hook runs" className="grid">
         {runs.map((r) => {
-          const name = r.hookName || 'Deleted hook';
+          const name = nameOf(r);
           const command = r.argv.join(' ');
           return (
             <li key={r.id} className="grid gap-2 border-b border-border py-2 text-sm last:border-0">
@@ -100,7 +117,7 @@ export function HookRunsTab({ orgId, clientId, onOpenCertificates }: { orgId: st
                 <time dateTime={r.ranAt} title={fmtDateTime(r.ranAt)} className="text-xs text-ink-muted">
                   {relTime(r.ranAt, q.dataUpdatedAt)}
                 </time>
-                <span title={name} className={cn('truncate', !r.hookName && 'text-ink-muted')}>
+                <span title={name} className={cn('truncate', !r.hookName && !r.hookId && nameOf(r) === 'Deleted hook' && 'text-ink-muted')}>
                   {name}
                 </span>
                 <span className="text-xs">{PHASE_LABEL[r.phase]}</span>

@@ -123,6 +123,7 @@ export type RevocationReason = S['RevocationReason'];
 export type VaultSettings = S['VaultSettings'];
 export type VaultTestResult = S['VaultTestResult'];
 export type ServerGrantInput = S['ServerGrantInput'];
+export type PostAction = S['PostAction'];
 export type ServerDeployment = S['ServerDeployment'];
 export type ServerDeploymentStatus = S['ServerDeploymentStatus'];
 export type RunsOn = S['RunsOn'];

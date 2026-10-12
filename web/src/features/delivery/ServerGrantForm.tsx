@@ -3,12 +3,14 @@ import { useQuery } from '@tanstack/react-query';
 import { CircleAlert } from 'lucide-react';
 import { ApiError, errorMessage, fieldOfTitle } from '@/api/errors';
 import { allCertificatesPickerQuery, plural } from '@/api/queries/certificates';
-import { layoutsQuery } from '@/api/queries/delivery';
+import { deployTargetsQuery, layoutsQuery } from '@/api/queries/delivery';
 import { useCreateServerGrant, useUpdateGrant } from '@/api/queries/grants';
-import type { Grant, GrantUpdate } from '@/api/types';
+import type { Grant, GrantUpdate, PostAction } from '@/api/types';
 import { Combobox } from '@/components/Combobox';
 import { Field } from '@/components/Field';
+import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 type Props = { orgId: string; targetId: string; editing?: Grant; onBack: () => void; onDone: () => void };
 
@@ -20,10 +22,16 @@ const NO_LAYOUT = '__target_files__';
 export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Props) {
   const certsQ = useQuery(allCertificatesPickerQuery(orgId));
   const layoutsQ = useQuery(layoutsQuery(orgId));
+  const targetsQ = useQuery(deployTargetsQuery(orgId));
   const create = useCreateServerGrant(orgId, targetId);
   const update = useUpdateGrant(orgId);
   const [certificateId, setCertificateId] = useState<string | undefined>(editing?.certificateId);
   const [layoutId, setLayoutId] = useState<string | undefined>(editing?.layoutId ?? undefined);
+  const [postOn, setPostOn] = useState(!!editing?.postAction);
+  const [sshTargetId, setSshTargetId] = useState<string | undefined>(editing?.postAction?.sshTargetId);
+  const [command, setCommand] = useState(editing?.postAction?.command ?? '');
+  const [timeout, setTimeoutSeconds] = useState(String(editing?.postAction?.timeoutSeconds ?? 60));
+  const [postError, setPostError] = useState<string | null>(null);
   const [certError, setCertError] = useState<string | null>(null);
   const [layoutError, setLayoutError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -39,7 +47,10 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
     }),
   ];
 
+  const sshOptions = (targetsQ.data ?? []).filter((t) => t.type === 'ssh').map((t) => ({ value: t.id, label: t.name }));
+
   const submit = async () => {
+    setPostError(null);
     setCertError(null);
     setLayoutError(null);
     setFormError(null);
@@ -47,20 +58,34 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
       setCertError('Pick a certificate.');
       return;
     }
+    let postAction: PostAction | undefined;
+    if (postOn) {
+      const secs = Number(timeout);
+      if (!sshTargetId || !command.trim()) {
+        setPostError('Pick an SSH target and enter a command.');
+        return;
+      }
+      if (!Number.isInteger(secs) || secs < 5 || secs > 300) {
+        setPostError('Timeout must be 5 to 300 seconds.');
+        return;
+      }
+      postAction = { sshTargetId, command: command.trim(), timeoutSeconds: secs };
+    }
     try {
       if (editing) {
-        // internal/api/grants.go's updateServerGrant only reads Body.LayoutId
-        // for a server grant; the other GrantUpdate fields are agent-only and
-        // ignored server-side, so they're not worth collecting here.
-        await update.mutateAsync({ id: editing.id, body: { layoutId: layoutId ?? null } as GrantUpdate });
+        // internal/api/grants.go's updateServerGrant only reads LayoutId and
+        // PostAction for a server grant; the other GrantUpdate fields are
+        // agent-only and ignored server-side. Omitting postAction clears it.
+        await update.mutateAsync({ id: editing.id, body: { layoutId: layoutId ?? null, ...(postAction && { postAction }) } as GrantUpdate });
       } else {
-        await create.mutateAsync({ certificateId: certificateId!, layoutId: layoutId ?? null });
+        await create.mutateAsync({ certificateId: certificateId!, layoutId: layoutId ?? null, ...(postAction && { postAction }) });
       }
       onDone();
     } catch (e) {
       const field = e instanceof ApiError && e.status === 422 ? fieldOfTitle(e.problem.title) : null;
       if (field === 'certificateId') setCertError(errorMessage(e));
       else if (field === 'layoutId') setLayoutError(errorMessage(e));
+      else if (field === 'postAction') setPostError(errorMessage(e));
       else setFormError(errorMessage(e));
     }
   };
@@ -96,6 +121,33 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
           emptyText="No layouts yet."
         />
       </Field>
+      <div className="grid gap-3">
+        <SwitchField id="server-grant-post" label="Post action" help="grant.postAction" checked={postOn} onCheckedChange={setPostOn} onText="Run a command after deploy" offText="None" />
+        {postOn && (
+          <>
+            <Field id="server-grant-post-target" label="SSH target" error={postError}>
+              <Combobox
+                id="server-grant-post-target"
+                aria-label="SSH target"
+                value={sshTargetId}
+                onChange={(v) => {
+                  setSshTargetId(v);
+                  setPostError(null);
+                }}
+                options={sshOptions}
+                placeholder="Pick an SSH target"
+                emptyText="No SSH targets yet."
+              />
+            </Field>
+            <Field id="server-grant-post-command" label="Command">
+              <Input id="server-grant-post-command" className="font-mono" maxLength={512} value={command} onChange={(e) => setCommand(e.target.value)} />
+            </Field>
+            <Field id="server-grant-post-timeout" label="Timeout (seconds)">
+              <Input id="server-grant-post-timeout" type="number" min={5} max={300} value={timeout} onChange={(e) => setTimeoutSeconds(e.target.value)} />
+            </Field>
+          </>
+        )}
+      </div>
       {formError && (
         <p role="alert" className="flex items-center gap-1 text-sm text-failed">
           <CircleAlert className="size-3.5 shrink-0" aria-hidden />
