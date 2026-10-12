@@ -39,7 +39,14 @@ export function defaultRunsOn(meta: Pick<ProviderSchema, 'runsOn'> | undefined):
  * `never` (or an unset policy) never. */
 export function needsKey(keyPolicy: KeyPolicy | undefined, config: Record<string, unknown>): boolean {
   if (keyPolicy === 'always') return true;
-  if (keyPolicy === 'optional') return !!config.includeKey;
+  if (keyPolicy === 'optional') {
+    if (config.includeKey) return true;
+    const files = config.files;
+    if (Array.isArray(files)) {
+      const plain = ['fullchain', 'cert', 'chain'];
+      return files.some((f: { content?: unknown }) => !plain.includes(String(f?.content)));
+    }
+  }
   return false;
 }
 

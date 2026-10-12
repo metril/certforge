@@ -20,6 +20,10 @@ it('needsKey matrix', () => {
   expect(needsKey('optional', { includeKey: false })).toBe(false);
   expect(needsKey('optional', { includeKey: true })).toBe(true);
   expect(needsKey('always', {})).toBe(true);
+  expect(needsKey('optional', { files: [{ content: 'fullchain' }, { content: 'key' }] })).toBe(true);
+  expect(needsKey('optional', { files: [{ content: 'bundle' }] })).toBe(true);
+  expect(needsKey('optional', { files: [{ content: 'custom' }] })).toBe(true);
+  expect(needsKey('optional', { files: [{ content: 'fullchain' }, { content: 'cert' }] })).toBe(false);
   expect(needsKey(undefined, { includeKey: true })).toBe(false);
 });
 

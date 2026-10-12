@@ -145,9 +145,16 @@ func (r *Registry) Parse(typ string, raw json.RawMessage, stored map[string]stri
 	return cfg, reused, nil
 }
 
+// KeyNeeder is an optional interface for Optional-policy targets whose need
+// for the private key is derived from their own public config (for example
+// the files an ssh target writes) rather than an includeKey flag.
+type KeyNeeder interface {
+	NeedsKey(public json.RawMessage) (bool, error)
+}
+
 // NeedsKey reports whether typ's config needs the certificate's private
-// key: always for KeyPolicy Always, or, for Optional, when public's
-// includeKey is true. public is the target's public config (no secrets),
+// key: always for KeyPolicy Always, or, for Optional, the target's own answer
+// when it implements KeyNeeder, else whether public's includeKey is true. public is the target's public config (no secrets),
 // so this never needs the decrypted secret map.
 func (r *Registry) NeedsKey(typ string, public json.RawMessage) (bool, error) {
 	t, ok := r.Get(typ)
@@ -158,6 +165,9 @@ func (r *Registry) NeedsKey(typ string, public json.RawMessage) (bool, error) {
 	case Always:
 		return true, nil
 	case Optional:
+		if kn, ok := t.(KeyNeeder); ok {
+			return kn.NeedsKey(public)
+		}
 		var doc struct {
 			IncludeKey bool `json:"includeKey"`
 		}
