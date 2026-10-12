@@ -37,6 +37,9 @@ func TestADCSCreateUpdateIssue(t *testing.T) {
 		ca.Config["cesUrl"] != fk.CESURL || ca.TrustBundlePEM == "" || ca.NotAfter == nil {
 		t.Fatalf("ca = %+v", ca)
 	}
+	if kt, _ := ca.Config["templateKeyTypes"].([]any); len(kt) != 3 || kt[0] != "rsa2048" {
+		t.Fatalf("templateKeyTypes = %v", ca.Config["templateKeyTypes"])
+	}
 	if _, ok := ca.Config["password"]; ok {
 		t.Fatal("password leaked into config")
 	}

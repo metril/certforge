@@ -526,6 +526,9 @@ type AdcsConfig struct {
 	// Template Certificate template name (the account needs Read and Enroll; the template must supply the subject in the request).
 	Template string `json:"template"`
 
+	// TemplateKeyTypes Key types the template accepts, read from the policy on create and update.
+	TemplateKeyTypes *[]KeyType `json:"templateKeyTypes,omitempty"`
+
 	// TemplateOid The template's object identifier
 	TemplateOid *string `json:"templateOid,omitempty"`
 
@@ -592,8 +595,17 @@ type AdcsProbeSelected struct {
 
 // AdcsProbeTemplate A certificate template published by the enrollment policy.
 type AdcsProbeTemplate struct {
+	// AllowedKeyTypes Key types the template accepts.
+	AllowedKeyTypes []KeyType `json:"allowedKeyTypes"`
+
 	// CanEnroll The service account may enroll.
 	CanEnroll bool `json:"canEnroll"`
+
+	// KeyAlgorithm Key algorithm the template issues: RSA, ECDSA_P256, ECDSA_P384, or empty when unknown.
+	KeyAlgorithm string `json:"keyAlgorithm"`
+
+	// LegacyCsp The template uses a legacy cryptographic service provider rather than a key storage provider.
+	LegacyCsp bool `json:"legacyCsp"`
 
 	// MinKeySize Minimal key length in bits.
 	MinKeySize int `json:"minKeySize"`
@@ -604,8 +616,32 @@ type AdcsProbeTemplate struct {
 	// Oid Template OID when published; may be empty.
 	Oid string `json:"oid"`
 
+	// Requirements What CertForge needs from the template and whether it is met.
+	Requirements []AdcsTemplateRequirement `json:"requirements"`
+
 	// RequiresApproval Requests are held for CA manager approval
 	RequiresApproval bool `json:"requiresApproval"`
+
+	// Schema Template schema version.
+	Schema int `json:"schema"`
+}
+
+// AdcsTemplateRequirement One template requirement and whether the template meets it.
+type AdcsTemplateRequirement struct {
+	// Blocking When unmet
+	Blocking bool `json:"blocking"`
+
+	// Fix How to change the template in the AD CS console.
+	Fix string `json:"fix"`
+
+	// Key Stable id: enroll, approval, signatures, subject, serverAuth or keyAlgorithm.
+	Key string `json:"key"`
+
+	// Label What is required.
+	Label string `json:"label"`
+
+	// Ok The template meets the requirement.
+	Ok bool `json:"ok"`
 }
 
 // AgentCA One internal agent CA.

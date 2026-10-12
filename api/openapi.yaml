@@ -3725,6 +3725,11 @@ components:
         caBundlePem: {type: string, description: PEM roots trusted for the web services' HTTPS certificate; also used as the chain when CES returns the leaf alone.}
         timeoutSeconds: {type: integer, minimum: 5, maximum: 300, default: 30, description: Per-request timeout.}
         templateOid: {type: string, readOnly: true, description: The template's object identifier, read from the policy.}
+        templateKeyTypes:
+          type: array
+          readOnly: true
+          description: Key types the template accepts, read from the policy on create and update.
+          items: {$ref: "#/components/schemas/KeyType"}
     CA:
       type: object
       description: A certificate authority — an external ACME directory, or a private CA CertForge holds the key material for.
@@ -3882,13 +3887,34 @@ components:
     AdcsProbeTemplate:
       type: object
       description: A certificate template published by the enrollment policy.
-      required: [name, oid, minKeySize, canEnroll, requiresApproval]
+      required: [name, oid, minKeySize, canEnroll, requiresApproval, requirements, allowedKeyTypes, keyAlgorithm, schema, legacyCsp]
       properties:
         name: {type: string, description: Template common name, as sent in the request.}
         oid: {type: string, description: Template OID when published; may be empty.}
         minKeySize: {type: integer, description: Minimal key length in bits.}
         canEnroll: {type: boolean, description: The service account may enroll.}
         requiresApproval: {type: boolean, description: Requests are held for CA manager approval, so CertForge cannot use it.}
+        requirements:
+          type: array
+          description: What CertForge needs from the template and whether it is met.
+          items: {$ref: "#/components/schemas/AdcsTemplateRequirement"}
+        allowedKeyTypes:
+          type: array
+          description: Key types the template accepts.
+          items: {$ref: "#/components/schemas/KeyType"}
+        keyAlgorithm: {type: string, description: "Key algorithm the template issues: RSA, ECDSA_P256, ECDSA_P384, or empty when unknown."}
+        schema: {type: integer, description: Template schema version.}
+        legacyCsp: {type: boolean, description: The template uses a legacy cryptographic service provider rather than a key storage provider.}
+    AdcsTemplateRequirement:
+      type: object
+      description: One template requirement and whether the template meets it.
+      required: [key, label, fix, ok, blocking]
+      properties:
+        key: {type: string, description: "Stable id: enroll, approval, signatures, subject, serverAuth or keyAlgorithm."}
+        label: {type: string, description: What is required.}
+        fix: {type: string, description: How to change the template in the AD CS console.}
+        ok: {type: boolean, description: The template meets the requirement.}
+        blocking: {type: boolean, description: When unmet, CertForge cannot use the template.}
     AdcsProbeSelected:
       type: object
       description: Verdict on the requested template, by the rules create/update apply.

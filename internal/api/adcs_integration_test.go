@@ -5,6 +5,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -120,6 +121,28 @@ func TestADCSProbe(t *testing.T) {
 		t.Fatalf("approval template: %+v %v", res, err)
 	}
 	fk.EnrollmentFlags.Store(0)
+
+	// Requirements and key types are reported; a template that does not
+	// supply the subject is unusable.
+	if reqs := res.Templates[0].Requirements; len(reqs) != 6 || reqs[0].Key != "enroll" || !reqs[0].Ok || res.Templates[0].KeyAlgorithm != "RSA" ||
+		len(res.Templates[0].AllowedKeyTypes) != 3 {
+		t.Fatalf("template = %+v", res.Templates[0])
+	}
+	fk.SubjectFlags.Store(0)
+	res, err = probe(f.as("admin"), body(adcstest.Password))
+	if err != nil || !res.Ok || res.Selected.Usable || res.Selected.Reason == nil || !strings.Contains(*res.Selected.Reason, "subject") {
+		t.Fatalf("subject template: %+v %v", res, err)
+	}
+	var subj *gen.AdcsTemplateRequirement
+	for i := range res.Templates[0].Requirements {
+		if r := &res.Templates[0].Requirements[i]; r.Key == "subject" {
+			subj = r
+		}
+	}
+	if subj == nil || subj.Ok || !subj.Blocking {
+		t.Fatalf("subject requirement = %+v", subj)
+	}
+	fk.SubjectFlags.Store(1)
 
 	// Wrong password: 200 with ok false and no template list.
 	res, err = probe(f.as("admin"), body("wrong"))

@@ -30,6 +30,9 @@ type adcsConfig struct {
 	CABundlePEM    string `json:"caBundlePem,omitempty"`
 	TimeoutSeconds int    `json:"timeoutSeconds"`
 	TemplateOID    string `json:"templateOid,omitempty"`
+	// TemplateKeyTypes is read-only like TemplateOID: the key types the
+	// template accepts, refreshed whenever the policy is re-read.
+	TemplateKeyTypes []string `json:"templateKeyTypes,omitempty"`
 }
 
 // adcsSecretCfg is an adcs CA's sealed secret_cfg.
@@ -161,18 +164,53 @@ func (s *Store) adcsPolicies(ctx context.Context, cfg adcsConfig, password strin
 	return res, nil
 }
 
+// ADCSRequirement is one template requirement and whether the template meets
+// it. Fix says, in AD CS console terms, how to change the template.
+type ADCSRequirement struct {
+	Key, Label, Fix string
+	OK, Blocking    bool
+}
+
+// adcsRequirements judges t against what CertForge needs from a template.
+func adcsRequirements(t *adcs.Template) []ADCSRequirement {
+	reqs := []ADCSRequirement{
+		{Key: "enroll", Label: "Service account can enroll", OK: t.CanEnroll, Blocking: true,
+			Fix: "Security tab: give the service account Read and Enroll."},
+		{Key: "approval", Label: "Issues without manager approval", OK: !t.RequiresApproval(), Blocking: true,
+			Fix: "Issuance Requirements tab: clear \"CA certificate manager approval\"."},
+		{Key: "signatures", Label: "Needs no authorized signatures", OK: t.RASignatures == 0, Blocking: true,
+			Fix: "Issuance Requirements tab: set \"This number of authorized signatures\" to 0."},
+		{Key: "subject", Label: "Subject supplied in the request", OK: t.SuppliesSubject(), Blocking: true,
+			Fix: "Subject Name tab: select \"Supply in the request\"."},
+		{Key: "serverAuth", Label: "Allows Server Authentication", OK: t.ServerAuthOK(),
+			Fix: "Extensions tab, Application Policies: add Server Authentication."},
+	}
+	if t.KeyAlgorithm == "RSA" {
+		reqs = append(reqs, ADCSRequirement{Key: "keyAlgorithm", Label: "Allows elliptic-curve keys", OK: false,
+			Fix: "To issue EC keys: Compatibility tab, choose Windows Server 2008 or later; Cryptography tab, set Provider Category to \"Key Storage Provider\" and Algorithm to \"ECDSA_P384\"."})
+	}
+	return reqs
+}
+
+// adcsBlockReasons maps a blocking requirement to its create/update error.
+var adcsBlockReasons = map[string]string{
+	"enroll":     "the service account lacks Enroll permission on this template",
+	"approval":   "template requires CA manager approval; use a template that issues automatically",
+	"signatures": "template requires authorized signatures; set the number to 0",
+	"subject":    "template does not let the request supply the subject; select \"Supply in the request\"",
+}
+
 // usableADCSTemplate returns the named template, or a *ValidationError saying
-// why it cannot be used: unknown, held for approval, or no Enroll permission.
+// why it cannot be used: the first failing blocking requirement.
 func usableADCSTemplate(res *adcs.PolicyResult, name string) (*adcs.Template, error) {
 	tpl, err := res.Template(name)
 	if err != nil {
 		return nil, &ValidationError{"config.template", err.Error()}
 	}
-	if tpl.RequiresApproval() {
-		return nil, &ValidationError{"config.template", "template requires CA manager approval; use a template that issues automatically"}
-	}
-	if !tpl.CanEnroll {
-		return nil, &ValidationError{"config.template", "the service account lacks Enroll permission on this template"}
+	for _, r := range adcsRequirements(tpl) {
+		if r.Blocking && !r.OK {
+			return nil, &ValidationError{"config.template", adcsBlockReasons[r.Key]}
+		}
 	}
 	return tpl, nil
 }
@@ -189,6 +227,11 @@ type ADCSProbeTemplate struct {
 	Name, OID                string
 	MinKeySize               int
 	CanEnroll, NeedsApproval bool
+	Requirements             []ADCSRequirement
+	AllowedKeyTypes          []string
+	KeyAlgorithm             string
+	Schema                   int
+	LegacyCSP                bool
 }
 
 // ADCSProbeSelected is the verdict on the template named in the probe.
@@ -266,7 +309,8 @@ func (s *Store) ProbeADCS(ctx context.Context, orgID uuid.UUID, in ADCSProbeInpu
 	out := ADCSProbeResult{OK: true, Templates: make([]ADCSProbeTemplate, 0, len(res.Templates))}
 	for _, t := range res.Templates {
 		out.Templates = append(out.Templates, ADCSProbeTemplate{Name: t.Name, OID: t.OID, MinKeySize: t.MinKeySize,
-			CanEnroll: t.CanEnroll, NeedsApproval: t.RequiresApproval()})
+			CanEnroll: t.CanEnroll, NeedsApproval: t.RequiresApproval(), Requirements: adcsRequirements(&t),
+			AllowedKeyTypes: t.AllowedKeyTypes(), KeyAlgorithm: t.KeyAlgorithm, Schema: t.Schema, LegacyCSP: t.LegacyCSP()})
 	}
 	if cfg.Template != "" {
 		sel := &ADCSProbeSelected{Name: cfg.Template, Usable: true}
@@ -299,6 +343,7 @@ func (s *Store) resolveADCS(ctx context.Context, cfg adcsConfig, password string
 	}
 	out := adcsResolved{cfg: cfg}
 	out.cfg.TemplateOID = tpl.OID
+	out.cfg.TemplateKeyTypes = tpl.AllowedKeyTypes()
 	for _, ca := range tpl.CAs {
 		if out.cfg.CESURL == "" && len(ca.CESURLs) > 0 {
 			out.cfg.CESURL = ca.CESURLs[0]
@@ -456,7 +501,7 @@ func (s *Store) updateADCSCA(ctx context.Context, orgID, id uuid.UUID, in CAInpu
 		if err := json.Unmarshal(locked.Config, &lockedCfg); err != nil {
 			return CA{}, err
 		}
-		cfg.TemplateOID = lockedCfg.TemplateOID
+		cfg.TemplateOID, cfg.TemplateKeyTypes = lockedCfg.TemplateOID, lockedCfg.TemplateKeyTypes
 		trust, nb, na = locked.TrustBundlePem, locked.NotBefore, locked.NotAfter
 	}
 	cfgRaw, err := json.Marshal(cfg)

@@ -426,8 +426,17 @@ func (s *Server) ProbeAdcs(ctx context.Context, r gen.ProbeAdcsRequestObject) (g
 		out.Error = ptr(res.Error)
 	}
 	for _, t := range res.Templates {
+		reqs := make([]gen.AdcsTemplateRequirement, 0, len(t.Requirements))
+		for _, r := range t.Requirements {
+			reqs = append(reqs, gen.AdcsTemplateRequirement{Key: r.Key, Label: r.Label, Fix: r.Fix, Ok: r.OK, Blocking: r.Blocking})
+		}
+		kts := make([]gen.KeyType, 0, len(t.AllowedKeyTypes))
+		for _, k := range t.AllowedKeyTypes {
+			kts = append(kts, gen.KeyType(k))
+		}
 		out.Templates = append(out.Templates, gen.AdcsProbeTemplate{Name: t.Name, Oid: t.OID, MinKeySize: t.MinKeySize,
-			CanEnroll: t.CanEnroll, RequiresApproval: t.NeedsApproval})
+			CanEnroll: t.CanEnroll, RequiresApproval: t.NeedsApproval, Requirements: reqs, AllowedKeyTypes: kts,
+			KeyAlgorithm: t.KeyAlgorithm, Schema: t.Schema, LegacyCsp: t.LegacyCSP})
 	}
 	d := map[string]any{"ok": res.OK, "cepUrl": b.CepUrl, "username": b.Username, "templates": len(res.Templates)}
 	if res.Selected != nil {
