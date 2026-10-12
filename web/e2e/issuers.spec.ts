@@ -170,7 +170,8 @@ test('AD CS template picker and test', async ({ page }) => {
   await expect(page.getByRole('option', { name: /^CertForgeWeb/ })).toContainText('RSA ≥2048');
   const noSubject = page.getByRole('option', { name: /^NoSubject/ });
   await expect(noSubject).toHaveAttribute('aria-disabled', 'true');
-  await noSubject.hover();
+  // The disabled option ignores pointer events; its tooltip trigger is the wrapping span.
+  await noSubject.locator('xpath=..').hover({ force: true });
   await expect(page.getByRole('tooltip')).toContainText('Supply in the request');
   await page.getByRole('option', { name: /^NoServerAuth/ }).click();
   const reqs = sheet.getByRole('region', { name: 'Requirements for NoServerAuth' });
