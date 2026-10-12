@@ -15,10 +15,20 @@ export async function pickTargetType(sheet: Locator, name: RegExp | string): Pro
   await page.getByPlaceholder('Search').fill(typeof name === 'string' ? name : name.source.replace(/^\^/, ''));
   // Option name is "<label> <hint>" (e.g. "Vault KV Server").
   await page.getByRole('option', { name }).first().click();
+  // Let the popover finish closing so it cannot swallow later pointer events.
+  await expect(page.getByPlaceholder('Search')).toBeHidden();
 }
 
 /** Asserts the Runs on control reflects the picked type's mode; works for
  * both Type renderings (the Runs on radios always exist). */
 export async function expectRunsOn(sheet: Locator, mode: 'Server' | 'Agent'): Promise<void> {
   await expect(sheet.getByRole('radio', { name: mode, exact: true })).toHaveAttribute('aria-checked', 'true');
+}
+
+/** Cancels the sheet; a changed form asks to discard first, so confirm that. */
+export async function cancelSheet(sheet: Locator): Promise<void> {
+  await sheet.getByRole('button', { name: 'Cancel' }).click();
+  const discard = sheet.page().getByRole('dialog', { name: 'Discard changes?' });
+  if (await discard.isVisible()) await discard.getByRole('button', { name: 'Discard' }).click();
+  await expect(sheet).toBeHidden();
 }

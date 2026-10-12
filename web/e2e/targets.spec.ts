@@ -1,7 +1,7 @@
 import { expect, signInLocal, test } from './auth';
 import { E2E } from './env';
 import { snap } from './screens';
-import { expectRunsOn, pickTargetType } from './targetType';
+import { cancelSheet, expectRunsOn, pickTargetType } from './targetType';
 
 // lib/help.ts's 'target.runsOnForced'/'target.runsOnLocked' text, copied
 // rather than imported: that module reads `import.meta.env` (a Vite-only
@@ -45,8 +45,7 @@ test('vault-kv sheet runs on server', async ({ page }) => {
   await snap(page, 'target-sheet-vault-kv');
 
   // Cancel — nothing saved, so this test has no Vault dependency.
-  await sheet.getByRole('button', { name: 'Cancel' }).click();
-  await expect(sheet).toBeHidden();
+  await cancelSheet(sheet);
 });
 
 test('traefik target runs on agent', async ({ page }) => {
@@ -147,8 +146,7 @@ test('targets at 375 px', async ({ page }) => {
   expect(await sheet.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 
   await snap(page, 'targets-mobile');
-  await sheet.getByRole('button', { name: 'Cancel' }).click();
-  await expect(sheet).toBeHidden();
+  await cancelSheet(sheet);
 
   await list.getByRole('button', { name: `Delete ${name}` }).click();
   const confirm = page.getByRole('dialog', { name: 'Delete deploy target' });
