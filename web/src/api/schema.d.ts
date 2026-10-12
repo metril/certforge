@@ -589,6 +589,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orgs/{orgId}/ssh/peek": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fetch a server's SSH host keys
+         * @description Needs delivery:write. Connects to host (port default 22) and returns the host keys the server offers, like ssh-keyscan, to pin on an SSH deploy target. The same address policy as deploy targets applies (loopback only when the notifications allowLoopbackUrls setting is on; 422 naming host otherwise). A connection that fails returns 200 with ok false. 10 second timeout; at most 2 peeks run at once server-wide, beyond that this returns 503 with Retry-After. Recorded as ssh.peek in the audit log with the host and port.
+         */
+        post: operations["peekSSHHostKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orgs/{orgId}/acme-accounts": {
         parameters: {
             query?: never;
@@ -3285,6 +3308,31 @@ export interface components {
             chain: components["schemas"]["TlsPeekCertificate"][];
             /** @description The chain verifies against the system roots for the host. */
             verified: boolean;
+        };
+        /** @description SSH server to read host keys from. */
+        SshPeekRequest: {
+            /** @description Host name or IP address. */
+            host: string;
+            /** @description SSH port; defaults to 22. */
+            port?: number;
+        };
+        /** @description One host key a server offers. */
+        SshPeekHostKey: {
+            /** @description Key type, e.g. ssh-ed25519. */
+            type: string;
+            /** @description The "<type> <base64>" public key line to pin. */
+            key: string;
+            /** @description Fingerprint, SHA256:... as shown by ssh-keygen. */
+            sha256: string;
+        };
+        /** @description Outcome of an SSH host key peek. */
+        SshPeekResult: {
+            /** @description At least one host key was read. */
+            ok: boolean;
+            /** @description Why the connection failed */
+            error?: string;
+            /** @description Host keys offered; empty when ok is false. */
+            keys: components["schemas"]["SshPeekHostKey"][];
         };
         /** @description Outcome of an AD CS probe. */
         AdcsProbeResult: {
@@ -6624,6 +6672,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TlsPeekResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    peekSSHHostKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SshPeekRequest"];
+            };
+        };
+        responses: {
+            /** @description Peek outcome. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SshPeekResult"];
                 };
             };
             400: components["responses"]["BadRequest"];
