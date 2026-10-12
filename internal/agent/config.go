@@ -21,6 +21,8 @@ type Config struct {
 	TokenFile     string          // CF_AGENT_TOKEN_FILE
 	HookAllow     []string        // CF_HOOK_ALLOW, colon-separated absolute paths; empty disables hooks
 	RestartAllow  map[string]bool // CF_RESTART_ALLOW, comma-separated docker:<name>/systemd:<unit>; empty disables restart hooks
+	DockerNetwork string          // from DOCKER_HOST: "unix" (default) or "tcp"
+	DockerAddr    string          // socket path or host:port for restart hooks; default /var/run/docker.sock
 	WriteAllow    []string        // CF_WRITE_ALLOW, colon-separated absolute directory prefixes; empty disables every write
 	PullInterval  time.Duration   // CF_AGENT_PULL_INTERVAL, 0 = socket only
 	HTTP01Listen  string          // CF_AGENT_HTTP01_LISTEN, host:port; empty disables serving http-01
@@ -100,6 +102,9 @@ func LoadConfig(getenv func(string) string, version string) (Config, error) {
 	}
 	c.HookAllow = hookAllow
 	if c.RestartAllow, err = ParseRestartAllow(getenv("CF_RESTART_ALLOW")); err != nil {
+		return c, err
+	}
+	if c.DockerNetwork, c.DockerAddr, err = ParseDockerHost(getenv("DOCKER_HOST")); err != nil {
 		return c, err
 	}
 	writeAllow, err := parseColonPaths("CF_WRITE_ALLOW", getenv("CF_WRITE_ALLOW"))

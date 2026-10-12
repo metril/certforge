@@ -52,7 +52,7 @@ func TestRestartDocker(t *testing.T) {
 			w.WriteHeader(204)
 		}
 	})
-	rr := &RestartRunner{Allow: map[string]bool{"docker:nginx": true, "docker:missing": true, "docker:boom": true, "docker:slow": true}, DockerSocket: sock}
+	rr := &RestartRunner{Allow: map[string]bool{"docker:nginx": true, "docker:missing": true, "docker:boom": true, "docker:slow": true}, DockerAddr: sock}
 	ctx := context.Background()
 
 	run := rr.Run(ctx, restartSpec("docker:nginx"))
@@ -72,7 +72,7 @@ func TestRestartDocker(t *testing.T) {
 }
 
 func TestRestartNotAllowedOrBad(t *testing.T) {
-	rr := &RestartRunner{Allow: map[string]bool{"docker:nginx": true}, DockerSocket: "/nonexistent.sock"}
+	rr := &RestartRunner{Allow: map[string]bool{"docker:nginx": true}, DockerAddr: "/nonexistent.sock"}
 	if run := rr.Run(context.Background(), restartSpec("docker:other")); run.ExitCode != -1 || !strings.Contains(run.Stderr, "not listed in CF_RESTART_ALLOW") {
 		t.Fatalf("%+v", run)
 	}
@@ -121,7 +121,7 @@ func TestDeployRestartPostHook(t *testing.T) {
 	hits := 0
 	sock := dockerStub(t, func(w http.ResponseWriter, r *http.Request) { hits++; w.WriteHeader(204) })
 	d := testDeployer([]string{dir})
-	d.Restart = &RestartRunner{Allow: map[string]bool{"docker:web": true}, DockerSocket: sock}
+	d.Restart = &RestartRunner{Allow: map[string]bool{"docker:web": true}, DockerAddr: sock}
 	versionID := uuid.New()
 	p := filepath.Join(dir, "web.pem")
 	mk := func(target string) agentproto.Assignment {
@@ -159,7 +159,7 @@ func TestRestartTargets(t *testing.T) {
 		}
 		_, _ = w.Write([]byte(`[{"Names":["/nginx"]},{"Names":["/redis","/app/alias"]},{"Names":[]},{"Names":["/bad name!"]}]`))
 	})
-	rr := &RestartRunner{Allow: map[string]bool{"docker:nginx": true, "docker:stopped": true, "systemd:x.service": true}, DockerSocket: sock}
+	rr := &RestartRunner{Allow: map[string]bool{"docker:nginx": true, "docker:stopped": true, "systemd:x.service": true}, DockerAddr: sock}
 	got := map[string]agentproto.RestartTarget{}
 	for _, tg := range rr.Targets(context.Background()) {
 		got[tg.Target] = tg
@@ -185,7 +185,7 @@ func TestRestartTargets(t *testing.T) {
 }
 
 func TestRestartTargetsDockerDown(t *testing.T) {
-	rr := &RestartRunner{Allow: map[string]bool{"docker:nginx": true}, DockerSocket: "/nonexistent.sock"}
+	rr := &RestartRunner{Allow: map[string]bool{"docker:nginx": true}, DockerAddr: "/nonexistent.sock"}
 	got := rr.Targets(context.Background())
 	if len(got) != 1 || !got[0].Allowed || got[0].Running != nil {
 		t.Fatalf("targets = %+v", got)
@@ -208,9 +208,82 @@ func TestRestartTargetsCap(t *testing.T) {
 		b.WriteString("]")
 		_, _ = w.Write([]byte(b.String()))
 	})
-	rr := &RestartRunner{Allow: map[string]bool{"docker:keep": true}, DockerSocket: sock}
+	rr := &RestartRunner{Allow: map[string]bool{"docker:keep": true}, DockerAddr: sock}
 	got := rr.Targets(context.Background())
 	if len(got) != maxRestartTargets || got[0].Target != "docker:keep" {
 		t.Fatalf("len %d first %v", len(got), got[0])
+	}
+}
+
+func TestRestartTCP(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/containers/nginx/restart"):
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/containers/json"):
+			_, _ = w.Write([]byte(`[{"Names":["/nginx"]}]`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	network, addr, err := ParseDockerHost("tcp://" + srv.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr := &RestartRunner{Allow: map[string]bool{"docker:nginx": true}, DockerNetwork: network, DockerAddr: addr}
+	hr := rr.Run(context.Background(), agentproto.HookSpec{ID: uuid.New(), Phase: "post", Target: "docker:nginx"})
+	if hr.ExitCode != 0 {
+		t.Fatalf("restart over tcp: %+v", hr)
+	}
+	ts := rr.Targets(context.Background())
+	if len(ts) != 1 || ts[0].Running == nil || !*ts[0].Running {
+		t.Fatalf("targets over tcp: %+v", ts)
+	}
+}
+
+func TestRestartUnixExplicit(t *testing.T) {
+	sock := dockerStub(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	rr := &RestartRunner{Allow: map[string]bool{"docker:a": true}, DockerNetwork: "unix", DockerAddr: sock}
+	if hr := rr.Run(context.Background(), agentproto.HookSpec{ID: uuid.New(), Phase: "post", Target: "docker:a"}); hr.ExitCode != 0 {
+		t.Fatalf("%+v", hr)
+	}
+}
+
+func TestParseDockerHost(t *testing.T) {
+	ok := map[string][2]string{
+		"":                        {"unix", "/var/run/docker.sock"},
+		"unix:///run/d.sock":      {"unix", "/run/d.sock"},
+		"tcp://socket-proxy:2375": {"tcp", "socket-proxy:2375"},
+		"tcp://127.0.0.1:23750":   {"tcp", "127.0.0.1:23750"},
+	}
+	for in, want := range ok {
+		n, a, err := ParseDockerHost(in)
+		if err != nil || n != want[0] || a != want[1] {
+			t.Errorf("%q: %q %q %v", in, n, a, err)
+		}
+	}
+	for _, in := range []string{"http://x:1", "ssh://h", "tcp://nohost", "tcp://:2375", "unix://rel", "unix://", "bogus", "tcp://h:1/path"} {
+		if _, _, err := ParseDockerHost(in); err == nil {
+			t.Errorf("%q: want error", in)
+		}
+	}
+	host := func(v string) func(string) string {
+		return func(k string) string {
+			if k == "DOCKER_HOST" {
+				return v
+			}
+			return ""
+		}
+	}
+	c, err := LoadConfig(host("tcp://socket-proxy:2375"), "dev")
+	if err != nil || c.DockerNetwork != "tcp" || c.DockerAddr != "socket-proxy:2375" {
+		t.Errorf("config: %+v %v", c, err)
+	}
+	if c, err = LoadConfig(host(""), "dev"); err != nil || c.DockerNetwork != "unix" || c.DockerAddr != "/var/run/docker.sock" {
+		t.Errorf("default config: %+v %v", c, err)
+	}
+	if _, err := LoadConfig(host("ssh://h"), "dev"); err == nil {
+		t.Error("ssh scheme accepted")
 	}
 }

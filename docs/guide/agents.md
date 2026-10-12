@@ -174,7 +174,7 @@ A **Restart** hook restarts a Docker container or a systemd unit by name, with n
 
 The agent restarts only targets listed exactly in `CF_RESTART_ALLOW` (comma-separated, for example `docker:nginx,systemd:nginx.service`). With it empty, restart hooks are refused with exit code -1 and the agent does not advertise the `restart` capability.
 
-For Docker the agent calls the engine API on `/var/run/docker.sock` (`POST /containers/<name>/restart`), so mount the socket:
+For Docker the agent calls the engine API (`POST /containers/<name>/restart`) at `DOCKER_HOST`, which is `unix:///var/run/docker.sock` by default (`unix:///abs/path` and `tcp://host:port` are accepted, any other scheme is an error). Either mount the socket:
 
 ```yaml
 services:
@@ -187,6 +187,32 @@ services:
 ```
 
 The Docker socket is root-equivalent on the host. Keep `CF_RESTART_ALLOW` as short as you can and list exact container names only.
+
+Recommended instead: give the agent a socket proxy so it never mounts the raw socket. This one allows listing and restarting containers and nothing else (`POST=0` keeps the other write endpoints closed):
+
+```yaml
+services:
+  socket-proxy:
+    image: lscr.io/linuxserver/socket-proxy
+    environment:
+      CONTAINERS: 1
+      ALLOW_RESTARTS: 1
+      POST: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    read_only: true
+    tmpfs:
+      - /run
+  certforge-agent:
+    image: ghcr.io/metril/certforge-agent
+    environment:
+      CF_RESTART_ALLOW: docker:nginx
+      DOCKER_HOST: tcp://socket-proxy:2375
+    depends_on:
+      - socket-proxy
+```
+
+`CF_RESTART_ALLOW` still decides which containers a hook may restart.
 
 A `systemd:` target (templated units such as `foo@bar.service` are allowed) runs `/usr/bin/systemctl restart <unit>` and so works only for agents installed on the host, not in the distroless container image.
 
