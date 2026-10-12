@@ -547,6 +547,11 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 		return nil, err
 	}
 
+	if r.Body.PostAction != nil {
+		if _, err := authorize(ctx, authz.ActionDeliveryWrite, &r.OrgId); err != nil {
+			return nil, err
+		}
+	}
 	postAction, err := postActionIn(ctx, q, r.OrgId, r.Body.PostAction)
 	if err != nil {
 		return nil, err
@@ -657,6 +662,13 @@ func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequest
 	var postIn *gen.PostAction
 	if r.Body != nil {
 		postIn = r.Body.PostAction
+	}
+	// Running commands on an ssh host is a delivery change: setting, changing
+	// or clearing a post action needs delivery:write on top of clients:write.
+	if pa, _ := deploy.ParsePostAction(g.PostAction); postIn != nil || pa != nil {
+		if _, err := authorize(ctx, authz.ActionDeliveryWrite, &r.OrgId); err != nil {
+			return nil, err
+		}
 	}
 	postAction, err := postActionIn(ctx, q, r.OrgId, postIn)
 	if err != nil {

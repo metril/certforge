@@ -103,3 +103,38 @@ func TestListTargetHookRuns(t *testing.T) {
 		t.Fatalf("unknown target: %v", err)
 	}
 }
+
+func TestPostActionNeedsDeliveryWrite(t *testing.T) {
+	f := newAgentFixture(t)
+	targetID, _ := f.serverTarget(t, "vault", nil)
+	certID, _ := f.currentCert(t, "web")
+	cert2, _ := f.currentCert(t, "api")
+	sshT := f.sshTargetIn(t, f.org, "ssh")
+	pa := &gen.PostAction{SshTargetId: sshT, Command: "true"}
+	narrow := apiKeyPrincipal(f.org, []string{"clients:write"})
+	wide := apiKeyPrincipal(f.org, []string{"clients:write", "delivery:write"})
+	in := func(c uuid.UUID, p *gen.PostAction) gen.CreateServerGrantRequestObject {
+		return gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID, Body: &gen.ServerGrantInput{CertificateId: c, PostAction: p}}
+	}
+	if _, err := f.srv.CreateServerGrant(narrow, in(certID, pa)); problemStatus(err) != 403 {
+		t.Fatalf("create with postAction: %v", err)
+	}
+	if _, err := f.srv.CreateServerGrant(narrow, in(certID, nil)); err != nil {
+		t.Fatalf("create without: %v", err)
+	}
+	res, err := f.srv.CreateServerGrant(wide, in(cert2, pa))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.(gen.CreateServerGrant201JSONResponse).Id
+	up := func(ctx context.Context, p *gen.PostAction) error {
+		_, err := f.srv.UpdateGrant(ctx, gen.UpdateGrantRequestObject{OrgId: f.org, Id: id, Body: &gen.GrantUpdate{Delivery: gen.GrantDelivery("push"), PostAction: p}})
+		return err
+	}
+	if problemStatus(up(narrow, nil)) != 403 || problemStatus(up(narrow, pa)) != 403 {
+		t.Fatal("narrow key changed a post action")
+	}
+	if err := up(wide, pa); err != nil {
+		t.Fatal(err)
+	}
+}
