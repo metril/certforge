@@ -144,7 +144,7 @@ func (s *Server) DeleteOrg(ctx context.Context, req gen.DeleteOrgRequestObject) 
 	for _, c := range []struct {
 		n    int64
 		noun string
-	}{{d.Certificates, "certificate"}, {d.DnsCredentials, "DNS credential"}, {d.AcmeAccounts, "ACME account"},
+	}{{d.Certificates, "certificate"}, {d.DnsCredentials, "DNS credential"}, {d.DeployCredentials, "deploy credential"}, {d.AcmeAccounts, "ACME account"},
 		{d.Cas, "CA"}, {d.Sites, "site"}, {d.RoleBindings, "role binding"}, {d.ApiKeys, "API key"},
 		{d.Clients, "client"}, {d.Layouts, "layout"}, {d.DeployTargets, "deploy target"}, {d.Hooks, "hook"},
 		{d.NotificationChannels, "notification channel"}, {d.Monitors, "monitor"}} {

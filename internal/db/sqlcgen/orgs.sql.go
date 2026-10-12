@@ -15,6 +15,7 @@ const countOrgDependents = `-- name: CountOrgDependents :one
 SELECT
   (SELECT count(*) FROM certificates c WHERE c.org_id = $1) AS certificates,
   (SELECT count(*) FROM dns_provider_credentials d WHERE d.org_id = $1) AS dns_credentials,
+  (SELECT count(*) FROM deploy_credentials dcr WHERE dcr.org_id = $1) AS deploy_credentials,
   (SELECT count(*) FROM acme_accounts a WHERE a.org_id = $1) AS acme_accounts,
   (SELECT count(*) FROM cas WHERE cas.org_id = $1) AS cas,
   (SELECT count(*) FROM sites st WHERE st.org_id = $1) AS sites,
@@ -31,6 +32,7 @@ SELECT
 type CountOrgDependentsRow struct {
 	Certificates         int64 `json:"certificates"`
 	DnsCredentials       int64 `json:"dns_credentials"`
+	DeployCredentials    int64 `json:"deploy_credentials"`
 	AcmeAccounts         int64 `json:"acme_accounts"`
 	Cas                  int64 `json:"cas"`
 	Sites                int64 `json:"sites"`
@@ -50,6 +52,7 @@ func (q *Queries) CountOrgDependents(ctx context.Context, orgID uuid.UUID) (Coun
 	err := row.Scan(
 		&i.Certificates,
 		&i.DnsCredentials,
+		&i.DeployCredentials,
 		&i.AcmeAccounts,
 		&i.Cas,
 		&i.Sites,

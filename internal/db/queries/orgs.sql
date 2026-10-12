@@ -20,6 +20,7 @@ SELECT id FROM orgs WHERE id = $1 FOR UPDATE;
 SELECT
   (SELECT count(*) FROM certificates c WHERE c.org_id = sqlc.arg(org_id)) AS certificates,
   (SELECT count(*) FROM dns_provider_credentials d WHERE d.org_id = sqlc.arg(org_id)) AS dns_credentials,
+  (SELECT count(*) FROM deploy_credentials dcr WHERE dcr.org_id = sqlc.arg(org_id)) AS deploy_credentials,
   (SELECT count(*) FROM acme_accounts a WHERE a.org_id = sqlc.arg(org_id)) AS acme_accounts,
   (SELECT count(*) FROM cas WHERE cas.org_id = sqlc.arg(org_id)) AS cas,
   (SELECT count(*) FROM sites st WHERE st.org_id = sqlc.arg(org_id)) AS sites,
