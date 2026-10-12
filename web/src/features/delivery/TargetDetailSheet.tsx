@@ -150,7 +150,7 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
           <TableRow>
             <TableHead className="w-44">Certificate</TableHead>
             <TableHead>Layout</TableHead>
-            <TableHead className="w-40">Status</TableHead>
+            <TableHead className="w-56">Status</TableHead>
             <TableHead className="w-28">
               <span className="sr-only">Actions</span>
             </TableHead>
