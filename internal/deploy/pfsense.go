@@ -9,13 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"net/http/cookiejar"
 	"net/url"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/metril/certforge/internal/delivery"
 	"github.com/metril/certforge/internal/notify/httpx"
@@ -32,25 +29,25 @@ var pfNameRe = regexp.MustCompile(`^[A-Za-z0-9 ._-]{0,64}$`)
 // System paths are served under /device/pfsense/{id}/api when Nexus manages
 // the firewall. Keep every path here.
 const (
-	pfLogin      = "/login"
-	pfDevices    = "/mim/devices"
-	pfCerts      = "/system/certificates"
-	pfAdmin      = "/system/advanced/admin"
-	pfRestartGUI = "/diag/cmd/shell"
-	pfErrCap     = 200
-	pfMaxBody    = 1 << 20
+	pfLogin   = "/login"
+	pfDevices = "/mim/devices"
+	pfCerts   = "/system/certificates"
+	pfAdmin   = "/system/advanced/admin"
+	pfErrCap  = 200
+	pfMaxBody = 1 << 20
 )
 
 // PfSenseConfig is a pfsense target's config; Password is the secret.
 type PfSenseConfig struct {
-	URL            string `json:"url"`
-	Username       string `json:"username"`
-	Password       string `json:"password"`
-	Device         string `json:"device,omitempty"`
-	CertName       string `json:"certName,omitempty"`
-	SetWebGuiCert  bool   `json:"setWebGuiCert,omitempty"`
-	CAPEM          string `json:"caPem,omitempty"`
-	TimeoutSeconds int    `json:"timeoutSeconds,omitempty"`
+	URL             string `json:"url"`
+	Username        string `json:"username"`
+	Password        string `json:"password"`
+	Device          string `json:"device,omitempty"`
+	CertName        string `json:"certName,omitempty"`
+	SetWebGuiCert   bool   `json:"setWebGuiCert,omitempty"`
+	RestartServices *bool  `json:"restartServices,omitempty"`
+	CAPEM           string `json:"caPem,omitempty"`
+	TimeoutSeconds  int    `json:"timeoutSeconds,omitempty"`
 }
 
 const pfSenseSchema = `{
@@ -67,7 +64,8 @@ const pfSenseSchema = `{
     "password": {"type": "string", "secret": true, "title": "Password"},
     "device": {"type": "string", "default": "", "title": "Device", "description": "Name, alias or ID of the firewall in Nexus. Empty uses the only managed device."},
     "certName": {"type": "string", "pattern": "^[A-Za-z0-9 ._-]{0,64}$", "default": "", "title": "Certificate name", "description": "Description of the certificate in pfSense. Empty uses the certificate's name."},
-    "setWebGuiCert": {"type": "boolean", "default": false, "title": "Use for the WebGUI", "description": "Also select this certificate for the pfSense web interface and restart it so it takes effect."},
+    "setWebGuiCert": {"type": "boolean", "default": false, "title": "Use for the WebGUI", "description": "Also select this certificate for the pfSense web interface."},
+    "restartServices": {"type": "boolean", "default": true, "title": "Restart services that use it", "description": "After deploying, restart every pfSense service that uses this certificate: the WebGUI, OpenVPN, IPsec, captive portal and packages."},
     "caPem": {"type": "string", "format": "pem-bundle", "title": "CA certificate", "description": "PEM certificate(s) to trust for pfSense's TLS certificate, in addition to the system roots."},
     "timeoutSeconds": {"type": "integer", "minimum": 5, "maximum": 120, "default": 30, "title": "Timeout (seconds)"}
   }
@@ -199,15 +197,16 @@ func pfSame(x map[string]any, leafDER []byte) bool {
 }
 
 // Deploy implements targets.Target: login, find or create the certificate,
-// optionally select it for the WebGUI.
+// optionally select it for the WebGUI, then restart what uses it.
 func (PfSense) Deploy(ctx context.Context, req targets.Request) (targets.Result, error) {
 	var cfg PfSenseConfig
 	if err := json.Unmarshal(req.Config, &cfg); err != nil {
 		return targets.Result{}, err
 	}
 	secrets := map[string]string{"password": cfg.Password}
+	var n *nexusClient
 	fail := func(err error) (targets.Result, error) {
-		return targets.Result{}, errors.New("deploy: pfsense: " + targets.Redact(err, secrets, 500))
+		return targets.Result{}, errors.New("deploy: pfsense: " + targets.Redact(err, n.secrets(secrets), 500))
 	}
 	if req.Material == nil {
 		return targets.Result{}, errors.New("deploy: pfsense: no certificate material")
@@ -220,104 +219,14 @@ func (PfSense) Deploy(ctx context.Context, req targets.Request) (targets.Result,
 	if name == "" {
 		name = req.CertName
 	}
-	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
-	if cfg.TimeoutSeconds == 0 {
-		timeout = 30 * time.Second
-	}
-	client, err := req.HTTP.New(httpx.Options{CAPEM: cfg.CAPEM, Timeout: timeout, MaxBody: pfMaxBody})
+	n, err = newNexusClient(ctx, req.HTTP, cfg)
 	if err != nil {
 		return fail(err)
-	}
-	if client.HTTPClient().Jar == nil { // login sets a refresh cookie
-		jar, _ := cookiejar.New(nil)
-		client.HTTPClient().Jar = jar
-	}
-	base := strings.TrimRight(cfg.URL, "/")
-	token := ""
-	call := func(method, path string, body any) ([]byte, error) {
-		u := base + path
-		if err := httpx.CheckURL(u, req.HTTP.AllowLoopback); err != nil {
-			return nil, err
-		}
-		var rd io.Reader
-		if body != nil {
-			b, _ := json.Marshal(body)
-			rd = bytes.NewReader(b)
-		}
-		hr, err := http.NewRequestWithContext(ctx, method, u, rd)
-		if err != nil {
-			return nil, err
-		}
-		if token != "" {
-			hr.Header.Set("Authorization", "Bearer "+token)
-		}
-		hr.Header.Set("Accept", "application/json")
-		if body != nil {
-			hr.Header.Set("Content-Type", "application/json")
-		}
-		resp, err := client.HTTPClient().Do(hr)
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
-		b, err := io.ReadAll(io.LimitReader(resp.Body, pfMaxBody))
-		if err != nil {
-			return nil, err
-		}
-		if resp.StatusCode < 200 || resp.StatusCode > 299 {
-			snippet := b
-			if len(snippet) > pfErrCap {
-				snippet = snippet[:pfErrCap]
-			}
-			return nil, fmt.Errorf("%s %s: status %d: %s", method, path, resp.StatusCode, strings.Map(func(r rune) rune {
-				if r < 0x20 || r == 0x7f {
-					return ' '
-				}
-				return r
-			}, string(snippet)))
-		}
-		return b, nil
 	}
 
-	b, err := call(http.MethodPost, pfLogin, map[string]string{
-		"username": base64.StdEncoding.EncodeToString([]byte(cfg.Username)),
-		"password": base64.StdEncoding.EncodeToString([]byte(cfg.Password))})
+	_, match, err := n.findCert(ctx, name, req.Material.LeafDER)
 	if err != nil {
 		return fail(err)
-	}
-	var login struct {
-		Token string `json:"token"`
-	}
-	if err := json.Unmarshal(b, &login); err != nil || login.Token == "" {
-		return fail(errors.New("login response has no token"))
-	}
-	token = login.Token
-	secrets["token"] = token
-
-	b, err = call(http.MethodGet, pfDevices, nil)
-	if err != nil {
-		return fail(err)
-	}
-	prefix, err := pfPickDevice(b, cfg.Device)
-	if err != nil {
-		return fail(err)
-	}
-	certs, admin := prefix+pfCerts, prefix+pfAdmin
-
-	b, err = call(http.MethodGet, certs, nil)
-	if err != nil {
-		return fail(err)
-	}
-	var doc any
-	if err := json.Unmarshal(b, &doc); err != nil {
-		return fail(fmt.Errorf("decoding certificate list: %w", err))
-	}
-	var all, match []pfEntry
-	pfScan(doc, req.Material.LeafDER, &all)
-	for _, e := range all {
-		if e.Label == name {
-			match = append(match, e)
-		}
 	}
 	if len(match) > 1 {
 		return fail(fmt.Errorf("%d certificates are named %q; remove the duplicates in pfSense", len(match), name))
@@ -330,11 +239,11 @@ func (PfSense) Deploy(ctx context.Context, req targets.Request) (targets.Result,
 		verb = "updated"
 		if match[0].Same {
 			verb = "unchanged"
-		} else if _, err := call(http.MethodPost, certs+"/"+url.PathEscape(refid), body); err != nil {
+		} else if _, err := n.sys(ctx, http.MethodPost, pfCerts+"/"+url.PathEscape(refid), body); err != nil {
 			return fail(err)
 		}
 	} else {
-		b, err = call(http.MethodPut, certs, body)
+		b, err := n.sys(ctx, http.MethodPut, pfCerts, body)
 		if err != nil {
 			return fail(err)
 		}
@@ -354,7 +263,7 @@ func (PfSense) Deploy(ctx context.Context, req targets.Request) (targets.Result,
 	detail := fmt.Sprintf("certificate %s %s", refid, verb)
 
 	if cfg.SetWebGuiCert {
-		b, err := call(http.MethodGet, admin, nil)
+		b, err := n.sys(ctx, http.MethodGet, pfAdmin, nil)
 		if err != nil {
 			return fail(err)
 		}
@@ -367,24 +276,25 @@ func (PfSense) Deploy(ctx context.Context, req targets.Request) (targets.Result,
 		if !ok {
 			return fail(errors.New("webgui settings have no admin object"))
 		}
-		changed := verb != "unchanged"
 		if cur, _ := adm["ssl_certref"].(string); cur != refid {
 			adm["ssl_certref"] = refid
-			if _, err := call(http.MethodPost, admin, obj); err != nil {
+			if _, err := n.sys(ctx, http.MethodPost, pfAdmin, obj); err != nil {
 				return fail(err)
 			}
 			detail += ", webgui cert set"
-			changed = true
 		}
-		if changed {
-			// Nexus does not restart the webConfigurator itself.
-			_, err := call(http.MethodPost, prefix+pfRestartGUI, map[string]any{
-				"cmd":     base64.StdEncoding.EncodeToString([]byte("/etc/rc.restart_webgui")),
-				"timeout": 60})
-			if err != nil {
-				return fail(fmt.Errorf("certificate deployed (%s) but the WebGUI restart failed: %w", detail, err))
-			}
-			detail += ", webgui restarted"
+	}
+	// "unchanged" still restarts: an earlier deploy may have left services on
+	// the old certificate.
+	if cfg.RestartServices == nil || *cfg.RestartServices {
+		s, err := n.RestartCertServices(ctx, refid)
+		if err != nil {
+			return fail(fmt.Errorf("certificate deployed (%s) but restarting its services failed: %w", detail, err))
+		}
+		if labels := s.Labels(); len(labels) > 0 {
+			detail += ", restarted: " + strings.Join(labels, ", ")
+		} else {
+			detail += ", no services use it"
 		}
 	}
 	return targets.Result{Detail: detail}, nil

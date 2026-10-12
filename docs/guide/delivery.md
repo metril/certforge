@@ -246,13 +246,14 @@ A pfSense Plus target pushes a certificate into pfSense through the Netgate Nexu
 | **Username**, **Password** (`username`, `password`) | A pfSense user allowed to manage certificates. The password is stored encrypted. | None |
 | **Device** (`device`) | Name, alias or ID of the firewall in Nexus. | The only managed device |
 | **Certificate name** (`certName`) | Description of the certificate in pfSense, letters, digits, space, `.`, `_` and `-`. | The certificate's name |
-| **Use for the WebGUI** (`setWebGuiCert`) | Also select this certificate for the pfSense web interface and restart it so it takes effect. | Off |
+| **Use for the WebGUI** (`setWebGuiCert`) | Also select this certificate for the pfSense web interface. | Off |
+| **Restart services that use it** (`restartServices`) | After deploying, restart every pfSense service that uses this certificate: the WebGUI, OpenVPN, IPsec, captive portal and packages. | On |
 | **CA certificate** (`caPem`) | PEM to trust for pfSense's TLS certificate, on top of the system roots. | None |
 | **Timeout** (`timeoutSeconds`) | Seconds per request, 5 to 120. | 30 |
 
 Each deploy logs in, then looks the certificate up by its description. If it exists it is updated in place, so WebGUI, OpenVPN and HAProxy references keep pointing at it. Otherwise it is created. If two certificates share the name the deploy fails. When pfSense already holds the same certificate, nothing is written.
 
-With **Use for the WebGUI**, a deploy that changes the certificate then restarts the web interface by running `/etc/rc.restart_webgui` through the device API, because Nexus does not restart it itself. The user therefore needs permission to run shell commands (the diag command privilege). If the restart fails the deploy reports an error, although the certificate is already in place. An unchanged certificate triggers no restart.
+With **Restart services that use it** on, every deploy then asks pfSense which services use the certificate and restarts exactly those, because Nexus restarts none of them itself. This runs even when the certificate was unchanged, since an earlier deploy may have left a service on the old one. The deploy detail lists what was restarted. The pfSense user needs the privileges to run PHP and shell commands through the device API (the diag command privileges). If the restart fails the deploy reports an error, although the certificate is already in place.
 ## TrueNAS SCALE
 
 A TrueNAS target imports the certificate into TrueNAS SCALE 25.10 or later over its WebSocket API and can make it the web UI certificate. It runs on the server.
