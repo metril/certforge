@@ -287,3 +287,38 @@ func TestParseDockerHost(t *testing.T) {
 		t.Error("ssh scheme accepted")
 	}
 }
+
+func TestDockerPathNegotiation(t *testing.T) {
+	for _, tc := range []struct{ name, hdr, want string }{
+		{"versioned", "1.47", "/v1.47/containers/"},
+		{"missing", "", "/containers/"},
+		{"invalid", "../x", "/containers/"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var restart, list string
+			sock := dockerStub(t, func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.URL.Path == "/_ping":
+					if tc.hdr != "" {
+						w.Header().Set("Api-Version", tc.hdr)
+					}
+					_, _ = w.Write([]byte("OK"))
+				case r.Method == "POST":
+					restart = r.URL.RequestURI()
+					w.WriteHeader(204)
+				default:
+					list = r.URL.RequestURI()
+					_, _ = w.Write([]byte("[]"))
+				}
+			})
+			rr := &RestartRunner{Allow: map[string]bool{"docker:nginx": true}, DockerAddr: sock}
+			if run := rr.Run(context.Background(), restartSpec("docker:nginx")); run.ExitCode != 0 {
+				t.Fatalf("run: %+v", run)
+			}
+			rr.Targets(context.Background())
+			if restart != tc.want+"nginx/restart?t=10" || list != tc.want+"json" {
+				t.Fatalf("paths: %q %q", restart, list)
+			}
+		})
+	}
+}
