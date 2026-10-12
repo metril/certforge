@@ -156,7 +156,7 @@ export function TargetsPage() {
           ) : (
             <ul aria-label="Deploy targets" className="grid gap-2">
               {targets.map((t) => (
-                <li key={t.id} className="grid gap-2 rounded-md border border-border bg-panel p-3">
+                <li key={t.id} className="grid grid-cols-1 gap-2 rounded-md border border-border bg-panel p-3">
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate font-semibold">{t.name}</span>
                     <RunsOnChip mode={t.runsOn} />
