@@ -56,7 +56,7 @@ func TestRestartDocker(t *testing.T) {
 	ctx := context.Background()
 
 	run := rr.Run(ctx, restartSpec("docker:nginx"))
-	if run.ExitCode != 0 || gotMethod != "POST" || gotPath != "/v1.41/containers/nginx/restart?t=10" ||
+	if run.ExitCode != 0 || gotMethod != "POST" || gotPath != "/containers/nginx/restart?t=10" ||
 		len(run.Argv) != 2 || run.Argv[0] != "restart" || run.Argv[1] != "docker:nginx" || run.Stdout == "" {
 		t.Fatalf("204: %+v %s %s", run, gotMethod, gotPath)
 	}
@@ -153,7 +153,7 @@ func TestDeployRestartPostHook(t *testing.T) {
 
 func TestRestartTargets(t *testing.T) {
 	sock := dockerStub(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" || r.URL.Path != "/v1.41/containers/json" {
+		if r.Method != "GET" || r.URL.Path != "/containers/json" {
 			http.Error(w, "no", 404)
 			return
 		}

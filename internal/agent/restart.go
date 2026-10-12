@@ -144,7 +144,7 @@ func (r *RestartRunner) Run(ctx context.Context, spec agentproto.HookSpec) agent
 func (r *RestartRunner) dockerRestart(ctx context.Context, name string) (string, error) {
 	client, closeConns := r.dockerClient()
 	defer closeConns()
-	u := "http://docker/v1.41/containers/" + url.PathEscape(name) + "/restart?t=10"
+	u := "http://docker/containers/" + url.PathEscape(name) + "/restart?t=10"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, nil)
 	if err != nil {
 		return "", err
@@ -217,7 +217,7 @@ func (r *RestartRunner) dockerRunning(ctx context.Context) (map[string]bool, err
 	defer cancel()
 	client, closeConns := r.dockerClient()
 	defer closeConns()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://docker/v1.41/containers/json", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://docker/containers/json", nil)
 	if err != nil {
 		return nil, err
 	}
