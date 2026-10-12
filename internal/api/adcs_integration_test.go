@@ -70,6 +70,12 @@ func TestADCSCACreateUpdate(t *testing.T) {
 		t.Fatalf("update omitted: %v", err)
 	}
 	wantStatus(t, update("Corp renamed 3", "wrong"), http.StatusUnprocessableEntity)
+	// A changed endpoint with the password kept is refused.
+	cfg2 := cfg(nil)
+	(*cfg2)["username"] = "other"
+	_, err = f.srv.UpdateCa(f.as("admin"), gen.UpdateCaRequestObject{OrgId: f.org, Id: ca.Id,
+		Body: &gen.CAInput{Name: "Corp", Type: ptrT(gen.Adcs), Config: cfg2}})
+	wantStatus(t, err, http.StatusUnprocessableEntity)
 }
 
 // TestADCSProbe covers the template probe: templates listed, an unusable
@@ -133,6 +139,25 @@ func TestADCSProbe(t *testing.T) {
 	b.CaId = &ca.Id
 	if res, err = probe(f.as("admin"), b); err != nil || !res.Ok || len(res.Templates) != 1 {
 		t.Fatalf("unchanged: %+v %v", res, err)
+	}
+	// A changed endpoint, account or bundle must not reuse the saved password.
+	for _, mut := range []func(*gen.AdcsProbeRequest){
+		func(r *gen.AdcsProbeRequest) { r.CepUrl += "?x=1" },
+		func(r *gen.AdcsProbeRequest) { r.Username = "other" },
+		func(r *gen.AdcsProbeRequest) { r.CaBundlePem = ptrT("") },
+	} {
+		b = body("__unchanged__")
+		b.CaId = &ca.Id
+		mut(b)
+		_, err = probe(f.as("admin"), b)
+		wantStatus(t, err, http.StatusUnprocessableEntity)
+	}
+	// A template change alone keeps the saved password.
+	b = body("__unchanged__")
+	b.CaId = &ca.Id
+	b.Template = ptrT("Nope")
+	if res, err = probe(f.as("admin"), b); err != nil || !res.Ok {
+		t.Fatalf("template-only change: %+v %v", res, err)
 	}
 	// Without caId, or with a caId that is not in the org, it is refused.
 	_, err = probe(f.as("admin"), body("__unchanged__"))

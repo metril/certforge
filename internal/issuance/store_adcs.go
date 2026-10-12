@@ -239,6 +239,13 @@ func (s *Store) ProbeADCS(ctx context.Context, orgID uuid.UUID, in ADCSProbeInpu
 		if err := s.openJSON(ctx, row.SecretCfg, &sec); err != nil {
 			return ADCSProbeResult{}, err
 		}
+		var old adcsConfig
+		if err := json.Unmarshal(row.Config, &old); err != nil {
+			return ADCSProbeResult{}, err
+		}
+		if adcsConnectionChanged(old, cfg) {
+			return ADCSProbeResult{}, errADCSReenterPassword
+		}
 		pw = sec.Password
 	}
 	if pw == "" {
@@ -351,6 +358,17 @@ func (s *Store) createADCSCA(ctx context.Context, orgID uuid.UUID, in CAInput) (
 	return caFromRow(row)
 }
 
+var errADCSReenterPassword = &ValidationError{"config.password", "must be re-entered when the endpoint, account or TLS bundle change"}
+
+// adcsConnectionChanged reports whether cfg points the stored password at a
+// different connection than old (endpoints, account or TLS bundle). A saved
+// password must not follow such a change; the template alone may change. An
+// empty CES URL means "derive it from the policy", so it is not a change.
+func adcsConnectionChanged(old, cfg adcsConfig) bool {
+	return cfg.CEPURL != old.CEPURL || (cfg.CESURL != "" && cfg.CESURL != old.CESURL) ||
+		cfg.Username != old.Username || cfg.CABundlePEM != old.CABundlePEM
+}
+
 // adcsUpdateHook, when set by a test, runs between updateADCSCA's unlocked
 // read and its row lock, to simulate a concurrent writer.
 var adcsUpdateHook func()
@@ -385,6 +403,9 @@ func (s *Store) updateADCSCA(ctx context.Context, orgID, id uuid.UUID, in CAInpu
 			return CA{}, &ValidationError{"config.password", "must not be empty"}
 		}
 		pw, newPW = *in.ADCSPassword, true
+	}
+	if !newPW && adcsConnectionChanged(old, cfg) {
+		return CA{}, errADCSReenterPassword
 	}
 	var (
 		resolved bool
