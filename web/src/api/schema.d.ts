@@ -2933,6 +2933,8 @@ export interface components {
             timeoutSeconds: number;
             /** @description The template's object identifier */
             readonly templateOid?: string;
+            /** @description Key types the template accepts, read from the policy on create and update. */
+            readonly templateKeyTypes?: components["schemas"]["KeyType"][];
         };
         /** @description A certificate authority — an external ACME directory, or a private CA CertForge holds the key material for. */
         CA: {
@@ -3183,6 +3185,29 @@ export interface components {
             canEnroll: boolean;
             /** @description Requests are held for CA manager approval */
             requiresApproval: boolean;
+            /** @description What CertForge needs from the template and whether it is met. */
+            requirements: components["schemas"]["AdcsTemplateRequirement"][];
+            /** @description Key types the template accepts. */
+            allowedKeyTypes: components["schemas"]["KeyType"][];
+            /** @description Key algorithm the template issues: RSA, ECDSA_P256, ECDSA_P384, or empty when unknown. */
+            keyAlgorithm: string;
+            /** @description Template schema version. */
+            schema: number;
+            /** @description The template uses a legacy cryptographic service provider rather than a key storage provider. */
+            legacyCsp: boolean;
+        };
+        /** @description One template requirement and whether the template meets it. */
+        AdcsTemplateRequirement: {
+            /** @description Stable id: enroll, approval, signatures, subject, serverAuth or keyAlgorithm. */
+            key: string;
+            /** @description What is required. */
+            label: string;
+            /** @description How to change the template in the AD CS console. */
+            fix: string;
+            /** @description The template meets the requirement. */
+            ok: boolean;
+            /** @description When unmet */
+            blocking: boolean;
         };
         /** @description Verdict on the requested template, by the rules create/update apply. */
         AdcsProbeSelected: {

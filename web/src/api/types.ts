@@ -20,6 +20,7 @@ export type DnsCredentialTestResult = S['DNSCredentialTestResult'];
 export type AdcsProbeRequest = S['AdcsProbeRequest'];
 export type AdcsProbeResult = S['AdcsProbeResult'];
 export type AdcsProbeTemplate = S['AdcsProbeTemplate'];
+export type AdcsTemplateRequirement = S['AdcsTemplateRequirement'];
 export type TlsPeekRequest = S['TlsPeekRequest'];
 export type TlsPeekResult = S['TlsPeekResult'];
 export type TlsPeekCertificate = S['TlsPeekCertificate'];

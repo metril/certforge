@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CircleAlert, ListRestart, LoaderCircle } from 'lucide-react';
 import type { AdcsProbeTemplate } from '@/api/types';
 import { orgsQuery } from '@/api/queries/orgs';
+import { AdcsTemplateRequirements } from '@/features/issuers/AdcsTemplateRequirements';
 import { CaBundleInput, type CaBundleScope } from '@/components/CaBundleInput';
 import { ChipSet } from '@/components/ChipSet';
 import { Combobox, type ComboOption } from '@/components/Combobox';
@@ -148,12 +149,21 @@ function OrgSelectWidget({ id, value, onChange, disabled, readonly, label }: Wid
   );
 }
 
+/** Picker hint: the key family the template issues. */
+function keyHint(t: AdcsProbeTemplate): string {
+  if (t.keyAlgorithm === 'RSA') return `RSA ≥${t.minKeySize}`;
+  if (t.keyAlgorithm.startsWith('ECDSA_')) return `ECDSA ${t.keyAlgorithm.slice(6).replace('P', 'P-')}`;
+  return `${t.minKeySize}-bit min`;
+}
+
 /** formContext.adcsTemplates, set by the AD CS body (CaKindBody). */
 export type AdcsTemplateContext = {
   /** Undefined until a probe has read the policy. */
   templates?: AdcsProbeTemplate[];
   /** Why each template cannot be picked, or null when it can. */
   reasonOf: (t: AdcsProbeTemplate) => string | null;
+  /** The probed template with this name, if the policy published it. */
+  templateOf: (name: string) => AdcsProbeTemplate | undefined;
   loading: boolean;
   error?: string;
   onLoad: () => void;
@@ -171,11 +181,12 @@ function AdcsTemplateWidget(props: WidgetProps) {
   const Base = registry.templates.BaseInputTemplate;
   const templates = ctx?.templates;
   const current = typeof value === 'string' ? value : '';
+  const selected = ctx && current ? ctx.templateOf(current) : undefined;
   let control = <Base {...props} />;
   if (ctx && templates && templates.length > 0) {
     const options: ComboOption[] = templates.map((t) => {
       const reason = ctx.reasonOf(t);
-      return { value: t.name, label: t.name, disabled: !!reason, hint: reason ?? `${t.minKeySize}-bit min`, keywords: t.oid ? [t.oid] : [] };
+      return { value: t.name, label: t.name, disabled: !!reason, hint: reason ?? keyHint(t), keywords: t.oid ? [t.oid] : [] };
     });
     if (current && !templates.some((t) => t.name === current)) {
       options.unshift({ value: current, label: current, disabled: true, hint: 'Not published by the policy.' });
@@ -213,6 +224,7 @@ function AdcsTemplateWidget(props: WidgetProps) {
           </IconButton>
         )}
       </div>
+      {selected && <AdcsTemplateRequirements template={selected} />}
       {ctx?.error && (
         <p role="alert" className="flex items-center gap-1 text-xs">
           <CircleAlert className="size-3.5 text-failed" aria-hidden />

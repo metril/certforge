@@ -53,12 +53,13 @@ function acmeFromCa(ca: CA): AcmeDraft {
 // existing localca CA to edit it.
 const LOCALCA_READONLY_KEYS = ['imported', 'issuingPem', 'retired', 'revokedCount'];
 
-// AdcsConfig's templateOid is read-only (set from the policy) and the
+// AdcsConfig's templateOid and templateKeyTypes are read-only (set from the policy) and the
 // signers[adcs] schema has additionalProperties: false, so the edit draft
 // drops it; the stored password is seeded with the unchanged sentinel.
 function adcsConfigFromCa(config: Record<string, unknown>): Record<string, unknown> {
   const rest: Record<string, unknown> = { ...config };
   delete rest.templateOid;
+  delete rest.templateKeyTypes;
   return { ...rest, password: UNCHANGED };
 }
 
@@ -164,5 +165,7 @@ export const ADCS_PROBE_BLOCKED = 'Fill in the policy URL, username and password
 export function adcsTemplateReason(t: AdcsProbeTemplate): string | null {
   if (!t.canEnroll) return 'The service account cannot enroll on this template.';
   if (t.requiresApproval) return 'Requests need CA manager approval; only automatic issuance works.';
+  const blocked = t.requirements.find((r) => r.blocking && !r.ok);
+  if (blocked) return blocked.fix;
   return null;
 }

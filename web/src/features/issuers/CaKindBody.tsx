@@ -368,6 +368,7 @@ function AdcsBody({
       adcsTemplates: {
         templates,
         reasonOf: adcsTemplateReason,
+        templateOf: (name: string) => templates?.find((t) => t.name === name),
         loading: probe.isPending,
         error,
         loadBlocked,

@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { createContext, Fragment, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { TriangleAlert } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { fieldOfTitle } from '@/api/errors';
 import { accountsQuery } from '@/api/queries/accounts';
@@ -26,7 +27,10 @@ import { ruleTarget } from '@/lib/rules';
 // plus agentModes: false (review fix round 1, Important) — otherwise
 // tls-alpn-01/http-01-via-agent stay pickable there with no client that
 // could ever satisfy them, and Save 422s.
-export type FieldCtx = { cas: CA[]; accounts: AcmeAccount[]; credentials: DnsCredential[]; clients: Client[]; agentModes?: boolean };
+export type FieldCtx = { cas: CA[]; accounts: AcmeAccount[]; credentials: DnsCredential[]; clients: Client[]; agentModes?: boolean;
+  /** Set when the effective CA is an AD CS CA whose template accepts only some key types. */
+  keyTypeLimit?: { allowed: KeyType[]; template: string };
+};
 export type FieldKey = keyof IssuanceDefaults;
 type V<K extends FieldKey> = NonNullable<IssuanceDefaults[K]>;
 
@@ -180,9 +184,15 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
     key: 'keyType',
     label: 'Key type',
     help: 'defaults.keyType',
-    initial: () => 'ec256',
+    initial: (c) => c.keyTypeLimit?.allowed[0] ?? 'ec256',
     display: (v) => KEY_TYPES.find((k) => k.value === v)?.label ?? v,
-    editor: (v, set) => <SegmentedControl<KeyType> aria-label="Key type" value={v} onChange={set} options={KEY_TYPES} />,
+    editor: (v, set, c) => {
+      const lim = c.keyTypeLimit;
+      const options = lim
+        ? KEY_TYPES.map((o) => (lim.allowed.includes(o.value) ? o : { ...o, disabled: true, hint: `Template ${lim.template} does not allow this` }))
+        : KEY_TYPES;
+      return <SegmentedControl<KeyType> aria-label="Key type" value={v} onChange={set} options={options} />;
+    },
   }),
   def({
     key: 'renewPolicy',
@@ -433,7 +443,7 @@ const SECTIONS: { title: string; keys: FieldKey[] }[] = [
   { title: 'Verification', keys: ['propagationSeconds', 'resolvers', 'verificationRules'] },
 ];
 
-export function IssuanceDefaultsForm({ value, onChange, inherited, chain, builtinState, level, links, ctx, exclude = [], error, pending, readOnly = false, readOnlyReason = 'You do not have permission to edit these defaults', onInvalidChange }: FormProps) {
+export function IssuanceDefaultsForm({ value, onChange, inherited, chain, builtinState, level, links, ctx: ctxProp, exclude = [], error, pending, readOnly = false, readOnlyReason = 'You do not have permission to edit these defaults', onInvalidChange }: FormProps) {
   const invalidIds = useRef(new Set<string>());
   const reportInvalid = useRef((id: string, bad: boolean) => {
     const before = invalidIds.current.size > 0;
@@ -444,7 +454,17 @@ export function IssuanceDefaultsForm({ value, onChange, inherited, chain, builti
   });
   const onInvalidRef = useRef(onInvalidChange);
   onInvalidRef.current = onInvalidChange;
-  const eca = effectiveCa(value, inherited, ctx.cas);
+  const eca = effectiveCa(value, inherited, ctxProp.cas);
+  const tplKeys = eca?.type === 'adcs' ? (eca.config as Record<string, unknown>).templateKeyTypes : undefined;
+  const tplName = eca ? String((eca.config as Record<string, unknown>).template ?? '') : '';
+  const tplKeysJson = JSON.stringify(tplKeys);
+  const ctx: FieldCtx = useMemo(
+    () => (Array.isArray(tplKeys) && tplKeys.length > 0 ? { ...ctxProp, keyTypeLimit: { allowed: tplKeys as KeyType[], template: tplName } } : ctxProp),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ctxProp, tplKeysJson, tplName],
+  );
+  const effKeyType = (value.keyType ?? (inherited('keyType').value as KeyType | null | undefined)) ?? undefined;
+  const keyBlocked = !!ctx.keyTypeLimit && !!effKeyType && !ctx.keyTypeLimit.allowed.includes(effKeyType);
   const privateCa = !!eca && isPrivate(eca);
   // Batch 2 review (Minor): the onChange interception above only fires when
   // the user actually touches caId — it never runs for a certificate that
@@ -466,8 +486,8 @@ export function IssuanceDefaultsForm({ value, onChange, inherited, chain, builti
       const id = `f-${f.key}`;
       const accountPrivate = f.key === 'accountId' && privateCa;
       return (
+        <Fragment key={f.key}>
         <InheritableField<unknown>
-          key={f.key}
           id={id}
           label={f.label}
           help={accountPrivate ? 'defaults.accountPrivate' : f.help}
@@ -505,6 +525,13 @@ export function IssuanceDefaultsForm({ value, onChange, inherited, chain, builti
           pending={pending?.(f.key)}
           readOnly={readOnly ? readOnlyReason : undefined}
         />
+        {f.key === 'keyType' && keyBlocked && (
+          <p role="alert" className="flex items-center gap-1 pb-2 text-xs">
+            <TriangleAlert className="size-3.5 shrink-0 text-expiring" aria-hidden />
+            Template {ctx.keyTypeLimit!.template} does not allow {KEY_TYPES.find((o) => o.value === effKeyType)?.label ?? effKeyType}. Pick another key type.
+          </p>
+        )}
+        </Fragment>
       );
   };
   return (

@@ -38,7 +38,7 @@ type LocalConfig = {
   revokedCount: number;
 };
 type VaultConfig = { mount: string; role: string; ttl?: string };
-type AdcsConfig = { template: string; cesUrl?: string; cepUrl: string; templateOid?: string };
+type AdcsConfig = { template: string; cesUrl?: string; cepUrl: string; templateOid?: string; templateKeyTypes?: string[] };
 
 /** A small label/value row for the fact panels below, the same shape as
  * ClientHeader.tsx's own local `Fact` (no shared export exists to reuse). */

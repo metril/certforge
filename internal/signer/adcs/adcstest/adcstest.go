@@ -44,6 +44,13 @@ type Fake struct {
 	Issued atomic.Int32
 	// EnrollmentFlags is published as the template's enrollmentFlags.
 	EnrollmentFlags atomic.Int32
+	// SubjectFlags is published as subjectNameFlags (default 1: enrollee
+	// supplies subject).
+	SubjectFlags atomic.Int32
+	// KeyAlgorithm is "RSA" (default) or "ECDSA_P384".
+	KeyAlgorithm atomic.Value
+	// EKU is the published extended key usage OID (default serverAuth).
+	EKU atomic.Value
 
 	ca    *x509.Certificate
 	caKey *ecdsa.PrivateKey
@@ -72,6 +79,9 @@ func New(t *testing.T) *Fake {
 	}
 	ca, _ := x509.ParseCertificate(der)
 	f := &Fake{ca: ca, caKey: key, CAPEM: string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))}
+	f.SubjectFlags.Store(1)
+	f.KeyAlgorithm.Store("RSA")
+	f.EKU.Store("1.3.6.1.5.5.7.3.1")
 	mux := http.NewServeMux()
 	mux.HandleFunc("/cep", f.cep)
 	mux.HandleFunc("/ces", f.ces)
@@ -96,8 +106,25 @@ func (f *Fake) cep(w http.ResponseWriter, r *http.Request) {
 	if !authed(w, string(b)) {
 		return
 	}
-	fmt.Fprintf(w, `<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Body><GetPoliciesResponse xmlns="http://schemas.microsoft.com/windows/pki/2009/01/enrollmentpolicy"><response><policies><policy><policyOIDReference>0</policyOIDReference><cAs><cAReference>0</cAReference></cAs><attributes><commonName>%s</commonName><enrollmentFlags>%d</enrollmentFlags><permission><enroll>true</enroll></permission><privateKeyAttributes><minimalKeyLength>2048</minimalKeyLength></privateKeyAttributes></attributes></policy></policies></response><oIDs><oID><value>1.3.6.1.4.1.311.21.8.1.2</value><oIDReferenceID>0</oIDReferenceID></oID></oIDs><cAs><cA><uris><cAURI><clientAuthentication>4</clientAuthentication><uri>%s</uri><priority>1</priority></cAURI></uris><certificate>%s</certificate><cAReferenceID>0</cAReferenceID></cA></cAs></GetPoliciesResponse></s:Body></s:Envelope>`,
-		Template, f.EnrollmentFlags.Load(), f.CESURL, base64.StdEncoding.EncodeToString(f.ca.Raw))
+	alg, algOID := `<algorithmOIDReference xsi:nil="true" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"/>`, ""
+	schema, prov := 2, ""
+	if f.KeyAlgorithm.Load().(string) == "ECDSA_P384" {
+		alg, algOID = `<algorithmOIDReference>2</algorithmOIDReference>`, `<oID><value>1.3.132.0.34</value><group>3</group><oIDReferenceID>2</oIDReferenceID><defaultName>ECDSA_P384</defaultName></oID>`
+		schema, prov = 4, `<cryptoProviders><provider>Microsoft Software Key Storage Provider</provider></cryptoProviders>`
+	}
+	eku, _ := asn1.Marshal([]asn1.ObjectIdentifier{mustOID(f.EKU.Load().(string))})
+	fmt.Fprintf(w, `<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Body><GetPoliciesResponse xmlns="http://schemas.microsoft.com/windows/pki/2009/01/enrollmentpolicy"><response><policies><policy><policyOIDReference>0</policyOIDReference><cAs><cAReference>0</cAReference></cAs><attributes><commonName>%s</commonName><policySchema>%d</policySchema><enrollmentFlags>%d</enrollmentFlags><subjectNameFlags>%d</subjectNameFlags><permission><enroll>true</enroll></permission><privateKeyAttributes><minimalKeyLength>2048</minimalKeyLength>%s%s</privateKeyAttributes><extensions><extension><oIDReference>1</oIDReference><critical>false</critical><value>%s</value></extension></extensions></attributes></policy></policies></response><oIDs><oID><value>1.3.6.1.4.1.311.21.8.1.2</value><oIDReferenceID>0</oIDReferenceID></oID><oID><value>2.5.29.37</value><oIDReferenceID>1</oIDReferenceID></oID>%s</oIDs><cAs><cA><uris><cAURI><clientAuthentication>4</clientAuthentication><uri>%s</uri><priority>1</priority></cAURI></uris><certificate>%s</certificate><cAReferenceID>0</cAReferenceID></cA></cAs></GetPoliciesResponse></s:Body></s:Envelope>`,
+		Template, schema, f.EnrollmentFlags.Load(), f.SubjectFlags.Load(), alg, prov, base64.StdEncoding.EncodeToString(eku), algOID, f.CESURL, base64.StdEncoding.EncodeToString(f.ca.Raw))
+}
+
+func mustOID(s string) asn1.ObjectIdentifier {
+	var o asn1.ObjectIdentifier
+	for _, p := range strings.Split(s, ".") {
+		n := 0
+		_, _ = fmt.Sscanf(p, "%d", &n)
+		o = append(o, n)
+	}
+	return o
 }
 
 func (f *Fake) ces(w http.ResponseWriter, r *http.Request) {

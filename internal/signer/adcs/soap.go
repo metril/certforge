@@ -179,14 +179,31 @@ type xcepPolicy struct {
 		CommonName string `xml:"commonName"`
 		Schema     int    `xml:"policySchema"`
 		Enroll     bool   `xml:"permission>enroll"`
+		AutoEnroll bool   `xml:"permission>autoEnroll"`
 		MinKeyLen  int    `xml:"privateKeyAttributes>minimalKeyLength"`
-		EnrollFlag int    `xml:"enrollmentFlags"`
+		KeySpec    int    `xml:"privateKeyAttributes>keySpec"`
+		// AlgRef is algorithmOIDReference; xsi:nil marks a legacy RSA CSP.
+		AlgRef struct {
+			Nil   string `xml:"nil,attr"`
+			Value string `xml:",chardata"`
+		} `xml:"privateKeyAttributes>algorithmOIDReference"`
+		Providers   []string `xml:"privateKeyAttributes>cryptoProviders>provider"`
+		EnrollFlag  int      `xml:"enrollmentFlags"`
+		SubjectFlag int      `xml:"subjectNameFlags"`
+		RASigs      int      `xml:"rARequirements>rASignatures"`
+		Extensions  []struct {
+			OIDRef   int    `xml:"oIDReference"`
+			Critical bool   `xml:"critical"`
+			Value    string `xml:"value"`
+		} `xml:"extensions>extension"`
 	} `xml:"attributes"`
 }
 
 type xcepOID struct {
-	Value string `xml:"value"`
-	RefID string `xml:"oIDReferenceID"`
+	Value       string `xml:"value"`
+	Group       int    `xml:"group"`
+	RefID       string `xml:"oIDReferenceID"`
+	DefaultName string `xml:"defaultName"`
 }
 
 type xcepCA struct {

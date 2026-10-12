@@ -103,6 +103,29 @@ test('CA kind switching', async ({ page }) => {
 // test → save.
 test('AD CS template picker and test', async ({ page }) => {
   const probes: Record<string, unknown>[] = [];
+  const tpl = {
+    minKeySize: 2048,
+    canEnroll: true,
+    requiresApproval: false,
+    allowedKeyTypes: ['rsa2048', 'rsa3072', 'rsa4096'],
+    keyAlgorithm: 'RSA',
+    schema: 2,
+    legacyCsp: true,
+  };
+  const subjectReq = (ok: boolean) => ({
+    key: 'subject',
+    label: 'Subject supplied in the request',
+    fix: 'Subject Name tab: select "Supply in the request".',
+    ok,
+    blocking: true,
+  });
+  const serverAuthReq = {
+    key: 'serverAuth',
+    label: 'Allows Server Authentication',
+    fix: 'Extensions tab: add Server Authentication.',
+    ok: false,
+    blocking: false,
+  };
   let created: { type?: string; config?: Record<string, unknown> } | undefined;
   await page.route('**/api/v1/orgs/*/cas/adcs/probe', async (route) => {
     const b = route.request().postDataJSON() as Record<string, unknown>;
@@ -111,8 +134,10 @@ test('AD CS template picker and test', async ({ page }) => {
       json: {
         ok: true,
         templates: [
-          { name: 'CertForgeWeb', oid: '1.3.6.1.4.1.311.21.8.1.2', minKeySize: 2048, canEnroll: true, requiresApproval: false },
-          { name: 'Held', oid: '', minKeySize: 2048, canEnroll: true, requiresApproval: true },
+          { ...tpl, name: 'CertForgeWeb', oid: '1.3.6.1.4.1.311.21.8.1.2', requirements: [subjectReq(true)] },
+          { ...tpl, name: 'Held', oid: '', requiresApproval: true, requirements: [subjectReq(true)] },
+          { ...tpl, name: 'NoSubject', oid: '', requirements: [subjectReq(false)] },
+          { ...tpl, name: 'NoServerAuth', oid: '', requirements: [subjectReq(true), serverAuthReq] },
         ],
         ...(b.template ? { selected: { name: b.template, usable: true } } : {}),
       },
@@ -142,6 +167,19 @@ test('AD CS template picker and test', async ({ page }) => {
   const picker = sheet.getByRole('combobox', { name: 'Template' });
   await picker.click();
   await expect(page.getByRole('option', { name: 'Held' })).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.getByRole('option', { name: /^CertForgeWeb/ })).toContainText('RSA ≥2048');
+  const noSubject = page.getByRole('option', { name: /^NoSubject/ });
+  await expect(noSubject).toHaveAttribute('aria-disabled', 'true');
+  // The disabled option ignores pointer events; its tooltip trigger is the wrapping span.
+  await noSubject.locator('xpath=..').hover({ force: true });
+  await expect(page.getByRole('tooltip')).toContainText('Supply in the request');
+  await page.getByRole('option', { name: /^NoServerAuth/ }).click();
+  const reqs = sheet.getByRole('region', { name: 'Requirements for NoServerAuth' });
+  await expect(reqs).toContainText('Allows Server Authentication (not met)');
+  await expect(reqs).toContainText('Extensions tab: add Server Authentication.');
+  await expect(reqs).toContainText('CertForge key types: RSA 2048, RSA 3072, RSA 4096');
+  await snap(page, 'ca-adcs-requirements');
+  await picker.click();
   await page.getByRole('option', { name: /^CertForgeWeb/ }).click();
   await expect(picker).toHaveText(/CertForgeWeb/);
   await snap(page, 'ca-adcs-templates');

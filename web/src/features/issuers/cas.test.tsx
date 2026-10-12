@@ -4,7 +4,7 @@ import { beforeEach, expect, it } from 'vitest';
 import type { CA, CAInput } from '@/api/types';
 import { UNCHANGED } from '@/api/types';
 import { server } from '@/test/server';
-import { authHandlers, ca, caAdcs, caLocal, caVaultPki, meWith, metaSigners, presets, problem, url } from '@/test/fixtures';
+import { adcsProbeTemplate, authHandlers, ca, caAdcs, caLocal, caVaultPki, meWith, metaSigners, presets, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let cas: CA[];
@@ -273,9 +273,27 @@ it('adcs edit keeps the stored password with the sentinel', async () => {
 });
 
 const probeTemplates = [
-  { name: 'CertForgeWeb', oid: '1.3.6.1.4.1.311.21.8.1.2', minKeySize: 2048, canEnroll: true, requiresApproval: false },
-  { name: 'Held', oid: '', minKeySize: 2048, canEnroll: true, requiresApproval: true },
-  { name: 'Locked', oid: '', minKeySize: 2048, canEnroll: false, requiresApproval: false },
+  adcsProbeTemplate(),
+  adcsProbeTemplate({ name: 'Held', oid: '', requiresApproval: true }),
+  adcsProbeTemplate({ name: 'Locked', oid: '', canEnroll: false }),
+  adcsProbeTemplate({
+    name: 'NoSubject',
+    oid: '',
+    keyAlgorithm: 'ECDSA_P384',
+    allowedKeyTypes: ['ec384'],
+    requirements: [
+      { key: 'subject', label: 'Subject supplied in the request', fix: 'Subject Name tab: select "Supply in the request".', ok: false, blocking: true },
+    ],
+  }),
+  adcsProbeTemplate({
+    name: 'NoServerAuth',
+    oid: '',
+    keyAlgorithm: 'ECDSA_P384',
+    allowedKeyTypes: ['ec384'],
+    requirements: [
+      { key: 'serverAuth', label: 'Allows Server Authentication', fix: 'Extensions tab: add Server Authentication.', ok: false, blocking: false },
+    ],
+  }),
 ];
 
 function withProbe(reply: (body: Record<string, unknown>) => Response | Promise<Response>) {
@@ -334,6 +352,35 @@ it('adcs load templates, pick, test, save', async () => {
   await user.click(within(sheet).getByRole('button', { name: 'Save CA' }));
   await waitFor(() => expect(posted).toBeDefined());
   expect(posted).toMatchObject({ type: 'adcs', config: { template: 'CertForgeWeb', password: 'hunter2' } });
+});
+
+it('adcs shows what the picked template requires', async () => {
+  withSigners();
+  withProbe(() => HttpResponse.json({ ok: true, templates: probeTemplates }));
+  const { user } = renderRoute('/o/acme/issuers/cas?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'Add certificate authority' });
+  await user.click(within(sheet).getByRole('radio', { name: 'Active Directory (AD CS)' }));
+  await user.type(within(sheet).getByLabelText('Policy (CEP) URL'), 'https://ca.corp.test/cep');
+  await user.type(within(sheet).getByLabelText('Username'), 'svc');
+  await user.type(within(sheet).getByLabelText('Password'), 'hunter2');
+  await user.click(within(sheet).getByRole('button', { name: 'Load templates' }));
+  const picker = await within(sheet).findByRole('combobox', { name: 'Template' });
+  await user.click(picker);
+  expect(screen.getByRole('option', { name: /^CertForgeWeb/ })).toHaveTextContent('RSA ≥2048');
+  expect(screen.getByRole('option', { name: /^NoServerAuth/ })).toHaveTextContent('ECDSA P-384');
+  const noSubject = screen.getByRole('option', { name: /^NoSubject/ });
+  expect(noSubject).toHaveAttribute('aria-disabled', 'true');
+  await user.click(screen.getByRole('option', { name: /^CertForgeWeb/ }));
+  const ok = within(sheet).getByRole('region', { name: 'Requirements for CertForgeWeb' });
+  expect(ok).toHaveTextContent('Subject supplied in the request (met)');
+  expect(ok).toHaveTextContent('CertForge key types: RSA 2048, RSA 3072, RSA 4096');
+  expect(ok).not.toHaveTextContent('Subject Name tab');
+  await user.click(picker);
+  await user.click(screen.getByRole('option', { name: /^NoServerAuth/ }));
+  const bad = within(sheet).getByRole('region', { name: 'Requirements for NoServerAuth' });
+  expect(bad).toHaveTextContent('Allows Server Authentication (not met)');
+  expect(bad).toHaveTextContent('Extensions tab: add Server Authentication.');
+  expect(bad).toHaveTextContent('CertForge key types: EC P-384');
 });
 
 it('adcs probe failure keeps the template as free text', async () => {
