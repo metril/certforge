@@ -155,12 +155,14 @@ The default URLs are:
 ### Add the CA
 
 1. On **CAs**, select **Add CA** and set **Type** to **Active Directory (AD CS)**.
-2. Enter a **Name**, the **Policy (CEP) URL**, the **Template** name, the **Username** (`DOMAIN\user` or a UPN) and the **Password**.
+2. Enter a **Name**, the **Policy (CEP) URL**, the **Template** name, the **Username** and the **Password**. Write the username as `DOMAIN\user` or `user@domain`; a bare name such as `svc` is usually refused.
 3. Leave **Enrollment (CES) URL** empty to use the one the policy publishes, or set it when CES sits behind another name.
 4. Paste a **TLS CA bundle** if the web services use a private certificate. It is also used as the chain when CES returns only the leaf.
 5. Select **Save CA**.
 
 CertForge reads the policy at creation with those credentials, so the service must be reachable and the template must exist and allow the account to enroll. It stores the template's OID, takes the CA certificate from the policy as the trust bundle, and seals the password. When you edit the CA, leave **Password** untouched to keep the stored one; a changed URL, template, account or password reads the policy again.
+
+If authentication fails, the error under **Username** includes the server's reason (an HTTP status or a SOAP fault such as `FailedAuthentication: At least one security token in the message could not be validated.`) and, for a username without `DOMAIN\` or `@domain`, a reminder of the two accepted formats. The password is never shown.
 
 ### Load templates and test
 

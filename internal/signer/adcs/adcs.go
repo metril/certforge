@@ -198,12 +198,12 @@ func (s *Signer) post(ctx context.Context, url string, body []byte) (*respEnvelo
 		return nil, fmt.Errorf("adcs: read response: %w", err)
 	}
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return nil, fmt.Errorf("%w: http %d", ErrAuth, resp.StatusCode)
+		return nil, s.authError(fmt.Sprintf("http %d", resp.StatusCode))
 	}
 	env, perr := parseEnvelope(data)
 	if perr == nil && env.Body.Fault != nil {
 		if env.Body.Fault.isAuth() {
-			return nil, fmt.Errorf("%w: %s", ErrAuth, env.Body.Fault.Error())
+			return nil, s.authError(env.Body.Fault.text())
 		}
 		return nil, env.Body.Fault
 	}
@@ -373,4 +373,10 @@ func publicKeysEqual(a, b crypto.PublicKey) bool {
 	da, err1 := x509.MarshalPKIXPublicKey(a)
 	db, err2 := x509.MarshalPKIXPublicKey(b)
 	return err1 == nil && err2 == nil && bytes.Equal(da, db)
+}
+
+// authError builds the typed authentication error for detail, with the
+// username-format hint when the configured username needs it.
+func (s *Signer) authError(detail string) error {
+	return &AuthError{Detail: detail, Hint: UsernameHint(s.cfg.Username)}
 }

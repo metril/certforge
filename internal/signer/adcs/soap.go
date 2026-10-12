@@ -33,7 +33,7 @@ const (
 	// (MS-WSTEP): a PKCS#10 certificate request.
 	valueTypePKCS10 = "http://schemas.microsoft.com/windows/pki/2009/01/enrollment#PKCS10"
 	// encodingBinary is the BinarySecurityToken EncodingType Windows sends.
-	encodingBinary = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd#base64binary"
+	encodingBinary   = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd#base64binary"
 	requestTypeIssue = "http://docs.oasis-open.org/ws-sx/ws-trust/200512/Issue"
 	// encodingBase64 is the UsernameToken Nonce EncodingType (standard WS-Security).
 	encodingBase64   = "http://docs.oasis-open.org/wss/oasis-wss-soap-message-security-1.0#Base64Binary"
@@ -126,15 +126,22 @@ type Fault struct {
 }
 
 // Error implements error.
-func (f *Fault) Error() string {
+func (f *Fault) Error() string { return "adcs: soap fault: " + f.text() }
+
+// text is the fault as "Subcode: reason (detail)" without the package prefix.
+func (f *Fault) text() string {
 	msg := strings.TrimSpace(f.Reason)
 	if d := strings.TrimSpace(f.Detail); d != "" {
 		msg += " (" + d + ")"
 	}
 	if f.Subcode != "" {
-		msg = f.Subcode + ": " + msg
+		sub := f.Subcode
+		if i := strings.LastIndex(sub, ":"); i >= 0 {
+			sub = sub[i+1:]
+		}
+		msg = sub + ": " + msg
 	}
-	return "adcs: soap fault: " + msg
+	return msg
 }
 
 func (f *Fault) isAuth() bool {
