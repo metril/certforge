@@ -123,9 +123,6 @@ func NewAgent(cfg Config, log *slog.Logger, id *Identity) *Agent {
 		Challenge: NewChallengeServer(cfg, files, log)}
 }
 
-// capabilities lists what this agent tells the server it can do: traefik
-// always, hooks when CF_HOOK_ALLOW is set, restart when CF_RESTART_ALLOW is set, and http-01/tls-alpn-01 when the
-// matching challenge listener is configured.
 // heartbeat is the installed digests plus what this agent could restart.
 func (a *Agent) heartbeat(ctx context.Context) agentproto.Heartbeat {
 	hb := agentproto.Heartbeat{Installed: a.ID.Installed()}
@@ -135,6 +132,9 @@ func (a *Agent) heartbeat(ctx context.Context) agentproto.Heartbeat {
 	return hb
 }
 
+// capabilities lists what this agent tells the server it can do: traefik
+// always, hooks when CF_HOOK_ALLOW is set, restart when CF_RESTART_ALLOW is set, and http-01/tls-alpn-01 when the
+// matching challenge listener is configured.
 func capabilities(cfg Config) []string {
 	caps := []string{"traefik"}
 	if len(cfg.HookAllow) > 0 {

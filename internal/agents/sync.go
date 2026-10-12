@@ -333,6 +333,7 @@ func (s *Service) Report(ctx context.Context, c sqlcgen.Client, rep agentproto.R
 // Heartbeat compares installed files with ok and drifted deployments,
 // audits transitions, and bumps the revision for auto-remediating grants.
 func (s *Service) Heartbeat(ctx context.Context, c sqlcgen.Client, hb agentproto.Heartbeat) error {
+	s.storeRestartTargets(ctx, c.ID, hb.RestartTargets)
 	by := map[uuid.UUID][]agentproto.FileDigest{}
 	for _, f := range hb.Installed {
 		by[f.GrantID] = append(by[f.GrantID], agentproto.FileDigest{Path: f.Path, SHA256: f.SHA256})
@@ -423,4 +424,23 @@ func (s *Service) Heartbeat(ctx context.Context, c sqlcgen.Client, hb agentproto
 	s.nudge(revs, map[uuid.UUID]bool{c.ID: pushRemediate})
 	s.touch(ctx, c.ID)
 	return nil
+}
+
+// storeRestartTargets keeps what the agent says it could restart (clipped, at
+// most 200); it only informs the hook target picker and never grants anything.
+func (s *Service) storeRestartTargets(ctx context.Context, id uuid.UUID, in []agentproto.RestartTarget) {
+	out := make([]agentproto.RestartTarget, 0, len(in))
+	for _, t := range in {
+		if len(out) == 200 {
+			break
+		}
+		if !delivery.RestartTargetRE.MatchString(t.Target) {
+			continue
+		}
+		out = append(out, t)
+	}
+	b, _ := json.Marshal(out)
+	if err := s.Q.SetClientRestartTargets(ctx, sqlcgen.SetClientRestartTargetsParams{ID: id, RestartTargets: b}); err != nil {
+		s.log().Warn("agents: restart targets not stored", "client", id, "err", err)
+	}
 }

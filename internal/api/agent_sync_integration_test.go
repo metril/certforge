@@ -5,6 +5,7 @@ package api
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -384,5 +385,24 @@ func TestReportFailedAndHookRuns(t *testing.T) {
 	runs := res.(gen.ListClientHookRuns200JSONResponse).Items
 	if len(runs) != 1 || runs[0].ExitCode != 1 || len(runs[0].Stdout) != 8192 || runs[0].HookId != nil || runs[0].Stderr != "badbyte" || runs[0].HookName != "" {
 		t.Fatalf("runs %+v", runs)
+	}
+}
+
+func TestHeartbeatStoresRestartTargets(t *testing.T) {
+	e := newAgentEnv(t)
+	cert, c, _ := e.enrolledWithGrant(t, "web-1", true)
+	hc := e.httpClient(t, &cert)
+	run := true
+	hb := agentproto.Heartbeat{RestartTargets: []agentproto.RestartTarget{
+		{Target: "docker:nginx", Allowed: true, Running: &run},
+		{Target: "docker:bad name", Allowed: true},
+	}}
+	if code := e.post(t, hc, "/agent/v1/heartbeat", hb, nil); code != http.StatusNoContent {
+		t.Fatalf("heartbeat %d", code)
+	}
+	cl, _ := e.q.GetClientByID(context.Background(), c.ID)
+	var got []agentproto.RestartTarget
+	if err := json.Unmarshal(cl.RestartTargets, &got); err != nil || len(got) != 1 || got[0].Target != "docker:nginx" || !got[0].Allowed || got[0].Running == nil || !*got[0].Running {
+		t.Fatalf("stored %s (%v)", cl.RestartTargets, err)
 	}
 }

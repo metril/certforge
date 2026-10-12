@@ -42,7 +42,7 @@ func mapAgentErr(err error) error {
 func clientFromRow(r sqlcgen.ListClientsRow) sqlcgen.Client {
 	return sqlcgen.Client{ID: r.ID, OrgID: r.OrgID, SiteID: r.SiteID, Name: r.Name, Status: r.Status,
 		AgentCertSerial: r.AgentCertSerial, AgentCertNotAfter: r.AgentCertNotAfter, AgentCaID: r.AgentCaID,
-		Hostname: r.Hostname, Os: r.Os, Arch: r.Arch, AgentVersion: r.AgentVersion, Capabilities: r.Capabilities,
+		Hostname: r.Hostname, Os: r.Os, Arch: r.Arch, AgentVersion: r.AgentVersion, Capabilities: r.Capabilities, RestartTargets: r.RestartTargets,
 		LastSeen: r.LastSeen, DesiredRevision: r.DesiredRevision, AppliedRevision: r.AppliedRevision, CreatedAt: r.CreatedAt}
 }
 
@@ -83,7 +83,7 @@ func (s *Server) clientsOut(ctx context.Context, rows []sqlcgen.Client) ([]gen.C
 		online := connected || (s.d.Agents != nil && c.LastSeen != nil && !c.LastSeen.Before(cutoff))
 		g := gen.Client{Id: c.ID, OrgId: c.OrgID, SiteId: c.SiteID, Name: c.Name, Status: gen.ClientStatus(c.Status),
 			Connected: connected, Online: online, Hostname: c.Hostname, Os: c.Os, Arch: c.Arch,
-			AgentVersion: c.AgentVersion, Capabilities: c.Capabilities, LastSeen: c.LastSeen,
+			AgentVersion: c.AgentVersion, Capabilities: c.Capabilities, RestartTargets: restartTargetsOut(c.RestartTargets), LastSeen: c.LastSeen,
 			AgentCertNotAfter: c.AgentCertNotAfter, AgentCaId: c.AgentCaID, DesiredRevision: c.DesiredRevision, AppliedRevision: c.AppliedRevision,
 			GrantCount: int(n.Grants), DriftCount: int(n.Drift), FailedCount: int(n.Failed), CreatedAt: c.CreatedAt}
 		if exp, ok := em[c.ID]; ok && c.Status == "pending" {
@@ -347,4 +347,10 @@ func (s *Server) ReenrollClient(ctx context.Context, r gen.ReenrollClientRequest
 		return nil, err
 	}
 	return gen.ReenrollClient200JSONResponse(out), nil
+}
+
+func restartTargetsOut(b []byte) []gen.RestartTarget {
+	out := []gen.RestartTarget{}
+	_ = json.Unmarshal(b, &out)
+	return out
 }
