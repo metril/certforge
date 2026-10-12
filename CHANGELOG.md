@@ -2,6 +2,13 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.24.0](https://github.com/metril/certforge/compare/v0.23.0...v0.24.0) (2026-10-12)
+
+
+### Miscellaneous Chores
+
+* release 0.24.0 ([dc0d57a](https://github.com/metril/certforge/commit/dc0d57aeef247b167801a442b46a9758fca5eba7))
+
 ## [0.23.0](https://github.com/metril/certforge/compare/v0.22.0...v0.23.0) (2026-10-12)
 
 
