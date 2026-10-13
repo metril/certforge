@@ -508,4 +508,15 @@ func TestPfSenseRestartStepSuppressesBuiltIn(t *testing.T) {
 	if len(u.sec.Calls) != 2 || strings.Contains(string(u.sec.Calls[1].GrantOptions), "pfsenseRestart") {
 		t.Fatalf("calls = %+v", u.sec.Calls)
 	}
+	// A pre-deploy restart runs before the new certificate is on the box, so
+	// the built-in post-write restart must not be suppressed.
+	pre := u.f.action(t, "restart-pre", "pfsense_restart", "pre_deploy", map[string]any{"targetId": u.target, "mode": "all"})
+	u.f.setSteps(t, u.g, step(pre))
+	u.f.pending(t, u.g, u.ver)
+	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
+		t.Fatal(err)
+	}
+	if len(u.sec.Calls) != 3 || strings.Contains(string(u.sec.Calls[2].GrantOptions), "pfsenseRestart") {
+		t.Fatalf("pre-deploy step suppressed the built-in restart: %+v", u.sec.Calls)
+	}
 }
