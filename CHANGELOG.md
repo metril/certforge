@@ -2,6 +2,19 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.33.0](https://github.com/metril/certforge/compare/v0.32.0...v0.33.0) (2026-10-13)
+
+
+### Features
+
+* **api:** configurable verify interval and auto-remediation attempt cap ([5841dc9](https://github.com/metril/certforge/commit/5841dc9cf1def437edfbd201e69cca33d99847c8))
+* **web:** verify check interval and auto-remediation attempts setting ([d2d42ce](https://github.com/metril/certforge/commit/d2d42ce0c21a6f1c6edf3808ca6ff9472ac2d2a9))
+
+
+### Bug Fixes
+
+* **api:** audit the verify interval on grant changes ([4425301](https://github.com/metril/certforge/commit/4425301eec1b01a3a081ae8ecd049356b6da0232))
+
 ## [0.32.0](https://github.com/metril/certforge/compare/v0.31.0...v0.32.0) (2026-10-13)
 
 
