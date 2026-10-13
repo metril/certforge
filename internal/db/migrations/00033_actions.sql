@@ -36,6 +36,7 @@ CREATE TABLE action_groups (
 );
 
 ALTER TABLE client_cert_grants ADD COLUMN steps jsonb NOT NULL DEFAULT '[]';
+CREATE INDEX client_cert_grants_steps_idx ON client_cert_grants USING gin (steps jsonb_path_ops);
 UPDATE client_cert_grants g SET steps = COALESCE((
     SELECT jsonb_agg(jsonb_build_object('action', h.id) ORDER BY h.ord)
     FROM unnest(g.hook_ids) WITH ORDINALITY AS h(id, ord)), '[]'::jsonb)
