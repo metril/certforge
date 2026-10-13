@@ -310,3 +310,22 @@ it('marks a grant-owned monitor with a Grant badge and does not open its edit sh
   await user.click(within(row).getByText('fw verify'));
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
+
+it('grant-owned card title is plain text, not a button', async () => {
+  stubViewport(false);
+  monitors = [makeMonitor({ id: 'mon-g', name: 'fw verify', grantId: 'g-1' })];
+  const { user } = renderRoute('/o/acme/alerts/monitors');
+  await screen.findByText('fw verify');
+  expect(screen.queryByRole('button', { name: 'fw verify' })).not.toBeInTheDocument();
+  await user.click(screen.getByText('fw verify'));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
+
+it('?edit= on a grant-owned monitor shows a read-only sheet, not "not found"', async () => {
+  monitors = [makeMonitor({ id: 'mon-g', name: 'fw verify', host: 'fw.example', port: 8443, grantId: 'g-1' })];
+  renderRoute('/o/acme/alerts/monitors?edit=mon-g');
+  const sheet = await screen.findByRole('dialog', { name: 'Managed by a server grant' });
+  expect(within(sheet).getByText('fw.example:8443')).toBeInTheDocument();
+  expect(within(sheet).getByRole('link', { name: 'Go to Delivery targets' })).toBeInTheDocument();
+  expect(screen.queryByText('Monitor not found')).not.toBeInTheDocument();
+});

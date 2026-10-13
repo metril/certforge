@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useSearch } from '@tanstack/react-router';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { Plus, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { errorMessage } from '@/api/errors';
@@ -131,12 +131,16 @@ function monitorColumns(orgId: string) {
 function MonitorCard({ monitor, orgId, onOpen }: { monitor: Monitor; orgId: string; onOpen: () => void }) {
   return (
     <div
-      className="relative grid gap-2 rounded-md border border-border bg-panel p-3 hover:bg-subtle"
+      className={`relative grid gap-2 rounded-md border border-border bg-panel p-3${monitor.grantId ? '' : ' hover:bg-subtle'}`}
     >
       <div className="flex items-center justify-between gap-2">
-        <button type="button" onClick={onOpen} className="truncate text-left font-semibold after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring/50 focus-visible:after:rounded-md">
-          {monitor.name}
-        </button>
+        {monitor.grantId ? (
+          <span className="truncate font-semibold">{monitor.name}</span>
+        ) : (
+          <button type="button" onClick={onOpen} className="truncate text-left font-semibold after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring/50 focus-visible:after:rounded-md">
+            {monitor.name}
+          </button>
+        )}
         <span className="relative z-10">
           <CheckNowButton monitor={monitor} orgId={orgId} />
         </span>
@@ -177,17 +181,21 @@ export function MonitorsPage() {
   const canWrite = can(me, 'alerts:write', org.id);
   const atLimit = monitors.length >= MONITOR_LIMIT;
   const addAllowed = canWrite && !atLimit;
-  // A grant-owned monitor is edited through its grant, so it never opens the edit sheet.
+  // A grant-owned monitor is edited through its grant: rows are inert and ?edit= opens a read-only sheet.
+  const rowClick = (id: string) => {
+    if (!monitors.find((m) => m.id === id)?.grantId) openSheet(id);
+  };
   const openSheet = (id: string | undefined) => {
-    if (id && monitors.find((m) => m.id === id)?.grantId) return;
     void navigate({
       search: (prev) => ({ ...prev, edit: id }),
       replace: id === undefined,
     });
   };
   const columns = useMemo(() => monitorColumns(org.id), [org.id]);
-  const editing = monitors.find((m) => m.id === edit && !m.grantId);
-  const editNotFound = !q.isPending && !q.isError && !!edit && edit !== 'new' && !editing;
+  const found = monitors.find((m) => m.id === edit);
+  const editing = found && !found.grantId ? found : undefined;
+  const managed = found?.grantId ? found : undefined;
+  const editNotFound = !q.isPending && !q.isError && !!edit && edit !== 'new' && !found;
 
   const add = (
     <PermissionTip allowed={addAllowed} action="alerts:write" reason={!canWrite ? undefined : atLimit ? help['monitor.limit'].text : undefined}>
@@ -211,7 +219,7 @@ export function MonitorsPage() {
         ) : (
           <>
             {isMdUp ? (
-              <DataTable ariaLabel="Monitors" data={monitors} columns={columns} getRowId={(m) => m.id} onRowClick={(id) => openSheet(id)} />
+              <DataTable ariaLabel="Monitors" data={monitors} columns={columns} getRowId={(m) => m.id} onRowClick={rowClick} />
             ) : (
               <div className="grid gap-2">
                 {monitors.map((m) => (
@@ -223,6 +231,43 @@ export function MonitorsPage() {
         )}
         {(edit === 'new' || editing) && (
           <MonitorSheet key={edit} orgId={org.id} open monitor={editing} onOpenChange={(o) => !o && openSheet(undefined)} />
+        )}
+        {managed && (
+          <Sheet open onOpenChange={(o) => !o && openSheet(undefined)}>
+            <SheetContent side="right" className="w-full sm:max-w-lg">
+              <SheetHeader>
+                <SheetTitle>Managed by a server grant</SheetTitle>
+                <SheetDescription>{managed.name}</SheetDescription>
+              </SheetHeader>
+              <dl className="grid gap-2 px-4 text-sm">
+                <div>
+                  <dt className="text-xs text-ink-muted">Endpoint</dt>
+                  <dd className="font-mono">
+                    {managed.host}:{managed.port}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-ink-muted">Interval</dt>
+                  <dd>{fmtInterval(managed.intervalSeconds)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-ink-muted">Expected certificate</dt>
+                  <dd>{managed.expectedCertificateName ?? 'Any current certificate in the org'}</dd>
+                </div>
+              </dl>
+              <p className="px-4 text-sm text-ink-muted">This monitor is edited on its grant: Delivery, then the target, then Grants.</p>
+              <div className="flex gap-2 px-4">
+                <Button asChild>
+                  <Link to="/o/$org/delivery/targets" params={{ org: org.slug }}>
+                    Go to Delivery targets
+                  </Link>
+                </Button>
+                <Button variant="outline" onClick={() => openSheet(undefined)}>
+                  Close
+                </Button>
+              </div>
+            </SheetContent>
+          </Sheet>
         )}
         {editNotFound && (
           <Sheet open onOpenChange={(o) => !o && openSheet(undefined)}>
