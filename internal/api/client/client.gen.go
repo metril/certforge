@@ -1662,7 +1662,7 @@ type DeployCredential struct {
 	// Id Credential id.
 	Id openapi_types.UUID `json:"id"`
 
-	// Kind Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema.
+	// Kind Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema. The ssh kind holds username, password and/or privateKey, plus privateKeyPassphrase for a protected key; ssh and pikvm targets accept it.
 	Kind DeployCredentialKind `json:"kind"`
 
 	// Name Unique name in the org.
@@ -1686,14 +1686,14 @@ type DeployCredentialInput struct {
 	// Config Field values valid against the kind's schema.
 	Config map[string]interface{} `json:"config"`
 
-	// Kind Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema.
+	// Kind Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema. The ssh kind holds username, password and/or privateKey, plus privateKeyPassphrase for a protected key; ssh and pikvm targets accept it.
 	Kind DeployCredentialKind `json:"kind"`
 
 	// Name Unique name in the org.
 	Name string `json:"name"`
 }
 
-// DeployCredentialKind Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema.
+// DeployCredentialKind Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema. The ssh kind holds username, password and/or privateKey, plus privateKeyPassphrase for a protected key; ssh and pikvm targets accept it.
 type DeployCredentialKind string
 
 // DeployCredentialRevealRequest Which stored secret to reveal.
@@ -1749,7 +1749,7 @@ type DeployTarget struct {
 	// StoredSecrets Secret fields that have a stored value.
 	StoredSecrets []string `json:"storedSecrets"`
 
-	// Type Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today.
+	// Type Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh and pikvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key and restarts kvmd-nginx.
 	Type DeployTargetType `json:"type"`
 
 	// UpdatedAt Last change.
@@ -1770,7 +1770,7 @@ type DeployTargetInput struct {
 	// RunsOn Required for a type whose own runsOn is either; optional and must match otherwise. Immutable after create.
 	RunsOn *RunsOn `json:"runsOn,omitempty"`
 
-	// Type Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today.
+	// Type Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh and pikvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key and restarts kvmd-nginx.
 	Type DeployTargetType `json:"type"`
 }
 
@@ -1780,7 +1780,7 @@ type DeployTargetList struct {
 	Items []DeployTarget `json:"items"`
 }
 
-// DeployTargetType Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today.
+// DeployTargetType Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh and pikvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key and restarts kvmd-nginx.
 type DeployTargetType string
 
 // Deployment What a grant should have installed and what the agent last reported.
@@ -2983,12 +2983,12 @@ type PfSenseUsage struct {
 	Services []PfSenseService `json:"services"`
 }
 
-// PostAction One command run after a server grant deploys. Kind ssh runs it over SSH using an existing ssh deploy target's host, credentials and host key. Kind pfsense runs it as a shell command on a firewall through an existing pfsense deploy target.
+// PostAction One command run after a server grant deploys. Kind ssh runs it over SSH using an existing ssh or pikvm deploy target's host, credentials and host key. Kind pfsense runs it as a shell command on a firewall through an existing pfsense deploy target.
 type PostAction struct {
 	// Command Command to run on that host.
 	Command string `json:"command"`
 
-	// Kind What runs the command. Rows saved before kinds existed read as ssh.
+	// Kind What runs the command. Kind ssh takes an ssh or pikvm target. Rows saved before kinds existed read as ssh.
 	Kind *PostActionKind `json:"kind,omitempty"`
 
 	// TargetId A deploy target in the same org whose type matches the kind. Rows saved before kinds existed used the name sshTargetId; the server still reads that.
@@ -2998,7 +2998,7 @@ type PostAction struct {
 	TimeoutSeconds *int `json:"timeoutSeconds,omitempty"`
 }
 
-// PostActionKind What runs the command. Rows saved before kinds existed read as ssh.
+// PostActionKind What runs the command. Kind ssh takes an ssh or pikvm target. Rows saved before kinds existed read as ssh.
 type PostActionKind string
 
 // Problem RFC 9457 problem details, sent with content type application/problem+json.

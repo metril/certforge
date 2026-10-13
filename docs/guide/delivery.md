@@ -215,13 +215,13 @@ Each deploy looks the keypair up by exact name. If it exists it is updated in pl
 
 ## SSH
 
-An SSH target writes certificate files to a remote host and runs optional commands before and after. Use it for devices with no certificate API, such as PiKVM and the GL.iNet Comet KVM. It runs on the server, so its grants have no client.
+An SSH target writes certificate files to a remote host and runs optional commands before and after. Use it for devices with no certificate API. For a PiKVM or GL.iNet Comet KVM use the [PiKVM](#pikvm) type. It runs on the server, so its grants have no client.
 
 | Field | What it does | Default |
 |---|---|---|
 | **Host**, **Port** (`host`, `port`) | The SSH server. | Port 22 |
 | **Username** (`username`) | Login name. | None |
-| **Password**, **Private key** (`password`, `privateKey`) | At least one. The key is PEM and must not have a passphrase. Paste it, or use **Upload** or drag a key file onto the field; a passphrase-protected key is rejected. Stored encrypted. | None |
+| **Password**, **Private key**, **Key passphrase** (`password`, `privateKey`, `privateKeyPassphrase`) | A password or a key, or both. The key is PEM (OpenSSH, PKCS#1 or PKCS#8). Paste it, or use **Upload** or drag a key file onto the field. Enter **Key passphrase** if the key is protected. The key is checked when you save: an unreadable key or a wrong passphrase is refused on the field. Encrypted PKCS#8 keys are not supported; convert with `ssh-keygen -p` or use an OpenSSH or PKCS#1 key. Stored encrypted. | None |
 | **Host key** (`hostKey`) | The pinned server key, a `known_hosts` line or `<type> <base64>`. Required: there is no trust on first use, and a mismatch fails before anything runs. | None |
 | **Files** (`files`) | 1 to 16 rows, edited with **Add file** and **Remove**: **Remote path** (absolute), **Content** and **Mode**. A key badge marks a row whose file needs the private key. **Content** is `fullchain`, `cert`, `chain`, `key`, `bundle` (fullchain plus key, as HAProxy and lighttpd want) or the name of a file from the grant's layout. | Mode `0644` |
 | **Command before writing** (`preCommand`) | Run first. A non-zero exit aborts the deploy. | None |
@@ -232,9 +232,23 @@ Click **Fetch from server** next to the host key to read it from the device, or 
 
 The private key is sent only when a file uses `key`, `bundle` or a layout file name (a layout file may hold it), and needs the `keys:export` permission. Files are written atomically with a restrictive umask, then set to the chosen mode.
 
-**PiKVM and GL.iNet Comet.** Their root filesystem is read-only, so the single **PiKVM / GL.iNet Comet** preset wraps the write: `rw` before, then `systemctl restart kvmd-nginx; rc=$?; ro; exit $rc` after. It writes `/etc/kvmd/nginx/ssl/server.crt` (`fullchain`, `0644`) and `server.key` (`key`, `0600`), where kvmd's nginx reads them. The preset hides the files and commands; pick **Custom** to show and edit them. Log in as `root`.
-
 Every command the SSH target runs, before or after the files, is recorded as a hook run. Open the target and pick the **Hook runs** tab to see the command, exit status, duration and output (8 KiB each).
+
+## PiKVM
+
+A PiKVM target installs the certificate on a PiKVM or GL.iNet Comet KVM. It runs on the server over SSH, so its grants have no client. The files and commands are fixed, so there is nothing else to set.
+
+| Field | What it does | Default |
+|---|---|---|
+| **Host**, **Port** (`host`, `port`) | The device's SSH server. | Port 22 |
+| **Username** (`username`) | Must be `root`. | `root` |
+| **Password**, **Private key**, **Key passphrase** | As for [SSH](#ssh): a password or a key, or both; keys are checked on save; encrypted PKCS#8 is not supported. | None |
+| **Host key** (`hostKey`) | The pinned server key. **Fetch from server** reads it, as for SSH. Required. | None |
+| **Timeout** (`timeoutSeconds`) | Seconds for the whole deploy, 5 to 300. | 60 |
+
+Each deploy runs `rw` (the root filesystem is read-only), writes `/etc/kvmd/nginx/ssl/server.crt` (`fullchain`, `0644`) and `server.key` (`key`, `0600`), then runs `systemctl restart kvmd-nginx; rc=$?; ro; exit $rc`, so the filesystem is switched back even when the restart fails. The grant needs the private key, so it needs `keys:export`. Commands are recorded as hook runs, as for SSH.
+
+Existing SSH targets set up for PiKVM keep working; no migration is needed.
 
 ## pfSense Plus
 
@@ -321,7 +335,7 @@ Per grant, three icon buttons sit on the row:
 
 A server grant can check the TLS endpoint a device serves and redeploy when it serves a different certificate. This catches a deploy that reported success but did not take effect, or a certificate someone replaced by hand.
 
-**Set up.** In the grant form, open **Verify**, switch on **Verify the endpoint** and enter **Host** and **Port** (and **SNI** if the server name differs). **Check every** sets how often the endpoint is checked (5 minutes to 24 hours, default 1 hour), so how quickly drift is noticed. For pfSense, TrueNAS, RouterOS and Authentik targets the host and port start from the target URL. For other targets, such as SSH, enter them yourself: for example the SSH target's host with port `443` for a PiKVM, whose web UI is not the SSH port. Switch on **Auto-remediate** to redeploy on drift. Vault KV grants have no endpoint to verify.
+**Set up.** In the grant form, open **Verify**, switch on **Verify the endpoint** and enter **Host** and **Port** (and **SNI** if the server name differs). **Check every** sets how often the endpoint is checked (5 minutes to 24 hours, default 1 hour), so how quickly drift is noticed. For pfSense, TrueNAS, RouterOS and Authentik targets the host and port start from the target URL. PiKVM targets start from the target's host with port `443`. For other targets, such as SSH, enter them yourself. Switch on **Auto-remediate** to redeploy on drift. Vault KV grants have no endpoint to verify.
 
 **How it works.** The grant owns an external monitor whose expected certificate is the grant's certificate (see [Alerts](alerts.md#external-monitors)). Drift is found when the monitor sees a different leaf, so detection runs at the monitor's check interval. A successful deploy triggers an immediate check. Mismatches are ignored while a newer version is still pending.
 
@@ -339,7 +353,7 @@ With **Auto-remediate**, CertForge re-queues the deploy on drift, but not while 
 
 A server grant can run one command after a successful deploy, for example `systemctl reload nginx` on the host that serves the certificate. Switch **Post action** on in the grant form, pick a **Kind** and an existing target of that kind, and enter the command (up to 512 characters) and a timeout of 5 to 300 seconds. The post action reuses that target's host, credentials and pinned host key; its files and own commands are not used. Any server-run target type can have one.
 
-The **Kind** is **SSH** or **pfSense**. SSH runs the command over SSH, as above. pfSense runs it as a shell command on the firewall through a [pfSense Plus](#pfsense-plus) target's API, with the same login the target uses; picking it prefills `/etc/rc.restart_webgui`. The API reports no exit status, so a pfSense command counts as done once the firewall accepts it. The pfSense user needs the diag command privilege.
+The **Kind** is **SSH** or **pfSense**. SSH runs the command over SSH, as above, and accepts an SSH or PiKVM target. pfSense runs it as a shell command on the firewall through a [pfSense Plus](#pfsense-plus) target's API, with the same login the target uses; picking it prefills `/etc/rc.restart_webgui`. The API reports no exit status, so a pfSense command counts as done once the firewall accepts it. The pfSense user needs the diag command privilege.
 
 The run is recorded on the **Hook runs** tab of the grant's target. A non-zero exit, or a connection failure, marks the deployment Failed: the error says the certificate deployed but the post action failed, and CertForge retries. A target that grants use as a post action cannot be deleted until you remove those post actions.
 
@@ -380,12 +394,14 @@ A saved credential holds a login once so many targets can use it. When the same 
 
 | Kind | Fields | Accepted by |
 |---|---|---|
-| SSH | Username, plus a password, a private key (pasted or uploaded; no passphrase) or both | SSH |
-| Password | Username and password | SSH, pfSense Plus, MikroTik RouterOS |
+| SSH | Username, plus a password, a private key (pasted or uploaded) with its key passphrase if protected, or both. Keys are checked on save | SSH, PiKVM |
+| Password | Username and password | SSH, PiKVM, pfSense Plus, MikroTik RouterOS |
 | API key | API key, optional username | TrueNAS SCALE |
 | Token | Token | Authentik |
 
 In a target, pick the credential under **Credential**. The fields it supplies are hidden and come from the credential at deploy time. Attaching a credential removes the target's own stored secrets. Pick **Enter manually** to detach it and type the login again. A target's detail sheet links to the credential it uses.
+
+**What the credential supplies.** While a credential is attached, the fields it supplies (username, password, private key, key passphrase, API key or token, depending on the kind) stay on the target form but are shown disabled and read-only. Edit them on the credential, or detach it.
 
 Editing a credential redeploys nothing. Server targets use the new value on their next deploy, and agents that use it get it on their next sync. **Used by** counts the targets that use a credential. A credential in use cannot be deleted; detach it from those targets first.
 

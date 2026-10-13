@@ -1737,7 +1737,7 @@ export interface paths {
         put?: never;
         /**
          * Add a deploy credential
-         * @description Needs deploycreds:write (org-admin or admin). config is validated against the kind's schema from GET /meta/schemas (deployCredentials); fields with secret true are stored encrypted. Any target of a matching kind can then reference it by credentialId.
+         * @description Needs deploycreds:write (org-admin or admin). config is validated against the kind's schema from GET /meta/schemas (deployCredentials); fields with secret true are stored encrypted. Any target of a matching kind can then reference it by credentialId. An ssh credential may carry privateKeyPassphrase (secret) for a protected key; the key is parsed on save, and an unreadable key, a wrong passphrase or an encrypted PKCS#8 key is 422 on config.privateKey or config.privateKeyPassphrase.
          */
         post: operations["createDeployCredential"];
         delete?: never;
@@ -1765,7 +1765,7 @@ export interface paths {
         get: operations["getDeployCredential"];
         /**
          * Replace a deploy credential
-         * @description Needs deploycreds:write. config is replaced as a whole; a secret field set to __unchanged__ keeps its stored value and a secret field left out is removed. The kind cannot change. Nothing is redeployed: server deploys use the new value next time, and the agent targets that use the credential are re-synced in the same transaction.
+         * @description Needs deploycreds:write. config is replaced as a whole; a secret field set to __unchanged__ keeps its stored value and a secret field left out is removed. The kind cannot change. An ssh credential's key is checked as on create (422 on config.privateKey or config.privateKeyPassphrase). Nothing is redeployed: server deploys use the new value next time, and the agent targets that use the credential are re-synced in the same transaction.
          */
         put: operations["updateDeployCredential"];
         post?: never;
@@ -1822,7 +1822,7 @@ export interface paths {
         put?: never;
         /**
          * Create a deploy target
-         * @description Needs delivery:write; also keys:export when the resolved config needs the certificate's private key. config is validated against the type's schema from GET /meta/schemas (deployTargets). runsOn is required (422 "choose where this target run") for a type whose own runsOn is either (422 "choose where this target runs" without it), optional and must match the type's forced runsOn otherwise (422 naming it). Every URL in config is checked against the URL policy (422 "address not allowed").
+         * @description Needs delivery:write; also keys:export when the resolved config needs the certificate's private key. config is validated against the type's schema from GET /meta/schemas (deployTargets). runsOn is required (422 "choose where this target run") for a type whose own runsOn is either (422 "choose where this target runs" without it), optional and must match the type's forced runsOn otherwise (422 naming it). Every URL in config is checked against the URL policy (422 "address not allowed"). An ssh or pikvm target's privateKey is parsed on save with privateKeyPassphrase: an unreadable key, a wrong or missing passphrase or an encrypted PKCS#8 key is 422 on config.privateKey or config.privateKeyPassphrase.
          */
         post: operations["createDeployTarget"];
         delete?: never;
@@ -4546,7 +4546,7 @@ export interface components {
             items: components["schemas"]["Layout"][];
         };
         /**
-         * @description Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema.
+         * @description Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema. The ssh kind holds username, password and/or privateKey, plus privateKeyPassphrase for a protected key; ssh and pikvm targets accept it.
          * @enum {string}
          */
         DeployCredentialKind: "ssh" | "password" | "apiKey" | "token";
@@ -4616,7 +4616,7 @@ export interface components {
             value: string;
         };
         /**
-         * @description Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today.
+         * @description Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh and pikvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key and restarts kvmd-nginx.
          * @enum {string}
          */
         DeployTargetType: "traefik" | "vault-kv" | "authentik" | "pfsense" | "truenas" | "routeros" | "ssh" | "pikvm";
@@ -4978,10 +4978,10 @@ export interface components {
              */
             intervalSeconds: number;
         };
-        /** @description One command run after a server grant deploys. Kind ssh runs it over SSH using an existing ssh deploy target's host, credentials and host key. Kind pfsense runs it as a shell command on a firewall through an existing pfsense deploy target. */
+        /** @description One command run after a server grant deploys. Kind ssh runs it over SSH using an existing ssh or pikvm deploy target's host, credentials and host key. Kind pfsense runs it as a shell command on a firewall through an existing pfsense deploy target. */
         PostAction: {
             /**
-             * @description What runs the command. Rows saved before kinds existed read as ssh.
+             * @description What runs the command. Kind ssh takes an ssh or pikvm target. Rows saved before kinds existed read as ssh.
              * @default ssh
              * @enum {string}
              */
