@@ -1,5 +1,5 @@
 import { Ban, CircleAlert, CircleCheck, FileDiff, Hourglass, type LucideIcon } from 'lucide-react';
-import type { Client, Deployment, DeploymentState, GrantDelivery, HookPhase } from '@/api/types';
+import type { Client, Deployment, DeploymentState, GrantDelivery, ActionPhase } from '@/api/types';
 import type { HelpKey } from './help';
 import { EXPIRING_DAYS, type Tone } from './status';
 import { DAY, fmtDateTime } from './time';
@@ -48,7 +48,7 @@ export const DEPLOY_META: Record<DeploymentState, { label: string; tone: Tone; i
 };
 
 export const DELIVERY_LABEL: Record<GrantDelivery, string> = { push: 'Push', pull: 'Pull' };
-export const PHASE_LABEL: Record<HookPhase, string> = { pre_deploy: 'Pre-deploy', post_deploy: 'Post-deploy' };
+export const PHASE_LABEL: Record<ActionPhase, string> = { pre_deploy: 'Pre-deploy', post_deploy: 'Post-deploy' };
 
 export function agentCertExpiring(c: Pick<Client, 'status' | 'agentCertNotAfter'>, now = Date.now()): boolean {
   if (c.status !== 'active' || !c.agentCertNotAfter) return false;

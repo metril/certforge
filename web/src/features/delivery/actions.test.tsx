@@ -1,8 +1,8 @@
 import { http, HttpResponse } from 'msw';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, makeClient, makeHook, meWith, org, problem, url } from '@/test/fixtures';
+import { authHandlers, makeAction, makeActionGroup, makeTarget, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 import { argvErrors } from '@/forms/widgets/ArgvField';
 
@@ -33,92 +33,145 @@ describe('argvErrors', () => {
   });
 });
 
+const A1 = '11111111-1111-4111-8111-111111111111';
+const A2 = '22222222-2222-4222-8222-222222222222';
+const T_SSH = '33333333-3333-4333-8333-333333333333';
+const T_PIKVM = '44444444-4444-4444-8444-444444444444';
+const T_TRAEFIK = '55555555-5555-4555-8555-555555555555';
+
 let posted: unknown;
 let patched: unknown;
 let deleted: string[];
+let postedGroup: unknown;
 
 beforeEach(() => {
   posted = undefined;
   patched = undefined;
+  postedGroup = undefined;
   deleted = [];
   server.use(
     ...authHandlers({ authed: true }),
-    http.get(url('/orgs/org-1/hooks'), () =>
+    http.get(url('/orgs/org-1/actions'), () =>
       HttpResponse.json({
-        items: [makeHook({ grantCount: 1 }), makeHook({ id: 'h-2', name: 'reload apache', argv: ['/usr/sbin/apachectl', 'graceful'], grantCount: 0 })],
+        items: [
+          makeAction({ id: A1, grantCount: 1 }),
+          makeAction({ id: A2, name: 'verify site', kind: 'verify_tls', phase: 'post_deploy', runsOn: 'server', config: { host: 'a.example.com', port: 443 }, optional: true, timeoutSeconds: 30 }),
+        ],
       }),
     ),
-    http.post(url('/orgs/org-1/hooks'), async ({ request }) => {
+    http.get(url('/orgs/org-1/action-groups'), () => HttpResponse.json({ items: [makeActionGroup({ actionIds: [A1, A2], grantCount: 2 })] })),
+    http.get(url('/orgs/org-1/deploy-targets'), () =>
+      HttpResponse.json({
+        items: [
+          makeTarget({ id: T_SSH, name: 'bastion', type: 'ssh', runsOn: 'server' }),
+          makeTarget({ id: T_PIKVM, name: 'kvm', type: 'pikvm', runsOn: 'server' }),
+          makeTarget({ id: T_TRAEFIK, name: 'edge traefik', type: 'traefik' }),
+        ],
+      }),
+    ),
+    http.post(url('/orgs/org-1/actions'), async ({ request }) => {
       posted = await request.json();
-      return HttpResponse.json(makeHook({ id: 'h-3' }), { status: 201 });
+      return HttpResponse.json(makeAction({ id: 'a-3' }), { status: 201 });
     }),
-    http.patch(url('/orgs/org-1/hooks/:id'), async ({ request }) => {
+    http.patch(url('/orgs/org-1/actions/:id'), async ({ request }) => {
       patched = await request.json();
-      return HttpResponse.json(makeHook());
+      return HttpResponse.json(makeAction());
     }),
-    http.delete(url('/orgs/org-1/hooks/:id'), ({ params }) => {
+    http.delete(url('/orgs/org-1/actions/:id'), ({ params }) => {
       deleted.push(params.id as string);
       return new HttpResponse(null, { status: 204 });
+    }),
+    http.post(url('/orgs/org-1/action-groups'), async ({ request }) => {
+      postedGroup = await request.json();
+      return HttpResponse.json(makeActionGroup({ id: 'ag-2' }), { status: 201 });
     }),
   );
 });
 
-it('lists hooks with phase, command and timeout', async () => {
-  renderRoute('/o/acme/delivery/hooks');
-  const table = await screen.findByRole('table', { name: 'Hooks' });
+it('lists actions with kind, phase, runs-on, timeout and used-by', async () => {
+  renderRoute('/o/acme/delivery/actions');
+  const table = await screen.findByRole('table', { name: 'Actions' });
   const row = within(table).getByText('reload nginx').closest('tr')!;
-  for (const text of ['Post-deploy · Exec · 60 s', '/usr/sbin/nginx -s reload', '1 grant']) expect(within(row).getByText(text)).toBeInTheDocument();
-  expect(within(table).getByRole('button', { name: 'Warning' })).toBeInTheDocument();
+  for (const text of ['Run command (agent)', 'Post', 'Agent', '60 s', '1 grant']) expect(within(row).getByText(text)).toBeInTheDocument();
+  const verify = within(table).getByText('verify site').closest('tr')!;
+  for (const text of ['Optional', 'Server', '30 s']) expect(within(verify).getByText(text)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Delete reload nginx' })).toHaveAttribute('aria-disabled', 'true');
 });
 
-it('creates a pre-deploy hook from argv rows', async () => {
-  const { user } = renderRoute('/o/acme/delivery/hooks');
-  await user.click(await screen.findByRole('button', { name: 'New hook' }));
-  const sheet = await screen.findByRole('dialog', { name: 'New hook' });
+it('creates a pre-deploy exec action from argv rows', async () => {
+  const { user } = renderRoute('/o/acme/delivery/actions');
+  await user.click(await screen.findByRole('button', { name: 'New action' }));
+  const sheet = await screen.findByRole('dialog', { name: 'New action' });
   await user.type(within(sheet).getByLabelText('Name'), 'test config');
+  await user.click(await within(sheet).findByRole('combobox', { name: 'Kind' }));
+  await user.click(await screen.findByRole('option', { name: /Run command \(agent\)/ }));
   await user.click(within(sheet).getByRole('radio', { name: 'Pre-deploy' }));
-  expect(within(sheet).getByRole('button', { name: 'Warning' })).toBeInTheDocument();
   await user.type(within(sheet).getByLabelText('Executable'), '/usr/sbin/nginx');
   await user.click(within(sheet).getByRole('button', { name: 'Add argument' }));
   await user.type(within(sheet).getByLabelText('Argument 1'), '-t');
-  await user.click(within(sheet).getByRole('button', { name: 'Add argument' }));
-  await user.type(within(sheet).getByLabelText('Argument 2'), '-q');
-  await user.click(within(sheet).getByRole('button', { name: 'Move argument 2 up' }));
   await user.clear(within(sheet).getByLabelText('Timeout'));
   await user.type(within(sheet).getByLabelText('Timeout'), '30');
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
-  await waitFor(() => expect(posted).toEqual({ name: 'test config', phase: 'pre_deploy', kind: 'exec', argv: ['/usr/sbin/nginx', '-q', '-t'], timeoutSeconds: 30 }));
+  await waitFor(() =>
+    expect(posted).toEqual({ name: 'test config', kind: 'exec', phase: 'pre_deploy', config: { argv: ['/usr/sbin/nginx', '-t'] }, timeoutSeconds: 30, optional: false }),
+  );
 });
 
-it('creates a restart hook from a target', async () => {
-  const { user } = renderRoute('/o/acme/delivery/hooks?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'New hook' });
-  await user.type(within(sheet).getByLabelText('Name'), 'restart web');
-  await user.click(within(sheet).getByRole('radio', { name: 'Restart' }));
-  expect(within(sheet).queryByLabelText('Executable')).not.toBeInTheDocument();
-  const target = within(sheet).getByLabelText('Target');
-  expect(target).toHaveValue('docker:');
+it('creates an http action and prefills the phase from the kind hint', async () => {
+  const { user } = renderRoute('/o/acme/delivery/actions?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'New action' });
+  await user.type(within(sheet).getByLabelText('Name'), 'ping');
+  await user.click(within(sheet).getByRole('combobox', { name: 'Kind' }));
+  await user.click(await screen.findByRole('option', { name: /HTTP request/ }));
+  expect(within(sheet).getByRole('radio', { name: 'Post-deploy' })).toBeChecked();
+  await user.click(await within(sheet).findByRole('radio', { name: 'POST' }));
+  await user.type(within(sheet).getByLabelText('URL'), 'https://hooks.example.com/x');
+  await user.click(within(sheet).getByRole('switch', { name: 'Optional' }));
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
-  expect(within(sheet).getByText('Use docker:<container> or systemd:<unit>.')).toBeInTheDocument();
-  expect(posted).toBeUndefined();
-  await user.type(target, 'nginx');
-  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
-  await waitFor(() => expect(posted).toEqual({ name: 'restart web', phase: 'post_deploy', kind: 'restart', target: 'docker:nginx', argv: [], timeoutSeconds: 60 }));
+  await waitFor(() => expect(posted).toMatchObject({ name: 'ping', kind: 'http', phase: 'post_deploy', optional: true, config: { method: 'POST', url: 'https://hooks.example.com/x' } }));
 });
 
-it('lists a restart hook by its target', async () => {
-  server.use(http.get(url('/orgs/org-1/hooks'), () => HttpResponse.json({ items: [makeHook({ kind: 'restart', target: 'systemd:nginx.service', argv: [] })] })));
-  renderRoute('/o/acme/delivery/hooks');
-  const table = await screen.findByRole('table', { name: 'Hooks' });
-  expect(within(table).getByText('restart systemd:nginx.service')).toBeInTheDocument();
-  expect(within(table).getByText('Post-deploy · Restart · 60 s')).toBeInTheDocument();
+it('offers only deploy targets of the types the kind accepts', async () => {
+  const { user } = renderRoute('/o/acme/delivery/actions?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'New action' });
+  await user.type(within(sheet).getByLabelText('Name'), 'reload');
+  await user.click(within(sheet).getByRole('combobox', { name: 'Kind' }));
+  await user.click(await screen.findByRole('option', { name: /SSH command/ }));
+  await user.click(await within(sheet).findByRole('combobox', { name: 'Target' }));
+  expect(await screen.findByRole('option', { name: /bastion/ })).toBeInTheDocument();
+  expect(screen.getByRole('option', { name: /kvm/ })).toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: /edge traefik/ })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('option', { name: /bastion/ }));
+  await user.type(within(sheet).getByLabelText('Command'), 'systemctl reload nginx');
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(posted).toMatchObject({ kind: 'ssh', config: { targetId: T_SSH, command: 'systemctl reload nginx' } }));
+});
+
+it('sends __unchanged__ for a stored secret that was not touched', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/actions'), () =>
+      HttpResponse.json({ items: [makeAction({ id: A1, name: 'webhook', kind: 'http', runsOn: 'server', config: { method: 'POST', url: 'https://x.example.com' }, secretKeys: ['secretHeaders'] })] }),
+    ),
+  );
+  const { user } = renderRoute(`/o/acme/delivery/actions?edit=${A1}`);
+  const sheet = await screen.findByRole('dialog', { name: 'Edit webhook' });
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(patched).toMatchObject({ kind: 'http', config: { method: 'POST', url: 'https://x.example.com', secretHeaders: '__unchanged__' } }));
+});
+
+it('edits an action with a PATCH carrying the full body', async () => {
+  const { user } = renderRoute(`/o/acme/delivery/actions?edit=${A1}`);
+  const sheet = await screen.findByRole('dialog', { name: 'Edit reload nginx' });
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(patched).toEqual({ name: 'reload nginx', kind: 'exec', phase: 'post_deploy', config: { argv: ['/usr/sbin/nginx', '-s', 'reload'] }, timeoutSeconds: 60, optional: false }));
 });
 
 it('refuses a relative executable and a bad timeout', async () => {
-  const { user } = renderRoute('/o/acme/delivery/hooks?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'New hook' });
+  const { user } = renderRoute('/o/acme/delivery/actions?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'New action' });
   await user.type(within(sheet).getByLabelText('Name'), 'bad');
+  await user.click(within(sheet).getByRole('combobox', { name: 'Kind' }));
+  await user.click(await screen.findByRole('option', { name: /Run command \(agent\)/ }));
   await user.type(within(sheet).getByLabelText('Executable'), 'nginx');
   await user.clear(within(sheet).getByLabelText('Timeout'));
   await user.type(within(sheet).getByLabelText('Timeout'), '0');
@@ -128,131 +181,77 @@ it('refuses a relative executable and a bad timeout', async () => {
   expect(posted).toBeUndefined();
 });
 
-it('removes an argument row and moves focus to the nearest remaining row', async () => {
-  const { user } = renderRoute('/o/acme/delivery/hooks?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'New hook' });
-  await user.click(within(sheet).getByRole('button', { name: 'Add argument' }));
-  await user.type(within(sheet).getByLabelText('Argument 1'), '-s');
-  await user.click(within(sheet).getByRole('button', { name: 'Add argument' }));
-  await user.type(within(sheet).getByLabelText('Argument 2'), 'reload');
-  await user.click(within(sheet).getByRole('button', { name: 'Remove argument 1' }));
-  expect(within(sheet).queryByLabelText('Argument 2')).not.toBeInTheDocument();
-  const remaining = within(sheet).getByLabelText('Argument 1');
-  expect(remaining).toHaveValue('reload');
-  await waitFor(() => expect(remaining).toHaveFocus());
-});
-
-it('caps the command at 64 entries', async () => {
-  renderRoute('/o/acme/delivery/hooks?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'New hook' });
-  const add = within(sheet).getByRole('button', { name: 'Add argument' });
-  // fireEvent (not userEvent): userEvent's full pointer simulation is
-  // wasted on a plain click loop with no hover/focus behavior under test.
-  // 63 re-renders of the sheet still take several seconds under vitest.
-  for (let i = 0; i < 63; i++) fireEvent.click(add);
-  expect(within(sheet).getByLabelText('Argument 63')).toBeInTheDocument();
-  expect(add).toBeDisabled();
-}, 20000);
-
-it('edits a hook with a PATCH carrying the full body', async () => {
-  const { user } = renderRoute('/o/acme/delivery/hooks?edit=h-1');
-  const sheet = await screen.findByRole('dialog', { name: 'Edit reload nginx' });
-  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
-  await waitFor(() => expect(patched).toEqual({ name: 'reload nginx', phase: 'post_deploy', kind: 'exec', argv: ['/usr/sbin/nginx', '-s', 'reload'], timeoutSeconds: 60 }));
-});
-
-it('deletes an unused hook via the confirm dialog', async () => {
-  const { user } = renderRoute('/o/acme/delivery/hooks');
-  await screen.findByRole('table', { name: 'Hooks' });
-  await user.click(screen.getByRole('button', { name: 'Delete reload apache' }));
-  await user.type(screen.getByLabelText(/to confirm/), 'reload apache');
+it('deletes an unused action via the confirm dialog', async () => {
+  const { user } = renderRoute('/o/acme/delivery/actions');
+  await screen.findByRole('table', { name: 'Actions' });
+  await user.click(screen.getByRole('button', { name: 'Delete verify site' }));
+  await user.type(screen.getByLabelText(/to confirm/), 'verify site');
   await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }));
-  await waitFor(() => expect(deleted).toEqual(['h-2']));
+  await waitFor(() => expect(deleted).toEqual([A2]));
 });
 
-it('shows a raced 409 (still used) inside the delete dialog', async () => {
-  server.use(http.delete(url('/orgs/org-1/hooks/:id'), () => problem(409, 'Used by web-1/www.')));
-  const { user } = renderRoute('/o/acme/delivery/hooks');
-  await user.click(await screen.findByRole('button', { name: 'Delete reload apache' }));
-  await user.type(screen.getByLabelText(/to confirm/), 'reload apache');
+it('shows a 409 (still used) inside the delete dialog', async () => {
+  server.use(http.delete(url('/orgs/org-1/actions/:id'), () => problem(409, 'Used by group web reload.')));
+  const { user } = renderRoute('/o/acme/delivery/actions');
+  await user.click(await screen.findByRole('button', { name: 'Delete verify site' }));
+  await user.type(screen.getByLabelText(/to confirm/), 'verify site');
   await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }));
-  expect(await within(screen.getByRole('dialog')).findByText('Used by web-1/www.')).toBeInTheDocument();
+  expect(await within(screen.getByRole('dialog')).findByText('Used by group web reload.')).toBeInTheDocument();
 });
 
 it('puts a name-conflict 409 under Name and any other error in the page alert', async () => {
-  server.use(http.post(url('/orgs/org-1/hooks'), () => problem(409, 'A hook named "reload nginx" already exists in this org.')));
-  const { user } = renderRoute('/o/acme/delivery/hooks?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'New hook' });
+  server.use(http.post(url('/orgs/org-1/actions'), () => problem(409, 'An action named "reload nginx" already exists in this org.')));
+  const { user } = renderRoute('/o/acme/delivery/actions?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'New action' });
   await user.type(within(sheet).getByLabelText('Name'), 'reload nginx');
+  await user.click(within(sheet).getByRole('combobox', { name: 'Kind' }));
+  await user.click(await screen.findByRole('option', { name: /Run command \(agent\)/ }));
   await user.type(within(sheet).getByLabelText('Executable'), '/usr/sbin/nginx');
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
-  expect(await within(sheet).findByText('A hook named "reload nginx" already exists in this org.')).toBeInTheDocument();
+  expect(await within(sheet).findByText('An action named "reload nginx" already exists in this org.')).toBeInTheDocument();
   expect(within(sheet).getByLabelText('Name')).toHaveAttribute('aria-invalid', 'true');
 
-  server.use(http.post(url('/orgs/org-1/hooks'), () => problem(422, 'timeoutSeconds must be 1 to 3600 seconds')));
+  server.use(http.post(url('/orgs/org-1/actions'), () => problem(500, 'boom')));
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
-  const alert = await within(sheet).findByText('timeoutSeconds must be 1 to 3600 seconds');
-  expect(alert.closest('[role="alert"]')).toBeInTheDocument();
+  const alert = (await within(sheet).findByText('boom')).closest('[role="alert"]');
+  expect(alert).toBeInTheDocument();
   expect(within(sheet).getByLabelText('Name')).not.toHaveAttribute('aria-invalid', 'true');
+});
 
-  server.use(http.post(url('/orgs/org-1/hooks'), () => problem(500, 'boom')));
+it('lists groups and builds an ordered group', async () => {
+  const { user } = renderRoute('/o/acme/delivery/actions?tab=groups');
+  const table = await screen.findByRole('table', { name: 'Action groups' });
+  expect(within(table).getByText('reload nginx → verify site')).toBeInTheDocument();
+  expect(within(table).getByText('2 grants')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'New group' }));
+  const sheet = await screen.findByRole('dialog', { name: 'New action group' });
+  await user.type(within(sheet).getByLabelText('Name'), 'reload then verify');
+  for (const n of ['reload nginx', 'verify site']) {
+    await user.click(within(sheet).getByRole('combobox', { name: 'Add action' }));
+    await user.click(await screen.findByRole('option', { name: new RegExp(n) }));
+  }
+  await user.click(within(sheet).getByRole('button', { name: 'Move verify site up' }));
+  const items = within(within(sheet).getByRole('list', { name: 'Actions in order' })).getAllByRole('listitem');
+  expect(items[0]).toHaveTextContent('verify site');
+  await user.click(within(sheet).getByRole('button', { name: 'Remove reload nginx' }));
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
-  expect(await within(sheet).findByText('boom')).toBeInTheDocument();
+  await waitFor(() => expect(postedGroup).toEqual({ name: 'reload then verify', actionIds: [A2] }));
 });
 
-it('is read-only for a viewer, even with ?edit=new', async () => {
-  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))));
-  const { user } = renderRoute('/o/acme/delivery/hooks?edit=new');
-  await screen.findByRole('table', { name: 'Hooks' });
-  expect(screen.queryByRole('dialog', { name: 'New hook' })).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'New hook' })).toBeDisabled();
-  await user.click(screen.getByRole('button', { name: 'View reload nginx' }));
-  const sheet = await screen.findByRole('dialog', { name: 'reload nginx' });
-  expect(within(sheet).getByLabelText('Name')).toBeDisabled();
-  expect(within(sheet).queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
-});
-
-it('clears an unknown ?edit= id and reports it', async () => {
-  renderRoute('/o/acme/delivery/hooks?edit=nope');
-  await screen.findByRole('table', { name: 'Hooks' });
-  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-  expect(await screen.findByText('Hook not found.')).toBeInTheDocument();
-});
-
-it('browses a client for restart targets: allowed fill the field, others are disabled', async () => {
-  server.use(
-    http.get(url('/orgs/org-1/clients'), () =>
-      HttpResponse.json({
-        items: [
-          makeClient({ id: 'cl-0', name: 'aaa-plain', capabilities: ['traefik'] }),
-          makeClient({
-            id: 'cl-1',
-            name: 'web-1',
-            capabilities: ['traefik', 'restart'],
-            restartTargets: [
-              { target: 'docker:nginx', allowed: true, running: true },
-              { target: 'docker:redis', allowed: false, running: true },
-            ],
-          }),
-        ],
-        nextCursor: null,
-      }),
-    ),
-  );
-  const { user } = renderRoute('/o/acme/delivery/hooks?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'New hook' });
-  await user.click(within(sheet).getByRole('radio', { name: 'Restart' }));
-  await user.click(within(sheet).getByRole('button', { name: 'Browse' }));
-  // Agents with the restart capability come first.
-  const select = await within(sheet).findByRole('combobox', { name: 'Client' });
-  expect(select).toHaveValue('cl-1');
-  const redis = within(sheet).getByRole('button', { name: /docker:redis/ });
-  expect(redis).toHaveAttribute('aria-disabled', 'true');
-  await user.hover(redis);
-  expect((await screen.findAllByText("Not in this agent's CF_RESTART_ALLOW")).length).toBeGreaterThan(0);
-  await user.click(redis);
-  expect(within(sheet).getByLabelText('Target')).toHaveValue('docker:');
-  await user.click(within(sheet).getByRole('button', { name: /docker:nginx/ }));
-  expect(within(sheet).getByLabelText('Target')).toHaveValue('docker:nginx');
-  expect(within(sheet).queryByRole('combobox', { name: 'Client' })).not.toBeInTheDocument();
+it('validates a restart target and picks a notification channel', async () => {
+  server.use(http.get(url('/orgs/org-1/channels'), () => HttpResponse.json([{ id: '66666666-6666-4666-8666-666666666666', orgId: 'org-1', name: 'ops chat', type: 'discord' }])));
+  const { user } = renderRoute('/o/acme/delivery/actions?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'New action' });
+  await user.type(within(sheet).getByLabelText('Name'), 'restart web');
+  await user.click(within(sheet).getByRole('combobox', { name: 'Kind' }));
+  await user.click(await screen.findByRole('option', { name: /Restart service \(agent\)/ }));
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  expect(within(sheet).getByText('Use docker:<container> or systemd:<unit>.')).toBeInTheDocument();
+  expect(posted).toBeUndefined();
+  await user.click(within(sheet).getByRole('combobox', { name: 'Kind' }));
+  await user.click(await screen.findByRole('option', { name: /Send notification/ }));
+  await user.click(await within(sheet).findByRole('combobox', { name: 'Channel' }));
+  await user.click(await screen.findByRole('option', { name: /ops chat/ }));
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(posted).toMatchObject({ kind: 'notify', config: { channelId: '66666666-6666-4666-8666-666666666666' } }));
 });

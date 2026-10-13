@@ -401,6 +401,10 @@ export const help = {
   'hook.target': { text: 'docker:<container> or systemd:<unit>. The agent must list it in CF_RESTART_ALLOW.', learnMore: 'guide/agents.md#restart-hooks' },
   'hook.argv': { text: 'The executable, then one argument per row. It never runs through a shell.', learnMore: 'guide/agents.md#hooks-and-the-allowlist' },
   'hook.allowlist': { text: 'Agents run a hook only when this exact path is in their CF_HOOK_ALLOW. Otherwise the run is refused.', learnMore: 'guide/agents.md#hooks-and-the-allowlist' },
+  'action.kind': { text: 'What the step does. Exec and restart run on an agent; every other kind runs on the server.', learnMore: 'guide/delivery.md#actions' },
+  'action.phase': { text: 'Pre-deploy runs before the certificate is written, and a failure stops the deploy. Post-deploy runs after.', learnMore: 'guide/delivery.md#actions' },
+  'action.optional': { text: 'A failure is recorded, but the deploy still succeeds.', learnMore: 'guide/delivery.md#actions' },
+  'action.group': { text: 'An ordered list of actions a grant runs as one step. Groups cannot contain groups.', learnMore: 'guide/delivery.md#actions' },
   'hook.timeout': { text: 'The hook and its child processes are stopped after this long.' },
   'enroll.approve': { text: 'The agent proved it holds the token. Approve only if its logged code matches the one shown here.', learnMore: 'guide/clients.md#enrollment' },
   'enroll.code': { text: 'Derived from the agent’s key and this server’s CA. A different code means another host used the token, or traffic was intercepted.' },
@@ -536,6 +540,7 @@ export const help = {
     text: 'Restore runs offline with certforge restore while the server is stopped.',
     learnMore: 'guide/backup.md#restore',
   },
+  'grant.steps': { text: 'Actions that run around the deploy, in the numbered order. Pre-deploy ones run before the certificate is written, post-deploy ones after. A group runs its actions in place.', learnMore: 'guide/delivery.md#actions' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;
