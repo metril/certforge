@@ -309,7 +309,7 @@ it('stops polling when settled', async () => {
 it('create posts the picked steps in order', async () => {
   server.use(
     http.get(url('/orgs/org-1/actions'), () => HttpResponse.json({ items: [makeAction({ id: 'a-s', name: 'reload fw', kind: 'ssh', runsOn: 'server' }), makeAction()] })),
-    http.get(url('/orgs/org-1/action-groups'), () => HttpResponse.json({ items: [makeActionGroup({ id: 'ag-s' })] })),
+    http.get(url('/orgs/org-1/action-groups'), () => HttpResponse.json({ items: [makeActionGroup({ id: 'ag-s', actionIds: ['a-s'] })] })),
   );
   const { user } = openDetail();
   const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
