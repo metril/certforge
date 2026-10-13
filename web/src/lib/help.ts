@@ -331,8 +331,8 @@ export const help = {
   'grant.hooks': { text: 'Commands the agent runs around the deploy, in the numbered order. Reorder them with the arrows.', learnMore: 'guide/agents.md#hooks-and-the-allowlist' },
   'grant.autoRemediate': { text: 'On drift, reinstall the files automatically instead of only reporting it.', learnMore: 'guide/agents.md#drift' },
   'grant.verifyInterval': { text: 'How often CertForge checks the endpoint, so how fast drift is noticed.', learnMore: 'guide/delivery.md#drift-and-auto-remediation' },
-  'grant.verify': { text: 'CertForge checks hourly that this TLS endpoint serves the deployed certificate.', learnMore: 'guide/delivery.md#drift-and-auto-remediation' },
-  'grant.autoRemediateServer': { text: 'When the endpoint serves a different certificate, redeploy automatically; stops after 3 attempts.', learnMore: 'guide/delivery.md#drift-and-auto-remediation' },
+  'grant.verify': { text: 'CertForge checks on the chosen interval that this TLS endpoint serves the deployed certificate.', learnMore: 'guide/delivery.md#drift-and-auto-remediation' },
+  'grant.autoRemediateServer': { text: 'When the endpoint serves a different certificate, redeploy automatically; stops after the attempt cap in Settings → Agents.', learnMore: 'guide/delivery.md#drift-and-auto-remediation' },
   'grant.files': { text: 'Expected digests come from the server; installed ones from the agent’s last report.', learnMore: 'guide/agents.md#drift' },
   'grant.forceRemove': { text: 'Deletes the grant now and leaves any files on the host for the agent to clean up later. Use it when the agent is gone for good.' },
   // Task 8: server-run targets and their grants (grant.serverTarget disables
