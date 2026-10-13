@@ -2,6 +2,26 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.31.0](https://github.com/metril/certforge/compare/v0.30.0...v0.31.0) (2026-10-13)
+
+
+### Features
+
+* **api:** fetch a server's SSH host key ([5440f89](https://github.com/metril/certforge/commit/5440f8901ff35da7362ace5ebb65a4667975da8d))
+* **web:** fetch the SSH host key from the target form ([69a20fa](https://github.com/metril/certforge/commit/69a20fad5737660dc17175b0761086549b2c6c3e))
+* **web:** one PiKVM preset with the kvmd nginx paths; files and commands behind Custom ([fd59d39](https://github.com/metril/certforge/commit/fd59d39450bd5e036ce83fcbc1baa46e9863a1f0))
+* **web:** paste, upload or drop the SSH private key ([eeff70a](https://github.com/metril/certforge/commit/eeff70a109ae912481a9e8b38a3f4657606483d6))
+* **web:** structured Files editor for SSH targets ([d33246d](https://github.com/metril/certforge/commit/d33246d1aedb21508d0ae30aa6bfa2065087be6a))
+
+
+### Bug Fixes
+
+* **deploy:** load the private key for ssh targets whose files need it ([af77d0e](https://github.com/metril/certforge/commit/af77d0e02cd4157e8089e3566483153bd24af110))
+* **web:** Enter keeps the matching content name; files errors show once ([1748103](https://github.com/metril/certforge/commit/174810366f3721c4343e924da7e90eff472126cd))
+* **web:** host key fetch needs delivery:write only; show kvm preset files to viewers ([1ae778b](https://github.com/metril/certforge/commit/1ae778b01e40a49da8c2d064914277590d6edd35))
+* **web:** keep the host key help within two sentences ([04903f7](https://github.com/metril/certforge/commit/04903f7b81b486c4dc8047d70c4fc6aeffc1a7cc))
+* **web:** shorten the host key trust help ([9d98714](https://github.com/metril/certforge/commit/9d987147902ae683077d74026278c3acb98d4ab9))
+
 ## [0.30.0](https://github.com/metril/certforge/compare/v0.29.1...v0.30.0) (2026-10-12)
 
 
