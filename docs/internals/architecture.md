@@ -110,7 +110,7 @@ Migrations are in `internal/db/migrations` (goose, never edited once applied). T
 | Configuration | `settings` (key, JSON value, sealed secret) |
 | Audit | `audit_events` (append-only through triggers; `prev_hash` is unique) |
 | Issuance | `cas`, `acme_accounts`, `dns_provider_credentials`, `issuance_defaults`, `certificates`, `certificate_versions`, `issuance_attempts`, `manual_dns_pending`, `ca_crls`, `rate_ledger` |
-| Agents and delivery | `agent_cas`, `clients`, `enrollment_tokens`, `enrollment_requests`, `output_specs`, `deploy_targets`, `hooks`, `client_cert_grants`, `deployments`, `hook_runs`, `server_deployments` |
+| Agents and delivery | `agent_cas`, `clients`, `enrollment_tokens`, `enrollment_requests`, `output_specs`, `deploy_targets`, `actions`, `action_groups`, `client_cert_grants`, `deployments`, `hook_runs`, `server_deployments` |
 | Alerts | `notification_channels`, `notification_events`, `notification_deliveries`, `external_monitors` |
 
 Secrets are sealed columns (private keys, ACME account keys, EAB HMAC keys, DNS credential secrets, channel and target secrets). Each blob carries its key id. A certificate stores its canonical material as leaf DER, chain DER and a PKCS#8 key; renderers turn that into files on demand. A certificate's settings are nullable overrides of `issuance_defaults`, where null means inherit.
@@ -202,13 +202,13 @@ sequenceDiagram
 ```mermaid
 flowchart LR
   V[IssueWorker commits a version] -->|OnVersion| R[agents.render]
-  G[Grant, layout, target or hook change] --> R
+  G[Grant, layout, target or step change] --> R
   R -->|same tx| D[(deployments.expected, state pending)]
   R -->|same tx| B[(clients.desired_revision + 1)]
   B -->|after commit, push grants| S[hub: sync{revision}]
 ```
 
-A grant is a client × certificate assignment with a layout and/or a deploy target, a run-ordered list of hooks and a delivery mode (`push` or `pull`); `deployments.expected` holds the digests the server rendered for the grant's certificate's current version, and `deployments.installed`/`state` hold what the agent last reported. Every grant create, update, redeploy or delete, every layout, deploy target or hook change, and every new certificate version re-renders the affected grants' `deployments.expected` and bumps `clients.desired_revision` inside the same transaction as the change; a `sync{revision}` nudge is sent over the hub after commit, but only to clients that have a push grant among the changed ones — pull grants wait for the agent's own pull schedule, so a change touching only pull grants never nudges.
+A grant is a client × certificate assignment with a layout and/or a deploy target, a run-ordered list of action steps and a delivery mode (`push` or `pull`); `deployments.expected` holds the digests the server rendered for the grant's certificate's current version, and `deployments.installed`/`state` hold what the agent last reported. Every grant create, update, redeploy or delete, every layout, deploy target or hook change, and every new certificate version re-renders the affected grants' `deployments.expected` and bumps `clients.desired_revision` inside the same transaction as the change; a `sync{revision}` nudge is sent over the hub after commit, but only to clients that have a push grant among the changed ones — pull grants wait for the agent's own pull schedule, so a change touching only pull grants never nudges.
 
 A new certificate version is rendered by `agents.Service.OnVersion` (the `issuance.VersionListener`) in its own transaction after the issuance commit, not the issuance transaction itself; a failed or lost `OnVersion` (for example the process stopping between commit and the listener call) is caught by an hourly river job, `SweepDeployments`, that re-renders every live grant whose deployment is behind its certificate's current version. Both re-render one client per transaction, so a render failure for one client (a corrupted deploy target config, say) is logged and does not block or roll back any other client's update. `render` always locks every affected client `FOR UPDATE` before it writes a deployment row, in every caller, so a grant write (which already holds its one client's lock) and a resync (layout/target/hook change, a new version, the sweep, or a certificate rename) can never take the two locks in opposite orders. Renaming a certificate re-renders and path-checks its live grants in the same transaction as the rename, since a Traefik target's paths depend on `SafeName(certificate name)`.
 
@@ -298,7 +298,7 @@ sequenceDiagram
   S-->>A: {revision, grants, removed}
   A->>S: GET /grants/{id}/bundle (changed grants)
   S-->>A: files, key material
-  Note over A: pre-deploy hooks, write temp+fsync+rename, target, post-deploy hooks
+  Note over A: pre-deploy actions, write temp+fsync+rename, target, post-deploy actions
   A->>S: POST /report (or deploy_result on the socket)
   loop every heartbeat interval
     A->>S: heartbeat{installed digests}

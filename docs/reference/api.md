@@ -27,7 +27,7 @@ Create keys under **Settings → Access → API keys** (see [Access](../guide/ac
 | `dnscreds:reveal` | Read DNS credentials and reveal one stored secret field. |
 | `deploycreds:reveal` | Read deploy credentials and reveal one stored secret field. |
 | `clients:read` / `clients:write` | Read, or read and change, clients and grants (read also covers organizations and sites). |
-| `delivery:read` / `delivery:write` | Read, or read and change, layouts, deploy targets and hooks. |
+| `delivery:read` / `delivery:write` | Read, or read and change, layouts, deploy targets, actions and action groups (`/actions`, `/action-groups`). |
 | `alerts:read` / `alerts:write` | Read, or read and change, channels, monitors and events. |
 | `admin` | Everything the creator can do. |
 

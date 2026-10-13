@@ -157,22 +157,22 @@ A layout can bundle up to 10 other certificates from the same organization as ex
 
 The agent writes or removes files only under directories listed in `CF_WRITE_ALLOW` (colon-separated absolute paths). Without it a compromised server could push a layout pointing anywhere on the host. With it empty, every deploy fails with a clear error and the agent logs a warning at startup. Set it to the directories you mount, for example `CF_WRITE_ALLOW=/etc/ssl:/etc/traefik/dynamic`. Symbolic links are resolved before the check, so a link cannot lead out of an allowed directory. `/` is rejected.
 
-## Hooks and the allowlist
+## Command actions and the allowlist
 
-A hook is a command defined under **Delivery → Hooks** and attached to grants. The agent runs a hook only if its first argument (`argv[0]`) is exactly one of the paths in `CF_HOOK_ALLOW` (colon-separated). With it empty, hooks never run and are reported with exit code -1.
+A **Command** action (`exec`) is defined under **Delivery → Actions** and added to a grant's steps; see [Actions](delivery.md#actions). The agent runs one only if its first argument (`argv[0]`) is exactly one of the paths in `CF_HOOK_ALLOW` (colon-separated). With it empty, command actions never run and are reported with exit code -1.
 
-- Hooks run without a shell, so `$VAR`, `;` and `|` are literal.
-- A **Pre-deploy** hook runs before files are written; a non-zero exit stops the deploy. A **Post-deploy** hook runs after; a non-zero exit marks the deployment failed with the files in place.
-- Each hook gets `CF_GRANT_ID`, `CF_CERTIFICATE_NAME`, `CF_VERSION_ID`, `CF_FINGERPRINT` and `CF_FILES` (colon-separated paths), plus `PATH`, `HOME`, `LANG`, `TZ` and `LC_*` from the agent. Nothing else is passed on.
-- A hook runs in its own process group and is killed with it at its timeout.
-- Stdout and stderr are kept up to 8 KiB each and shown on the client's **Hooks** tab.
-- The distroless image has no shell, libc or dynamic linker. A hook mounted into it must be a static binary (`CGO_ENABLED=0 go build`). A dynamic one fails to start with no useful error. Mount the executables you allow.
+- Commands run without a shell, so `$VAR`, `;` and `|` are literal.
+- A **Pre-deploy** action runs before files are written; a non-zero exit stops the deploy. A **Post-deploy** action runs after; a non-zero exit marks the deployment failed with the files in place.
+- Each action gets `CF_GRANT_ID`, `CF_CERTIFICATE_NAME`, `CF_VERSION_ID`, `CF_FINGERPRINT` and `CF_FILES` (colon-separated paths), plus `PATH`, `HOME`, `LANG`, `TZ` and `LC_*` from the agent. Nothing else is passed on.
+- A command runs in its own process group and is killed with it at its timeout.
+- Stdout and stderr are kept up to 8 KiB each and shown on the client's **Hooks** tab (the action run history).
+- The distroless image has no shell, libc or dynamic linker. A command mounted into it must be a static binary (`CGO_ENABLED=0 go build`). A dynamic one fails to start with no useful error. Mount the executables you allow.
 
-## Restart hooks
+## Restart actions
 
-A **Restart** hook restarts a Docker container or a systemd unit by name, with no shell and no general-purpose `docker` binary in the agent. Set **Kind** to Restart and enter a target: `docker:<container>` or `systemd:<unit>`. Phases, failure behavior, timeout and the **Hooks** tab work as for exec hooks; the run is shown as `restart docker:nginx`.
+A **Restart** action restarts a Docker container or a systemd unit by name, with no shell and no general-purpose `docker` binary in the agent. Set **Kind** to Restart and enter a target: `docker:<container>` or `systemd:<unit>`. Phases, failure behavior, timeout and the **Hooks** tab work as for command actions; the run is shown as `restart docker:nginx`.
 
-The agent restarts only targets listed exactly in `CF_RESTART_ALLOW` (comma-separated, for example `docker:nginx,systemd:nginx.service`). With it empty, restart hooks are refused with exit code -1 and the agent does not advertise the `restart` capability.
+The agent restarts only targets listed exactly in `CF_RESTART_ALLOW` (comma-separated, for example `docker:nginx,systemd:nginx.service`). With it empty, restart actions are refused with exit code -1 and the agent does not advertise the `restart` capability.
 
 For Docker the agent calls the engine API (`POST /containers/<name>/restart`) at `DOCKER_HOST`, which is `unix:///var/run/docker.sock` by default (`unix:///abs/path` and `tcp://host:port` are accepted, any other scheme is an error). Either mount the socket:
 
@@ -212,17 +212,17 @@ services:
       - socket-proxy
 ```
 
-`CF_RESTART_ALLOW` still decides which containers a hook may restart.
+`CF_RESTART_ALLOW` still decides which containers a restart action may restart.
 
 A `systemd:` target (templated units such as `foo@bar.service` are allowed) runs `/usr/bin/systemctl restart <unit>` and so works only for agents installed on the host, not in the distroless container image.
 
 ### Choosing a target
 
-In the hook sheet, **Browse** next to Target lists what a client's agent reported: each heartbeat carries every `CF_RESTART_ALLOW` entry plus, when the Docker socket answers, the running containers. Allowed entries fill the field when clicked; containers not in `CF_RESTART_ALLOW` are shown greyed with a tooltip and cannot be picked. Systemd units are never enumerated, so they appear only when allowlisted. Browsing never widens the allowlist: it stays the only gate. When you attach a restart hook to a grant whose client reports targets and the hook's target is not allowed there, the grant sheet shows a "Not allowed on this agent" chip (it does not block saving).
+In the action sheet, **Browse** next to Target lists what a client's agent reported: each heartbeat carries every `CF_RESTART_ALLOW` entry plus, when the Docker socket answers, the running containers. Allowed entries fill the field when clicked; containers not in `CF_RESTART_ALLOW` are shown greyed with a tooltip and cannot be picked. Systemd units are never enumerated, so they appear only when allowlisted. Browsing never widens the allowlist: it stays the only gate. When you add a restart action to a grant whose client reports targets and the action's target is not allowed there, the grant sheet shows a "Not allowed on this agent" chip (it does not block saving).
 
 ## Grants and reconcile
 
-A grant gives one client one certificate, with a layout, a deploy target or both, plus hooks. Every change on the server (a new certificate version, an edit to a grant, layout, target or hook, a redeploy) raises the client's desired revision.
+A grant gives one client one certificate, with a layout, a deploy target or both, plus steps (ordered [actions](delivery.md#actions)). Every change on the server (a new certificate version, an edit to a grant, layout, target or step, a redeploy) raises the client's desired revision.
 
 The agent reconciles when it connects, when the server nudges it, on its pull schedule, and on `certforge-agent pull`. It fetches the list of grants and downloads a bundle only for a grant whose certificate version, redeploy counter or file list changed. It installs what it downloaded and reports every grant. Files of grants the server no longer lists are removed first, then grants are installed; a path used by a live grant is never removed. The server refuses two grants on one client that would write the same path.
 
@@ -237,7 +237,7 @@ Each heartbeat (**Heartbeat interval (seconds)**, default 60) carries the SHA-25
 - Without auto-remediate, the deployment stays in **Drift** until you choose **Redeploy** on the grant.
 - With **Auto-remediate** on the grant (under **Advanced** in the grant sheet), the server asks the agent to reinstall the files: at once for **Push**, on the next pull for **Pull**. The deployment returns to **Deployed** on the next report or heartbeat.
 - Server grants detect drift differently, by checking the served certificate: see [Drift and auto-remediation](delivery.md#drift-and-auto-remediation).
-- **Redeploy** always reinstalls and re-runs the hooks, even when nothing changed.
+- **Redeploy** always reinstalls and re-runs the steps, even when nothing changed.
 
 ## Pull mode
 
@@ -285,7 +285,7 @@ Server-side symptoms are in [Troubleshooting](../operations/troubleshooting.md).
 
 **A deployment stays Pending.** The agent is offline, the grant is **Pull** and no pull has run, or the certificate has no issued version. `certforge-agent status` shows the revision the agent last applied.
 
-**A deployment is Failed with a hook message.** Open the client's **Hooks** tab. `not listed in CF_HOOK_ALLOW` means the agent's allowlist lacks that executable.
+**A deployment is Failed with an action message.** Open the client's **Hooks** tab. `not listed in CF_HOOK_ALLOW` means the agent's allowlist lacks that executable.
 
 **A deployment is in Drift.** A file changed or vanished on the host. Turn on **Auto-remediate** or choose **Redeploy**.
 

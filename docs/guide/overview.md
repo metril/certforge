@@ -70,7 +70,7 @@ Two tabs:
 
 ## Trace a certificate on the Flow map
 
-**Flow** (`/o/<slug>/flow`) is a read-only map of how one organization makes and uses certificates. Lanes run left to right: Issuers (CAs, ACME accounts, DNS credentials), Certificates, Delivery (layouts, targets, hooks), Clients, and Alerts (channels).
+**Flow** (`/o/<slug>/flow`) is a read-only map of how one organization makes and uses certificates. Lanes run left to right: Issuers (CAs, ACME accounts, DNS credentials), Certificates, Delivery (layouts, targets, actions), Clients, and Alerts (channels).
 
 1. Hover a node to highlight its path. Select it to pin the path and open the detail panel. Press Escape or select the node again to clear.
 2. A certificate shows its issuers, its delivery nodes, the clients each delivery reaches, and the channels that would receive its events. An issuer shows every certificate that uses it.

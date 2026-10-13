@@ -79,9 +79,9 @@ On a client's page the header says **Connected** for a live connection, **Online
 
 ## Client detail
 
-Open a client to see its tabs: **Certificates** (grants and their deployment state), **Hooks** (hook run history), **Activity** (audit events that mention the client) and **Settings**. The header shows hostname, **Site**, **Agent** version and platform, **Agent certificate** expiry (highlighted within 14 days) and the capabilities the agent reported.
+Open a client to see its tabs: **Certificates** (grants and their deployment state), **Hooks** (action run history), **Activity** (audit events that mention the client) and **Settings**. The header shows hostname, **Site**, **Agent** version and platform, **Agent certificate** expiry (highlighted within 14 days) and the capabilities the agent reported.
 
-Grant certificates from the **Certificates** tab with **Grant certificate**. When the target type has per-grant options, the sheet shows them as **Target options** under the target picker; for Traefik they are listed under [Per-grant options](delivery.md#per-grant-options). Grants, layouts, deploy targets and redeploys are explained in [Delivery](delivery.md). Setting a certificate directory (`certsDir`) on a grant also needs the `delivery:write` permission. Hooks are in [Agents](agents.md#hooks-and-the-allowlist).
+Grant certificates from the **Certificates** tab with **Grant certificate**. When the target type has per-grant options, the sheet shows them as **Target options** under the target picker; for Traefik they are listed under [Per-grant options](delivery.md#per-grant-options). Grants, layouts, deploy targets and redeploys are explained in [Delivery](delivery.md). Setting a certificate directory (`certsDir`) on a grant also needs the `delivery:write` permission. Steps, the ordered [actions](delivery.md#actions) a grant runs around a deploy, are set in the same sheet; the agent side is in [Agents](agents.md#command-actions-and-the-allowlist).
 
 ## Re-enroll a client
 
@@ -97,7 +97,7 @@ Until the agent enrolls again, its old certificate is refused and its connection
 ## Revoke or delete a client
 
 - **Revoke** (client **Settings**, type the name to confirm): the agent is refused from then on and disconnected. Files already on the host stay. Grants still waiting for the agent to remove files are dropped.
-- **Delete**: removes the client, its grants and its hook history. Only revoked clients and clients that never enrolled can be deleted.
+- **Delete**: removes the client, its grants and its action run history. Only revoked clients and clients that never enrolled can be deleted.
 - **Save** on the same tab renames a client or moves it to another site.
 
 ## Options
@@ -127,7 +127,7 @@ Bounds and the remaining agent settings are in [Configuration](../reference/conf
 
 ## See also
 
-- [Agents](agents.md): run the agent, hooks, file layouts, pull mode.
+- [Agents](agents.md): run the agent, actions, file layouts, pull mode.
 - [Delivery](delivery.md): grants, deploy targets, redeploy.
 - [Agent reference](../reference/agent.md): environment variables, transport, limits.
 - [Audit log](audit.md): `client.enrol_requested`, `client.enrol_approved`, `client.enrol_rejected`, `client.enrolled`.

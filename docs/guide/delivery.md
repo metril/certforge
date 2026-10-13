@@ -328,7 +328,7 @@ A new certificate version, **Redeploy** and a changed layout all mark the grant 
 Per grant, three icon buttons sit on the row:
 
 - **Redeploy** pushes the current version again, even if nothing changed.
-- **Edit layout** changes the grant's layout and post action.
+- **Edit layout** changes the grant's layout and steps.
 - **Remove** stops CertForge pushing this certificate. What is already in Vault stays. You confirm by typing the certificate name.
 
 ### Drift and auto-remediation
@@ -349,40 +349,62 @@ With **Auto-remediate**, CertForge re-queues the deploy on drift, but not while 
 
 **Permissions.** Adding, moving or removing the verify endpoint also needs `alerts:write`; other grant edits do not. The grant's monitor is read-only on the **Monitors** page (it shows a **Grant** badge) but can be deleted there. Removing the grant deletes the monitor.
 
-### Post actions
-
-A server grant can run one command after a successful deploy, for example `systemctl reload nginx` on the host that serves the certificate. Switch **Post action** on in the grant form, pick a **Kind** and an existing target of that kind, and enter the command (up to 512 characters) and a timeout of 5 to 300 seconds. The post action reuses that target's host, credentials and pinned host key; its files and own commands are not used. Any server-run target type can have one.
-
-The **Kind** is **SSH** or **pfSense**. SSH runs the command over SSH, as above, and accepts an SSH or PiKVM target. pfSense runs it as a shell command on the firewall through a [pfSense Plus](#pfsense-plus) target's API, with the same login the target uses; picking it prefills `/etc/rc.restart_webgui`. The API reports no exit status, so a pfSense command counts as done once the firewall accepts it. The pfSense user needs the diag command privilege.
-
-The run is recorded on the **Hook runs** tab of the grant's target. A non-zero exit, or a connection failure, marks the deployment Failed: the error says the certificate deployed but the post action failed, and CertForge retries. A target that grants use as a post action cannot be deleted until you remove those post actions.
-
-On a pfSense target's grants, **Check usage** asks the firewall which services use the grant's certificate (WebGUI, OpenVPN, IPsec, captive portal, packages) without changing anything. These are the services the grant restarts after each deploy, or the ones it selected. A certificate that is not on the firewall yet shows as such.
-
-### Choosing services per grant
-
-In the grant form of a pfSense target, **Restart services** picks what a deploy restarts:
-
-- **All that use it** restarts every service that uses the certificate. A grant that never chose follows the target's **Restart services that use it** option, so existing grants keep their behavior.
-- **Only these** restarts just the services you toggle. It needs an existing grant, because the list comes from the firewall: create the grant, deploy once, then edit it. A selected service that no longer uses the certificate is shown as not in use and skipped at deploy time, and the deploy detail names what it skipped.
-- **None** restarts nothing.
-
-The setting is stored as the grant's `targetOptions.pfsenseRestart` (`{"mode": "all|selected|none", "services": [...]}`). Service keys are `webgui`, `openvpn:server:<id>`, `openvpn:client:<id>`, `ipsec`, `captiveportal:<zone>` and `package:<name>`; `GET /orgs/{orgId}/grants/{id}/pfsense-usage` returns each service's key and label.
-
 Redeploy also exists for client grants. See [Clients](clients.md).
 
 ## Grant a certificate to a client
 
-Agent targets are granted from the client, in its grant editor, together with a file layout and hooks. A server target cannot be picked there. See [Clients](clients.md) and [Agents](agents.md#grants-and-reconcile).
+Agent targets are granted from the client, in its grant editor, together with a file layout and steps. A server target cannot be picked there. See [Clients](clients.md) and [Agents](agents.md#grants-and-reconcile).
 
-## Layouts and hooks
+## Layouts
 
-The other two tabs of **Delivery** shape what an agent writes and runs for a grant:
+The **Layouts** tab of **Delivery** shapes what an agent writes for a grant. **File layouts** (**New layout**) describe the files: path, format (PEM, DER, PKCS#12 or JKS), owner, group and mode. See [Agents](agents.md#file-layouts). Commands and restarts around a deploy are [Actions](#actions). A layout that grants use cannot be deleted.
 
-- **File layouts** (**New layout**) describe the files an agent writes: path, format (PEM, DER, PKCS#12 or JKS), owner, group and mode. See [Agents](agents.md#file-layouts).
-- **Hooks** (**New hook**) are commands an agent runs before or after it writes the files. An agent runs one only if its path is in the agent's `CF_HOOK_ALLOW`. See [Agents](agents.md#hooks-and-the-allowlist). A hook of kind **Restart** restarts a Docker container or systemd unit instead, if the agent lists it in `CF_RESTART_ALLOW`; see [Restart hooks](agents.md#restart-hooks).
+## Actions
 
-A layout or hook that grants use cannot be deleted.
+An **action** is one reusable step a grant runs around a deploy: reload a service, restart a firewall's services, call a webhook, check the served certificate. Define them under **Delivery → Actions**, then add them to a grant's **Steps** in the order you want. Actions replace the old hooks, the server grant post action and the per-grant pfSense restart setting.
+
+| Kind | What it does | Runs on | Accepts |
+|---|---|---|---|
+| **Command** (`exec`) | Runs an executable with arguments, no shell, if the agent's `CF_HOOK_ALLOW` lists it. | Agent | None |
+| **Restart** (`restart`) | Restarts `docker:<container>` or `systemd:<unit>` if `CF_RESTART_ALLOW` lists it. | Agent | None |
+| **SSH** (`ssh`) | Runs one command (up to 512 characters) over SSH, reusing the target's host, login and pinned host key. | Server | SSH or PiKVM target |
+| **pfSense shell** (`pfsense_shell`) | Runs a shell command through the firewall's API. The API reports no exit status, so it counts as done once accepted. The user needs the diag command privilege. | Server | pfSense target |
+| **pfSense restart** (`pfsense_restart`) | Restarts the services that use the certificate: all, only the ones you list, or none. | Server | pfSense target |
+| **TrueNAS restart** (`truenas_restart`) | Restarts the TrueNAS web UI. | Server | TrueNAS target |
+| **RouterOS restart** (`routeros_restart`) | Re-binds the certificate to the configured RouterOS services. | Server | RouterOS target |
+| **HTTP** (`http`) | Sends a request. Method, URL, headers, secret headers, body and expected status (default 200 to 299). | Server | None |
+| **Notify** (`notify`) | Sends a message through a notification channel. | Server | None |
+| **Verify TLS** (`verify_tls`) | Connects to a host and port (SNI optional) and checks it serves the deployed certificate. | Server | None |
+| **Wait** (`wait`) | Pauses 1 to 300 seconds, for example while a service restarts. | Server | None |
+
+An action that names a target reuses that target's connection settings. Its files and own commands are not used. A grant's steps must all run where the grant does: agent actions on a client grant, server actions on a server grant (a client grant with a deploy target runs agent actions only).
+
+### Phases, timeout and optional
+
+- **Pre-deploy** steps run before the certificate is written. A failure stops the deploy and nothing is installed.
+- **Post-deploy** steps run after. A failure marks the deployment Failed with the files in place, and CertForge retries.
+- **Timeout** is 1 to 3600 seconds.
+- **Optional** records a failure but does not fail the deploy. It applies to server-run kinds only; agent kinds (Command, Restart) cannot be optional.
+
+### Groups
+
+A **group** (the **Groups** tab) is an ordered list of actions that a grant adds as one step. Groups cannot contain groups. A grant has at most 32 steps after groups are expanded, and the order is the run order within each phase. You cannot remove an action from a group, or delete it, in a way that leaves a grant with a step its client or target cannot run. Deleting an action or group that a grant or group uses is refused (409), and the message lists what uses it. Remove those references first.
+
+### HTTP actions
+
+The URL and body may contain `{{cert.name}}`, `{{cert.fingerprint}}`, `{{cert.notAfter}}` and `{{grant.id}}`; nothing else is expanded. The body is capped at 8 KiB. Values in **Secret headers**, such as `Authorization`, are stored encrypted and show **Stored** after saving. The request follows the same address policy as server-run targets: loopback and link-local hosts are refused unless **Allow loopback and link-local** is on (see [Options](#options)), and cloud-metadata addresses are always refused. Redirects are not followed.
+
+### pfSense restart
+
+A pfSense target's built-in **Restart services that use it** option still applies to its grants. A **post-deploy pfSense restart** step on the grant's own target replaces that built-in restart, so the services restart once, in the mode the step chose. Service keys are `webgui`, `openvpn:server:<id>`, `openvpn:client:<id>`, `ipsec`, `captiveportal:<zone>` and `package:<name>`. **Check usage** on a pfSense grant (`GET /orgs/{orgId}/grants/{id}/pfsense-usage`) asks the firewall which services use the certificate without changing anything.
+
+### Run history
+
+Every step is recorded: what ran, its phase, exit code or status, output (8 KiB) and duration. Client grants show them on the client's **Hooks** tab. Server grants show them on the target's **Hook runs** tab. A step that never ran, because an earlier pre-deploy step failed, is not recorded.
+
+### Upgrading
+
+This release removes the `/hooks` API: use `/actions` and `/action-groups`, and send a grant's `steps` (`[{"action": id}, {"group": id}]`) instead of `hookIds`, `postAction` and `targetOptions.pfsenseRestart`. Migration 00033 converts existing hooks (ids kept), post actions and pfSense restart settings into actions and steps. Backups taken before migration 00033 still restore.
 
 ## Saved credentials
 
@@ -453,7 +475,7 @@ Some forms have a CA certificate field for a server whose HTTPS certificate does
 
 ## See also
 
-- [Agents](agents.md) for the agent side of Traefik, layouts and hooks
+- [Agents](agents.md) for the agent side of Traefik, layouts and actions
 - [Vault](vault.md) for the connection a Vault KV target uses
 - [Alerts](alerts.md) for `deploy.failed` and `deploy.drift` events
 - [Certificates](certificates.md)
