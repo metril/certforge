@@ -3,11 +3,12 @@ import { useQuery } from '@tanstack/react-query';
 import { CircleAlert } from 'lucide-react';
 import { ApiError, errorMessage, fieldOfTitle } from '@/api/errors';
 import { allCertificatesPickerQuery, plural } from '@/api/queries/certificates';
-import { deployTargetsQuery, layoutsQuery } from '@/api/queries/delivery';
+import { actionGroupsQuery, actionsQuery, deployTargetsQuery, layoutsQuery } from '@/api/queries/delivery';
 import { useCreateServerGrant, useUpdateGrant } from '@/api/queries/grants';
 import type { Grant, GrantStep, GrantUpdate } from '@/api/types';
 import { Combobox } from '@/components/Combobox';
 import { Field } from '@/components/Field';
+import { HelpTip } from '@/components/HelpTip';
 import { FormSection } from '@/components/FormSection';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { SwitchField } from '@/components/SwitchField';
@@ -30,6 +31,8 @@ export function ServerGrantForm({ orgId, orgSlug, targetId, editing, onBack, onD
   const certsQ = useQuery(allCertificatesPickerQuery(orgId));
   const layoutsQ = useQuery(layoutsQuery(orgId));
   const targetsQ = useQuery(deployTargetsQuery(orgId));
+  const actionsQ = useQuery(actionsQuery(orgId));
+  const groupsQ = useQuery(actionGroupsQuery(orgId));
   const create = useCreateServerGrant(orgId, targetId);
   const update = useUpdateGrant(orgId);
   const [certificateId, setCertificateId] = useState<string | undefined>(editing?.certificateId);
@@ -41,6 +44,11 @@ export function ServerGrantForm({ orgId, orgSlug, targetId, editing, onBack, onD
   const [formError, setFormError] = useState<string | null>(null);
   const target = targetsQ.data?.find((t) => t.id === targetId);
   const vDef = verifyDefault(target);
+  const restartKind = target?.type === 'pikvm' ? 'pikvm_restart' : target?.type === 'pfsense' ? 'pfsense_restart' : null;
+  const kindOf = new Map((actionsQ.data ?? []).map((a) => [a.id, a.kind]));
+  const groupIds = new Map((groupsQ.data ?? []).map((g) => [g.id, g.actionIds]));
+  const hasRestart = steps.some((st) => ('action' in st ? [st.action] : (groupIds.get(st.group) ?? [])).some((id) => kindOf.get(id) === restartKind));
+  const showRestartHint = !!restartKind && actionsQ.isSuccess && groupsQ.isSuccess && !hasRestart;
   const [verifyOn, setVerifyOn] = useState<boolean | undefined>(editing ? !!editing.verify : undefined);
   const [hostEdit, setHostEdit] = useState<string | undefined>(undefined);
   const [portEdit, setPortEdit] = useState<string | undefined>(undefined);
@@ -134,6 +142,12 @@ export function ServerGrantForm({ orgId, orgSlug, targetId, editing, onBack, onD
       </Field>
       <div className="grid gap-1.5">
         <StepsPicker orgId={orgId} runsOn="server" value={steps} onChange={setSteps} newActionHref={orgSlug ? `/o/${orgSlug}/delivery/actions?edit=new` : undefined} />
+        {showRestartHint && (
+          <p className="flex items-center gap-1 text-sm text-muted-foreground">
+            No restart step: the device keeps serving its old certificate until something restarts the service.
+            <HelpTip id="grant.restartStep" />
+          </p>
+        )}
         {stepsError && (
           <p role="alert" className="flex items-center gap-1 text-sm text-failed">
             <CircleAlert className="size-3.5 shrink-0" aria-hidden />

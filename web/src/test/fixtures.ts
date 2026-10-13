@@ -1133,7 +1133,7 @@ export function makeActionRun(p: Partial<ActionRun> = {}): ActionRun {
   };
 }
 
-// GET /meta/schemas `actions`: all 11 kinds (internal/actions/schemas/*.json, abridged to the fields the UI renders).
+// GET /meta/schemas `actions`: all 12 kinds (internal/actions/schemas/*.json, abridged to the fields the UI renders).
 const uuidProp = (title: string) => ({ type: 'string', format: 'uuid', title });
 const actionSchema = (properties: Record<string, unknown>, required: string[]) => ({ type: 'object', additionalProperties: false, required, properties });
 const targetKind = (code: string, name: string, targetTypes: string[], extra: Record<string, unknown> = {}, required = ['targetId']): ActionSchemaEntry => ({
@@ -1147,6 +1147,9 @@ export const metaActions: ActionSchemaEntry[] = [
   targetKind('pfsense_restart', 'Restart pfSense services', ['pfsense'], {
     mode: { type: 'string', enum: ['all', 'selected', 'none'], default: 'all', title: 'Restart' },
     services: { type: 'array', maxItems: 64, items: { type: 'string', minLength: 1, maxLength: 64 }, title: 'Services' },
+  }),
+  targetKind('pikvm_restart', 'Restart PiKVM service', ['pikvm'], {
+    service: { type: 'string', enum: ['kvmd-nginx', 'kvmd-vnc'], default: 'kvmd-nginx', title: 'Service', description: 'The service to restart.' },
   }),
   targetKind('truenas_restart', 'Restart TrueNAS services', ['truenas']),
   targetKind('routeros_restart', 'Restart RouterOS services', ['routeros']),

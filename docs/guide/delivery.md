@@ -266,7 +266,7 @@ A pfSense Plus target pushes a certificate into pfSense through the Netgate Nexu
 
 Each deploy logs in, then looks the certificate up by its description. If it exists it is updated in place, so WebGUI, OpenVPN and HAProxy references keep pointing at it. Otherwise it is created. If two certificates share the name the deploy fails. When pfSense already holds the same certificate, nothing is written.
 
-With **Restart services that use it** on, every deploy then asks pfSense which services use the certificate (the WebGUI, OpenVPN, IPsec, captive portal and packages) and restarts exactly those, because Nexus restarts none of them itself. A grant can override this: see [Choosing services per grant](#choosing-services-per-grant). This runs even when the certificate was unchanged, since an earlier deploy may have left a service on the old one. The deploy detail lists what was restarted. The pfSense user needs the privileges to run PHP and shell commands through the device API (the diag command privileges). If the restart fails the deploy reports an error, although the certificate is already in place.
+A pfSense deploy only writes the certificate; it restarts nothing, and Nexus restarts nothing itself. Add a post-deploy **pfSense restart** step to the grant to restart the services that use it: see [pfSense restart](#pfsense-restart). The pfSense user needs the privileges to run PHP and shell commands through the device API (the diag command privileges). If a restart step fails the deploy reports an error, although the certificate is already in place.
 ## TrueNAS SCALE
 
 A TrueNAS target imports the certificate into TrueNAS SCALE 25.10 or later over its WebSocket API and can make it the web UI certificate. It runs on the server.
@@ -368,6 +368,7 @@ An **action** is one reusable step a grant runs around a deploy: reload a servic
 | **Restart** (`restart`) | Restarts `docker:<container>` or `systemd:<unit>` if `CF_RESTART_ALLOW` lists it. | Agent | None |
 | **SSH** (`ssh`) | Runs one command (up to 512 characters) over SSH, reusing the target's host, login and pinned host key. | Server | SSH or PiKVM target |
 | **pfSense shell** (`pfsense_shell`) | Runs a shell command through the firewall's API. The API reports no exit status, so it counts as done once accepted. The user needs the diag command privilege. | Server | pfSense target |
+| **Restart PiKVM service** (`pikvm_restart`) | Restarts `kvmd-nginx` (default) or `kvmd-vnc` over SSH so the device serves the new certificate. | Server | PiKVM target |
 | **pfSense restart** (`pfsense_restart`) | Restarts the services that use the certificate: all, only the ones you list, or none. | Server | pfSense target |
 | **TrueNAS restart** (`truenas_restart`) | Restarts the TrueNAS web UI. | Server | TrueNAS target |
 | **RouterOS restart** (`routeros_restart`) | Re-binds the certificate to the configured RouterOS services. | Server | RouterOS target |
@@ -404,6 +405,8 @@ Every step is recorded: what ran, its phase, exit code or status, output (8 KiB)
 ### Upgrading
 
 This release removes the `/hooks` API: use `/actions` and `/action-groups`, and send a grant's `steps` (`[{"action": id}, {"group": id}]`) instead of `hookIds`, `postAction` and `targetOptions.pfsenseRestart`. Migration 00033 converts existing hooks (ids kept), post actions and pfSense restart settings into actions and steps. Backups taken before migration 00033 still restore.
+
+Migration 00034 makes restarts explicit actions. The pfSense target's `restartServices` field is gone and PiKVM deploys no longer run `systemctl restart kvmd-nginx`. Existing pfSense and PiKVM grants get a post-deploy restart step added automatically, so nothing changes at first; edit or remove those steps as you like.
 
 ## Saved credentials
 
