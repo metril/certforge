@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -473,6 +474,48 @@ func (s *Service) Test(ctx context.Context, orgID, id uuid.UUID) (Result, error)
 	s.audit(ctx, audit.Event{Action: "channel.test", ResourceType: "channel", ResourceID: id.String(), OrgID: &orgID,
 		Details: channelAuditDetails(id, row.Type, row.AllOrgs)})
 	return res, nil
+}
+
+// SendDirect sends ev to exactly this channel inline, bound to testTimeout,
+// regardless of the channel's Enabled and without recording an event or a
+// delivery row (an action step reports its own outcome in its run record).
+// The returned error is already redacted of the channel's secrets.
+func (s *Service) SendDirect(ctx context.Context, orgID, channelID uuid.UUID, ev Event) error {
+	row, err := s.Store.Q.GetOrgNotificationChannel(ctx, sqlcgen.GetOrgNotificationChannelParams{ID: channelID, OrgID: orgID})
+	if err != nil {
+		return notFoundErr(err)
+	}
+	notifier, ok := s.Registry.Get(row.Type)
+	if !ok {
+		return fmt.Errorf("notify: unknown channel type %q", row.Type)
+	}
+	var cfg map[string]any
+	if len(row.Config) > 0 {
+		if err := json.Unmarshal(row.Config, &cfg); err != nil {
+			return err
+		}
+	}
+	secrets, err := resolveChannelSecrets(ctx, s.Box, row.SecretCfg)
+	if err != nil {
+		return err
+	}
+	target, err := s.testTarget(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	if ev.ID == uuid.Nil {
+		ev.ID = uuid.New()
+	}
+	if ev.At.IsZero() {
+		ev.At = time.Now()
+	}
+	ev.OrgID = &orgID
+	sendCtx, cancel := context.WithTimeout(ctx, testTimeout)
+	defer cancel()
+	if err := notifier.Send(sendCtx, ev, target, cfg, secrets); err != nil {
+		return errors.New(truncateUTF8(httpx.Redact(err.Error(), secretValues(secrets)...), maxLastError))
+	}
+	return nil
 }
 
 // testTarget builds Test's Target: OrgName is the owning org's current

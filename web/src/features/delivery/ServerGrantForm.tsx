@@ -1,12 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CircleAlert } from 'lucide-react';
 import { ApiError, errorMessage, fieldOfTitle } from '@/api/errors';
 import { allCertificatesPickerQuery, plural } from '@/api/queries/certificates';
 import { deployTargetsQuery, layoutsQuery } from '@/api/queries/delivery';
-import { grantPfSenseUsageQuery, useCreateServerGrant, useUpdateGrant } from '@/api/queries/grants';
-import type { Grant, GrantUpdate, PostAction } from '@/api/types';
-import { ChipSet } from '@/components/ChipSet';
+import { useCreateServerGrant, useUpdateGrant } from '@/api/queries/grants';
+import type { Grant, GrantStep, GrantUpdate } from '@/api/types';
 import { Combobox } from '@/components/Combobox';
 import { Field } from '@/components/Field';
 import { FormSection } from '@/components/FormSection';
@@ -17,30 +16,17 @@ import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 import { INTERVALS, fmtInterval } from '@/lib/monitors';
+import { StepsPicker } from './StepsPicker';
 import { verifyDefault } from './verifyDefault';
 
-type Props = { orgId: string; targetId: string; editing?: Grant; onBack: () => void; onDone: () => void };
+type Props = { orgId: string; orgSlug?: string; targetId: string; editing?: Grant; onBack: () => void; onDone: () => void };
 
 // The Layout combobox's first, always-present option: picking it (or
 // clearing the field) means layoutId: null, "use the target's own key
 // names" (task-9-brief).
 const NO_LAYOUT = '__target_files__';
 
-type PostKind = 'ssh' | 'pfsense';
-// What the pfSense kind prefills: restarts the WebGUI so it picks up the new certificate.
-const PFSENSE_COMMAND = '/etc/rc.restart_webgui';
-const KIND_LABEL: Record<PostKind, string> = { ssh: 'SSH', pfsense: 'pfSense' };
-
-type RestartMode = 'all' | 'selected' | 'none';
-type StoredRestart = { mode?: RestartMode; services?: string[] };
-const NOT_IN_USE = ' (not in use)';
-
-function storedRestart(g?: Grant): StoredRestart | undefined {
-  const r = g?.targetOptions?.pfsenseRestart;
-  return r && typeof r === 'object' ? (r as StoredRestart) : undefined;
-}
-
-export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Props) {
+export function ServerGrantForm({ orgId, orgSlug, targetId, editing, onBack, onDone }: Props) {
   const certsQ = useQuery(allCertificatesPickerQuery(orgId));
   const layoutsQ = useQuery(layoutsQuery(orgId));
   const targetsQ = useQuery(deployTargetsQuery(orgId));
@@ -48,12 +34,8 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
   const update = useUpdateGrant(orgId);
   const [certificateId, setCertificateId] = useState<string | undefined>(editing?.certificateId);
   const [layoutId, setLayoutId] = useState<string | undefined>(editing?.layoutId ?? undefined);
-  const [postOn, setPostOn] = useState(!!editing?.postAction);
-  const [kind, setKind] = useState<PostKind>(editing?.postAction?.kind ?? 'ssh');
-  const [postTargetId, setPostTargetId] = useState<string | undefined>(editing?.postAction?.targetId);
-  const [command, setCommand] = useState(editing?.postAction?.command ?? '');
-  const [timeout, setTimeoutSeconds] = useState(String(editing?.postAction?.timeoutSeconds ?? 60));
-  const [postError, setPostError] = useState<string | null>(null);
+  const [steps, setSteps] = useState<GrantStep[]>(editing?.steps ?? []);
+  const [stepsError, setStepsError] = useState<string | null>(null);
   const [certError, setCertError] = useState<string | null>(null);
   const [layoutError, setLayoutError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -71,22 +53,6 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
   const vInterval = intervalEdit ?? editing?.verify?.intervalSeconds ?? 3600;
   const vSni = sniEdit ?? editing?.verify?.sni ?? '';
   const vOn = vDef ? (verifyOn ?? vHost !== '') : false;
-  const isPf = targetsQ.data?.find((t) => t.id === targetId)?.type === 'pfsense';
-  const stored = storedRestart(editing);
-  const [pickedMode, setRestartMode] = useState<RestartMode | undefined>(undefined);
-  const targetDefault: RestartMode = targetsQ.data?.find((t) => t.id === targetId)?.config?.restartServices === false ? 'none' : 'all';
-  const restartMode: RestartMode = pickedMode ?? stored?.mode ?? targetDefault;
-  const inherited = !stored && pickedMode === undefined;
-  const [restartKeys, setRestartKeys] = useState<string[]>(stored?.services ?? []);
-  const [restartError, setRestartError] = useState<string | null>(null);
-  // Never fetched on its own (enabled: false): "Only these" asks the firewall once.
-  const usageQ = useQuery(grantPfSenseUsageQuery(orgId, editing?.id ?? ''));
-  const wantUsage = isPf && !!editing && restartMode === 'selected';
-  const { refetch: loadUsage } = usageQ;
-  const usageLoaded = usageQ.data !== undefined;
-  useEffect(() => {
-    if (wantUsage && !usageLoaded) void loadUsage();
-  }, [wantUsage, usageLoaded, loadUsage]);
   const busy = create.isPending || update.isPending;
 
   // Only a certificate with a current version can be granted (task-9-brief).
@@ -99,28 +65,8 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
     }),
   ];
 
-  const postTargetOptions = (targetsQ.data ?? []).filter((t) => t.type === kind || (kind === 'ssh' && t.type === 'pikvm')).map((t) => ({ value: t.id, label: t.name }));
-
-  const changeKind = (next: PostKind) => {
-    if (next === kind) return;
-    setKind(next);
-    setPostTargetId(undefined);
-    setPostError(null);
-    if (next === 'pfsense' && !command.trim()) setCommand(PFSENSE_COMMAND);
-    else if (next === 'ssh' && command.trim() === PFSENSE_COMMAND) setCommand('');
-  };
-
-  const usage = usageQ.data;
-  const reported = usage?.services ?? [];
-  const reportedKeys = new Set(reported.map((x) => x.key));
-  const restartOptions = [
-    ...reported.map((x) => ({ value: x.key, label: x.label })),
-    ...(usage ? restartKeys.filter((k) => !reportedKeys.has(k)).map((k) => ({ value: k, label: k + NOT_IN_USE })) : []),
-  ];
-
   const submit = async () => {
-    setRestartError(null);
-    setPostError(null);
+    setStepsError(null);
     setCertError(null);
     setLayoutError(null);
     setFormError(null);
@@ -138,47 +84,19 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
       setCertError('Pick a certificate.');
       return;
     }
-    if (isPf && restartMode === 'selected' && restartKeys.length === 0) {
-      setRestartError('Pick at least one service, or choose None.');
-      return;
-    }
-    // "All that use it" on a grant that never chose is left unset, so it keeps following the target's option.
-    const targetOptions: Record<string, unknown> | undefined = !isPf
-      ? undefined
-      : restartMode === 'selected'
-        ? { pfsenseRestart: { mode: 'selected', services: restartKeys } }
-        : inherited
-          ? {}
-          : { pfsenseRestart: { mode: restartMode } };
-    let postAction: PostAction | undefined;
-    if (postOn) {
-      const secs = Number(timeout);
-      if (!postTargetId || !command.trim()) {
-        setPostError(`Pick ${kind === 'ssh' ? 'an SSH or PiKVM' : 'a pfSense'} target and enter a command.`);
-        return;
-      }
-      if (!Number.isInteger(secs) || secs < 5 || secs > 300) {
-        setPostError('Timeout must be 5 to 300 seconds.');
-        return;
-      }
-      postAction = { kind, targetId: postTargetId, command: command.trim(), timeoutSeconds: secs };
-    }
     try {
       if (editing) {
-        // internal/api/grants.go's updateServerGrant only reads LayoutId and
-        // PostAction for a server grant; the other GrantUpdate fields are
-        // agent-only and ignored server-side. Omitting postAction clears it.
-        await update.mutateAsync({ id: editing.id, body: { layoutId: layoutId ?? null, autoRemediate: vOn && autoRemediate, verify, ...(targetOptions && { targetOptions }), ...(postAction && { postAction }) } as GrantUpdate });
+        // updateServerGrant reads layoutId, steps, verify and autoRemediate for a server grant.
+        await update.mutateAsync({ id: editing.id, body: { layoutId: layoutId ?? null, autoRemediate: vOn && autoRemediate, verify, steps } as GrantUpdate });
       } else {
-        await create.mutateAsync({ certificateId: certificateId!, autoRemediate: vOn && autoRemediate, layoutId: layoutId ?? null, ...(verify && { verify }), ...(targetOptions && Object.keys(targetOptions).length > 0 && { targetOptions }), ...(postAction && { postAction }) });
+        await create.mutateAsync({ certificateId: certificateId!, autoRemediate: vOn && autoRemediate, layoutId: layoutId ?? null, ...(verify && { verify }), steps });
       }
       onDone();
     } catch (e) {
       const field = e instanceof ApiError && e.status === 422 ? fieldOfTitle(e.problem.title) : null;
       if (field === 'certificateId') setCertError(errorMessage(e));
       else if (field === 'layoutId') setLayoutError(errorMessage(e));
-      else if (field === 'postAction') setPostError(errorMessage(e));
-      else if (field === 'targetOptions') setRestartError(errorMessage(e));
+      else if (field === 'steps') setStepsError(errorMessage(e));
       else setFormError(errorMessage(e));
     }
   };
@@ -214,80 +132,13 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
           emptyText="No layouts yet."
         />
       </Field>
-      {isPf && (
-        <Field id="server-grant-restart" label="Restart services" help="grant.pfsenseRestart" error={restartError}>
-          <div className="grid gap-2">
-            <SegmentedControl<RestartMode>
-              id="server-grant-restart"
-              aria-label="Restart services"
-              value={restartMode}
-              onChange={(m) => {
-                setRestartMode(m);
-                setRestartError(null);
-              }}
-              options={[
-                { value: 'all', label: 'All that use it' },
-                { value: 'selected', label: 'Only these', disabled: !editing, hint: editing ? undefined : 'The service list is available after the first deploy.' },
-                { value: 'none', label: 'None' },
-              ]}
-            />
-            {inherited && <p className="text-xs text-ink-muted">(target default)</p>}
-            {!editing && <p className="text-xs text-ink-muted">Choosing services is available after the first deploy; until then every service that uses the certificate restarts.</p>}
-            {restartMode === 'selected' && editing && (
-              <div className="grid gap-1.5">
-                {usageQ.isError ? (
-                  <p role="alert" className="text-xs text-failed">
-                    {errorMessage(usageQ.error)}
-                  </p>
-                ) : usageQ.isFetching && !usage ? (
-                  <p className="text-xs text-ink-muted">Asking the firewall…</p>
-                ) : usage && usage.refid === null ? (
-                  <p className="text-xs text-ink-muted">The certificate is not on the firewall yet.</p>
-                ) : null}
-                {restartOptions.length > 0 && <ChipSet aria-label="Services to restart" value={restartKeys} onChange={setRestartKeys} options={restartOptions} />}
-                {usage && usage.refid !== null && restartOptions.length === 0 && <p className="text-xs text-ink-muted">No services use it.</p>}
-              </div>
-            )}
-          </div>
-        </Field>
-      )}
-      <div className="grid gap-3">
-        <SwitchField id="server-grant-post" label="Post action" help="grant.postAction" checked={postOn} onCheckedChange={setPostOn} onText="Run a command after deploy" offText="None" />
-        {postOn && (
-          <>
-            <Field id="server-grant-post-kind" label="Kind" help="grant.postActionKind">
-              <SegmentedControl<PostKind>
-                id="server-grant-post-kind"
-                aria-label="Post action kind"
-                value={kind}
-                onChange={changeKind}
-                options={[
-                  { value: 'ssh', label: 'SSH' },
-                  { value: 'pfsense', label: 'pfSense' },
-                ]}
-              />
-            </Field>
-            <Field id="server-grant-post-target" label={`${KIND_LABEL[kind]} target`} error={postError}>
-              <Combobox
-                id="server-grant-post-target"
-                aria-label={`${KIND_LABEL[kind]} target`}
-                value={postTargetId}
-                onChange={(v) => {
-                  setPostTargetId(v);
-                  setPostError(null);
-                }}
-                options={postTargetOptions}
-                placeholder={`Pick ${kind === 'ssh' ? 'an SSH or PiKVM' : 'a pfSense'} target`}
-                emptyText={`No ${KIND_LABEL[kind]} targets yet.`}
-              />
-            </Field>
-            <Field id="server-grant-post-command" label="Command">
-              <Input id="server-grant-post-command" className="font-mono" maxLength={512} value={command} onChange={(e) => setCommand(e.target.value)} />
-            </Field>
-            <Field id="server-grant-post-timeout" label="Timeout (seconds)">
-              <Input id="server-grant-post-timeout" type="number" min={5} max={300} value={timeout} onChange={(e) => setTimeoutSeconds(e.target.value)} />
-            </Field>
-          </>
+      <div className="grid gap-1.5">
+        <StepsPicker orgId={orgId} runsOn="server" value={steps} onChange={setSteps} newActionHref={orgSlug ? `/o/${orgSlug}/delivery/actions?edit=new` : undefined} />
+        {stepsError && (
+          <p role="alert" className="flex items-center gap-1 text-sm text-failed">
+            <CircleAlert className="size-3.5 shrink-0" aria-hidden />
+            {stepsError}
+          </p>
         )}
       </div>
       {vDef && (

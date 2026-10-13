@@ -140,7 +140,7 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
             <Head label="Delivery" className="w-24" />
             <Head label="Layout" />
             <Head label="Target" />
-            <Head label="Hooks" className="w-20" />
+            <Head label="Steps" className="w-20" />
             <Head label="Auto-remediate" className="w-32" />
             <Head label="State" className="w-36" />
             <TableHead className="w-28">
@@ -246,7 +246,7 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
               <Head label="Delivery" help="grant.delivery" className="w-24" />
               <Head label="Layout" help="grant.layout" />
               <Head label="Target" help="grant.target" />
-              <Head label="Hooks" help="grant.hooks" className="w-20" />
+              <Head label="Steps" help="grant.steps" className="w-20" />
               <Head label="Auto-remediate" help="grant.autoRemediate" className="w-32" />
               <Head label="State" className="w-36" />
               <TableHead className="w-28">
@@ -262,7 +262,7 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
                   <TableCell className="py-1">{DELIVERY_LABEL[g.delivery]}</TableCell>
                   <TableCell className="truncate py-1">{layoutName(g.layoutId)}</TableCell>
                   <TableCell className="truncate py-1">{targetCell(g)}</TableCell>
-                  <TableCell className="py-1 tabular-nums">{g.hookIds.length || '–'}</TableCell>
+                  <TableCell className="py-1 tabular-nums">{g.steps.length || '–'}</TableCell>
                   <TableCell className="py-1">{g.autoRemediate ? 'On' : 'Off'}</TableCell>
                   <TableCell className="py-1">{stateCell(g)}</TableCell>
                   <TableCell className="py-1 text-right">{actions(g)}</TableCell>
@@ -292,7 +292,7 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
               </div>
               <span className="flex min-w-0 items-center gap-1.5 text-xs text-ink-muted">
                 <span className="min-w-0 truncate">
-                {DELIVERY_LABEL[g.delivery]} · {layoutName(g.layoutId)} · {targetName(g.deployTargetId)} · {g.hookIds.length || '–'} hooks · Auto-remediate {g.autoRemediate ? 'On' : 'Off'}
+                {DELIVERY_LABEL[g.delivery]} · {layoutName(g.layoutId)} · {targetName(g.deployTargetId)} · {g.steps.length || '–'} steps · Auto-remediate {g.autoRemediate ? 'On' : 'Off'}
                 </span>
                 {g.runsOn !== 'server' && optionsMeta(g)}
               </span>
@@ -309,7 +309,7 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}
         title={`Remove ${removing?.certificateName ?? ''} from ${client.name}`}
-        consequence="The files are removed when the agent next syncs; until then, this grant blocks deleting the certificate, its layout, its target and its hooks."
+        consequence="The files are removed when the agent next syncs; until then, this grant blocks deleting the certificate, its layout, its target and its actions."
         confirmText={removing?.certificateName ?? ''}
         actionLabel="Remove"
         onConfirm={() => del.mutateAsync({ id: removing!.id, force })}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Verify TLS",
+  "description": "Connects to a host and checks that it serves the deployed certificate. Runs on the server.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["host"],
+  "properties": {
+    "host": {"type": "string", "minLength": 1, "maxLength": 253, "title": "Host", "description": "Hostname or IP address to connect to."},
+    "port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 443, "title": "Port"},
+    "sni": {"type": "string", "maxLength": 253, "title": "Server name", "description": "TLS server name to send, when it differs from the host."}
+  }
+}

@@ -22,12 +22,36 @@ import (
 	"github.com/metril/certforge/internal/settings"
 )
 
-// minMigrationVersion is migration 00031, the latest migration that adds a
-// Manifest table (deploy_credentials); every foreign key is DEFERRABLE from 00013
-// (Deviations R6). Restore never loads at anything older, whatever the
-// archive's own header says, so every Manifest table exists to load into.
-// Raise it whenever a migration adds a table.
+// minMigrationVersion is migration 00031, the oldest schema Restore loads at;
+// every foreign key is DEFERRABLE from 00013 (Deviations R6). An archive older
+// than this loads at 00031 (its tables are an ordered subset of that
+// version's manifest). Archives between 00031 and 00032 load at their own
+// version under manifestFor, so a later migration (00033 renames hooks to
+// actions) converts them. Add a manifestFor case whenever a migration
+// renames or drops a table.
 const minMigrationVersion = 31
+
+// actionsMigration is 00033_actions.sql, which renamed hooks to actions and
+// added action_groups.
+const actionsMigration = 33
+
+// manifestFor returns the table list of the schema at migration version v.
+func manifestFor(v int64) []string {
+	if v >= actionsMigration {
+		return Manifest
+	}
+	out := make([]string, 0, len(Manifest))
+	for _, t := range Manifest {
+		switch t {
+		case "action_groups":
+		case "actions":
+			out = append(out, "hooks")
+		default:
+			out = append(out, t)
+		}
+	}
+	return out
+}
 
 // RestoreOpts configures Restore. Both funcs run against the caller's own
 // configured envelope (active plus any previous KEK); Restore itself never
@@ -96,7 +120,7 @@ func Restore(ctx context.Context, pool *pgxpool.Pool, r io.Reader, opts RestoreO
 	streamKey := crypto.DeriveKey(baseKey, hex.EncodeToString(header.Salt))
 	defer clear(streamKey)
 
-	if err := restoreLoad(ctx, pool, r, header, headerHash, streamKey, opts); err != nil {
+	if err := restoreLoad(ctx, pool, r, header, headerHash, streamKey, opts, manifestFor(target)); err != nil {
 		return Header{}, err
 	}
 
@@ -110,7 +134,7 @@ func Restore(ctx context.Context, pool *pgxpool.Pool, r io.Reader, opts RestoreO
 // rolling back on any error (including a deferred func running after an
 // early return, and the explicit rollback-on-verification-failure paths
 // below — both reach the same tx.Rollback).
-func restoreLoad(ctx context.Context, pool *pgxpool.Pool, r io.Reader, header Header, headerHash, streamKey []byte, opts RestoreOpts) error {
+func restoreLoad(ctx context.Context, pool *pgxpool.Pool, r io.Reader, header Header, headerHash, streamKey []byte, opts RestoreOpts, manifest []string) error {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("backup: begin restore: %w", err)
@@ -121,8 +145,8 @@ func restoreLoad(ctx context.Context, pool *pgxpool.Pool, r io.Reader, header He
 		return fmt.Errorf("backup: defer constraints: %w", err)
 	}
 
-	loadTables := make([]string, 0, len(Manifest)-1)
-	for _, t := range Manifest {
+	loadTables := make([]string, 0, len(manifest)-1)
+	for _, t := range manifest {
 		if t != "goose_db_version" {
 			loadTables = append(loadTables, t)
 		}
@@ -181,7 +205,7 @@ func restoreLoad(ctx context.Context, pool *pgxpool.Pool, r io.Reader, header He
 	if manifestSums == nil {
 		return fmt.Errorf("%w: archive has no manifest.json", ErrTampered)
 	}
-	if err := verifyManifest(header.Tables, seen, manifestSums); err != nil {
+	if err := verifyManifest(manifest, header.Tables, seen, manifestSums); err != nil {
 		return err
 	}
 
@@ -314,7 +338,7 @@ func loadError(table string, err, readErr error) error {
 // binary's Manifest, that every listed table was present in the tar, and that each one's
 // hash (and, except for goose_db_version whose row count Restore never
 // itself counts, row count) matches manifest.json.
-func verifyManifest(headerTables []string, seen, manifestSums map[string]TableSum) error {
+func verifyManifest(ref, headerTables []string, seen, manifestSums map[string]TableSum) error {
 	// The header may list an ordered subset of Manifest: an archive from an
 	// older build predates later tables, which simply stay empty after the
 	// truncate. Unknown tables or a different order are rejected.
@@ -323,10 +347,10 @@ func verifyManifest(headerTables []string, seen, manifestSums map[string]TableSu
 	}
 	i := 0
 	for _, t := range headerTables {
-		for i < len(Manifest) && Manifest[i] != t {
+		for i < len(ref) && ref[i] != t {
 			i++
 		}
-		if i == len(Manifest) {
+		if i == len(ref) {
 			return fmt.Errorf("%w: archive's table list is not an ordered subset of this build's manifest (at %q)", ErrTampered, t)
 		}
 		i++

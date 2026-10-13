@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { Grant } from '@/api/types';
 import { help } from '@/lib/help';
 import { server } from '@/test/server';
-import { authHandlers, grantServer, iso, makeClient, makeDeployment, makeGrant, makeHook, makeLayout, makeTarget, meWith, org, problem, targetTestSecret, targetVaultKv, url } from '@/test/fixtures';
+import { authHandlers, grantServer, iso, makeClient, makeDeployment, makeGrant, makeAction, makeLayout, makeTarget, meWith, org, problem, targetTestSecret, targetVaultKv, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 const a = 'aa'.repeat(32);
@@ -28,7 +28,7 @@ beforeEach(() => {
   stubViewport(true);
   calls = [];
   grants = [
-    makeGrant({ id: 'g-1', certificateId: 'c-1', certificateName: 'www', hookIds: ['h-1'], autoRemediate: true }),
+    makeGrant({ id: 'g-1', certificateId: 'c-1', certificateName: 'www', steps: [{ action: 'a-1' }], autoRemediate: true }),
     makeGrant({
       id: 'g-2', certificateId: 'c-2', certificateName: 'api', delivery: 'pull', layoutId: null, deployTargetId: 't-1',
       deployment: makeDeployment({
@@ -45,7 +45,8 @@ beforeEach(() => {
     http.get(url('/orgs/org-1/clients/cl-1/grants'), () => HttpResponse.json({ items: grants })),
     http.get(url('/orgs/org-1/layouts'), () => HttpResponse.json({ items: [makeLayout()] })),
     http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [makeTarget()] })),
-    http.get(url('/orgs/org-1/hooks'), () => HttpResponse.json({ items: [makeHook()] })),
+    http.get(url('/orgs/org-1/actions'), () => HttpResponse.json({ items: [makeAction()] })),
+    http.get(url('/orgs/org-1/action-groups'), () => HttpResponse.json({ items: [] })),
     http.post(url('/orgs/org-1/grants/:id/redeploy'), ({ params }) => {
       calls.push(`redeploy ${params.id}`);
       return HttpResponse.json(grants.find((g) => g.id === params.id));
@@ -172,7 +173,7 @@ it('renders cards below md, with hooks and auto-remediate', async () => {
   const cards = await screen.findByRole('list', { name: 'Grants' });
   expect(screen.queryByRole('table')).not.toBeInTheDocument();
   const wwwCard = within(cards).getByRole('link', { name: 'www' }).closest('li')!;
-  expect(wwwCard).toHaveTextContent('1 hooks');
+  expect(wwwCard).toHaveTextContent('1 steps');
   expect(wwwCard).toHaveTextContent('Auto-remediate On');
   expect(within(cards).getByRole('link', { name: 'api' }).closest('li')!).toHaveTextContent('Drift');
 });

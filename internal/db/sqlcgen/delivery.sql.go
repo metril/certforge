@@ -11,6 +11,233 @@ import (
 	"github.com/google/uuid"
 )
 
+const actionDependents = `-- name: ActionDependents :many
+SELECT (COALESCE(c.name, t.name))::text AS owner_name, ce.name AS certificate_name, 'grant'::text AS dependent_kind,
+       (g.removed_at IS NOT NULL)::bool AS removing
+FROM client_cert_grants g
+JOIN certificates ce ON ce.id = g.cert_id
+LEFT JOIN clients c ON c.id = g.client_id
+LEFT JOIN deploy_targets t ON t.id = g.deploy_target_id
+WHERE g.steps @> jsonb_build_array(jsonb_build_object('action', $1::uuid))
+  AND EXISTS (SELECT 1 FROM actions a WHERE a.id = $1::uuid AND a.org_id = $2)
+UNION ALL
+SELECT ag.name, ''::text, 'group'::text, false
+FROM action_groups ag
+WHERE ag.action_ids @> ARRAY[$1::uuid] AND ag.org_id = $2
+ORDER BY 3, 1, 2 LIMIT 6
+`
+
+type ActionDependentsParams struct {
+	ActionID uuid.UUID `json:"action_id"`
+	OrgID    uuid.UUID `json:"org_id"`
+}
+
+type ActionDependentsRow struct {
+	OwnerName       string `json:"owner_name"`
+	CertificateName string `json:"certificate_name"`
+	DependentKind   string `json:"dependent_kind"`
+	Removing        bool   `json:"removing"`
+}
+
+// Up to 6 live or removal-pending grants (by client, or by target for a
+// server grant) and groups that reference the action.
+func (q *Queries) ActionDependents(ctx context.Context, arg ActionDependentsParams) ([]ActionDependentsRow, error) {
+	rows, err := q.db.Query(ctx, actionDependents, arg.ActionID, arg.OrgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ActionDependentsRow{}
+	for rows.Next() {
+		var i ActionDependentsRow
+		if err := rows.Scan(
+			&i.OwnerName,
+			&i.CertificateName,
+			&i.DependentKind,
+			&i.Removing,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const actionGrantCounts = `-- name: ActionGrantCounts :many
+SELECT a.id, count(g.id)::bigint AS grants
+FROM actions a LEFT JOIN client_cert_grants g ON g.steps @> jsonb_build_array(jsonb_build_object('action', a.id)) AND g.removed_at IS NULL
+WHERE a.id = ANY($1::uuid[]) GROUP BY a.id
+`
+
+type ActionGrantCountsRow struct {
+	ID     uuid.UUID `json:"id"`
+	Grants int64     `json:"grants"`
+}
+
+func (q *Queries) ActionGrantCounts(ctx context.Context, ids []uuid.UUID) ([]ActionGrantCountsRow, error) {
+	rows, err := q.db.Query(ctx, actionGrantCounts, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ActionGrantCountsRow{}
+	for rows.Next() {
+		var i ActionGrantCountsRow
+		if err := rows.Scan(&i.ID, &i.Grants); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const actionGroupDependents = `-- name: ActionGroupDependents :many
+SELECT (COALESCE(c.name, t.name))::text AS owner_name, ce.name AS certificate_name, (g.removed_at IS NOT NULL)::bool AS removing
+FROM client_cert_grants g
+JOIN certificates ce ON ce.id = g.cert_id
+LEFT JOIN clients c ON c.id = g.client_id
+LEFT JOIN deploy_targets t ON t.id = g.deploy_target_id
+WHERE g.steps @> jsonb_build_array(jsonb_build_object('group', $1::uuid))
+  AND EXISTS (SELECT 1 FROM action_groups ag WHERE ag.id = $1::uuid AND ag.org_id = $2)
+ORDER BY 1, 2 LIMIT 6
+`
+
+type ActionGroupDependentsParams struct {
+	GroupID uuid.UUID `json:"group_id"`
+	OrgID   uuid.UUID `json:"org_id"`
+}
+
+type ActionGroupDependentsRow struct {
+	OwnerName       string `json:"owner_name"`
+	CertificateName string `json:"certificate_name"`
+	Removing        bool   `json:"removing"`
+}
+
+func (q *Queries) ActionGroupDependents(ctx context.Context, arg ActionGroupDependentsParams) ([]ActionGroupDependentsRow, error) {
+	rows, err := q.db.Query(ctx, actionGroupDependents, arg.GroupID, arg.OrgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ActionGroupDependentsRow{}
+	for rows.Next() {
+		var i ActionGroupDependentsRow
+		if err := rows.Scan(&i.OwnerName, &i.CertificateName, &i.Removing); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const actionGroupGrantCounts = `-- name: ActionGroupGrantCounts :many
+SELECT ag.id, count(g.id)::bigint AS grants
+FROM action_groups ag LEFT JOIN client_cert_grants g ON g.steps @> jsonb_build_array(jsonb_build_object('group', ag.id)) AND g.removed_at IS NULL
+WHERE ag.id = ANY($1::uuid[]) GROUP BY ag.id
+`
+
+type ActionGroupGrantCountsRow struct {
+	ID     uuid.UUID `json:"id"`
+	Grants int64     `json:"grants"`
+}
+
+func (q *Queries) ActionGroupGrantCounts(ctx context.Context, ids []uuid.UUID) ([]ActionGroupGrantCountsRow, error) {
+	rows, err := q.db.Query(ctx, actionGroupGrantCounts, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ActionGroupGrantCountsRow{}
+	for rows.Next() {
+		var i ActionGroupGrantCountsRow
+		if err := rows.Scan(&i.ID, &i.Grants); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const createAction = `-- name: CreateAction :one
+INSERT INTO actions (org_id, name, kind, phase, config, secret_cfg, timeout_seconds, optional)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, org_id, name, phase, timeout_seconds, created_at, updated_at, kind, config, optional, secret_cfg
+`
+
+type CreateActionParams struct {
+	OrgID          uuid.UUID `json:"org_id"`
+	Name           string    `json:"name"`
+	Kind           string    `json:"kind"`
+	Phase          string    `json:"phase"`
+	Config         []byte    `json:"config"`
+	SecretCfg      []byte    `json:"secret_cfg"`
+	TimeoutSeconds int32     `json:"timeout_seconds"`
+	Optional       bool      `json:"optional"`
+}
+
+func (q *Queries) CreateAction(ctx context.Context, arg CreateActionParams) (Action, error) {
+	row := q.db.QueryRow(ctx, createAction,
+		arg.OrgID,
+		arg.Name,
+		arg.Kind,
+		arg.Phase,
+		arg.Config,
+		arg.SecretCfg,
+		arg.TimeoutSeconds,
+		arg.Optional,
+	)
+	var i Action
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Phase,
+		&i.TimeoutSeconds,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Kind,
+		&i.Config,
+		&i.Optional,
+		&i.SecretCfg,
+	)
+	return i, err
+}
+
+const createActionGroup = `-- name: CreateActionGroup :one
+INSERT INTO action_groups (org_id, name, action_ids) VALUES ($1, $2, $3) RETURNING id, org_id, name, action_ids, created_at, updated_at
+`
+
+type CreateActionGroupParams struct {
+	OrgID     uuid.UUID   `json:"org_id"`
+	Name      string      `json:"name"`
+	ActionIds []uuid.UUID `json:"action_ids"`
+}
+
+func (q *Queries) CreateActionGroup(ctx context.Context, arg CreateActionGroupParams) (ActionGroup, error) {
+	row := q.db.QueryRow(ctx, createActionGroup, arg.OrgID, arg.Name, arg.ActionIds)
+	var i ActionGroup
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.ActionIds,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createDeployTarget = `-- name: CreateDeployTarget :one
 INSERT INTO deploy_targets (org_id, name, type, runs_on, config, secret_cfg, stored_secret_keys, credential_id)
 VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::text[], '{}'), $8) RETURNING id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg, stored_secret_keys, credential_id
@@ -55,46 +282,6 @@ func (q *Queries) CreateDeployTarget(ctx context.Context, arg CreateDeployTarget
 	return i, err
 }
 
-const createHook = `-- name: CreateHook :one
-INSERT INTO hooks (org_id, name, phase, argv, timeout_seconds, kind, target) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, org_id, name, phase, argv, timeout_seconds, created_at, updated_at, kind, target
-`
-
-type CreateHookParams struct {
-	OrgID          uuid.UUID `json:"org_id"`
-	Name           string    `json:"name"`
-	Phase          string    `json:"phase"`
-	Argv           []string  `json:"argv"`
-	TimeoutSeconds int32     `json:"timeout_seconds"`
-	Kind           string    `json:"kind"`
-	Target         string    `json:"target"`
-}
-
-func (q *Queries) CreateHook(ctx context.Context, arg CreateHookParams) (Hook, error) {
-	row := q.db.QueryRow(ctx, createHook,
-		arg.OrgID,
-		arg.Name,
-		arg.Phase,
-		arg.Argv,
-		arg.TimeoutSeconds,
-		arg.Kind,
-		arg.Target,
-	)
-	var i Hook
-	err := row.Scan(
-		&i.ID,
-		&i.OrgID,
-		&i.Name,
-		&i.Phase,
-		&i.Argv,
-		&i.TimeoutSeconds,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Kind,
-		&i.Target,
-	)
-	return i, err
-}
-
 const createLayout = `-- name: CreateLayout :one
 INSERT INTO output_specs (org_id, name, files, password, extra_cert_ids) VALUES ($1, $2, $3, $4, $5) RETURNING id, org_id, name, files, created_at, updated_at, password, extra_cert_ids
 `
@@ -129,6 +316,40 @@ func (q *Queries) CreateLayout(ctx context.Context, arg CreateLayoutParams) (Out
 	return i, err
 }
 
+const deleteAction = `-- name: DeleteAction :execrows
+DELETE FROM actions WHERE id = $1 AND org_id = $2
+`
+
+type DeleteActionParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) DeleteAction(ctx context.Context, arg DeleteActionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteAction, arg.ID, arg.OrgID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteActionGroup = `-- name: DeleteActionGroup :execrows
+DELETE FROM action_groups WHERE id = $1 AND org_id = $2
+`
+
+type DeleteActionGroupParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) DeleteActionGroup(ctx context.Context, arg DeleteActionGroupParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteActionGroup, arg.ID, arg.OrgID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteDeployTarget = `-- name: DeleteDeployTarget :execrows
 DELETE FROM deploy_targets WHERE id = $1 AND org_id = $2
 `
@@ -140,23 +361,6 @@ type DeleteDeployTargetParams struct {
 
 func (q *Queries) DeleteDeployTarget(ctx context.Context, arg DeleteDeployTargetParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteDeployTarget, arg.ID, arg.OrgID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const deleteHook = `-- name: DeleteHook :execrows
-DELETE FROM hooks WHERE id = $1 AND org_id = $2
-`
-
-type DeleteHookParams struct {
-	ID    uuid.UUID `json:"id"`
-	OrgID uuid.UUID `json:"org_id"`
-}
-
-func (q *Queries) DeleteHook(ctx context.Context, arg DeleteHookParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteHook, arg.ID, arg.OrgID)
 	if err != nil {
 		return 0, err
 	}
@@ -289,6 +493,57 @@ func (q *Queries) DeployTargetGrantCounts(ctx context.Context, ids []uuid.UUID) 
 	return items, nil
 }
 
+const getAction = `-- name: GetAction :one
+SELECT id, org_id, name, phase, timeout_seconds, created_at, updated_at, kind, config, optional, secret_cfg FROM actions WHERE id = $1 AND org_id = $2
+`
+
+type GetActionParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) GetAction(ctx context.Context, arg GetActionParams) (Action, error) {
+	row := q.db.QueryRow(ctx, getAction, arg.ID, arg.OrgID)
+	var i Action
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Phase,
+		&i.TimeoutSeconds,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Kind,
+		&i.Config,
+		&i.Optional,
+		&i.SecretCfg,
+	)
+	return i, err
+}
+
+const getActionGroup = `-- name: GetActionGroup :one
+SELECT id, org_id, name, action_ids, created_at, updated_at FROM action_groups WHERE id = $1 AND org_id = $2
+`
+
+type GetActionGroupParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) GetActionGroup(ctx context.Context, arg GetActionGroupParams) (ActionGroup, error) {
+	row := q.db.QueryRow(ctx, getActionGroup, arg.ID, arg.OrgID)
+	var i ActionGroup
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.ActionIds,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getDeployTarget = `-- name: GetDeployTarget :one
 SELECT id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg, stored_secret_keys, credential_id FROM deploy_targets WHERE id = $1 AND org_id = $2
 `
@@ -317,33 +572,6 @@ func (q *Queries) GetDeployTarget(ctx context.Context, arg GetDeployTargetParams
 	return i, err
 }
 
-const getHook = `-- name: GetHook :one
-SELECT id, org_id, name, phase, argv, timeout_seconds, created_at, updated_at, kind, target FROM hooks WHERE id = $1 AND org_id = $2
-`
-
-type GetHookParams struct {
-	ID    uuid.UUID `json:"id"`
-	OrgID uuid.UUID `json:"org_id"`
-}
-
-func (q *Queries) GetHook(ctx context.Context, arg GetHookParams) (Hook, error) {
-	row := q.db.QueryRow(ctx, getHook, arg.ID, arg.OrgID)
-	var i Hook
-	err := row.Scan(
-		&i.ID,
-		&i.OrgID,
-		&i.Name,
-		&i.Phase,
-		&i.Argv,
-		&i.TimeoutSeconds,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Kind,
-		&i.Target,
-	)
-	return i, err
-}
-
 const getLayout = `-- name: GetLayout :one
 SELECT id, org_id, name, files, created_at, updated_at, password, extra_cert_ids FROM output_specs WHERE id = $1 AND org_id = $2
 `
@@ -367,76 +595,6 @@ func (q *Queries) GetLayout(ctx context.Context, arg GetLayoutParams) (OutputSpe
 		&i.ExtraCertIds,
 	)
 	return i, err
-}
-
-const hookDependents = `-- name: HookDependents :many
-SELECT c.name AS client_name, ce.name AS certificate_name, (g.removed_at IS NOT NULL)::bool AS removing
-FROM client_cert_grants g JOIN clients c ON c.id = g.client_id JOIN certificates ce ON ce.id = g.cert_id
-WHERE g.hook_ids @> ARRAY[$1::uuid]
-  AND EXISTS (SELECT 1 FROM hooks h WHERE h.id = $1::uuid AND h.org_id = $2)
-ORDER BY c.name, ce.name LIMIT 6
-`
-
-type HookDependentsParams struct {
-	HookID uuid.UUID `json:"hook_id"`
-	OrgID  uuid.UUID `json:"org_id"`
-}
-
-type HookDependentsRow struct {
-	ClientName      string `json:"client_name"`
-	CertificateName string `json:"certificate_name"`
-	Removing        bool   `json:"removing"`
-}
-
-func (q *Queries) HookDependents(ctx context.Context, arg HookDependentsParams) ([]HookDependentsRow, error) {
-	rows, err := q.db.Query(ctx, hookDependents, arg.HookID, arg.OrgID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []HookDependentsRow{}
-	for rows.Next() {
-		var i HookDependentsRow
-		if err := rows.Scan(&i.ClientName, &i.CertificateName, &i.Removing); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const hookGrantCounts = `-- name: HookGrantCounts :many
-SELECT h.id, count(g.id)::bigint AS grants
-FROM hooks h LEFT JOIN client_cert_grants g ON g.hook_ids @> ARRAY[h.id] AND g.removed_at IS NULL
-WHERE h.id = ANY($1::uuid[]) GROUP BY h.id
-`
-
-type HookGrantCountsRow struct {
-	ID     uuid.UUID `json:"id"`
-	Grants int64     `json:"grants"`
-}
-
-func (q *Queries) HookGrantCounts(ctx context.Context, ids []uuid.UUID) ([]HookGrantCountsRow, error) {
-	rows, err := q.db.Query(ctx, hookGrantCounts, ids)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []HookGrantCountsRow{}
-	for rows.Next() {
-		var i HookGrantCountsRow
-		if err := rows.Scan(&i.ID, &i.Grants); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const layoutDependents = `-- name: LayoutDependents :many
@@ -573,6 +731,73 @@ func (q *Queries) LayoutsListingExtraCert(ctx context.Context, arg LayoutsListin
 	return items, nil
 }
 
+const listActionGroups = `-- name: ListActionGroups :many
+SELECT id, org_id, name, action_ids, created_at, updated_at FROM action_groups WHERE org_id = $1 ORDER BY lower(name), id
+`
+
+func (q *Queries) ListActionGroups(ctx context.Context, orgID uuid.UUID) ([]ActionGroup, error) {
+	rows, err := q.db.Query(ctx, listActionGroups, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ActionGroup{}
+	for rows.Next() {
+		var i ActionGroup
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Name,
+			&i.ActionIds,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listActions = `-- name: ListActions :many
+SELECT id, org_id, name, phase, timeout_seconds, created_at, updated_at, kind, config, optional, secret_cfg FROM actions WHERE org_id = $1 ORDER BY lower(name), id
+`
+
+func (q *Queries) ListActions(ctx context.Context, orgID uuid.UUID) ([]Action, error) {
+	rows, err := q.db.Query(ctx, listActions, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Action{}
+	for rows.Next() {
+		var i Action
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Name,
+			&i.Phase,
+			&i.TimeoutSeconds,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Kind,
+			&i.Config,
+			&i.Optional,
+			&i.SecretCfg,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDeployTargets = `-- name: ListDeployTargets :many
 SELECT id, org_id, name, type, runs_on, config, created_at, updated_at, secret_cfg, stored_secret_keys, credential_id FROM deploy_targets WHERE org_id = $1 ORDER BY lower(name), id
 `
@@ -598,41 +823,6 @@ func (q *Queries) ListDeployTargets(ctx context.Context, orgID uuid.UUID) ([]Dep
 			&i.SecretCfg,
 			&i.StoredSecretKeys,
 			&i.CredentialID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listHooks = `-- name: ListHooks :many
-SELECT id, org_id, name, phase, argv, timeout_seconds, created_at, updated_at, kind, target FROM hooks WHERE org_id = $1 ORDER BY lower(name), id
-`
-
-func (q *Queries) ListHooks(ctx context.Context, orgID uuid.UUID) ([]Hook, error) {
-	rows, err := q.db.Query(ctx, listHooks, orgID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Hook{}
-	for rows.Next() {
-		var i Hook
-		if err := rows.Scan(
-			&i.ID,
-			&i.OrgID,
-			&i.Name,
-			&i.Phase,
-			&i.Argv,
-			&i.TimeoutSeconds,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.Kind,
-			&i.Target,
 		); err != nil {
 			return nil, err
 		}
@@ -677,6 +867,64 @@ func (q *Queries) ListLayouts(ctx context.Context, orgID uuid.UUID) ([]OutputSpe
 	return items, nil
 }
 
+const lockAction = `-- name: LockAction :one
+SELECT id, org_id, name, phase, timeout_seconds, created_at, updated_at, kind, config, optional, secret_cfg FROM actions WHERE id = $1 AND org_id = $2 FOR UPDATE
+`
+
+type LockActionParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+// Locks the action row FOR UPDATE before DeleteAction re-checks
+// ActionDependents, so a concurrent grant or group create/update that locks
+// this row FOR SHARE (LockActionsInOrg) either finishes and is seen by the
+// dependents re-check, or blocks behind this delete and later finds the
+// action gone.
+func (q *Queries) LockAction(ctx context.Context, arg LockActionParams) (Action, error) {
+	row := q.db.QueryRow(ctx, lockAction, arg.ID, arg.OrgID)
+	var i Action
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Phase,
+		&i.TimeoutSeconds,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Kind,
+		&i.Config,
+		&i.Optional,
+		&i.SecretCfg,
+	)
+	return i, err
+}
+
+const lockActionGroup = `-- name: LockActionGroup :one
+SELECT id, org_id, name, action_ids, created_at, updated_at FROM action_groups WHERE id = $1 AND org_id = $2 FOR UPDATE
+`
+
+type LockActionGroupParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+// Locks the group row FOR UPDATE before DeleteActionGroup re-checks
+// ActionGroupDependents (see LockAction).
+func (q *Queries) LockActionGroup(ctx context.Context, arg LockActionGroupParams) (ActionGroup, error) {
+	row := q.db.QueryRow(ctx, lockActionGroup, arg.ID, arg.OrgID)
+	var i ActionGroup
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.ActionIds,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const lockCertsForExtra = `-- name: LockCertsForExtra :many
 SELECT id, current_version_id FROM certificates
 WHERE id = ANY($1::uuid[]) AND org_id = $2
@@ -717,37 +965,6 @@ func (q *Queries) LockCertsForExtra(ctx context.Context, arg LockCertsForExtraPa
 		return nil, err
 	}
 	return items, nil
-}
-
-const lockHook = `-- name: LockHook :one
-SELECT id, org_id, name, phase, argv, timeout_seconds, created_at, updated_at, kind, target FROM hooks WHERE id = $1 AND org_id = $2 FOR UPDATE
-`
-
-type LockHookParams struct {
-	ID    uuid.UUID `json:"id"`
-	OrgID uuid.UUID `json:"org_id"`
-}
-
-// Locks the hook row FOR UPDATE before DeleteHook re-checks HookDependents,
-// so a concurrent grant create/update that locks this row FOR SHARE
-// (LockHooksInOrg) either finishes and is seen by the dependents re-check,
-// or blocks behind this delete and later finds the hook gone.
-func (q *Queries) LockHook(ctx context.Context, arg LockHookParams) (Hook, error) {
-	row := q.db.QueryRow(ctx, lockHook, arg.ID, arg.OrgID)
-	var i Hook
-	err := row.Scan(
-		&i.ID,
-		&i.OrgID,
-		&i.Name,
-		&i.Phase,
-		&i.Argv,
-		&i.TimeoutSeconds,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Kind,
-		&i.Target,
-	)
-	return i, err
 }
 
 const lockLayout = `-- name: LockLayout :one
@@ -807,6 +1024,84 @@ func (q *Queries) TargetKeylessGrantCertificate(ctx context.Context, id *uuid.UU
 	return name, err
 }
 
+const updateAction = `-- name: UpdateAction :one
+UPDATE actions SET name = $1, kind = $2, phase = $3, config = $4,
+       secret_cfg = $5, timeout_seconds = $6, optional = $7, updated_at = now()
+WHERE id = $8 AND org_id = $9 RETURNING id, org_id, name, phase, timeout_seconds, created_at, updated_at, kind, config, optional, secret_cfg
+`
+
+type UpdateActionParams struct {
+	Name           string    `json:"name"`
+	Kind           string    `json:"kind"`
+	Phase          string    `json:"phase"`
+	Config         []byte    `json:"config"`
+	SecretCfg      []byte    `json:"secret_cfg"`
+	TimeoutSeconds int32     `json:"timeout_seconds"`
+	Optional       bool      `json:"optional"`
+	ID             uuid.UUID `json:"id"`
+	OrgID          uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) UpdateAction(ctx context.Context, arg UpdateActionParams) (Action, error) {
+	row := q.db.QueryRow(ctx, updateAction,
+		arg.Name,
+		arg.Kind,
+		arg.Phase,
+		arg.Config,
+		arg.SecretCfg,
+		arg.TimeoutSeconds,
+		arg.Optional,
+		arg.ID,
+		arg.OrgID,
+	)
+	var i Action
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Phase,
+		&i.TimeoutSeconds,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Kind,
+		&i.Config,
+		&i.Optional,
+		&i.SecretCfg,
+	)
+	return i, err
+}
+
+const updateActionGroup = `-- name: UpdateActionGroup :one
+UPDATE action_groups SET name = $1, action_ids = $2, updated_at = now()
+WHERE id = $3 AND org_id = $4 RETURNING id, org_id, name, action_ids, created_at, updated_at
+`
+
+type UpdateActionGroupParams struct {
+	Name      string      `json:"name"`
+	ActionIds []uuid.UUID `json:"action_ids"`
+	ID        uuid.UUID   `json:"id"`
+	OrgID     uuid.UUID   `json:"org_id"`
+}
+
+func (q *Queries) UpdateActionGroup(ctx context.Context, arg UpdateActionGroupParams) (ActionGroup, error) {
+	row := q.db.QueryRow(ctx, updateActionGroup,
+		arg.Name,
+		arg.ActionIds,
+		arg.ID,
+		arg.OrgID,
+	)
+	var i ActionGroup
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.ActionIds,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateDeployTarget = `-- name: UpdateDeployTarget :one
 UPDATE deploy_targets SET name = $1, config = $2, secret_cfg = $3,
        stored_secret_keys = COALESCE($4::text[], '{}'), credential_id = $5, updated_at = now()
@@ -846,50 +1141,6 @@ func (q *Queries) UpdateDeployTarget(ctx context.Context, arg UpdateDeployTarget
 		&i.SecretCfg,
 		&i.StoredSecretKeys,
 		&i.CredentialID,
-	)
-	return i, err
-}
-
-const updateHook = `-- name: UpdateHook :one
-UPDATE hooks SET name = $1, phase = $2, argv = $3,
-       kind = $4, target = $5, timeout_seconds = $6, updated_at = now()
-WHERE id = $7 AND org_id = $8 RETURNING id, org_id, name, phase, argv, timeout_seconds, created_at, updated_at, kind, target
-`
-
-type UpdateHookParams struct {
-	Name           string    `json:"name"`
-	Phase          string    `json:"phase"`
-	Argv           []string  `json:"argv"`
-	Kind           string    `json:"kind"`
-	Target         string    `json:"target"`
-	TimeoutSeconds int32     `json:"timeout_seconds"`
-	ID             uuid.UUID `json:"id"`
-	OrgID          uuid.UUID `json:"org_id"`
-}
-
-func (q *Queries) UpdateHook(ctx context.Context, arg UpdateHookParams) (Hook, error) {
-	row := q.db.QueryRow(ctx, updateHook,
-		arg.Name,
-		arg.Phase,
-		arg.Argv,
-		arg.Kind,
-		arg.Target,
-		arg.TimeoutSeconds,
-		arg.ID,
-		arg.OrgID,
-	)
-	var i Hook
-	err := row.Scan(
-		&i.ID,
-		&i.OrgID,
-		&i.Name,
-		&i.Phase,
-		&i.Argv,
-		&i.TimeoutSeconds,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Kind,
-		&i.Target,
 	)
 	return i, err
 }

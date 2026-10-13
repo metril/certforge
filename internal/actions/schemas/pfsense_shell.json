@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pfSense shell command",
+  "description": "Runs a shell command on pfSense through its API, using an existing pfSense deploy target. Runs on the server.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["targetId", "command"],
+  "properties": {
+    "targetId": {"type": "string", "format": "uuid", "title": "Target", "description": "The pfSense deploy target to run on."},
+    "command": {"type": "string", "minLength": 1, "maxLength": 512, "title": "Command", "description": "Command line to run."}
+  }
+}

@@ -26,7 +26,7 @@ var Manifest = []string{
 
 	// 00008_agents.sql
 	"agent_cas", "clients", "enrollment_tokens", "output_specs", "deploy_targets",
-	"hooks", "client_cert_grants", "deployments", "hook_runs",
+	"actions", "client_cert_grants", "deployments", "hook_runs",
 
 	// 00011_issuance_breadth.sql
 	"rate_ledger",
@@ -45,6 +45,9 @@ var Manifest = []string{
 
 	// 00031_deploy_credentials.sql
 	"deploy_credentials",
+
+	// 00033_actions.sql renamed hooks to actions (listed above) and added action_groups.
+	"action_groups",
 }
 
 // TableSum is one table's row count and content hash, as recorded in the

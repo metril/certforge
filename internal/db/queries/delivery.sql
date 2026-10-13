@@ -139,38 +139,86 @@ JOIN deploy_targets t ON t.id = g.deploy_target_id
 WHERE g.deploy_target_id = sqlc.arg(id) AND t.org_id = sqlc.arg(org_id)
 ORDER BY COALESCE(c.name, t.name), ce.name LIMIT 6;
 
--- name: ListHooks :many
-SELECT * FROM hooks WHERE org_id = $1 ORDER BY lower(name), id;
+-- name: ListActions :many
+SELECT * FROM actions WHERE org_id = $1 ORDER BY lower(name), id;
 
--- name: GetHook :one
-SELECT * FROM hooks WHERE id = $1 AND org_id = $2;
+-- name: GetAction :one
+SELECT * FROM actions WHERE id = $1 AND org_id = $2;
 
--- name: LockHook :one
--- Locks the hook row FOR UPDATE before DeleteHook re-checks HookDependents,
--- so a concurrent grant create/update that locks this row FOR SHARE
--- (LockHooksInOrg) either finishes and is seen by the dependents re-check,
--- or blocks behind this delete and later finds the hook gone.
-SELECT * FROM hooks WHERE id = $1 AND org_id = $2 FOR UPDATE;
+-- name: LockAction :one
+-- Locks the action row FOR UPDATE before DeleteAction re-checks
+-- ActionDependents, so a concurrent grant or group create/update that locks
+-- this row FOR SHARE (LockActionsInOrg) either finishes and is seen by the
+-- dependents re-check, or blocks behind this delete and later finds the
+-- action gone.
+SELECT * FROM actions WHERE id = $1 AND org_id = $2 FOR UPDATE;
 
--- name: CreateHook :one
-INSERT INTO hooks (org_id, name, phase, argv, timeout_seconds, kind, target) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *;
+-- name: CreateAction :one
+INSERT INTO actions (org_id, name, kind, phase, config, secret_cfg, timeout_seconds, optional)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *;
 
--- name: UpdateHook :one
-UPDATE hooks SET name = sqlc.arg(name), phase = sqlc.arg(phase), argv = sqlc.arg(argv),
-       kind = sqlc.arg(kind), target = sqlc.arg(target), timeout_seconds = sqlc.arg(timeout_seconds), updated_at = now()
+-- name: UpdateAction :one
+UPDATE actions SET name = sqlc.arg(name), kind = sqlc.arg(kind), phase = sqlc.arg(phase), config = sqlc.arg(config),
+       secret_cfg = sqlc.arg(secret_cfg), timeout_seconds = sqlc.arg(timeout_seconds), optional = sqlc.arg(optional), updated_at = now()
 WHERE id = sqlc.arg(id) AND org_id = sqlc.arg(org_id) RETURNING *;
 
--- name: DeleteHook :execrows
-DELETE FROM hooks WHERE id = $1 AND org_id = $2;
+-- name: DeleteAction :execrows
+DELETE FROM actions WHERE id = $1 AND org_id = $2;
 
--- name: HookGrantCounts :many
-SELECT h.id, count(g.id)::bigint AS grants
-FROM hooks h LEFT JOIN client_cert_grants g ON g.hook_ids @> ARRAY[h.id] AND g.removed_at IS NULL
-WHERE h.id = ANY(sqlc.arg(ids)::uuid[]) GROUP BY h.id;
+-- name: ActionGrantCounts :many
+SELECT a.id, count(g.id)::bigint AS grants
+FROM actions a LEFT JOIN client_cert_grants g ON g.steps @> jsonb_build_array(jsonb_build_object('action', a.id)) AND g.removed_at IS NULL
+WHERE a.id = ANY(sqlc.arg(ids)::uuid[]) GROUP BY a.id;
 
--- name: HookDependents :many
-SELECT c.name AS client_name, ce.name AS certificate_name, (g.removed_at IS NOT NULL)::bool AS removing
-FROM client_cert_grants g JOIN clients c ON c.id = g.client_id JOIN certificates ce ON ce.id = g.cert_id
-WHERE g.hook_ids @> ARRAY[sqlc.arg(hook_id)::uuid]
-  AND EXISTS (SELECT 1 FROM hooks h WHERE h.id = sqlc.arg(hook_id)::uuid AND h.org_id = sqlc.arg(org_id))
-ORDER BY c.name, ce.name LIMIT 6;
+-- name: ActionDependents :many
+-- Up to 6 live or removal-pending grants (by client, or by target for a
+-- server grant) and groups that reference the action.
+SELECT (COALESCE(c.name, t.name))::text AS owner_name, ce.name AS certificate_name, 'grant'::text AS dependent_kind,
+       (g.removed_at IS NOT NULL)::bool AS removing
+FROM client_cert_grants g
+JOIN certificates ce ON ce.id = g.cert_id
+LEFT JOIN clients c ON c.id = g.client_id
+LEFT JOIN deploy_targets t ON t.id = g.deploy_target_id
+WHERE g.steps @> jsonb_build_array(jsonb_build_object('action', sqlc.arg(action_id)::uuid))
+  AND EXISTS (SELECT 1 FROM actions a WHERE a.id = sqlc.arg(action_id)::uuid AND a.org_id = sqlc.arg(org_id))
+UNION ALL
+SELECT ag.name, ''::text, 'group'::text, false
+FROM action_groups ag
+WHERE ag.action_ids @> ARRAY[sqlc.arg(action_id)::uuid] AND ag.org_id = sqlc.arg(org_id)
+ORDER BY 3, 1, 2 LIMIT 6;
+
+-- name: ListActionGroups :many
+SELECT * FROM action_groups WHERE org_id = $1 ORDER BY lower(name), id;
+
+-- name: GetActionGroup :one
+SELECT * FROM action_groups WHERE id = $1 AND org_id = $2;
+
+-- name: LockActionGroup :one
+-- Locks the group row FOR UPDATE before DeleteActionGroup re-checks
+-- ActionGroupDependents (see LockAction).
+SELECT * FROM action_groups WHERE id = $1 AND org_id = $2 FOR UPDATE;
+
+-- name: CreateActionGroup :one
+INSERT INTO action_groups (org_id, name, action_ids) VALUES ($1, $2, $3) RETURNING *;
+
+-- name: UpdateActionGroup :one
+UPDATE action_groups SET name = sqlc.arg(name), action_ids = sqlc.arg(action_ids), updated_at = now()
+WHERE id = sqlc.arg(id) AND org_id = sqlc.arg(org_id) RETURNING *;
+
+-- name: DeleteActionGroup :execrows
+DELETE FROM action_groups WHERE id = $1 AND org_id = $2;
+
+-- name: ActionGroupGrantCounts :many
+SELECT ag.id, count(g.id)::bigint AS grants
+FROM action_groups ag LEFT JOIN client_cert_grants g ON g.steps @> jsonb_build_array(jsonb_build_object('group', ag.id)) AND g.removed_at IS NULL
+WHERE ag.id = ANY(sqlc.arg(ids)::uuid[]) GROUP BY ag.id;
+
+-- name: ActionGroupDependents :many
+SELECT (COALESCE(c.name, t.name))::text AS owner_name, ce.name AS certificate_name, (g.removed_at IS NOT NULL)::bool AS removing
+FROM client_cert_grants g
+JOIN certificates ce ON ce.id = g.cert_id
+LEFT JOIN clients c ON c.id = g.client_id
+LEFT JOIN deploy_targets t ON t.id = g.deploy_target_id
+WHERE g.steps @> jsonb_build_array(jsonb_build_object('group', sqlc.arg(group_id)::uuid))
+  AND EXISTS (SELECT 1 FROM action_groups ag WHERE ag.id = sqlc.arg(group_id)::uuid AND ag.org_id = sqlc.arg(org_id))
+ORDER BY 1, 2 LIMIT 6;

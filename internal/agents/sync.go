@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/metril/certforge/internal/actions"
 	"github.com/metril/certforge/internal/agentproto"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/db/sqlcgen"
@@ -75,19 +76,9 @@ func (s *Service) Assignments(ctx context.Context, c sqlcgen.Client) (agentproto
 	if err != nil {
 		return agentproto.Assignments{}, err
 	}
-	var hookIDs []uuid.UUID
-	for _, r := range rows {
-		hookIDs = append(hookIDs, r.HookIds...)
-	}
-	hooks := map[uuid.UUID]agentproto.HookSpec{}
-	if len(hookIDs) > 0 {
-		hs, err := s.Q.HooksByIDs(ctx, uniq(hookIDs))
-		if err != nil {
-			return agentproto.Assignments{}, err
-		}
-		for _, h := range hs {
-			hooks[h.ID] = agentproto.HookSpec{ID: h.ID, Phase: h.Phase, Argv: h.Argv, Kind: h.Kind, Target: h.Target, TimeoutSeconds: int(h.TimeoutSeconds)}
-		}
+	specsByGrant, err := s.hookSpecs(ctx, rows)
+	if err != nil {
+		return agentproto.Assignments{}, err
 	}
 	openSecrets := s.memoSecretOpener()
 	out := agentproto.Assignments{Revision: cur.DesiredRevision, Grants: []agentproto.Assignment{}, Removed: []agentproto.Removal{}}
@@ -132,11 +123,7 @@ func (s *Service) Assignments(ctx context.Context, c sqlcgen.Client) (agentproto
 		if r.Fingerprint != nil {
 			a.Fingerprint = *r.Fingerprint
 		}
-		for _, id := range r.HookIds {
-			if h, ok := hooks[id]; ok {
-				a.Hooks = append(a.Hooks, h)
-			}
-		}
+		a.Hooks = append(a.Hooks, specsByGrant[r.ID]...)
 		out.Grants = append(out.Grants, a)
 	}
 	s.touch(ctx, c.ID)
@@ -447,4 +434,69 @@ func (s *Service) storeRestartTargets(ctx context.Context, id uuid.UUID, in []ag
 	if err := s.Q.SetClientRestartTargets(ctx, sqlcgen.SetClientRestartTargetsParams{ID: id, RestartTargets: b}); err != nil {
 		s.log().Warn("agents: restart targets not stored", "client", id, "err", err)
 	}
+}
+
+// hookSpecs builds each grant's agent hooks: its steps expanded in order
+// (groups inline), keeping the exec and restart actions, the only kinds an
+// agent runs.
+func (s *Service) hookSpecs(ctx context.Context, rows []sqlcgen.ClientAssignmentsRow) (map[uuid.UUID][]agentproto.HookSpec, error) {
+	parsed := make(map[uuid.UUID][]actions.Step, len(rows))
+	var groupIDs, actionIDs []uuid.UUID
+	for _, r := range rows {
+		steps, err := actions.ParseSteps(r.Steps)
+		if err != nil {
+			continue
+		}
+		parsed[r.ID] = steps
+		for _, st := range steps {
+			if st.Group != nil {
+				groupIDs = append(groupIDs, *st.Group)
+			}
+			if st.Action != nil {
+				actionIDs = append(actionIDs, *st.Action)
+			}
+		}
+	}
+	groups := map[uuid.UUID][]uuid.UUID{}
+	if len(groupIDs) > 0 {
+		gs, err := s.Q.ActionGroupsByIDs(ctx, uniq(groupIDs))
+		if err != nil {
+			return nil, err
+		}
+		for _, g := range gs {
+			groups[g.ID] = g.ActionIds
+			actionIDs = append(actionIDs, g.ActionIds...)
+		}
+	}
+	refs := map[uuid.UUID]actions.ActionRef{}
+	if len(actionIDs) > 0 {
+		as, err := s.Q.ActionsByIDs(ctx, uniq(actionIDs))
+		if err != nil {
+			return nil, err
+		}
+		for _, a := range as {
+			refs[a.ID] = actions.ActionRef{ID: a.ID, Kind: a.Kind, Phase: a.Phase, Optional: a.Optional,
+				TimeoutSeconds: int(a.TimeoutSeconds), Config: a.Config}
+		}
+	}
+	lookup := func(id uuid.UUID) (actions.ActionRef, bool) { r, ok := refs[id]; return r, ok }
+	out := make(map[uuid.UUID][]agentproto.HookSpec, len(parsed))
+	for id, steps := range parsed {
+		expanded, err := actions.Expand(steps, groups, lookup)
+		if err != nil {
+			continue // a dangling reference is skipped, as a deleted hook always was
+		}
+		for _, a := range expanded {
+			if a.Kind != "exec" && a.Kind != "restart" {
+				continue
+			}
+			var cfg struct {
+				Argv   []string `json:"argv"`
+				Target string   `json:"target"`
+			}
+			_ = json.Unmarshal(a.Config, &cfg)
+			out[id] = append(out[id], agentproto.HookSpec{ID: a.ID, Phase: a.Phase, Argv: cfg.Argv, Kind: a.Kind, Target: cfg.Target, TimeoutSeconds: a.TimeoutSeconds})
+		}
+	}
+	return out, nil
 }

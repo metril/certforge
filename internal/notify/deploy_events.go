@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
+
 	"github.com/metril/certforge/internal/deploy"
 )
 
@@ -48,3 +50,21 @@ func (d DeployEvents) DeployFailed(ctx context.Context, f deploy.DeployFailure) 
 
 // compile-time check that DeployEvents satisfies deploy.Events.
 var _ deploy.Events = DeployEvents{}
+
+// DeployNotifier implements deploy.Notifier by sending straight to a channel.
+type DeployNotifier struct {
+	S *Service
+}
+
+// SendDeploy implements deploy.Notifier.
+func (d DeployNotifier) SendDeploy(ctx context.Context, orgID, channelID uuid.UUID, n deploy.DeployNotice) error {
+	return d.S.SendDirect(ctx, orgID, channelID, Event{
+		Kind:     "deploy.notice",
+		Severity: "info",
+		Resource: Resource{Type: "grant", ID: n.GrantID.String(), Name: n.CertName + " → " + n.TargetName},
+		Summary:  fmt.Sprintf("Certificate %s deployed to %s (%s)", n.CertName, n.TargetName, n.Fingerprint),
+		Details:  map[string]any{"target": n.TargetName, "certificate": n.CertName, "fingerprint": n.Fingerprint},
+	})
+}
+
+var _ deploy.Notifier = DeployNotifier{}

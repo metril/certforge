@@ -123,7 +123,7 @@ const READY: Record<string, RegExp> = {
   [`/o/${E2E.orgSlug}/clients/new`]: /^Enroll client$/,
   [`/o/${E2E.orgSlug}/delivery/targets`]: /^Delivery$/,
   [`/o/${E2E.orgSlug}/delivery/layouts`]: /^Delivery$/,
-  [`/o/${E2E.orgSlug}/delivery/hooks`]: /^Delivery$/,
+  [`/o/${E2E.orgSlug}/delivery/actions`]: /^Delivery$/,
   '/settings/agents': /^Agents$/,
 };
 

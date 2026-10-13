@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Send notification",
+  "description": "Sends a message through a notification channel. Runs on the server.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["channelId"],
+  "properties": {
+    "channelId": {"type": "string", "format": "uuid", "title": "Channel", "description": "The notification channel to send through."}
+  }
+}

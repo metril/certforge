@@ -14,7 +14,7 @@ This page covers who can do what in CertForge: organizations and sites, users, r
 |---|---|
 | **Viewer** | Read everything except secrets and the audit log. |
 | **Auditor** | Everything a viewer can, plus read the **Audit log**. |
-| **Operator** | Everything a viewer can, plus issue, renew and edit certificates, ACME accounts, DNS credentials, clients and grants, delivery layouts, targets and hooks, and alerts. |
+| **Operator** | Everything a viewer can, plus issue, renew and edit certificates, ACME accounts, DNS credentials, clients and grants, delivery layouts, targets, actions and action groups, and alerts. |
 | **Org admin** | Everything inside one organization (bindings, API keys, sites) except the actions below that need a global role. |
 | **Admin** | Everything, in every organization. |
 
@@ -78,7 +78,7 @@ An API key lets a script or `cfctl` call the API. A key can do at most what its 
 | `dnscreds:reveal` | Show a stored DNS credential secret |
 | `deploycreds:reveal` | Show a stored deploy credential secret |
 | `clients:read`, `clients:write` | View clients; create and change clients and grants |
-| `delivery:read`, `delivery:write` | View, and change layouts, targets and hooks |
+| `delivery:read`, `delivery:write` | View, and change layouts, targets, actions and action groups |
 | `alerts:read`, `alerts:write` | View, and change channels and monitors |
 | `admin` | Everything the creator can do |
 

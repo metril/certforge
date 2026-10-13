@@ -1,16 +1,15 @@
 import { useDirty } from '@/lib/useDirty';
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, CircleAlert, TriangleAlert } from 'lucide-react';
+import { CircleAlert, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
 import { ApiError, errorMessage, fieldOfTitle } from '@/api/errors';
 import { allCertificatesPickerQuery, plural } from '@/api/queries/certificates';
-import { deployTargetsQuery, hooksQuery, layoutsQuery } from '@/api/queries/delivery';
+import { deployTargetsQuery, layoutsQuery } from '@/api/queries/delivery';
 import { metaSchemasQuery } from '@/api/queries/dns';
 import { useCreateGrants, useUpdateGrant, type GrantBatchResult } from '@/api/queries/grants';
-import type { Client, Grant, GrantDelivery } from '@/api/types';
-import { ChipSet } from '@/components/ChipSet';
+import type { Client, Grant, GrantDelivery, GrantStep } from '@/api/types';
 import { Combobox } from '@/components/Combobox';
 import { FormSection } from '@/components/FormSection';
 import { Field } from '@/components/Field';
@@ -24,11 +23,10 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
 import { fieldErrorFromMessage } from '@/forms/uiSchema';
 import { HelpTip } from '@/components/HelpTip';
-import { PHASE_LABEL } from '@/lib/clientStatus';
+import { StepsPicker } from '@/features/delivery/StepsPicker';
 import { help } from '@/lib/help';
-import { useMe } from '@/lib/org';
+import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
-import { IconButton } from '@/components/IconButton';
 
 type Props = { orgId: string; client: Client; grants: Grant[]; editing?: Grant; /** The grant vanished from the poll while the sheet was open: show the snapshot's name and a removed notice, no form. */ removed?: boolean; onOpenChange: (open: boolean) => void };
 
@@ -60,10 +58,9 @@ export function GrantSheet({ orgId, client, grants, editing, removed = false, on
   const certs = useQuery(allCertificatesPickerQuery(orgId));
   const layoutsQ = useQuery(layoutsQuery(orgId));
   const targetsQ = useQuery(deployTargetsQuery(orgId));
-  const hooksQ = useQuery(hooksQuery(orgId));
+  const orgSlug = useOrg().slug;
   const layouts = layoutsQ.data ?? [];
   const targets = targetsQ.data ?? [];
-  const hooks = hooksQ.data ?? [];
   const { data: meta } = useQuery(metaSchemasQuery);
   const create = useCreateGrants(orgId, client.id);
   const update = useUpdateGrant(orgId);
@@ -71,7 +68,7 @@ export function GrantSheet({ orgId, client, grants, editing, removed = false, on
   const [delivery, setDelivery] = useState<GrantDelivery>(editing?.delivery ?? 'push');
   const [layoutId, setLayoutId] = useState<string | undefined>(editing?.layoutId ?? undefined);
   const [targetId, setTargetId] = useState<string | undefined>(editing?.deployTargetId ?? undefined);
-  const [hookIds, setHookIds] = useState<string[]>(editing?.hookIds ?? []);
+  const [steps, setSteps] = useState<GrantStep[]>(editing?.steps ?? []);
   const [autoRemediate, setAutoRemediate] = useState(editing?.autoRemediate ?? false);
   const [errors, setErrors] = useState<{ certs?: string; where?: string }>({});
   const [failures, setFailures] = useState<GrantBatchResult['failed']>([]);
@@ -87,7 +84,7 @@ export function GrantSheet({ orgId, client, grants, editing, removed = false, on
   const showOpts = !!targetId && !!grantSchema;
   // Unset-equivalent values (false, '', []) are dropped: the form fills defaults such as
   // defaultCert: false on mount, possibly after the first-render snapshot (meta loads async).
-  const dirty = useDirty({ certIds, delivery, layoutId, targetId, hookIds, autoRemediate, targetOptions: Object.fromEntries(Object.entries(targetOptions).filter(([, v]) => v !== false && v !== '' && v !== undefined && !(Array.isArray(v) && v.length === 0))) });
+  const dirty = useDirty({ certIds, delivery, layoutId, targetId, steps, autoRemediate, targetOptions: Object.fromEntries(Object.entries(targetOptions).filter(([, v]) => v !== false && v !== '' && v !== undefined && !(Array.isArray(v) && v.length === 0))) });
   // A 422 titles the field "Invalid targetOptions.<key>"; failing that, match a
   // schema key named in the message. A 409 about the default certificate belongs
   // under its switch.
@@ -114,14 +111,6 @@ export function GrantSheet({ orgId, client, grants, editing, removed = false, on
     .map((c) => ({ value: c.id, label: c.name, hint: c.commonName, keywords: [c.commonName, ...c.sans] }));
   const certName = (id: string) => certs.data?.find((c) => c.id === id)?.name ?? id;
   const typeName = (code: string) => meta?.deployTargets.find((t) => t.code === code)?.name ?? code;
-  // hookIds is the run order sent to the server; ChipSet appends picks, the
-  // ordered list below shows and changes that order.
-  const moveHook = (i: number, d: -1 | 1) => {
-    const next = [...hookIds];
-    [next[i], next[i + d]] = [next[i + d]!, next[i]!];
-    setHookIds(next);
-  };
-
   const submit = async () => {
     const next: typeof errors = {};
     if (!editing && certIds.length === 0) next.certs = 'Pick at least one certificate.';
@@ -132,7 +121,7 @@ export function GrantSheet({ orgId, client, grants, editing, removed = false, on
     setOptsExtra(null);
     if (next.certs || next.where) return;
     if (showOpts && !optsRef.current?.validate()) return;
-    const rest = { delivery, layoutId: layoutId ?? null, deployTargetId: targetId ?? null, hookIds, autoRemediate, targetOptions: showOpts ? targetOptions : {} };
+    const rest = { delivery, layoutId: layoutId ?? null, deployTargetId: targetId ?? null, steps, autoRemediate, targetOptions: showOpts ? targetOptions : {} };
     if (editing) {
       try {
         await update.mutateAsync({ id: editing.id, body: rest });
@@ -271,55 +260,8 @@ export function GrantSheet({ orgId, client, grants, editing, removed = false, on
               />
             </div>
           )}
-          <FormSection title="Advanced" collapsible count={(hookIds.length > 0 ? 1 : 0) + (autoRemediate ? 1 : 0)}>
-            <Field id="grant-hooks" label="Hooks" help="grant.hooks" optional>
-              <QueryField label="hooks" q={hooksQ}>
-                {hooks.length ? (
-                  <div className="grid gap-2">
-                    <ChipSet
-                      id="grant-hooks"
-                      aria-label="Hooks"
-                      value={hookIds}
-                      onChange={setHookIds}
-                      options={hooks.map((h) => ({ value: h.id, label: h.name, hint: PHASE_LABEL[h.phase] }))}
-                    />
-                    {hookIds.length > 0 && (
-                      <ol aria-label="Hook run order" className="grid gap-1">
-                        {hookIds.map((hid, i) => {
-                          const h = hooks.find((x) => x.id === hid);
-                          const name = h?.name ?? hid;
-                          return (
-                            <li key={hid} className="flex min-h-9 items-center gap-2 rounded-md border border-border px-2 text-sm">
-                              <span className="w-5 text-right tabular-nums text-ink-muted">{i + 1}.</span>
-                              <span className="min-w-0 flex-1 truncate">{name}</span>
-                              {h && <span className="text-xs text-ink-muted">{PHASE_LABEL[h.phase]}</span>}
-                              {h?.kind === 'restart' && client.restartTargets.length > 0 && !client.restartTargets.some((t) => t.allowed && t.target === h.target) && (
-                                <ToneChip tone="expiring" icon={TriangleAlert} label="Not allowed on this agent" title={`${h.target} is not in ${client.name}'s CF_RESTART_ALLOW`} />
-                              )}
-                              <IconButton variant="ghost" size="icon-sm" className="size-7" label={`Move ${name} up`} disabled={i === 0} onClick={() => moveHook(i, -1)}>
-                                <ArrowUp className="size-3.5" aria-hidden />
-                              </IconButton>
-                              <IconButton
-                                variant="ghost"
-                                size="icon-sm"
-                                className="size-7"
-                                label={`Move ${name} down`}
-                                disabled={i === hookIds.length - 1}
-                                onClick={() => moveHook(i, 1)}
-                              >
-                                <ArrowDown className="size-3.5" aria-hidden />
-                              </IconButton>
-                            </li>
-                          );
-                        })}
-                      </ol>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-sm text-ink-muted">No hooks in this org.</p>
-                )}
-              </QueryField>
-            </Field>
+          <FormSection title="Advanced" collapsible count={(steps.length > 0 ? 1 : 0) + (autoRemediate ? 1 : 0)}>
+            <StepsPicker orgId={orgId} runsOn="agent" value={steps} onChange={setSteps} restartTargets={client.restartTargets} newActionHref={`/o/${orgSlug}/delivery/actions?edit=new`} />
             <SwitchField
               id="grant-auto"
               label="Auto-remediate"

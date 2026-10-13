@@ -24,24 +24,6 @@ const pfMaxRestartKeys = 64
 // pfKeyRe matches every service key pfServices.Keyed can produce.
 var pfKeyRe = regexp.MustCompile(`^(webgui|ipsec|openvpn:[a-z]{1,16}:[0-9]{1,9}|captiveportal:[A-Za-z0-9_.-]{1,64}|package:[A-Za-z0-9_.+-]{1,64}|service:[A-Za-z0-9_.-]{1,64})$`)
 
-const pfSenseGrantSchema = `{
-  "type": "object",
-  "additionalProperties": false,
-  "properties": {
-    "pfsenseRestart": {
-      "type": "object",
-      "title": "Restart services",
-      "description": "Which services that use the certificate to restart after deploying. Unset uses the target's Restart services option.",
-      "additionalProperties": false,
-      "required": ["mode"],
-      "properties": {
-        "mode": {"type": "string", "enum": ["all", "selected", "none"]},
-        "services": {"type": "array", "maxItems": 64, "items": {"type": "string", "pattern": "^[A-Za-z0-9_.+:-]{1,80}$"}}
-      }
-    }
-  }
-}`
-
 // PfRestart is a pfSense grant's choice of services to restart.
 type PfRestart struct {
 	Mode     string   `json:"mode"`
@@ -51,14 +33,6 @@ type PfRestart struct {
 // PfSenseGrantOptions are a pfsense grant's own options (targetOptions).
 type PfSenseGrantOptions struct {
 	Restart *PfRestart `json:"pfsenseRestart,omitempty"`
-}
-
-// GrantSchema implements targets.GrantOptions.
-func (PfSense) GrantSchema() json.RawMessage { return json.RawMessage(pfSenseGrantSchema) }
-
-// ParseGrantOptions implements targets.GrantOptions.
-func (PfSense) ParseGrantOptions(raw json.RawMessage) (any, error) {
-	return ParsePfSenseGrantOptions(raw)
 }
 
 // ParsePfSenseGrantOptions decodes and validates a grant's pfsense options;

@@ -215,7 +215,7 @@ func (b *Builder) loadDelivery(ctx context.Context, orgID uuid.UUID, in *Input) 
 	for _, t := range ts {
 		in.Targets = append(in.Targets, Item{ID: t.ID, Name: t.Name, Detail: t.RunsOn})
 	}
-	hs, err := b.Q.ListHooks(ctx, orgID)
+	hs, err := b.Q.ListActions(ctx, orgID)
 	if err != nil {
 		return err
 	}
@@ -234,7 +234,7 @@ func (b *Builder) loadGrants(ctx context.Context, orgID uuid.UUID, in *Input) er
 	}
 	for _, g := range rows {
 		in.Grants = append(in.Grants, Grant{CertID: g.CertID, ClientID: g.ClientID, LayoutID: g.OutputSpecID,
-			TargetID: g.DeployTargetID, HookIDs: g.HookIds, State: g.State, Error: g.Error,
+			TargetID: g.DeployTargetID, HookIDs: stepActionIDs(g.Steps), State: g.State, Error: g.Error,
 			DeployedAt: agentDeployedAt(g.State, g.StateChangedAt), UpdatedAt: &g.DeploymentUpdatedAt})
 	}
 	srows, err := b.Q.ServerGrantViews(ctx, sqlcgen.ServerGrantViewsParams{OrgID: orgID})
@@ -242,7 +242,7 @@ func (b *Builder) loadGrants(ctx context.Context, orgID uuid.UUID, in *Input) er
 		return err
 	}
 	for _, g := range srows {
-		gr := Grant{CertID: g.CertID, LayoutID: g.OutputSpecID, TargetID: g.DeployTargetID, HookIDs: g.HookIds,
+		gr := Grant{CertID: g.CertID, LayoutID: g.OutputSpecID, TargetID: g.DeployTargetID, HookIDs: stepActionIDs(g.Steps),
 			DeployedAt: g.DeployedAt, UpdatedAt: g.DeploymentUpdatedAt}
 		if g.Status != nil {
 			gr.State = *g.Status
@@ -307,4 +307,21 @@ func agentDeployedAt(state string, changed time.Time) *time.Time {
 		return nil
 	}
 	return &changed
+}
+
+// stepActionIDs returns the action ids named directly by a grant's steps.
+func stepActionIDs(raw []byte) []uuid.UUID {
+	var steps []struct {
+		Action *uuid.UUID `json:"action"`
+	}
+	if json.Unmarshal(raw, &steps) != nil {
+		return nil
+	}
+	var ids []uuid.UUID
+	for _, st := range steps {
+		if st.Action != nil {
+			ids = append(ids, *st.Action)
+		}
+	}
+	return ids
 }

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -145,7 +146,8 @@ func seedAllTables(t *testing.T, ctx context.Context, pool *pgxpool.Pool) { //no
 	outputSpec := scanID(`INSERT INTO output_specs (org_id, name) VALUES ($1, 'output1') RETURNING id`, org)
 	deployCred := scanID(`INSERT INTO deploy_credentials (org_id, name, kind, secret_cfg) VALUES ($1, 'cred1', 'password', E'\\x00') RETURNING id`, org)
 	target := scanID(`INSERT INTO deploy_targets (org_id, name, type, runs_on, credential_id) VALUES ($1, 'target1', 'traefik', 'agent', $2) RETURNING id`, org, deployCred)
-	exec(`INSERT INTO hooks (org_id, name, phase, argv) VALUES ($1, 'hook1', 'pre_deploy', '{/bin/true}')`, org)
+	action := scanID(`INSERT INTO actions (org_id, name, phase, kind, config) VALUES ($1, 'hook1', 'pre_deploy', 'exec', '{"argv":["/bin/true"]}') RETURNING id`, org)
+	exec(`INSERT INTO action_groups (org_id, name, action_ids) VALUES ($1, 'group1', ARRAY[$2::uuid])`, org, action)
 
 	grant := scanID(`INSERT INTO client_cert_grants (client_id, cert_id, output_spec_id) VALUES ($1, $2, $3) RETURNING id`, client, cert, outputSpec)
 	// target_options (00026) is past the load floor; seed it only where the
@@ -342,17 +344,34 @@ func TestWriteUnusableSpoolFallsBackToMemory(t *testing.T) {
 func TestRestoreLoadsAtMaxVersion(t *testing.T) {
 	ctx := context.Background()
 	srcPool := dbtest.Empty(t)
-	if err := db.MigrateTo(ctx, srcPool, backup.MinMigrationVersion); err != nil {
+	if err := db.MigrateTo(ctx, srcPool, 31); err != nil {
 		t.Fatal(err)
 	}
 	srcQ := sqlcgen.New(srcPool)
-	seedAllTables(t, ctx, srcPool)
-	be := newBackupEnv(srcQ, testKey(2))
-	opts := be.writeOpts(ctx, t)
-
-	if _, err := srcPool.Exec(ctx, `UPDATE goose_db_version SET is_applied = false WHERE version_id >= 13`); err != nil {
+	var org, cert, tgt, hook uuid.UUID
+	for _, q := range []struct {
+		id  *uuid.UUID
+		sql string
+		a   func() []any
+	}{
+		{&org, `INSERT INTO orgs (slug, name) VALUES ('old', 'Old') RETURNING id`, nil},
+		{&cert, `INSERT INTO certificates (org_id, name, common_name) VALUES ($1, 'c', 'c.example.test') RETURNING id`, func() []any { return []any{org} }},
+		{&tgt, `INSERT INTO deploy_targets (org_id, name, type, runs_on) VALUES ($1, 't', 'traefik', 'agent') RETURNING id`, func() []any { return []any{org} }},
+		{&hook, `INSERT INTO hooks (org_id, name, phase, argv) VALUES ($1, 'h1', 'pre_deploy', ARRAY['/bin/true']) RETURNING id`, func() []any { return []any{org} }},
+	} {
+		var args []any
+		if q.a != nil {
+			args = q.a()
+		}
+		if err := srcPool.QueryRow(ctx, q.sql, args...).Scan(q.id); err != nil {
+			t.Fatalf("seed %q: %v", q.sql, err)
+		}
+	}
+	if _, err := srcPool.Exec(ctx, `INSERT INTO client_cert_grants (deploy_target_id, cert_id, hook_ids) VALUES ($1, $2, ARRAY[$3::uuid])`, tgt, cert, hook); err != nil {
 		t.Fatal(err)
 	}
+	be := newBackupEnv(srcQ, testKey(2))
+	opts := be.writeOpts(ctx, t)
 
 	var archive bytes.Buffer
 	if _, err := backup.Write(ctx, srcPool, &archive, opts); err != nil {
@@ -364,11 +383,16 @@ func TestRestoreLoadsAtMaxVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("restore: %v", err)
 	}
-	if header.MigrationVersion != 12 {
-		t.Fatalf("header.MigrationVersion = %d, want 12 (unchanged, only the load target is raised)", header.MigrationVersion)
+	if header.MigrationVersion != 31 {
+		t.Fatalf("header.MigrationVersion = %d, want 31", header.MigrationVersion)
 	}
-	if v, err := db.Version(ctx, dstPool); err != nil || v < 13 {
-		t.Fatalf("db.Version = %d, err = %v, want >= 13", v, err)
+	var n int
+	if err := dstPool.QueryRow(ctx, `SELECT count(*) FROM actions WHERE name = 'h1' AND kind = 'exec'`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("actions rows = %d, err = %v, want 1", n, err)
+	}
+	var steps string
+	if err := dstPool.QueryRow(ctx, `SELECT steps::text FROM client_cert_grants WHERE deploy_target_id = $1`, tgt).Scan(&steps); err != nil || !strings.Contains(steps, `"action"`) {
+		t.Fatalf("steps = %q, err = %v, want an action step", steps, err)
 	}
 }
 

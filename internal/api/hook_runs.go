@@ -59,13 +59,13 @@ func (s *Server) ListClientHookRuns(ctx context.Context, r gen.ListClientHookRun
 		n := base64.RawURLEncoding.EncodeToString(b)
 		next = &n
 	}
-	items := make([]gen.HookRun, 0, len(rows))
+	items := make([]gen.ActionRun, 0, len(rows))
 	for _, x := range rows {
-		items = append(items, gen.HookRun{Id: x.ID, GrantId: x.GrantID, HookId: x.HookID, HookName: x.HookName,
-			Phase: gen.HookPhase(x.Phase), Argv: x.Argv, ExitCode: int(x.ExitCode), DurationMs: x.DurationMs,
+		items = append(items, gen.ActionRun{Id: x.ID, GrantId: x.GrantID, ActionId: x.HookID, ActionName: x.ActionName, ActionKind: x.ActionKind,
+			Phase: gen.ActionPhase(x.Phase), Argv: x.Argv, ExitCode: int(x.ExitCode), DurationMs: x.DurationMs,
 			Stdout: x.Stdout, Stderr: x.Stderr, RanAt: x.RanAt})
 	}
-	return gen.ListClientHookRuns200JSONResponse(gen.HookRunList{Items: items, NextCursor: next}), nil
+	return gen.ListClientHookRuns200JSONResponse(gen.ActionRunList{Items: items, NextCursor: next}), nil
 }
 
 // ListTargetHookRuns returns one page of a server-side deploy target's hook
@@ -108,10 +108,11 @@ func (s *Server) ListTargetHookRuns(ctx context.Context, r gen.ListTargetHookRun
 		n := base64.RawURLEncoding.EncodeToString(b)
 		next = &n
 	}
-	items := make([]gen.HookRun, 0, len(rows))
+	items := make([]gen.ActionRun, 0, len(rows))
 	for _, x := range rows {
-		items = append(items, gen.HookRun{Id: x.ID, GrantId: x.GrantID, Phase: gen.HookPhase(x.Phase), Argv: x.Argv,
+		items = append(items, gen.ActionRun{Id: x.ID, GrantId: x.GrantID, ActionId: x.HookID, ActionName: x.ActionName, ActionKind: x.ActionKind,
+			Phase: gen.ActionPhase(x.Phase), Argv: x.Argv,
 			ExitCode: int(x.ExitCode), DurationMs: x.DurationMs, Stdout: x.Stdout, Stderr: x.Stderr, RanAt: x.RanAt})
 	}
-	return gen.ListTargetHookRuns200JSONResponse(gen.HookRunList{Items: items, NextCursor: next}), nil
+	return gen.ListTargetHookRuns200JSONResponse(gen.ActionRunList{Items: items, NextCursor: next}), nil
 }

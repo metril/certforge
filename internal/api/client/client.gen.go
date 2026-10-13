@@ -29,6 +29,34 @@ const (
 	AcmeAccountStatusValid       AcmeAccountStatus = "valid"
 )
 
+// Defines values for ActionKind.
+const (
+	ActionKindExec            ActionKind = "exec"
+	ActionKindHttp            ActionKind = "http"
+	ActionKindNotify          ActionKind = "notify"
+	ActionKindPfsenseRestart  ActionKind = "pfsense_restart"
+	ActionKindPfsenseShell    ActionKind = "pfsense_shell"
+	ActionKindRestart         ActionKind = "restart"
+	ActionKindRouterosRestart ActionKind = "routeros_restart"
+	ActionKindSsh             ActionKind = "ssh"
+	ActionKindTruenasRestart  ActionKind = "truenas_restart"
+	ActionKindVerifyTls       ActionKind = "verify_tls"
+	ActionKindWait            ActionKind = "wait"
+)
+
+// Defines values for ActionPhase.
+const (
+	ActionPhasePostDeploy ActionPhase = "post_deploy"
+	ActionPhasePreDeploy  ActionPhase = "pre_deploy"
+)
+
+// Defines values for ActionSchemaEntryPhaseHint.
+const (
+	ActionSchemaEntryPhaseHintEmpty      ActionSchemaEntryPhaseHint = ""
+	ActionSchemaEntryPhaseHintPostDeploy ActionSchemaEntryPhaseHint = "post_deploy"
+	ActionSchemaEntryPhaseHintPreDeploy  ActionSchemaEntryPhaseHint = "pre_deploy"
+)
+
 // Defines values for AgentCAStatus.
 const (
 	AgentCAStatusActive   AgentCAStatus = "active"
@@ -163,14 +191,14 @@ const (
 
 // Defines values for DeployTargetType.
 const (
-	DeployTargetTypeAuthentik DeployTargetType = "authentik"
-	DeployTargetTypePfsense   DeployTargetType = "pfsense"
-	DeployTargetTypePikvm     DeployTargetType = "pikvm"
-	DeployTargetTypeRouteros  DeployTargetType = "routeros"
-	DeployTargetTypeSsh       DeployTargetType = "ssh"
-	DeployTargetTypeTraefik   DeployTargetType = "traefik"
-	DeployTargetTypeTruenas   DeployTargetType = "truenas"
-	DeployTargetTypeVaultKv   DeployTargetType = "vault-kv"
+	Authentik DeployTargetType = "authentik"
+	Pfsense   DeployTargetType = "pfsense"
+	Pikvm     DeployTargetType = "pikvm"
+	Routeros  DeployTargetType = "routeros"
+	Ssh       DeployTargetType = "ssh"
+	Traefik   DeployTargetType = "traefik"
+	Truenas   DeployTargetType = "truenas"
+	VaultKv   DeployTargetType = "vault-kv"
 )
 
 // Defines values for DeploymentState.
@@ -245,18 +273,6 @@ const (
 const (
 	Pull GrantDelivery = "pull"
 	Push GrantDelivery = "push"
-)
-
-// Defines values for HookKind.
-const (
-	Exec    HookKind = "exec"
-	Restart HookKind = "restart"
-)
-
-// Defines values for HookPhase.
-const (
-	PostDeploy HookPhase = "post_deploy"
-	PreDeploy  HookPhase = "pre_deploy"
 )
 
 // Defines values for ImportAction.
@@ -336,12 +352,6 @@ const (
 const (
 	Legacy P12Encoding = "legacy"
 	Modern P12Encoding = "modern"
-)
-
-// Defines values for PostActionKind.
-const (
-	Pfsense PostActionKind = "pfsense"
-	Ssh     PostActionKind = "ssh"
 )
 
 // Defines values for RateLimitName.
@@ -516,6 +526,192 @@ type AcmeAccountInput struct {
 	// Email Contact email.
 	Email string `json:"email"`
 }
+
+// Action A reusable step a grant runs around a deploy, on an agent or on the server depending on its kind.
+type Action struct {
+	// Config Kind-specific configuration
+	Config map[string]interface{} `json:"config"`
+
+	// CreatedAt Creation time.
+	CreatedAt time.Time `json:"createdAt"`
+
+	// GrantCount Live grants naming it directly as a step.
+	GrantCount int `json:"grantCount"`
+
+	// Id Action id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind What the action does; matches a code from GET /meta/schemas actions. exec and restart run on an agent, every other kind on the server.
+	Kind ActionKind `json:"kind"`
+
+	// Name Name
+	Name string `json:"name"`
+
+	// Optional Server-run actions only: a failure is recorded but never fails the deploy.
+	Optional bool `json:"optional"`
+
+	// OrgId Owning org.
+	OrgId openapi_types.UUID `json:"orgId"`
+
+	// Phase pre_deploy runs before the certificate is written (a failure stops the deploy, unless the action is optional); post_deploy runs after.
+	Phase ActionPhase `json:"phase"`
+
+	// RunsOn Where the target (and its grants) run — an enrolled agent, or this server (a server-side deploy target such as vault-kv).
+	RunsOn RunsOn `json:"runsOn"`
+
+	// SecretKeys Names of the secret config fields that have a stored value.
+	SecretKeys []string `json:"secretKeys"`
+
+	// TimeoutSeconds The step is stopped after this long.
+	TimeoutSeconds int `json:"timeoutSeconds"`
+
+	// UpdatedAt Last change.
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// ActionGroup An ordered list of actions a grant step can name as one unit.
+type ActionGroup struct {
+	// ActionIds Actions in run order.
+	ActionIds []openapi_types.UUID `json:"actionIds"`
+
+	// CreatedAt Creation time.
+	CreatedAt time.Time `json:"createdAt"`
+
+	// GrantCount Live grants naming it as a step.
+	GrantCount int `json:"grantCount"`
+
+	// Id Group id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name
+	Name string `json:"name"`
+
+	// OrgId Owning org.
+	OrgId openapi_types.UUID `json:"orgId"`
+
+	// UpdatedAt Last change.
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// ActionGroupInput An action group's definition.
+type ActionGroupInput struct {
+	// ActionIds Actions in the same org
+	ActionIds []openapi_types.UUID `json:"actionIds"`
+
+	// Name Name
+	Name string `json:"name"`
+}
+
+// ActionGroupList An org's action groups.
+type ActionGroupList struct {
+	// Items Groups sorted by name.
+	Items []ActionGroup `json:"items"`
+}
+
+// ActionInput An action's definition.
+type ActionInput struct {
+	// Config Kind-specific configuration
+	Config map[string]interface{} `json:"config"`
+
+	// Kind What the action does; matches a code from GET /meta/schemas actions. exec and restart run on an agent, every other kind on the server.
+	Kind ActionKind `json:"kind"`
+
+	// Name Name
+	Name string `json:"name"`
+
+	// Optional Applies to server-run actions only (agent-run exec and restart reject true with 422): record a failure but do not fail the deploy.
+	Optional *bool `json:"optional,omitempty"`
+
+	// Phase pre_deploy runs before the certificate is written (a failure stops the deploy, unless the action is optional); post_deploy runs after.
+	Phase ActionPhase `json:"phase"`
+
+	// TimeoutSeconds Seconds before the step is stopped.
+	TimeoutSeconds *int `json:"timeoutSeconds,omitempty"`
+}
+
+// ActionKind What the action does; matches a code from GET /meta/schemas actions. exec and restart run on an agent, every other kind on the server.
+type ActionKind string
+
+// ActionList An org's actions.
+type ActionList struct {
+	// Items Actions sorted by name.
+	Items []Action `json:"items"`
+}
+
+// ActionPhase pre_deploy runs before the certificate is written (a failure stops the deploy, unless the action is optional); post_deploy runs after.
+type ActionPhase string
+
+// ActionRun One action execution an agent reported, or a step the server ran for a server grant or an ssh target.
+type ActionRun struct {
+	// ActionId Action; null once the action is gone.
+	ActionId *openapi_types.UUID `json:"actionId"`
+
+	// ActionKind Action kind (see ActionKind); empty once the action is gone.
+	ActionKind string `json:"actionKind"`
+
+	// ActionName Action name; empty once the action is gone.
+	ActionName string `json:"actionName"`
+
+	// Argv Command or request that ran.
+	Argv []string `json:"argv"`
+
+	// DurationMs Wall time in milliseconds.
+	DurationMs int64 `json:"durationMs"`
+
+	// ExitCode Exit status; -1 when it was not allowed
+	ExitCode int `json:"exitCode"`
+
+	// GrantId Grant; null once the grant is gone.
+	GrantId *openapi_types.UUID `json:"grantId"`
+
+	// Id Run id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Phase pre_deploy runs before the certificate is written (a failure stops the deploy, unless the action is optional); post_deploy runs after.
+	Phase ActionPhase `json:"phase"`
+
+	// RanAt When the server recorded it.
+	RanAt time.Time `json:"ranAt"`
+
+	// Stderr Standard error
+	Stderr string `json:"stderr"`
+
+	// Stdout Standard output
+	Stdout string `json:"stdout"`
+}
+
+// ActionRunList One page of action runs.
+type ActionRunList struct {
+	// Items Runs
+	Items []ActionRun `json:"items"`
+
+	// NextCursor Cursor for the next page; null on the last page.
+	NextCursor *string `json:"nextCursor"`
+}
+
+// ActionSchemaEntry One action kind.
+type ActionSchemaEntry struct {
+	// Code Stable kind code, for example pfsense_restart.
+	Code string `json:"code"`
+
+	// Name Display name.
+	Name string `json:"name"`
+
+	// PhaseHint The phase the UI suggests; empty for none.
+	PhaseHint ActionSchemaEntryPhaseHint `json:"phaseHint"`
+
+	// RunsOn Where the target (and its grants) run — an enrolled agent, or this server (a server-side deploy target such as vault-kv).
+	RunsOn RunsOn `json:"runsOn"`
+
+	// Schema JSON Schema for the action's config. Fields with secret true are write-only.
+	Schema map[string]interface{} `json:"schema"`
+
+	// TargetTypes Deploy target types config.targetId accepts; empty when the kind has no targetId.
+	TargetTypes []string `json:"targetTypes"`
+}
+
+// ActionSchemaEntryPhaseHint The phase the UI suggests; empty for none.
+type ActionSchemaEntryPhaseHint string
 
 // AdcsConfig Configuration for an adcs CA, enrolling through the AD CS Certificate Enrollment Policy and Enrollment web services (MS-XCEP / MS-WSTEP) with username/password authentication. Revocation is manual in AD CS. On create the policy is read with these credentials and the template must exist.
 type AdcsConfig struct {
@@ -781,7 +977,7 @@ type ApiKeyPolicy struct {
 	MaxLifetimeDays int `json:"maxLifetimeDays"`
 }
 
-// ApiKeyScope What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials (without secrets); dnscreds:reveal also reads DNS credentials and may reveal their stored secrets; deploycreds:reveal also reads deploy credentials and may reveal their stored secrets; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks, and reads deploy credentials (without secrets); alerts covers notification channels, events and external monitors; admin is everything.
+// ApiKeyScope What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials (without secrets); dnscreds:reveal also reads DNS credentials and may reveal their stored secrets; deploycreds:reveal also reads deploy credentials and may reveal their stored secrets; clients:read also reads orgs and sites; delivery covers layouts, deploy targets, actions and action groups, and reads deploy credentials (without secrets); alerts covers notification channels, events and external monitors; admin is everything.
 type ApiKeyScope string
 
 // AriWindow The CA's cached ACME Renewal Information window for a certificate's current version.
@@ -2217,9 +2413,6 @@ type Grant struct {
 	// Deployment Agent-side deployment state; null for a server grant (see serverDeployment).
 	Deployment *Deployment `json:"deployment"`
 
-	// HookIds Hooks in run order.
-	HookIds []openapi_types.UUID `json:"hookIds"`
-
 	// Id Grant id.
 	Id openapi_types.UUID `json:"id"`
 
@@ -2229,14 +2422,14 @@ type Grant struct {
 	// MonitorId The grant-owned monitor behind verify; null when none. Server grants only.
 	MonitorId *openapi_types.UUID `json:"monitorId"`
 
-	// PostAction Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only.
-	PostAction *PostAction `json:"postAction"`
-
 	// RunsOn Where the target (and its grants) run — an enrolled agent, or this server (a server-side deploy target such as vault-kv).
 	RunsOn RunsOn `json:"runsOn"`
 
 	// ServerDeployment Server-side deployment state; null for an agent grant (see deployment).
 	ServerDeployment *ServerDeployment `json:"serverDeployment"`
+
+	// Steps Actions and action groups to run around the deploy
+	Steps []GrantStep `json:"steps"`
 
 	// TargetOptions Per-type options for the deploy target
 	TargetOptions map[string]interface{} `json:"targetOptions"`
@@ -2265,11 +2458,11 @@ type GrantInput struct {
 	// DeployTargetId Deploy target in the same org.
 	DeployTargetId *openapi_types.UUID `json:"deployTargetId"`
 
-	// HookIds Hooks in the same org
-	HookIds *[]openapi_types.UUID `json:"hookIds,omitempty"`
-
 	// LayoutId Output layout in the same org.
 	LayoutId *openapi_types.UUID `json:"layoutId"`
+
+	// Steps Actions and action groups in the same org, in run order. An action that runs on the wrong side is 422 on steps[i].
+	Steps *[]GrantStep `json:"steps,omitempty"`
 
 	// TargetOptions Per-type options for the deploy target
 	TargetOptions *map[string]interface{} `json:"targetOptions,omitempty"`
@@ -2279,6 +2472,23 @@ type GrantInput struct {
 type GrantList struct {
 	// Items Grants sorted by certificate name.
 	Items []Grant `json:"items"`
+}
+
+// GrantStep One entry of a grant's ordered steps. Steps expand in order (groups inline) and split by each action's phase; at most 32 actions after expansion, and every action must run where the grant does (agent grants take exec and restart, server grants every other kind).
+type GrantStep struct {
+	union json.RawMessage
+}
+
+// GrantStepAction A grant step that runs one action.
+type GrantStepAction struct {
+	// Action Action in the grant's org.
+	Action openapi_types.UUID `json:"action"`
+}
+
+// GrantStepGroup A grant step that runs every action of a group, in the group's order.
+type GrantStepGroup struct {
+	// Group Action group in the grant's org.
+	Group openapi_types.UUID `json:"group"`
 }
 
 // GrantUpdate A grant's replaceable fields; all are sent.
@@ -2292,14 +2502,11 @@ type GrantUpdate struct {
 	// DeployTargetId Deploy target in the same org.
 	DeployTargetId *openapi_types.UUID `json:"deployTargetId"`
 
-	// HookIds Hooks in run order.
-	HookIds []openapi_types.UUID `json:"hookIds"`
-
 	// LayoutId Output layout in the same org.
 	LayoutId *openapi_types.UUID `json:"layoutId"`
 
-	// PostAction Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only.
-	PostAction *PostAction `json:"postAction"`
+	// Steps Actions and action groups in run order. An action that runs on the wrong side is 422 on steps[i]. A server grant with steps needs delivery:write.
+	Steps []GrantStep `json:"steps"`
 
 	// TargetOptions Per-type options for the deploy target
 	TargetOptions map[string]interface{} `json:"targetOptions"`
@@ -2321,120 +2528,6 @@ type GrantVerify struct {
 
 	// Sni TLS server name to send; omitted or null uses host.
 	Sni *string `json:"sni"`
-}
-
-// Hook A command an agent runs around a deploy, only if its argv[0] is in the agent's CF_HOOK_ALLOW.
-type Hook struct {
-	// Argv Executable path and arguments; never run through a shell.
-	Argv []string `json:"argv"`
-
-	// CreatedAt Creation time.
-	CreatedAt time.Time `json:"createdAt"`
-
-	// GrantCount Live grants using it.
-	GrantCount int `json:"grantCount"`
-
-	// Id Hook id.
-	Id openapi_types.UUID `json:"id"`
-
-	// Kind exec runs an allowlisted command; restart restarts a Docker container or systemd unit listed in the agent's CF_RESTART_ALLOW.
-	Kind HookKind `json:"kind"`
-
-	// Name Name
-	Name string `json:"name"`
-
-	// OrgId Owning org.
-	OrgId openapi_types.UUID `json:"orgId"`
-
-	// Phase pre_deploy runs before files are written (a failure stops the deploy); post_deploy runs after.
-	Phase HookPhase `json:"phase"`
-
-	// Target For a restart hook, docker:<container> or systemd:<unit>; empty for exec.
-	Target string `json:"target"`
-
-	// TimeoutSeconds The process group is killed after this long.
-	TimeoutSeconds int `json:"timeoutSeconds"`
-
-	// UpdatedAt Last change.
-	UpdatedAt time.Time `json:"updatedAt"`
-}
-
-// HookInput A hook's definition.
-type HookInput struct {
-	// Argv Exec only. Absolute executable path
-	Argv []string `json:"argv"`
-
-	// Kind exec (default) or restart.
-	Kind *HookKind `json:"kind,omitempty"`
-
-	// Name Name
-	Name string `json:"name"`
-
-	// Phase pre_deploy runs before files are written (a failure stops the deploy); post_deploy runs after.
-	Phase HookPhase `json:"phase"`
-
-	// Target Required for restart: docker:<container> or systemd:<unit>.
-	Target *string `json:"target,omitempty"`
-
-	// TimeoutSeconds Seconds before the hook is killed.
-	TimeoutSeconds *int `json:"timeoutSeconds,omitempty"`
-}
-
-// HookKind exec runs an allowlisted command; restart restarts a Docker container or systemd unit listed in the agent's CF_RESTART_ALLOW.
-type HookKind string
-
-// HookList An org's hooks.
-type HookList struct {
-	// Items Hooks sorted by name.
-	Items []Hook `json:"items"`
-}
-
-// HookPhase pre_deploy runs before files are written (a failure stops the deploy); post_deploy runs after.
-type HookPhase string
-
-// HookRun One hook execution an agent reported, or a server-side command run for an ssh target or a grant's post action.
-type HookRun struct {
-	// Argv Command that ran.
-	Argv []string `json:"argv"`
-
-	// DurationMs Wall time in milliseconds.
-	DurationMs int64 `json:"durationMs"`
-
-	// ExitCode Exit status; -1 when it was not allowed
-	ExitCode int `json:"exitCode"`
-
-	// GrantId Grant; null once the grant is gone.
-	GrantId *openapi_types.UUID `json:"grantId"`
-
-	// HookId Hook; null once the hook is gone.
-	HookId *openapi_types.UUID `json:"hookId"`
-
-	// HookName Hook name; empty once the hook is gone.
-	HookName string `json:"hookName"`
-
-	// Id Run id.
-	Id openapi_types.UUID `json:"id"`
-
-	// Phase pre_deploy runs before files are written (a failure stops the deploy); post_deploy runs after.
-	Phase HookPhase `json:"phase"`
-
-	// RanAt When the server recorded it.
-	RanAt time.Time `json:"ranAt"`
-
-	// Stderr Standard error
-	Stderr string `json:"stderr"`
-
-	// Stdout Standard output
-	Stdout string `json:"stdout"`
-}
-
-// HookRunList One page of hook runs.
-type HookRunList struct {
-	// Items Runs
-	Items []HookRun `json:"items"`
-
-	// NextCursor Cursor for the next page; null on the last page.
-	NextCursor *string `json:"nextCursor"`
 }
 
 // ImportAction What importCertificates did or would do with this entry.
@@ -2751,6 +2844,9 @@ type MeBinding struct {
 
 // MetaSchemas Pluggable type schemas grouped by kind.
 type MetaSchemas struct {
+	// Actions Action kinds and their config schemas.
+	Actions []ActionSchemaEntry `json:"actions"`
+
 	// DeployCredentials Deploy credential kinds and their field schemas.
 	DeployCredentials []SchemaEntry `json:"deployCredentials"`
 
@@ -2967,7 +3063,7 @@ type P12Encoding string
 
 // PfSenseService One pfSense service that uses a certificate.
 type PfSenseService struct {
-	// Key Stable id for a per-grant restart selection: webgui, openvpn:server:<id>, openvpn:client:<id>, ipsec, captiveportal:<zone>, package:<name>.
+	// Key Stable id for a pfsense_restart action's services list: webgui, openvpn:server:<id>, openvpn:client:<id>, ipsec, captiveportal:<zone>, package:<name>.
 	Key string `json:"key"`
 
 	// Label Human label such as WebGUI, OpenVPN server 1, IPsec, Captive portal zone x, package name.
@@ -2982,24 +3078,6 @@ type PfSenseUsage struct {
 	// Services Services that use the certificate. Empty when nothing uses it.
 	Services []PfSenseService `json:"services"`
 }
-
-// PostAction One command run after a server grant deploys. Kind ssh runs it over SSH using an existing ssh or pikvm deploy target's host, credentials and host key. Kind pfsense runs it as a shell command on a firewall through an existing pfsense deploy target.
-type PostAction struct {
-	// Command Command to run on that host.
-	Command string `json:"command"`
-
-	// Kind What runs the command. Kind ssh takes an ssh or pikvm target. Rows saved before kinds existed read as ssh.
-	Kind *PostActionKind `json:"kind,omitempty"`
-
-	// TargetId A deploy target in the same org whose type matches the kind. Rows saved before kinds existed used the name sshTargetId; the server still reads that.
-	TargetId openapi_types.UUID `json:"targetId"`
-
-	// TimeoutSeconds Time allowed for connecting and running.
-	TimeoutSeconds *int `json:"timeoutSeconds,omitempty"`
-}
-
-// PostActionKind What runs the command. Kind ssh takes an ssh or pikvm target. Rows saved before kinds existed read as ssh.
-type PostActionKind string
 
 // Problem RFC 9457 problem details, sent with content type application/problem+json.
 type Problem struct {
@@ -3264,10 +3342,10 @@ type ServerGrantInput struct {
 	// LayoutId Output layout in the same org
 	LayoutId *openapi_types.UUID `json:"layoutId"`
 
-	// PostAction Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only.
-	PostAction *PostAction `json:"postAction"`
+	// Steps Server actions (every kind except exec and restart) to run around the deploy, in order; needs delivery:write. An action that runs on an agent is 422 on steps[i].
+	Steps *[]GrantStep `json:"steps,omitempty"`
 
-	// TargetOptions Per-type options for the deploy target, validated against the type's grantSchema from GET /meta/schemas. A pfSense target takes pfsenseRestart: {mode: all|selected|none, services: [keys]}.
+	// TargetOptions Per-type options for the deploy target, validated against the type's grantSchema from GET /meta/schemas.
 	TargetOptions *map[string]interface{} `json:"targetOptions,omitempty"`
 
 	// Verify A TLS endpoint CertForge polls to confirm the deployed certificate is the one served; a grant-owned monitor, hourly. Null when none. Server grants only.
@@ -4000,6 +4078,18 @@ type UpdateOrgJSONRequestBody = OrgUpdate
 // CreateAcmeAccountJSONRequestBody defines body for CreateAcmeAccount for application/json ContentType.
 type CreateAcmeAccountJSONRequestBody = AcmeAccountInput
 
+// CreateActionGroupJSONRequestBody defines body for CreateActionGroup for application/json ContentType.
+type CreateActionGroupJSONRequestBody = ActionGroupInput
+
+// UpdateActionGroupJSONRequestBody defines body for UpdateActionGroup for application/json ContentType.
+type UpdateActionGroupJSONRequestBody = ActionGroupInput
+
+// CreateActionJSONRequestBody defines body for CreateAction for application/json ContentType.
+type CreateActionJSONRequestBody = ActionInput
+
+// UpdateActionJSONRequestBody defines body for UpdateAction for application/json ContentType.
+type UpdateActionJSONRequestBody = ActionInput
+
 // CreateCaJSONRequestBody defines body for CreateCa for application/json ContentType.
 type CreateCaJSONRequestBody = CAInput
 
@@ -4078,12 +4168,6 @@ type TestDNSCredentialJSONRequestBody = DNSCredentialTestRequest
 // UpdateGrantJSONRequestBody defines body for UpdateGrant for application/json ContentType.
 type UpdateGrantJSONRequestBody = GrantUpdate
 
-// CreateHookJSONRequestBody defines body for CreateHook for application/json ContentType.
-type CreateHookJSONRequestBody = HookInput
-
-// UpdateHookJSONRequestBody defines body for UpdateHook for application/json ContentType.
-type UpdateHookJSONRequestBody = HookInput
-
 // PutOrgIssuanceDefaultsJSONRequestBody defines body for PutOrgIssuanceDefaults for application/json ContentType.
 type PutOrgIssuanceDefaultsJSONRequestBody = IssuanceDefaults
 
@@ -4131,6 +4215,68 @@ type CompleteSetupJSONRequestBody = SetupRequest
 
 // UpdateUserJSONRequestBody defines body for UpdateUser for application/json ContentType.
 type UpdateUserJSONRequestBody = UserUpdate
+
+// AsGrantStepAction returns the union data inside the GrantStep as a GrantStepAction
+func (t GrantStep) AsGrantStepAction() (GrantStepAction, error) {
+	var body GrantStepAction
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromGrantStepAction overwrites any union data inside the GrantStep as the provided GrantStepAction
+func (t *GrantStep) FromGrantStepAction(v GrantStepAction) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeGrantStepAction performs a merge with any union data inside the GrantStep, using the provided GrantStepAction
+func (t *GrantStep) MergeGrantStepAction(v GrantStepAction) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsGrantStepGroup returns the union data inside the GrantStep as a GrantStepGroup
+func (t GrantStep) AsGrantStepGroup() (GrantStepGroup, error) {
+	var body GrantStepGroup
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromGrantStepGroup overwrites any union data inside the GrantStep as the provided GrantStepGroup
+func (t *GrantStep) FromGrantStepGroup(v GrantStepGroup) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeGrantStepGroup performs a merge with any union data inside the GrantStep, using the provided GrantStepGroup
+func (t *GrantStep) MergeGrantStepGroup(v GrantStepGroup) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t GrantStep) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *GrantStep) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -4316,6 +4462,44 @@ type ClientInterface interface {
 
 	// GetAcmeAccount request
 	GetAcmeAccount(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListActionGroups request
+	ListActionGroups(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateActionGroupWithBody request with any body
+	CreateActionGroupWithBody(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateActionGroup(ctx context.Context, orgId OrgId, body CreateActionGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteActionGroup request
+	DeleteActionGroup(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetActionGroup request
+	GetActionGroup(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateActionGroupWithBody request with any body
+	UpdateActionGroupWithBody(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateActionGroup(ctx context.Context, orgId OrgId, id Id, body UpdateActionGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListActions request
+	ListActions(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateActionWithBody request with any body
+	CreateActionWithBody(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateAction(ctx context.Context, orgId OrgId, body CreateActionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteAction request
+	DeleteAction(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAction request
+	GetAction(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateActionWithBody request with any body
+	UpdateActionWithBody(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateAction(ctx context.Context, orgId OrgId, id Id, body UpdateActionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListCas request
 	ListCas(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4582,25 +4766,6 @@ type ClientInterface interface {
 
 	// RedeployGrant request
 	RedeployGrant(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// ListHooks request
-	ListHooks(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// CreateHookWithBody request with any body
-	CreateHookWithBody(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	CreateHook(ctx context.Context, orgId OrgId, body CreateHookJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// DeleteHook request
-	DeleteHook(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// GetHook request
-	GetHook(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// UpdateHookWithBody request with any body
-	UpdateHookWithBody(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	UpdateHook(ctx context.Context, orgId OrgId, id Id, body UpdateHookJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetOrgIssuanceDefaults request
 	GetOrgIssuanceDefaults(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5198,6 +5363,174 @@ func (c *APIClient) DeleteAcmeAccount(ctx context.Context, orgId OrgId, id Id, r
 
 func (c *APIClient) GetAcmeAccount(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetAcmeAccountRequest(c.Server, orgId, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) ListActionGroups(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListActionGroupsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) CreateActionGroupWithBody(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateActionGroupRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) CreateActionGroup(ctx context.Context, orgId OrgId, body CreateActionGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateActionGroupRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) DeleteActionGroup(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteActionGroupRequest(c.Server, orgId, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) GetActionGroup(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetActionGroupRequest(c.Server, orgId, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) UpdateActionGroupWithBody(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateActionGroupRequestWithBody(c.Server, orgId, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) UpdateActionGroup(ctx context.Context, orgId OrgId, id Id, body UpdateActionGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateActionGroupRequest(c.Server, orgId, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) ListActions(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListActionsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) CreateActionWithBody(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateActionRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) CreateAction(ctx context.Context, orgId OrgId, body CreateActionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateActionRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) DeleteAction(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteActionRequest(c.Server, orgId, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) GetAction(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetActionRequest(c.Server, orgId, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) UpdateActionWithBody(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateActionRequestWithBody(c.Server, orgId, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) UpdateAction(ctx context.Context, orgId OrgId, id Id, body UpdateActionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateActionRequest(c.Server, orgId, id, body)
 	if err != nil {
 		return nil, err
 	}
@@ -6362,90 +6695,6 @@ func (c *APIClient) GetGrantPfSenseUsage(ctx context.Context, orgId OrgId, id Id
 
 func (c *APIClient) RedeployGrant(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRedeployGrantRequest(c.Server, orgId, id)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *APIClient) ListHooks(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewListHooksRequest(c.Server, orgId)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *APIClient) CreateHookWithBody(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateHookRequestWithBody(c.Server, orgId, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *APIClient) CreateHook(ctx context.Context, orgId OrgId, body CreateHookJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateHookRequest(c.Server, orgId, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *APIClient) DeleteHook(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDeleteHookRequest(c.Server, orgId, id)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *APIClient) GetHook(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetHookRequest(c.Server, orgId, id)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *APIClient) UpdateHookWithBody(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpdateHookRequestWithBody(c.Server, orgId, id, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *APIClient) UpdateHook(ctx context.Context, orgId OrgId, id Id, body UpdateHookJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpdateHookRequest(c.Server, orgId, id, body)
 	if err != nil {
 		return nil, err
 	}
@@ -8726,6 +8975,440 @@ func NewGetAcmeAccountRequest(server string, orgId OrgId, id Id) (*http.Request,
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewListActionGroupsRequest generates requests for ListActionGroups
+func NewListActionGroupsRequest(server string, orgId OrgId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/action-groups", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateActionGroupRequest calls the generic CreateActionGroup builder with application/json body
+func NewCreateActionGroupRequest(server string, orgId OrgId, body CreateActionGroupJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateActionGroupRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewCreateActionGroupRequestWithBody generates requests for CreateActionGroup with any type of body
+func NewCreateActionGroupRequestWithBody(server string, orgId OrgId, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/action-groups", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteActionGroupRequest generates requests for DeleteActionGroup
+func NewDeleteActionGroupRequest(server string, orgId OrgId, id Id) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/action-groups/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetActionGroupRequest generates requests for GetActionGroup
+func NewGetActionGroupRequest(server string, orgId OrgId, id Id) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/action-groups/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateActionGroupRequest calls the generic UpdateActionGroup builder with application/json body
+func NewUpdateActionGroupRequest(server string, orgId OrgId, id Id, body UpdateActionGroupJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateActionGroupRequestWithBody(server, orgId, id, "application/json", bodyReader)
+}
+
+// NewUpdateActionGroupRequestWithBody generates requests for UpdateActionGroup with any type of body
+func NewUpdateActionGroupRequestWithBody(server string, orgId OrgId, id Id, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/action-groups/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListActionsRequest generates requests for ListActions
+func NewListActionsRequest(server string, orgId OrgId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/actions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateActionRequest calls the generic CreateAction builder with application/json body
+func NewCreateActionRequest(server string, orgId OrgId, body CreateActionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateActionRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewCreateActionRequestWithBody generates requests for CreateAction with any type of body
+func NewCreateActionRequestWithBody(server string, orgId OrgId, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/actions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteActionRequest generates requests for DeleteAction
+func NewDeleteActionRequest(server string, orgId OrgId, id Id) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/actions/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetActionRequest generates requests for GetAction
+func NewGetActionRequest(server string, orgId OrgId, id Id) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/actions/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateActionRequest calls the generic UpdateAction builder with application/json body
+func NewUpdateActionRequest(server string, orgId OrgId, id Id, body UpdateActionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateActionRequestWithBody(server, orgId, id, "application/json", bodyReader)
+}
+
+// NewUpdateActionRequestWithBody generates requests for UpdateAction with any type of body
+func NewUpdateActionRequestWithBody(server string, orgId OrgId, id Id, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/actions/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -12302,223 +12985,6 @@ func NewRedeployGrantRequest(server string, orgId OrgId, id Id) (*http.Request, 
 	return req, nil
 }
 
-// NewListHooksRequest generates requests for ListHooks
-func NewListHooksRequest(server string, orgId OrgId) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/orgs/%s/hooks", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewCreateHookRequest calls the generic CreateHook builder with application/json body
-func NewCreateHookRequest(server string, orgId OrgId, body CreateHookJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewCreateHookRequestWithBody(server, orgId, "application/json", bodyReader)
-}
-
-// NewCreateHookRequestWithBody generates requests for CreateHook with any type of body
-func NewCreateHookRequestWithBody(server string, orgId OrgId, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/orgs/%s/hooks", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewDeleteHookRequest generates requests for DeleteHook
-func NewDeleteHookRequest(server string, orgId OrgId, id Id) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/orgs/%s/hooks/%s", pathParam0, pathParam1)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewGetHookRequest generates requests for GetHook
-func NewGetHookRequest(server string, orgId OrgId, id Id) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/orgs/%s/hooks/%s", pathParam0, pathParam1)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewUpdateHookRequest calls the generic UpdateHook builder with application/json body
-func NewUpdateHookRequest(server string, orgId OrgId, id Id, body UpdateHookJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewUpdateHookRequestWithBody(server, orgId, id, "application/json", bodyReader)
-}
-
-// NewUpdateHookRequestWithBody generates requests for UpdateHook with any type of body
-func NewUpdateHookRequestWithBody(server string, orgId OrgId, id Id, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/orgs/%s/hooks/%s", pathParam0, pathParam1)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("PATCH", queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
 // NewGetOrgIssuanceDefaultsRequest generates requests for GetOrgIssuanceDefaults
 func NewGetOrgIssuanceDefaultsRequest(server string, orgId OrgId) (*http.Request, error) {
 	var err error
@@ -14144,6 +14610,44 @@ type ClientWithResponsesInterface interface {
 	// GetAcmeAccountWithResponse request
 	GetAcmeAccountWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*GetAcmeAccountResponse, error)
 
+	// ListActionGroupsWithResponse request
+	ListActionGroupsWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*ListActionGroupsResponse, error)
+
+	// CreateActionGroupWithBodyWithResponse request with any body
+	CreateActionGroupWithBodyWithResponse(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateActionGroupResponse, error)
+
+	CreateActionGroupWithResponse(ctx context.Context, orgId OrgId, body CreateActionGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateActionGroupResponse, error)
+
+	// DeleteActionGroupWithResponse request
+	DeleteActionGroupWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*DeleteActionGroupResponse, error)
+
+	// GetActionGroupWithResponse request
+	GetActionGroupWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*GetActionGroupResponse, error)
+
+	// UpdateActionGroupWithBodyWithResponse request with any body
+	UpdateActionGroupWithBodyWithResponse(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateActionGroupResponse, error)
+
+	UpdateActionGroupWithResponse(ctx context.Context, orgId OrgId, id Id, body UpdateActionGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateActionGroupResponse, error)
+
+	// ListActionsWithResponse request
+	ListActionsWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*ListActionsResponse, error)
+
+	// CreateActionWithBodyWithResponse request with any body
+	CreateActionWithBodyWithResponse(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateActionResponse, error)
+
+	CreateActionWithResponse(ctx context.Context, orgId OrgId, body CreateActionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateActionResponse, error)
+
+	// DeleteActionWithResponse request
+	DeleteActionWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*DeleteActionResponse, error)
+
+	// GetActionWithResponse request
+	GetActionWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*GetActionResponse, error)
+
+	// UpdateActionWithBodyWithResponse request with any body
+	UpdateActionWithBodyWithResponse(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateActionResponse, error)
+
+	UpdateActionWithResponse(ctx context.Context, orgId OrgId, id Id, body UpdateActionJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateActionResponse, error)
+
 	// ListCasWithResponse request
 	ListCasWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*ListCasResponse, error)
 
@@ -14409,25 +14913,6 @@ type ClientWithResponsesInterface interface {
 
 	// RedeployGrantWithResponse request
 	RedeployGrantWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*RedeployGrantResponse, error)
-
-	// ListHooksWithResponse request
-	ListHooksWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*ListHooksResponse, error)
-
-	// CreateHookWithBodyWithResponse request with any body
-	CreateHookWithBodyWithResponse(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateHookResponse, error)
-
-	CreateHookWithResponse(ctx context.Context, orgId OrgId, body CreateHookJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateHookResponse, error)
-
-	// DeleteHookWithResponse request
-	DeleteHookWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*DeleteHookResponse, error)
-
-	// GetHookWithResponse request
-	GetHookWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*GetHookResponse, error)
-
-	// UpdateHookWithBodyWithResponse request with any body
-	UpdateHookWithBodyWithResponse(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateHookResponse, error)
-
-	UpdateHookWithResponse(ctx context.Context, orgId OrgId, id Id, body UpdateHookJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateHookResponse, error)
 
 	// GetOrgIssuanceDefaultsWithResponse request
 	GetOrgIssuanceDefaultsWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*GetOrgIssuanceDefaultsResponse, error)
@@ -15444,6 +15929,286 @@ func (r GetAcmeAccountResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetAcmeAccountResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListActionGroupsResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *ActionGroupList
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r ListActionGroupsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListActionGroupsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateActionGroupResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON201                   *ActionGroup
+	ApplicationproblemJSON400 *BadRequest
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON409 *Conflict
+	ApplicationproblemJSON413 *PayloadTooLarge
+	ApplicationproblemJSON415 *UnsupportedMediaType
+	ApplicationproblemJSON422 *UnprocessableEntity
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateActionGroupResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateActionGroupResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteActionGroupResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON409 *Conflict
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteActionGroupResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteActionGroupResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetActionGroupResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *ActionGroup
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r GetActionGroupResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetActionGroupResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateActionGroupResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *ActionGroup
+	ApplicationproblemJSON400 *BadRequest
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON409 *Conflict
+	ApplicationproblemJSON413 *PayloadTooLarge
+	ApplicationproblemJSON415 *UnsupportedMediaType
+	ApplicationproblemJSON422 *UnprocessableEntity
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateActionGroupResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateActionGroupResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListActionsResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *ActionList
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r ListActionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListActionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateActionResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON201                   *Action
+	ApplicationproblemJSON400 *BadRequest
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON409 *Conflict
+	ApplicationproblemJSON413 *PayloadTooLarge
+	ApplicationproblemJSON415 *UnsupportedMediaType
+	ApplicationproblemJSON422 *UnprocessableEntity
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateActionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateActionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteActionResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON409 *Conflict
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteActionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteActionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetActionResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *Action
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r GetActionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetActionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateActionResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *Action
+	ApplicationproblemJSON400 *BadRequest
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON409 *Conflict
+	ApplicationproblemJSON413 *PayloadTooLarge
+	ApplicationproblemJSON415 *UnsupportedMediaType
+	ApplicationproblemJSON422 *UnprocessableEntity
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateActionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateActionResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -16547,7 +17312,7 @@ func (r CreateGrantResponse) StatusCode() int {
 type ListClientHookRunsResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
-	JSON200                   *HookRunList
+	JSON200                   *ActionRunList
 	ApplicationproblemJSON400 *BadRequest
 	ApplicationproblemJSON401 *Unauthorized
 	ApplicationproblemJSON403 *Forbidden
@@ -16995,7 +17760,7 @@ func (r CreateServerGrantResponse) StatusCode() int {
 type ListTargetHookRunsResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
-	JSON200                   *HookRunList
+	JSON200                   *ActionRunList
 	ApplicationproblemJSON400 *BadRequest
 	ApplicationproblemJSON401 *Unauthorized
 	ApplicationproblemJSON403 *Forbidden
@@ -17457,146 +18222,6 @@ func (r RedeployGrantResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r RedeployGrantResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type ListHooksResponse struct {
-	Body                      []byte
-	HTTPResponse              *http.Response
-	JSON200                   *HookList
-	ApplicationproblemJSON401 *Unauthorized
-	ApplicationproblemJSON403 *Forbidden
-	ApplicationproblemJSON404 *NotFound
-	ApplicationproblemJSON500 *InternalError
-}
-
-// Status returns HTTPResponse.Status
-func (r ListHooksResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r ListHooksResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type CreateHookResponse struct {
-	Body                      []byte
-	HTTPResponse              *http.Response
-	JSON201                   *Hook
-	ApplicationproblemJSON400 *BadRequest
-	ApplicationproblemJSON401 *Unauthorized
-	ApplicationproblemJSON403 *Forbidden
-	ApplicationproblemJSON404 *NotFound
-	ApplicationproblemJSON409 *Conflict
-	ApplicationproblemJSON413 *PayloadTooLarge
-	ApplicationproblemJSON415 *UnsupportedMediaType
-	ApplicationproblemJSON422 *UnprocessableEntity
-	ApplicationproblemJSON500 *InternalError
-}
-
-// Status returns HTTPResponse.Status
-func (r CreateHookResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r CreateHookResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type DeleteHookResponse struct {
-	Body                      []byte
-	HTTPResponse              *http.Response
-	ApplicationproblemJSON401 *Unauthorized
-	ApplicationproblemJSON403 *Forbidden
-	ApplicationproblemJSON404 *NotFound
-	ApplicationproblemJSON409 *Conflict
-	ApplicationproblemJSON500 *InternalError
-}
-
-// Status returns HTTPResponse.Status
-func (r DeleteHookResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r DeleteHookResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type GetHookResponse struct {
-	Body                      []byte
-	HTTPResponse              *http.Response
-	JSON200                   *Hook
-	ApplicationproblemJSON401 *Unauthorized
-	ApplicationproblemJSON403 *Forbidden
-	ApplicationproblemJSON404 *NotFound
-	ApplicationproblemJSON500 *InternalError
-}
-
-// Status returns HTTPResponse.Status
-func (r GetHookResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetHookResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type UpdateHookResponse struct {
-	Body                      []byte
-	HTTPResponse              *http.Response
-	JSON200                   *Hook
-	ApplicationproblemJSON400 *BadRequest
-	ApplicationproblemJSON401 *Unauthorized
-	ApplicationproblemJSON403 *Forbidden
-	ApplicationproblemJSON404 *NotFound
-	ApplicationproblemJSON409 *Conflict
-	ApplicationproblemJSON413 *PayloadTooLarge
-	ApplicationproblemJSON415 *UnsupportedMediaType
-	ApplicationproblemJSON422 *UnprocessableEntity
-	ApplicationproblemJSON500 *InternalError
-}
-
-// Status returns HTTPResponse.Status
-func (r UpdateHookResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r UpdateHookResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -18922,6 +19547,128 @@ func (c *ClientWithResponses) GetAcmeAccountWithResponse(ctx context.Context, or
 	return ParseGetAcmeAccountResponse(rsp)
 }
 
+// ListActionGroupsWithResponse request returning *ListActionGroupsResponse
+func (c *ClientWithResponses) ListActionGroupsWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*ListActionGroupsResponse, error) {
+	rsp, err := c.ListActionGroups(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListActionGroupsResponse(rsp)
+}
+
+// CreateActionGroupWithBodyWithResponse request with arbitrary body returning *CreateActionGroupResponse
+func (c *ClientWithResponses) CreateActionGroupWithBodyWithResponse(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateActionGroupResponse, error) {
+	rsp, err := c.CreateActionGroupWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateActionGroupResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateActionGroupWithResponse(ctx context.Context, orgId OrgId, body CreateActionGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateActionGroupResponse, error) {
+	rsp, err := c.CreateActionGroup(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateActionGroupResponse(rsp)
+}
+
+// DeleteActionGroupWithResponse request returning *DeleteActionGroupResponse
+func (c *ClientWithResponses) DeleteActionGroupWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*DeleteActionGroupResponse, error) {
+	rsp, err := c.DeleteActionGroup(ctx, orgId, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteActionGroupResponse(rsp)
+}
+
+// GetActionGroupWithResponse request returning *GetActionGroupResponse
+func (c *ClientWithResponses) GetActionGroupWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*GetActionGroupResponse, error) {
+	rsp, err := c.GetActionGroup(ctx, orgId, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetActionGroupResponse(rsp)
+}
+
+// UpdateActionGroupWithBodyWithResponse request with arbitrary body returning *UpdateActionGroupResponse
+func (c *ClientWithResponses) UpdateActionGroupWithBodyWithResponse(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateActionGroupResponse, error) {
+	rsp, err := c.UpdateActionGroupWithBody(ctx, orgId, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateActionGroupResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateActionGroupWithResponse(ctx context.Context, orgId OrgId, id Id, body UpdateActionGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateActionGroupResponse, error) {
+	rsp, err := c.UpdateActionGroup(ctx, orgId, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateActionGroupResponse(rsp)
+}
+
+// ListActionsWithResponse request returning *ListActionsResponse
+func (c *ClientWithResponses) ListActionsWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*ListActionsResponse, error) {
+	rsp, err := c.ListActions(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListActionsResponse(rsp)
+}
+
+// CreateActionWithBodyWithResponse request with arbitrary body returning *CreateActionResponse
+func (c *ClientWithResponses) CreateActionWithBodyWithResponse(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateActionResponse, error) {
+	rsp, err := c.CreateActionWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateActionResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateActionWithResponse(ctx context.Context, orgId OrgId, body CreateActionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateActionResponse, error) {
+	rsp, err := c.CreateAction(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateActionResponse(rsp)
+}
+
+// DeleteActionWithResponse request returning *DeleteActionResponse
+func (c *ClientWithResponses) DeleteActionWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*DeleteActionResponse, error) {
+	rsp, err := c.DeleteAction(ctx, orgId, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteActionResponse(rsp)
+}
+
+// GetActionWithResponse request returning *GetActionResponse
+func (c *ClientWithResponses) GetActionWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*GetActionResponse, error) {
+	rsp, err := c.GetAction(ctx, orgId, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetActionResponse(rsp)
+}
+
+// UpdateActionWithBodyWithResponse request with arbitrary body returning *UpdateActionResponse
+func (c *ClientWithResponses) UpdateActionWithBodyWithResponse(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateActionResponse, error) {
+	rsp, err := c.UpdateActionWithBody(ctx, orgId, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateActionResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateActionWithResponse(ctx context.Context, orgId OrgId, id Id, body UpdateActionJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateActionResponse, error) {
+	rsp, err := c.UpdateAction(ctx, orgId, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateActionResponse(rsp)
+}
+
 // ListCasWithResponse request returning *ListCasResponse
 func (c *ClientWithResponses) ListCasWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*ListCasResponse, error) {
 	rsp, err := c.ListCas(ctx, orgId, reqEditors...)
@@ -19768,67 +20515,6 @@ func (c *ClientWithResponses) RedeployGrantWithResponse(ctx context.Context, org
 		return nil, err
 	}
 	return ParseRedeployGrantResponse(rsp)
-}
-
-// ListHooksWithResponse request returning *ListHooksResponse
-func (c *ClientWithResponses) ListHooksWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*ListHooksResponse, error) {
-	rsp, err := c.ListHooks(ctx, orgId, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseListHooksResponse(rsp)
-}
-
-// CreateHookWithBodyWithResponse request with arbitrary body returning *CreateHookResponse
-func (c *ClientWithResponses) CreateHookWithBodyWithResponse(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateHookResponse, error) {
-	rsp, err := c.CreateHookWithBody(ctx, orgId, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseCreateHookResponse(rsp)
-}
-
-func (c *ClientWithResponses) CreateHookWithResponse(ctx context.Context, orgId OrgId, body CreateHookJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateHookResponse, error) {
-	rsp, err := c.CreateHook(ctx, orgId, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseCreateHookResponse(rsp)
-}
-
-// DeleteHookWithResponse request returning *DeleteHookResponse
-func (c *ClientWithResponses) DeleteHookWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*DeleteHookResponse, error) {
-	rsp, err := c.DeleteHook(ctx, orgId, id, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseDeleteHookResponse(rsp)
-}
-
-// GetHookWithResponse request returning *GetHookResponse
-func (c *ClientWithResponses) GetHookWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*GetHookResponse, error) {
-	rsp, err := c.GetHook(ctx, orgId, id, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetHookResponse(rsp)
-}
-
-// UpdateHookWithBodyWithResponse request with arbitrary body returning *UpdateHookResponse
-func (c *ClientWithResponses) UpdateHookWithBodyWithResponse(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateHookResponse, error) {
-	rsp, err := c.UpdateHookWithBody(ctx, orgId, id, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseUpdateHookResponse(rsp)
-}
-
-func (c *ClientWithResponses) UpdateHookWithResponse(ctx context.Context, orgId OrgId, id Id, body UpdateHookJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateHookResponse, error) {
-	rsp, err := c.UpdateHook(ctx, orgId, id, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseUpdateHookResponse(rsp)
 }
 
 // GetOrgIssuanceDefaultsWithResponse request returning *GetOrgIssuanceDefaultsResponse
@@ -22090,6 +22776,686 @@ func ParseGetAcmeAccountResponse(rsp *http.Response) (*GetAcmeAccountResponse, e
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListActionGroupsResponse parses an HTTP response from a ListActionGroupsWithResponse call
+func ParseListActionGroupsResponse(rsp *http.Response) (*ListActionGroupsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListActionGroupsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ActionGroupList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateActionGroupResponse parses an HTTP response from a CreateActionGroupWithResponse call
+func ParseCreateActionGroupResponse(rsp *http.Response) (*CreateActionGroupResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateActionGroupResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest ActionGroup
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteActionGroupResponse parses an HTTP response from a DeleteActionGroupWithResponse call
+func ParseDeleteActionGroupResponse(rsp *http.Response) (*DeleteActionGroupResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteActionGroupResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetActionGroupResponse parses an HTTP response from a GetActionGroupWithResponse call
+func ParseGetActionGroupResponse(rsp *http.Response) (*GetActionGroupResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetActionGroupResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ActionGroup
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateActionGroupResponse parses an HTTP response from a UpdateActionGroupWithResponse call
+func ParseUpdateActionGroupResponse(rsp *http.Response) (*UpdateActionGroupResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateActionGroupResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ActionGroup
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListActionsResponse parses an HTTP response from a ListActionsWithResponse call
+func ParseListActionsResponse(rsp *http.Response) (*ListActionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListActionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ActionList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateActionResponse parses an HTTP response from a CreateActionWithResponse call
+func ParseCreateActionResponse(rsp *http.Response) (*CreateActionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateActionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Action
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteActionResponse parses an HTTP response from a DeleteActionWithResponse call
+func ParseDeleteActionResponse(rsp *http.Response) (*DeleteActionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteActionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetActionResponse parses an HTTP response from a GetActionWithResponse call
+func ParseGetActionResponse(rsp *http.Response) (*GetActionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetActionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Action
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateActionResponse parses an HTTP response from a UpdateActionWithResponse call
+func ParseUpdateActionResponse(rsp *http.Response) (*UpdateActionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateActionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Action
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest PayloadTooLarge
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest UnsupportedMediaType
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalError
@@ -24784,7 +26150,7 @@ func ParseListClientHookRunsResponse(rsp *http.Response) (*ListClientHookRunsRes
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest HookRunList
+		var dest ActionRunList
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -25872,7 +27238,7 @@ func ParseListTargetHookRunsResponse(rsp *http.Response) (*ListTargetHookRunsRes
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest HookRunList
+		var dest ActionRunList
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -26965,346 +28331,6 @@ func ParseRedeployGrantResponse(rsp *http.Response) (*RedeployGrantResponse, err
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest InternalError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseListHooksResponse parses an HTTP response from a ListHooksWithResponse call
-func ParseListHooksResponse(rsp *http.Response) (*ListHooksResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &ListHooksResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest HookList
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Unauthorized
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Forbidden
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest NotFound
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest InternalError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseCreateHookResponse parses an HTTP response from a CreateHookWithResponse call
-func ParseCreateHookResponse(rsp *http.Response) (*CreateHookResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &CreateHookResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest Hook
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON201 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest BadRequest
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Unauthorized
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Forbidden
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest NotFound
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Conflict
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON409 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
-		var dest PayloadTooLarge
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON413 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
-		var dest UnsupportedMediaType
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON415 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest UnprocessableEntity
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON422 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest InternalError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseDeleteHookResponse parses an HTTP response from a DeleteHookWithResponse call
-func ParseDeleteHookResponse(rsp *http.Response) (*DeleteHookResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &DeleteHookResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Unauthorized
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Forbidden
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest NotFound
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Conflict
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON409 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest InternalError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseGetHookResponse parses an HTTP response from a GetHookWithResponse call
-func ParseGetHookResponse(rsp *http.Response) (*GetHookResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetHookResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest Hook
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Unauthorized
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Forbidden
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest NotFound
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest InternalError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseUpdateHookResponse parses an HTTP response from a UpdateHookWithResponse call
-func ParseUpdateHookResponse(rsp *http.Response) (*UpdateHookResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &UpdateHookResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest Hook
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest BadRequest
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Unauthorized
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Forbidden
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest NotFound
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Conflict
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON409 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
-		var dest PayloadTooLarge
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON413 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
-		var dest UnsupportedMediaType
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON415 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest UnprocessableEntity
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalError

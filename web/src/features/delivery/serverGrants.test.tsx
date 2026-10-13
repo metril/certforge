@@ -3,7 +3,7 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { help } from '@/lib/help';
 import { server } from '@/test/server';
-import { authHandlers, grantServer, makeCert, makeGrant, makeHookRun, makeLayout, makeTarget, meWith, NOW, org, targetTestSecret, targetVaultKv, testSecretSchema, traefikSchema, url, vaultKvSchema } from '@/test/fixtures';
+import { authHandlers, grantServer, makeCert, makeGrant, makeAction, makeActionGroup, makeActionRun, makeLayout, makeTarget, meWith, NOW, org, targetTestSecret, targetVaultKv, testSecretSchema, traefikSchema, url, vaultKvSchema } from '@/test/fixtures';
 import { renderRoute, renderUI } from '@/test/render';
 import { ServerGrantForm } from './ServerGrantForm';
 
@@ -40,6 +40,8 @@ beforeEach(() => {
       HttpResponse.json({ items: [makeCert(), makeCert({ id: 'c-2', name: 'api', commonName: 'api.example.com' })], nextCursor: null }),
     ),
     http.get(url('/orgs/org-1/layouts'), () => HttpResponse.json({ items: [makeLayout()] })),
+    http.get(url('/orgs/org-1/actions'), () => HttpResponse.json({ items: [] })),
+    http.get(url('/orgs/org-1/action-groups'), () => HttpResponse.json({ items: [] })),
     http.post(url('/orgs/org-1/deploy-targets/t-vault-1/grants'), async ({ request }) => {
       posted = await request.json();
       return HttpResponse.json(makeGrant({ id: 'g-new', runsOn: 'server', deployTargetId: 't-vault-1', clientId: null, clientName: null, deployment: null, serverDeployment: grantServer.serverDeployment }), {
@@ -82,7 +84,7 @@ it('create posts certificate and layout', async () => {
   await user.click(within(dialog).getByRole('combobox', { name: 'Layout' }));
   await user.click(await screen.findByRole('option', { name: /^nginx/ }));
   await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
-  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: 'l-1', autoRemediate: false }));
+  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: 'l-1', autoRemediate: false, steps: [] }));
 });
 
 it('creating and deleting a server grant refetches the targets list', async () => {
@@ -107,7 +109,7 @@ it('creating and deleting a server grant refetches the targets list', async () =
   await user.click(within(dialog).getByRole('combobox', { name: 'Certificate' }));
   await user.click(await screen.findByRole('option', { name: /^api/ }));
   await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
-  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null, autoRemediate: false }));
+  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null, autoRemediate: false, steps: [] }));
   await waitFor(() => expect(targetGets).toBeGreaterThan(afterOpen));
   const afterCreate = targetGets;
 
@@ -145,7 +147,7 @@ it('edit sends layout only', async () => {
   await user.click(within(dialog).getByRole('combobox', { name: 'Layout' }));
   await user.click(await screen.findByRole('option', { name: 'Target files' }));
   await user.click(within(dialog).getByRole('button', { name: 'Save' }));
-  await waitFor(() => expect(patched).toEqual({ layoutId: null, autoRemediate: false, verify: null }));
+  await waitFor(() => expect(patched).toEqual({ layoutId: null, autoRemediate: false, verify: null, steps: [] }));
 });
 
 it('redeploy toasts queued', async () => {
@@ -304,202 +306,43 @@ it('stops polling when settled', async () => {
   vi.useRealTimers();
 });
 
-const sshTarget = makeTarget({ id: 't-ssh', name: 'bastion', type: 'ssh', runsOn: 'server', config: { host: 'h' } });
-
-it('create posts the post action', async () => {
-  server.use(http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [makeTarget(), targetVaultKv, sshTarget] })));
-  const { user } = openDetail();
-  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
-  await user.click(await within(dialog).findByRole('button', { name: 'New server grant' }));
-  await user.click(within(dialog).getByRole('combobox', { name: 'Certificate' }));
-  await user.click(await screen.findByRole('option', { name: /^api/ }));
-  await user.click(within(dialog).getByRole('switch', { name: 'Post action' }));
-  await user.click(within(dialog).getByRole('combobox', { name: 'SSH target' }));
-  const opts = await screen.findAllByRole('option');
-  expect(opts.map((o) => o.textContent)).toEqual(['bastion']);
-  await user.click(opts[0]!);
-  await user.type(within(dialog).getByLabelText('Command'), 'systemctl reload nginx');
-  await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
-  await waitFor(() =>
-    expect(posted).toEqual({
-      certificateId: 'c-2',
-      layoutId: null,
-      autoRemediate: false,
-      postAction: { kind: 'ssh', targetId: 't-ssh', command: 'systemctl reload nginx', timeoutSeconds: 60 },
-    }),
+it('create posts the picked steps in order', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/actions'), () => HttpResponse.json({ items: [makeAction({ id: 'a-s', name: 'reload fw', kind: 'ssh', runsOn: 'server' }), makeAction()] })),
+    http.get(url('/orgs/org-1/action-groups'), () => HttpResponse.json({ items: [makeActionGroup({ id: 'ag-s', actionIds: ['a-s'] })] })),
   );
-});
-
-it('post action needs a target and command', async () => {
   const { user } = openDetail();
   const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
   await user.click(await within(dialog).findByRole('button', { name: 'New server grant' }));
   await user.click(within(dialog).getByRole('combobox', { name: 'Certificate' }));
   await user.click(await screen.findByRole('option', { name: /^api/ }));
-  await user.click(within(dialog).getByRole('switch', { name: 'Post action' }));
+  await user.click(within(dialog).getByRole('combobox', { name: 'Add from library' }));
+  expect(screen.queryByRole('option', { name: /reload nginx/ })).not.toBeInTheDocument();
+  await user.click(await screen.findByRole('option', { name: /^reload fw/ }));
+  await user.click(within(dialog).getByRole('combobox', { name: 'Add from library' }));
+  await user.click(await screen.findByRole('option', { name: /^web reload/ }));
+  expect(within(dialog).queryByRole('switch', { name: 'Post action' })).not.toBeInTheDocument();
+  expect(within(dialog).queryByText('Restart services')).not.toBeInTheDocument();
   await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
-  expect(await within(dialog).findByText('Pick an SSH or PiKVM target and enter a command.')).toBeInTheDocument();
-  expect(posted).toBeUndefined();
+  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null, autoRemediate: false, steps: [{ action: 'a-s' }, { group: 'ag-s' }] }));
 });
 
-it('hook runs tab lists the target runs', async () => {
+it('action runs tab lists the target runs', async () => {
   server.use(
     http.get(url('/orgs/org-1/deploy-targets/t-vault-1/hook-runs'), () =>
-      HttpResponse.json({ items: [makeHookRun({ id: 'hr-s', hookId: null, hookName: '', argv: ['ssh', 'bastion', 'systemctl reload nginx'], exitCode: 3, stderr: 'boom' })], nextCursor: null }),
+      HttpResponse.json({ items: [makeActionRun({ id: 'ar-s', actionId: 'a-s', actionName: 'SSH command', actionKind: 'ssh', argv: ['ssh', 'bastion', 'systemctl reload nginx'], exitCode: 3, stderr: 'boom' })], nextCursor: null }),
     ),
   );
   const { user } = openDetail();
   const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
-  await user.click(within(dialog).getByRole('tab', { name: 'Hook runs' }));
-  const list = await within(dialog).findByRole('list', { name: 'Hook runs' });
+  await user.click(within(dialog).getByRole('tab', { name: 'Action runs' }));
+  const list = await within(dialog).findByRole('list', { name: 'Action runs' });
   expect(within(list).getByText('SSH command')).toBeInTheDocument();
   expect(within(list).getByText('ssh bastion systemctl reload nginx')).toBeInTheDocument();
   expect(within(list).getByText('3')).toBeInTheDocument();
 });
 
 const pfTarget = makeTarget({ id: 't-pf', name: 'edge fw', type: 'pfsense', runsOn: 'server', config: { url: 'https://fw.example.net/api' } });
-
-it('pfSense kind prefills the restart command and posts it', async () => {
-  server.use(http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [makeTarget(), targetVaultKv, sshTarget, pfTarget] })));
-  const { user } = openDetail();
-  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
-  await user.click(await within(dialog).findByRole('button', { name: 'New server grant' }));
-  await user.click(within(dialog).getByRole('combobox', { name: 'Certificate' }));
-  await user.click(await screen.findByRole('option', { name: /^api/ }));
-  await user.click(within(dialog).getByRole('switch', { name: 'Post action' }));
-  expect(within(dialog).getByRole('radio', { name: 'SSH' })).toBeChecked();
-  await user.click(within(dialog).getByRole('radio', { name: 'pfSense' }));
-  expect(within(dialog).getByLabelText('Command')).toHaveValue('/etc/rc.restart_webgui');
-  await user.click(within(dialog).getByRole('combobox', { name: 'pfSense target' }));
-  const opts = await screen.findAllByRole('option');
-  expect(opts.map((o) => o.textContent)).toEqual(['edge fw']);
-  await user.click(opts[0]!);
-  await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
-  await waitFor(() =>
-    expect(posted).toEqual({
-      certificateId: 'c-2',
-      layoutId: null,
-      autoRemediate: false,
-      postAction: { kind: 'pfsense', targetId: 't-pf', command: '/etc/rc.restart_webgui', timeoutSeconds: 60 },
-    }),
-  );
-});
-
-it('switching back to SSH clears the prefilled command', async () => {
-  const { user } = openDetail();
-  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
-  await user.click(await within(dialog).findByRole('button', { name: 'New server grant' }));
-  await user.click(within(dialog).getByRole('switch', { name: 'Post action' }));
-  await user.click(within(dialog).getByRole('radio', { name: 'pfSense' }));
-  await user.click(within(dialog).getByRole('radio', { name: 'SSH' }));
-  expect(within(dialog).getByLabelText('Command')).toHaveValue('');
-});
-
-it('pfSense target grants check usage on demand', async () => {
-  let calls = 0;
-  server.use(
-    http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [pfTarget] })),
-    http.get(url('/orgs/org-1/deploy-targets/t-pf/grants'), () => HttpResponse.json([{ ...grantServer, deployTargetId: 't-pf' }])),
-    http.get(url('/orgs/org-1/grants/g-server-1/pfsense-usage'), () => {
-      calls++;
-      return HttpResponse.json(calls === 1 ? { refid: 'abc', services: [{ key: 'webgui', label: 'WebGUI' }, { key: 'openvpn:server:1', label: 'OpenVPN server 1' }] } : { refid: 'abc', services: [] });
-    }),
-  );
-  const { user } = renderRoute('/o/acme/delivery/targets?view=t-pf');
-  const dialog = await screen.findByRole('dialog', { name: 'edge fw' });
-  expect(await within(dialog).findByText('Used on pfSense by')).toBeInTheDocument();
-  expect(calls).toBe(0);
-  await user.click(within(dialog).getByRole('button', { name: 'Check usage' }));
-  const list = await within(dialog).findByRole('list', { name: 'Services' });
-  expect(within(list).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['WebGUI', 'OpenVPN server 1']);
-  await user.click(within(dialog).getByRole('button', { name: 'Check usage' }));
-  expect(await within(dialog).findByText('No services use it')).toBeInTheDocument();
-});
-
-function pfGrantRoutes(options: Record<string, unknown> = {}) {
-  server.use(
-    http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [pfTarget] })),
-    http.get(url('/orgs/org-1/deploy-targets/t-pf/grants'), () => HttpResponse.json([{ ...grantServer, deployTargetId: 't-pf', targetOptions: options }])),
-    http.post(url('/orgs/org-1/deploy-targets/t-pf/grants'), async ({ request }) => {
-      posted = await request.json();
-      return HttpResponse.json({ ...grantServer, id: 'g-new', deployTargetId: 't-pf' }, { status: 201 });
-    }),
-    http.get(url('/orgs/org-1/grants/g-server-1/pfsense-usage'), () =>
-      HttpResponse.json({ refid: 'abc', services: [{ key: 'webgui', label: 'WebGUI' }, { key: 'openvpn:server:1', label: 'OpenVPN server 1' }] }),
-    ),
-  );
-}
-
-it('new pfSense grant: restart mode defaults to all, Only these waits for a first deploy', async () => {
-  pfGrantRoutes();
-  const { user } = renderRoute('/o/acme/delivery/targets?view=t-pf');
-  const dialog = await screen.findByRole('dialog', { name: 'edge fw' });
-  await user.click(await within(dialog).findByRole('button', { name: 'New server grant' }));
-  const group = within(dialog).getByRole('radiogroup', { name: 'Restart services' });
-  expect(within(group).getByRole('radio', { name: 'All that use it' })).toBeChecked();
-  expect(within(group).getByRole('radio', { name: 'Only these' })).toBeDisabled();
-  expect(within(dialog).getByText(/available after the first deploy/)).toBeInTheDocument();
-  await user.click(within(dialog).getByRole('combobox', { name: 'Certificate' }));
-  await user.click(await screen.findByRole('option', { name: /^api/ }));
-  await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
-  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null, autoRemediate: false, verify: { host: 'fw.example.net', port: 443, intervalSeconds: 3600 } }));
-});
-
-it('new pfSense grant posts restart none', async () => {
-  pfGrantRoutes();
-  const { user } = renderRoute('/o/acme/delivery/targets?view=t-pf');
-  const dialog = await screen.findByRole('dialog', { name: 'edge fw' });
-  await user.click(await within(dialog).findByRole('button', { name: 'New server grant' }));
-  await user.click(within(dialog).getByRole('combobox', { name: 'Certificate' }));
-  await user.click(await screen.findByRole('option', { name: /^api/ }));
-  await user.click(within(dialog).getByRole('radio', { name: 'None' }));
-  await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
-  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null, autoRemediate: false, verify: { host: 'fw.example.net', port: 443, intervalSeconds: 3600 }, targetOptions: { pfsenseRestart: { mode: 'none' } } }));
-});
-
-it('editing a pfSense grant toggles services, keeps ones no longer in use, and saves the selection', async () => {
-  pfGrantRoutes({ pfsenseRestart: { mode: 'selected', services: ['webgui', 'ipsec'] } });
-  const { user } = renderRoute('/o/acme/delivery/targets?view=t-pf');
-  const dialog = await screen.findByRole('dialog', { name: 'edge fw' });
-  await user.click(await within(dialog).findByRole('button', { name: 'Edit layout for www' }));
-  expect(within(dialog).getByRole('radio', { name: 'Only these' })).toBeChecked();
-  const chips = await within(dialog).findByRole('toolbar', { name: 'Services to restart' });
-  expect(await within(chips).findByRole('button', { name: 'WebGUI' })).toHaveAttribute('aria-pressed', 'true');
-  expect(within(chips).getByRole('button', { name: 'OpenVPN server 1' })).toHaveAttribute('aria-pressed', 'false');
-  expect(within(chips).getByRole('button', { name: 'ipsec (not in use)' })).toHaveAttribute('aria-pressed', 'true');
-  await user.click(within(chips).getByRole('button', { name: 'OpenVPN server 1' }));
-  await user.click(within(chips).getByRole('button', { name: 'WebGUI' }));
-  await user.click(within(dialog).getByRole('button', { name: 'Save' }));
-  await waitFor(() =>
-    expect(patched).toEqual({ layoutId: 'l-1', autoRemediate: false, verify: null, targetOptions: { pfsenseRestart: { mode: 'selected', services: ['ipsec', 'openvpn:server:1'] } } }),
-  );
-});
-
-it('Only these with nothing picked is refused', async () => {
-  pfGrantRoutes();
-  const { user } = renderRoute('/o/acme/delivery/targets?view=t-pf');
-  const dialog = await screen.findByRole('dialog', { name: 'edge fw' });
-  await user.click(await within(dialog).findByRole('button', { name: 'Edit layout for www' }));
-  await user.click(within(dialog).getByRole('radio', { name: 'Only these' }));
-  await within(dialog).findByRole('button', { name: 'WebGUI' });
-  await user.click(within(dialog).getByRole('button', { name: 'Save' }));
-  expect(await within(dialog).findByText('Pick at least one service, or choose None.')).toBeInTheDocument();
-  expect(patched).toBeUndefined();
-});
-
-it('pfSense grant inherits restartServices false from the target and sends nothing until changed', async () => {
-  pfGrantRoutes();
-  server.use(http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [{ ...pfTarget, config: { url: 'https://fw.example.net/api', restartServices: false } }] })));
-  const { user } = renderRoute('/o/acme/delivery/targets?view=t-pf');
-  const dialog = await screen.findByRole('dialog', { name: 'edge fw' });
-  await user.click(await within(dialog).findByRole('button', { name: 'New server grant' }));
-  expect(await within(dialog).findByRole('radio', { name: 'None' })).toBeChecked();
-  expect(within(dialog).getByText('(target default)')).toBeInTheDocument();
-  await user.click(within(dialog).getByRole('combobox', { name: 'Certificate' }));
-  await user.click(await screen.findByRole('option', { name: /^api/ }));
-  await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
-  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null, autoRemediate: false, verify: { host: 'fw.example.net', port: 443, intervalSeconds: 3600 } }));
-});
 
 it('Save stays disabled until the targets have loaded', async () => {
   let release!: () => void;
@@ -510,12 +353,11 @@ it('Save stays disabled until the targets have loaded', async () => {
       return HttpResponse.json({ items: [pfTarget] });
     }),
   );
-  const editing = { ...grantServer, deployTargetId: 't-pf', targetOptions: { pfsenseRestart: { mode: 'none' } } };
+  const editing = { ...grantServer, deployTargetId: 't-pf' };
   renderUI(<ServerGrantForm orgId="org-1" targetId="t-pf" editing={editing} onBack={() => {}} onDone={() => {}} />);
   expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
   release();
   await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled());
-  expect(screen.getByRole('radio', { name: 'None' })).toBeChecked();
 });
 
 it('vault-kv hides the Verify section', async () => {

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SSH command",
+  "description": "Runs a command on a remote host over SSH, using an existing SSH or PiKVM deploy target for the connection. Runs on the server.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["targetId", "command"],
+  "properties": {
+    "targetId": {"type": "string", "format": "uuid", "title": "Target", "description": "The SSH or PiKVM deploy target to run on."},
+    "command": {"type": "string", "minLength": 1, "maxLength": 512, "title": "Command", "description": "Command line to run."}
+  }
+}

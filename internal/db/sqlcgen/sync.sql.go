@@ -12,6 +12,75 @@ import (
 	"github.com/google/uuid"
 )
 
+const actionGroupsByIDs = `-- name: ActionGroupsByIDs :many
+SELECT id, action_ids FROM action_groups WHERE id = ANY($1::uuid[])
+`
+
+type ActionGroupsByIDsRow struct {
+	ID        uuid.UUID   `json:"id"`
+	ActionIds []uuid.UUID `json:"action_ids"`
+}
+
+func (q *Queries) ActionGroupsByIDs(ctx context.Context, ids []uuid.UUID) ([]ActionGroupsByIDsRow, error) {
+	rows, err := q.db.Query(ctx, actionGroupsByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ActionGroupsByIDsRow{}
+	for rows.Next() {
+		var i ActionGroupsByIDsRow
+		if err := rows.Scan(&i.ID, &i.ActionIds); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const actionsByIDs = `-- name: ActionsByIDs :many
+SELECT id, phase, kind, config, timeout_seconds, optional FROM actions WHERE id = ANY($1::uuid[])
+`
+
+type ActionsByIDsRow struct {
+	ID             uuid.UUID `json:"id"`
+	Phase          string    `json:"phase"`
+	Kind           string    `json:"kind"`
+	Config         []byte    `json:"config"`
+	TimeoutSeconds int32     `json:"timeout_seconds"`
+	Optional       bool      `json:"optional"`
+}
+
+func (q *Queries) ActionsByIDs(ctx context.Context, ids []uuid.UUID) ([]ActionsByIDsRow, error) {
+	rows, err := q.db.Query(ctx, actionsByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ActionsByIDsRow{}
+	for rows.Next() {
+		var i ActionsByIDsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Phase,
+			&i.Kind,
+			&i.Config,
+			&i.TimeoutSeconds,
+			&i.Optional,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const bumpRedeploySeqs = `-- name: BumpRedeploySeqs :exec
 UPDATE client_cert_grants SET redeploy_seq = redeploy_seq + 1, updated_at = now()
 WHERE id = ANY($1::uuid[])
@@ -29,7 +98,7 @@ func (q *Queries) BumpRedeploySeqs(ctx context.Context, ids []uuid.UUID) error {
 
 const clientAssignments = `-- name: ClientAssignments :many
 SELECT g.id, g.cert_id, ce.name AS certificate_name, ce.common_name AS certificate_common_name,
-       ce.sans AS certificate_sans, g.delivery, g.hook_ids, g.removed_at, g.redeploy_seq,
+       ce.sans AS certificate_sans, g.delivery, g.steps, g.removed_at, g.redeploy_seq,
        d.version_id, d.expected, cv.sha256_fp AS fingerprint, t.type AS target_type, t.config AS target_config,
        t.secret_cfg AS target_secret_cfg, g.target_options, dc.kind AS credential_kind, dc.public AS credential_public, dc.secret_cfg AS credential_secret_cfg
 FROM client_cert_grants g
@@ -43,25 +112,25 @@ ORDER BY g.created_at, g.id
 `
 
 type ClientAssignmentsRow struct {
-	ID                    uuid.UUID   `json:"id"`
-	CertID                uuid.UUID   `json:"cert_id"`
-	CertificateName       string      `json:"certificate_name"`
-	CertificateCommonName string      `json:"certificate_common_name"`
-	CertificateSans       []string    `json:"certificate_sans"`
-	Delivery              string      `json:"delivery"`
-	HookIds               []uuid.UUID `json:"hook_ids"`
-	RemovedAt             *time.Time  `json:"removed_at"`
-	RedeploySeq           int64       `json:"redeploy_seq"`
-	VersionID             *uuid.UUID  `json:"version_id"`
-	Expected              []byte      `json:"expected"`
-	Fingerprint           *string     `json:"fingerprint"`
-	TargetType            *string     `json:"target_type"`
-	TargetConfig          []byte      `json:"target_config"`
-	TargetSecretCfg       []byte      `json:"target_secret_cfg"`
-	TargetOptions         []byte      `json:"target_options"`
-	CredentialKind        *string     `json:"credential_kind"`
-	CredentialPublic      []byte      `json:"credential_public"`
-	CredentialSecretCfg   []byte      `json:"credential_secret_cfg"`
+	ID                    uuid.UUID  `json:"id"`
+	CertID                uuid.UUID  `json:"cert_id"`
+	CertificateName       string     `json:"certificate_name"`
+	CertificateCommonName string     `json:"certificate_common_name"`
+	CertificateSans       []string   `json:"certificate_sans"`
+	Delivery              string     `json:"delivery"`
+	Steps                 []byte     `json:"steps"`
+	RemovedAt             *time.Time `json:"removed_at"`
+	RedeploySeq           int64      `json:"redeploy_seq"`
+	VersionID             *uuid.UUID `json:"version_id"`
+	Expected              []byte     `json:"expected"`
+	Fingerprint           *string    `json:"fingerprint"`
+	TargetType            *string    `json:"target_type"`
+	TargetConfig          []byte     `json:"target_config"`
+	TargetSecretCfg       []byte     `json:"target_secret_cfg"`
+	TargetOptions         []byte     `json:"target_options"`
+	CredentialKind        *string    `json:"credential_kind"`
+	CredentialPublic      []byte     `json:"credential_public"`
+	CredentialSecretCfg   []byte     `json:"credential_secret_cfg"`
 }
 
 // t.secret_cfg AS target_secret_cfg (Phase 7A Task 6): agents.Service.Assignments
@@ -87,7 +156,7 @@ func (q *Queries) ClientAssignments(ctx context.Context, clientID *uuid.UUID) ([
 			&i.CertificateCommonName,
 			&i.CertificateSans,
 			&i.Delivery,
-			&i.HookIds,
+			&i.Steps,
 			&i.RemovedAt,
 			&i.RedeploySeq,
 			&i.VersionID,
@@ -262,52 +331,15 @@ func (q *Queries) GrantForBundle(ctx context.Context, arg GrantForBundleParams) 
 	return i, err
 }
 
-const hooksByIDs = `-- name: HooksByIDs :many
-SELECT id, phase, kind, target, argv, timeout_seconds FROM hooks WHERE id = ANY($1::uuid[])
-`
-
-type HooksByIDsRow struct {
-	ID             uuid.UUID `json:"id"`
-	Phase          string    `json:"phase"`
-	Kind           string    `json:"kind"`
-	Target         string    `json:"target"`
-	Argv           []string  `json:"argv"`
-	TimeoutSeconds int32     `json:"timeout_seconds"`
-}
-
-func (q *Queries) HooksByIDs(ctx context.Context, ids []uuid.UUID) ([]HooksByIDsRow, error) {
-	rows, err := q.db.Query(ctx, hooksByIDs, ids)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []HooksByIDsRow{}
-	for rows.Next() {
-		var i HooksByIDsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Phase,
-			&i.Kind,
-			&i.Target,
-			&i.Argv,
-			&i.TimeoutSeconds,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const insertHookRun = `-- name: InsertHookRun :exec
 INSERT INTO hook_runs (client_id, grant_id, hook_id, phase, argv, exit_code, duration_ms, stdout, stderr)
 VALUES ($1, $2::uuid,
-        (SELECT h.id FROM hooks h
+        (SELECT h.id FROM actions h
          WHERE h.id = $3::uuid AND h.org_id = $4
-           AND EXISTS (SELECT 1 FROM client_cert_grants g WHERE g.id = $2::uuid AND h.id = ANY(g.hook_ids))),
+           AND EXISTS (SELECT 1 FROM client_cert_grants g WHERE g.id = $2::uuid
+                       AND (g.steps @> jsonb_build_array(jsonb_build_object('action', h.id))
+                            OR EXISTS (SELECT 1 FROM action_groups ag WHERE ag.action_ids @> ARRAY[h.id]
+                                       AND g.steps @> jsonb_build_array(jsonb_build_object('group', ag.id)))))),
         $5, $6::text[], $7, $8, $9, $10)
 `
 
@@ -325,8 +357,9 @@ type InsertHookRunParams struct {
 }
 
 // hook_id is kept only when the agent-supplied id is one of the grant's own
-// hooks in the client's org; anything else is stored as NULL so a foreign
-// hook's name can never show up in this org's hook run history.
+// actions in the client's org (named directly or through a group); anything
+// else is stored as NULL so a foreign action's name can never show up in this
+// org's run history.
 func (q *Queries) InsertHookRun(ctx context.Context, arg InsertHookRunParams) error {
 	_, err := q.db.Exec(ctx, insertHookRun,
 		arg.ClientID,
@@ -344,13 +377,14 @@ func (q *Queries) InsertHookRun(ctx context.Context, arg InsertHookRunParams) er
 }
 
 const insertServerHookRun = `-- name: InsertServerHookRun :exec
-INSERT INTO hook_runs (client_id, grant_id, deploy_target_id, phase, argv, exit_code, duration_ms, stdout, stderr)
-VALUES (NULL, $1::uuid, $2, $3, $4::text[],
-        $5, $6, $7, $8)
+INSERT INTO hook_runs (client_id, grant_id, hook_id, deploy_target_id, phase, argv, exit_code, duration_ms, stdout, stderr)
+VALUES (NULL, $1::uuid, $2::uuid, $3, $4, $5::text[],
+        $6, $7, $8, $9)
 `
 
 type InsertServerHookRunParams struct {
 	GrantID        *uuid.UUID `json:"grant_id"`
+	HookID         *uuid.UUID `json:"hook_id"`
 	DeployTargetID *uuid.UUID `json:"deploy_target_id"`
 	Phase          string     `json:"phase"`
 	Argv           []string   `json:"argv"`
@@ -365,6 +399,7 @@ type InsertServerHookRunParams struct {
 func (q *Queries) InsertServerHookRun(ctx context.Context, arg InsertServerHookRunParams) error {
 	_, err := q.db.Exec(ctx, insertServerHookRun,
 		arg.GrantID,
+		arg.HookID,
 		arg.DeployTargetID,
 		arg.Phase,
 		arg.Argv,
@@ -378,8 +413,8 @@ func (q *Queries) InsertServerHookRun(ctx context.Context, arg InsertServerHookR
 
 const listHookRuns = `-- name: ListHookRuns :many
 SELECT r.id, r.client_id, r.grant_id, r.hook_id, r.phase, r.argv, r.exit_code, r.duration_ms, r.stdout, r.stderr, r.ran_at,
-       COALESCE(h.name, '')::text AS hook_name
-FROM hook_runs r LEFT JOIN hooks h ON h.id = r.hook_id
+       COALESCE(h.name, '')::text AS action_name, COALESCE(h.kind, '')::text AS action_kind
+FROM hook_runs r LEFT JOIN actions h ON h.id = r.hook_id
 WHERE r.client_id = $1
   AND (NOT $2::bool OR (r.ran_at, r.id) < ($3::timestamptz, $4::uuid))
 ORDER BY r.ran_at DESC, r.id DESC
@@ -406,7 +441,8 @@ type ListHookRunsRow struct {
 	Stdout     string     `json:"stdout"`
 	Stderr     string     `json:"stderr"`
 	RanAt      time.Time  `json:"ran_at"`
-	HookName   string     `json:"hook_name"`
+	ActionName string     `json:"action_name"`
+	ActionKind string     `json:"action_kind"`
 }
 
 func (q *Queries) ListHookRuns(ctx context.Context, arg ListHookRunsParams) ([]ListHookRunsRow, error) {
@@ -436,7 +472,8 @@ func (q *Queries) ListHookRuns(ctx context.Context, arg ListHookRunsParams) ([]L
 			&i.Stdout,
 			&i.Stderr,
 			&i.RanAt,
-			&i.HookName,
+			&i.ActionName,
+			&i.ActionKind,
 		); err != nil {
 			return nil, err
 		}
@@ -449,8 +486,9 @@ func (q *Queries) ListHookRuns(ctx context.Context, arg ListHookRunsParams) ([]L
 }
 
 const listTargetHookRuns = `-- name: ListTargetHookRuns :many
-SELECT r.id, r.grant_id, r.phase, r.argv, r.exit_code, r.duration_ms, r.stdout, r.stderr, r.ran_at
-FROM hook_runs r
+SELECT r.id, r.grant_id, r.hook_id, r.phase, r.argv, r.exit_code, r.duration_ms, r.stdout, r.stderr, r.ran_at,
+       COALESCE(h.name, '')::text AS action_name, COALESCE(h.kind, '')::text AS action_kind
+FROM hook_runs r LEFT JOIN actions h ON h.id = r.hook_id
 WHERE r.deploy_target_id = $1
   AND (NOT $2::bool OR (r.ran_at, r.id) < ($3::timestamptz, $4::uuid))
 ORDER BY r.ran_at DESC, r.id DESC
@@ -468,6 +506,7 @@ type ListTargetHookRunsParams struct {
 type ListTargetHookRunsRow struct {
 	ID         uuid.UUID  `json:"id"`
 	GrantID    *uuid.UUID `json:"grant_id"`
+	HookID     *uuid.UUID `json:"hook_id"`
 	Phase      string     `json:"phase"`
 	Argv       []string   `json:"argv"`
 	ExitCode   int32      `json:"exit_code"`
@@ -475,6 +514,8 @@ type ListTargetHookRunsRow struct {
 	Stdout     string     `json:"stdout"`
 	Stderr     string     `json:"stderr"`
 	RanAt      time.Time  `json:"ran_at"`
+	ActionName string     `json:"action_name"`
+	ActionKind string     `json:"action_kind"`
 }
 
 func (q *Queries) ListTargetHookRuns(ctx context.Context, arg ListTargetHookRunsParams) ([]ListTargetHookRunsRow, error) {
@@ -495,6 +536,7 @@ func (q *Queries) ListTargetHookRuns(ctx context.Context, arg ListTargetHookRuns
 		if err := rows.Scan(
 			&i.ID,
 			&i.GrantID,
+			&i.HookID,
 			&i.Phase,
 			&i.Argv,
 			&i.ExitCode,
@@ -502,6 +544,8 @@ func (q *Queries) ListTargetHookRuns(ctx context.Context, arg ListTargetHookRuns
 			&i.Stdout,
 			&i.Stderr,
 			&i.RanAt,
+			&i.ActionName,
+			&i.ActionKind,
 		); err != nil {
 			return nil, err
 		}

@@ -4,7 +4,7 @@ import { useInfiniteQuery, type InfiniteData, type UseInfiniteQueryResult } from
 import { Ban, ChevronDown, CircleAlert, CircleCheck, Clock } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { hookRunsInfinite } from '@/api/queries/clients';
-import type { HookRun, HookRunList } from '@/api/types';
+import type { ActionRun, ActionRunList } from '@/api/types';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { HelpTip } from '@/components/HelpTip';
@@ -16,10 +16,13 @@ import { PHASE_LABEL } from '@/lib/clientStatus';
 import { help } from '@/lib/help';
 import { fmtDateTime, fmtDuration, relTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { KIND_LABEL } from '@/features/delivery/StepsPicker';
 import { failedWithoutData } from '@/lib/queryState';
 import { IconButton } from '@/components/IconButton';
 
-const COLS = 'md:grid-cols-[96px_minmax(0,140px)_96px_minmax(0,1fr)_80px_72px_28px]';
+const kindLabel = (k: string) => (KIND_LABEL as Record<string, string>)[k] ?? k;
+
+const COLS = 'md:grid-cols-[96px_minmax(0,140px)_96px_96px_minmax(0,1fr)_80px_72px_28px]';
 
 // The agent (internal/agent/hooks.go) appends this exact marker to stderr
 // when it kills the hook at its timeout; exitCode -1 otherwise means it was
@@ -51,7 +54,7 @@ function ExitChip({ code, stderr }: { code: number; stderr: string }) {
   );
 }
 
-function Output({ run }: { run: HookRun }) {
+function Output({ run }: { run: ActionRun }) {
   if (!run.stdout && !run.stderr) return <p className="text-sm text-ink-muted">No output.</p>;
   return (
     <div className="grid gap-2">
@@ -61,13 +64,13 @@ function Output({ run }: { run: HookRun }) {
   );
 }
 
-export function HookRunsTab({ orgId, clientId, onOpenCertificates }: { orgId: string; clientId: string; onOpenCertificates: () => void }) {
+export function ActionRunsTab({ orgId, clientId, onOpenCertificates }: { orgId: string; clientId: string; onOpenCertificates: () => void }) {
   const q = useInfiniteQuery(hookRunsInfinite(orgId, clientId));
   return (
-    <HookRunsList
+    <ActionRunsList
       q={q}
       empty={
-        <EmptyState message="No hook runs yet.">
+        <EmptyState message="No action runs yet.">
           <Button variant="outline" onClick={onOpenCertificates}>
             Open certificates
           </Button>
@@ -77,19 +80,19 @@ export function HookRunsTab({ orgId, clientId, onOpenCertificates }: { orgId: st
   );
 }
 
-/** The run rows shared by a client's Hook runs tab and a server target's:
- * `nameOf` labels the Hook column (default: the hook's name). */
-export function HookRunsList({
+/** The run rows shared by a client's Action runs tab and a server target's:
+ * `nameOf` labels the Action column (default: the action's name). */
+export function ActionRunsList({
   q,
   empty,
-  nameOf = (r) => r.hookName || 'Deleted hook',
+  nameOf = (r) => r.actionName || 'Deleted action',
 }: {
-  q: UseInfiniteQueryResult<InfiniteData<HookRunList>>;
+  q: UseInfiniteQueryResult<InfiniteData<ActionRunList>>;
   empty: ReactNode;
-  nameOf?: (r: HookRun) => string;
+  nameOf?: (r: ActionRun) => string;
 }) {
   const [open, setOpen] = useState<string | null>(null);
-  if (failedWithoutData(q)) return <ErrorState message={`Couldn't load hook runs. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />;
+  if (failedWithoutData(q)) return <ErrorState message={`Couldn't load action runs. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />;
   if (q.isPending) return <p className="text-ink-muted">Loading…</p>;
   const runs = q.data.pages.flatMap((p) => p.items);
   if (runs.length === 0) return <>{empty}</>;
@@ -98,7 +101,8 @@ export function HookRunsList({
       {/* Not aria-hidden: it holds the focusable hook.exit tip. */}
       <div className={cn('hidden gap-3 border-b border-border pb-1 text-xs text-ink-muted md:grid', COLS)}>
         <span>Ran</span>
-        <span>Hook</span>
+        <span>Action</span>
+        <span>Kind</span>
         <span>Phase</span>
         <span>Command</span>
         <span className="inline-flex items-center gap-1">
@@ -107,7 +111,7 @@ export function HookRunsList({
         <span>Duration</span>
         <span />
       </div>
-      <ul aria-label="Hook runs" className="grid">
+      <ul aria-label="Action runs" className="grid">
         {runs.map((r) => {
           const name = nameOf(r);
           const command = r.argv.join(' ');
@@ -117,9 +121,10 @@ export function HookRunsList({
                 <time dateTime={r.ranAt} title={fmtDateTime(r.ranAt)} className="text-xs text-ink-muted">
                   {relTime(r.ranAt, q.dataUpdatedAt)}
                 </time>
-                <span title={name} className={cn('truncate', !r.hookName && !r.hookId && nameOf(r) === 'Deleted hook' && 'text-ink-muted')}>
+                <span title={name} className={cn('truncate', !r.actionName && !r.actionId && nameOf(r) === 'Deleted action' && 'text-ink-muted')}>
                   {name}
                 </span>
+                <span className="text-xs text-ink-muted">{kindLabel(r.actionKind)}</span>
                 <span className="text-xs">{PHASE_LABEL[r.phase]}</span>
                 <Tooltip>
                   <TooltipTrigger asChild>

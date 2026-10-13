@@ -75,7 +75,7 @@ func TestPhase3OperationsDeclared(t *testing.T) {
 		"revokeClient", "reenrollClient", "listClientGrants", "createGrant", "updateGrant", "deleteGrant", "redeployGrant",
 		"listClientHookRuns", "listCertificateDeployments", "listLayouts", "createLayout", "getLayout", "updateLayout",
 		"deleteLayout", "listDeployTargets", "createDeployTarget", "getDeployTarget", "updateDeployTarget",
-		"deleteDeployTarget", "listHooks", "createHook", "getHook", "updateHook", "deleteHook", "listAgentCAs",
+		"deleteDeployTarget", "listActions", "createAction", "getAction", "updateAction", "deleteAction", "listActionGroups", "createActionGroup", "getActionGroup", "updateActionGroup", "deleteActionGroup", "listAgentCAs",
 		"rotateAgentCA", "retireAgentCA", "listEnrollmentRequests", "listAllEnrollmentRequests", "approveEnrollmentRequest", "rejectEnrollmentRequest"} {
 		want[id] = false
 	}

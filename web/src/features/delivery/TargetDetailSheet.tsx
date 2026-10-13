@@ -16,7 +16,7 @@ import { ServerDeploymentChip } from '@/components/ServerDeploymentChip';
 import { ToneChip } from '@/components/StatusChip';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { HookRunsList } from '@/features/clients/detail/HookRunsTab';
+import { ActionRunsList } from '@/features/clients/detail/ActionRunsTab';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -39,7 +39,7 @@ type Mode = { kind: 'list' } | { kind: 'form'; editing?: Grant };
 // Mounted only while its tab is open, so the runs are fetched (and polled) on demand.
 function TargetRuns({ orgId, targetId }: { orgId: string; targetId: string }) {
   const q = useInfiniteQuery(targetHookRunsInfinite(orgId, targetId));
-  return <HookRunsList q={q} nameOf={() => 'SSH command'} empty={<EmptyState message="No hook runs yet." />} />;
+  return <ActionRunsList q={q} nameOf={() => 'SSH command'} empty={<EmptyState message="No action runs yet." />} />;
 }
 
 export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpenChange }: Props) {
@@ -225,12 +225,12 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
         </SheetHeader>
         <div className="grid gap-4 px-4">
           {mode.kind === 'form' ? (
-            <ServerGrantForm orgId={orgId} targetId={target.id} editing={mode.editing} onBack={backToList} onDone={backToList} />
+            <ServerGrantForm orgId={orgId} orgSlug={orgSlug} targetId={target.id} editing={mode.editing} onBack={backToList} onDone={backToList} />
           ) : (
             <Tabs defaultValue="grants">
               <TabsList>
                 <TabsTrigger value="grants">Grants</TabsTrigger>
-                <TabsTrigger value="runs">Hook runs</TabsTrigger>
+                <TabsTrigger value="runs">Action runs</TabsTrigger>
               </TabsList>
               <TabsContent value="grants" className="grid gap-4 pt-3">
                 <div className="flex items-center justify-between gap-2">

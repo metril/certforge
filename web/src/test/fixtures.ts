@@ -1,4 +1,5 @@
 import { http, HttpResponse } from 'msw';
+import type { Action, ActionGroup, ActionRun, ActionSchemaEntry } from '@/api/types';
 import type {
   AdcsProbeTemplate,
   CertBrief,
@@ -20,8 +21,6 @@ import type {
   DeployTarget,
   EnrollmentRequest,
   Grant,
-  Hook,
-  HookRun,
   ImportItem,
   ImportResult,
   KeysStatus,
@@ -372,7 +371,7 @@ export const grantServer: Grant = {
   delivery: 'push',
   layoutId: 'l-1',
   deployTargetId: targetVaultKv.id,
-  hookIds: [],
+  steps: [],
   autoRemediate: false,
   deployment: null,
   runsOn: 'server',
@@ -583,7 +582,7 @@ export function makeDeployment(p: Partial<Deployment> = {}): Deployment {
 export function makeGrant(p: Partial<Grant> = {}): Grant {
   return {
     id: 'g-1', clientId: 'cl-1', clientName: 'web-1', certificateId: 'c-1', certificateName: 'www', delivery: 'push',
-    layoutId: 'l-1', deployTargetId: null, hookIds: [], autoRemediate: false, deployment: makeDeployment(),
+    layoutId: 'l-1', deployTargetId: null, steps: [], autoRemediate: false, deployment: makeDeployment(),
     runsOn: 'agent', serverDeployment: null, targetOptions: {}, createdAt: iso(-2), updatedAt: iso(-1), ...p,
   };
 }
@@ -621,20 +620,6 @@ export const targetTestSecret = {
   createdAt: iso(-5),
   updatedAt: iso(-5),
 } as unknown as DeployTarget;
-
-export function makeHook(p: Partial<Hook> = {}): Hook {
-  return {
-    id: 'h-1', orgId: org.id, name: 'reload nginx', phase: 'post_deploy', kind: 'exec', target: '', argv: ['/usr/sbin/nginx', '-s', 'reload'],
-    timeoutSeconds: 60, grantCount: 0, createdAt: iso(-5), updatedAt: iso(-5), ...p,
-  };
-}
-
-export function makeHookRun(p: Partial<HookRun> = {}): HookRun {
-  return {
-    id: 'hr-1', grantId: 'g-1', hookId: 'h-1', hookName: 'reload nginx', phase: 'post_deploy',
-    argv: ['/usr/sbin/nginx', '-s', 'reload'], exitCode: 0, durationMs: 120, stdout: '', stderr: '', ranAt: iso(0), ...p,
-  };
-}
 
 export function makeAgentCA(p: Partial<AgentCA> = {}): AgentCA {
   return {
@@ -1127,3 +1112,56 @@ export function adcsProbeTemplate(over: Partial<AdcsProbeTemplate> = {}): AdcsPr
     ...over,
   };
 }
+
+// Action library samples for the grant steps picker and the runs views.
+export function makeAction(p: Partial<Action> = {}): Action {
+  return {
+    id: 'a-1', orgId: org.id, name: 'reload nginx', kind: 'exec', phase: 'post_deploy', runsOn: 'agent',
+    config: { argv: ['/usr/sbin/nginx', '-s', 'reload'] }, secretKeys: [], timeoutSeconds: 60, optional: false, grantCount: 0,
+    createdAt: iso(-5), updatedAt: iso(-5), ...p,
+  } as Action;
+}
+
+export function makeActionGroup(p: Partial<ActionGroup> = {}): ActionGroup {
+  return { id: 'ag-1', orgId: org.id, name: 'web reload', actionIds: ['a-1', 'a-2'], grantCount: 0, createdAt: iso(-5), updatedAt: iso(-5), ...p };
+}
+
+export function makeActionRun(p: Partial<ActionRun> = {}): ActionRun {
+  return {
+    id: 'ar-1', grantId: 'g-1', actionId: 'a-1', actionName: 'reload nginx', actionKind: 'exec', phase: 'post_deploy',
+    argv: ['/usr/sbin/nginx', '-s', 'reload'], exitCode: 0, durationMs: 120, stdout: '', stderr: '', ranAt: iso(0), ...p,
+  };
+}
+
+// GET /meta/schemas `actions`: all 11 kinds (internal/actions/schemas/*.json, abridged to the fields the UI renders).
+const uuidProp = (title: string) => ({ type: 'string', format: 'uuid', title });
+const actionSchema = (properties: Record<string, unknown>, required: string[]) => ({ type: 'object', additionalProperties: false, required, properties });
+const targetKind = (code: string, name: string, targetTypes: string[], extra: Record<string, unknown> = {}, required = ['targetId']): ActionSchemaEntry => ({
+  code, name, runsOn: 'server', phaseHint: 'post_deploy', targetTypes, schema: actionSchema({ targetId: uuidProp('Target'), ...extra }, required),
+});
+export const metaActions: ActionSchemaEntry[] = [
+  { code: 'exec', name: 'Run command (agent)', runsOn: 'agent', phaseHint: '', targetTypes: [], schema: actionSchema({ argv: { type: 'array', minItems: 1, maxItems: 64, items: { type: 'string' }, title: 'Command' } }, ['argv']) },
+  { code: 'restart', name: 'Restart service (agent)', runsOn: 'agent', phaseHint: 'post_deploy', targetTypes: [], schema: actionSchema({ target: { type: 'string', title: 'Target' } }, ['target']) },
+  targetKind('ssh', 'SSH command', ['ssh', 'pikvm'], { command: { type: 'string', minLength: 1, maxLength: 512, title: 'Command' } }, ['targetId', 'command']),
+  targetKind('pfsense_shell', 'pfSense shell command', ['pfsense'], { command: { type: 'string', minLength: 1, maxLength: 512, title: 'Command' } }, ['targetId', 'command']),
+  targetKind('pfsense_restart', 'Restart pfSense services', ['pfsense'], {
+    mode: { type: 'string', enum: ['all', 'selected', 'none'], default: 'all', title: 'Restart' },
+    services: { type: 'array', maxItems: 64, items: { type: 'string', minLength: 1, maxLength: 64 }, title: 'Services' },
+  }),
+  targetKind('truenas_restart', 'Restart TrueNAS services', ['truenas']),
+  targetKind('routeros_restart', 'Restart RouterOS services', ['routeros']),
+  {
+    code: 'http', name: 'HTTP request', runsOn: 'server', phaseHint: 'post_deploy', targetTypes: [],
+    schema: actionSchema({
+      method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], title: 'Method' },
+      url: { type: 'string', format: 'uri', pattern: '^https?://', maxLength: 2048, title: 'URL' },
+      secretHeaders: { type: 'object', secret: true, additionalProperties: { type: 'string', maxLength: 2048 }, title: 'Secret headers' },
+    }, ['method', 'url']),
+  },
+  { code: 'notify', name: 'Send notification', runsOn: 'server', phaseHint: 'post_deploy', targetTypes: [], schema: actionSchema({ channelId: uuidProp('Channel') }, ['channelId']) },
+  {
+    code: 'verify_tls', name: 'Verify TLS', runsOn: 'server', phaseHint: 'post_deploy', targetTypes: [],
+    schema: actionSchema({ host: { type: 'string', minLength: 1, maxLength: 253, title: 'Host' }, port: { type: 'integer', minimum: 1, maximum: 65535, default: 443, title: 'Port' } }, ['host']),
+  },
+  { code: 'wait', name: 'Wait', runsOn: 'server', phaseHint: '', targetTypes: [], schema: actionSchema({ seconds: { type: 'integer', minimum: 1, maximum: 300, title: 'Seconds' } }, ['seconds']) },
+];

@@ -14,7 +14,7 @@ it('posts one grant per certificate and keeps going after a failure', async () =
       return HttpResponse.json(makeGrant({ id: `g-${body.certificateId}`, certificateId: body.certificateId }), { status: 201 });
     }),
   );
-  const r = await createGrants('org-1', 'cl-1', ['c-1', 'c-2', 'c-3'], { delivery: 'push', layoutId: 'l-1', hookIds: [], autoRemediate: false, targetOptions: {} });
+  const r = await createGrants('org-1', 'cl-1', ['c-1', 'c-2', 'c-3'], { delivery: 'push', layoutId: 'l-1', steps: [], autoRemediate: false, targetOptions: {} });
   expect(seen).toEqual(['c-1', 'c-2', 'c-3']);
   expect(r.created.map((g) => g.certificateId)).toEqual(['c-1', 'c-3']);
   expect(r.failed).toEqual([{ certificateId: 'c-2', message: 'www is already granted to web-1.', status: 409, title: 'Error' }]);

@@ -21,6 +21,29 @@ type AcmeAccount struct {
 	CreatedAt       time.Time `json:"created_at"`
 }
 
+type Action struct {
+	ID             uuid.UUID `json:"id"`
+	OrgID          uuid.UUID `json:"org_id"`
+	Name           string    `json:"name"`
+	Phase          string    `json:"phase"`
+	TimeoutSeconds int32     `json:"timeout_seconds"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	Kind           string    `json:"kind"`
+	Config         []byte    `json:"config"`
+	Optional       bool      `json:"optional"`
+	SecretCfg      []byte    `json:"secret_cfg"`
+}
+
+type ActionGroup struct {
+	ID        uuid.UUID   `json:"id"`
+	OrgID     uuid.UUID   `json:"org_id"`
+	Name      string      `json:"name"`
+	ActionIds []uuid.UUID `json:"action_ids"`
+	CreatedAt time.Time   `json:"created_at"`
+	UpdatedAt time.Time   `json:"updated_at"`
+}
+
 type AgentCa struct {
 	ID        uuid.UUID `json:"id"`
 	CertDer   []byte    `json:"cert_der"`
@@ -154,21 +177,20 @@ type Client struct {
 }
 
 type ClientCertGrant struct {
-	ID              uuid.UUID   `json:"id"`
-	ClientID        *uuid.UUID  `json:"client_id"`
-	CertID          uuid.UUID   `json:"cert_id"`
-	Delivery        string      `json:"delivery"`
-	OutputSpecID    *uuid.UUID  `json:"output_spec_id"`
-	DeployTargetID  *uuid.UUID  `json:"deploy_target_id"`
-	HookIds         []uuid.UUID `json:"hook_ids"`
-	AutoRemediate   bool        `json:"auto_remediate"`
-	RemovedAt       *time.Time  `json:"removed_at"`
-	CreatedAt       time.Time   `json:"created_at"`
-	UpdatedAt       time.Time   `json:"updated_at"`
-	RemovedRevision int64       `json:"removed_revision"`
-	RedeploySeq     int64       `json:"redeploy_seq"`
-	TargetOptions   []byte      `json:"target_options"`
-	PostAction      []byte      `json:"post_action"`
+	ID              uuid.UUID  `json:"id"`
+	ClientID        *uuid.UUID `json:"client_id"`
+	CertID          uuid.UUID  `json:"cert_id"`
+	Delivery        string     `json:"delivery"`
+	OutputSpecID    *uuid.UUID `json:"output_spec_id"`
+	DeployTargetID  *uuid.UUID `json:"deploy_target_id"`
+	AutoRemediate   bool       `json:"auto_remediate"`
+	RemovedAt       *time.Time `json:"removed_at"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	RemovedRevision int64      `json:"removed_revision"`
+	RedeploySeq     int64      `json:"redeploy_seq"`
+	TargetOptions   []byte     `json:"target_options"`
+	Steps           []byte     `json:"steps"`
 }
 
 type DeployCredential struct {
@@ -275,19 +297,6 @@ type ExternalMonitor struct {
 	UpdatedAt           time.Time  `json:"updated_at"`
 	ConsecutiveFailures int32      `json:"consecutive_failures"`
 	GrantID             *uuid.UUID `json:"grant_id"`
-}
-
-type Hook struct {
-	ID             uuid.UUID `json:"id"`
-	OrgID          uuid.UUID `json:"org_id"`
-	Name           string    `json:"name"`
-	Phase          string    `json:"phase"`
-	Argv           []string  `json:"argv"`
-	TimeoutSeconds int32     `json:"timeout_seconds"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	Kind           string    `json:"kind"`
-	Target         string    `json:"target"`
 }
 
 type HookRun struct {

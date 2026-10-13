@@ -5,6 +5,7 @@ import {
   emptyOverview,
   issuanceSettingsSchema,
   keysStatic,
+  metaActions,
   org,
   makeImportResult,
   makeRateLedger,
@@ -71,11 +72,12 @@ export const server = setupServer(
   http.get(url('/orgs/:orgId/sites'), () => HttpResponse.json({ items: [] })),
   http.get(url('/orgs/:orgId/layouts'), () => HttpResponse.json({ items: [] })),
   http.get(url('/orgs/:orgId/deploy-targets'), () => HttpResponse.json({ items: [] })),
-  http.get(url('/orgs/:orgId/hooks'), () => HttpResponse.json({ items: [] })),
+  http.get(url('/orgs/:orgId/actions'), () => HttpResponse.json({ items: [] })),
+  http.get(url('/orgs/:orgId/action-groups'), () => HttpResponse.json({ items: [] })),
   http.get(url('/orgs/:orgId/certificates/:id/deployments'), () => HttpResponse.json({ items: [] })),
   http.get(url('/agents/ca'), () => HttpResponse.json({ items: [], listener: { caId: null, names: [], notAfter: null } })),
   http.get(url('/meta/schemas'), () =>
-    HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema, testSecretSchema], notifiers: [], signers: [] }),
+    HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema, testSecretSchema], notifiers: [], signers: [], actions: metaActions }),
   ),
   // Task 1 (Phase 4B): the issuance settings section, the rate ledger, and a
   // dry-run import preview — tests that merely navigate through these

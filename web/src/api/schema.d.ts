@@ -53,7 +53,7 @@ export interface paths {
         };
         /**
          * List pluggable type schemas
-         * @description JSON Schemas for every registered DNS provider, deploy target, notifier, and signer. The UI renders forms from them.
+         * @description JSON Schemas for every registered DNS provider, deploy target, deploy credential, notifier, signer and action kind. The UI renders forms from them.
          */
         get: operations["getMetaSchemas"];
         put?: never;
@@ -1464,7 +1464,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a client
-         * @description Needs clients:write. Only pending or revoked clients can be deleted (409 otherwise); their grants, deployments and hook runs go with them. 409, naming up to five certificates, when a verification rule's clientId still points at it.
+         * @description Needs clients:write. Only pending or revoked clients can be deleted (409 otherwise); their grants, deployments and action runs go with them. 409, naming up to five certificates, when a verification rule's clientId still points at it.
          */
         delete: operations["deleteClient"];
         options?: never;
@@ -1546,7 +1546,7 @@ export interface paths {
         put?: never;
         /**
          * Grant a certificate to a client
-         * @description Needs clients:write. The certificate, layout, deploy target and hooks must be in the client's org (422 otherwise); a layout or a deploy target is required. One grant per client and certificate (409). Two grants on one client never write the same path, counting Traefik `certs/<name>` files and grants awaiting agent removal (409), or two grants on the client both set Traefik's default certificate for the same directory and store (409). 422 when the certificate's current version has no key and the layout or target needs one, or targetOptions invalid or not supported by the target type. Bumps the client's desired revision.
+         * @description Needs clients:write. The certificate, layout, deploy target and steps must be in the client's org (422 otherwise); a layout or a deploy target is required. One grant per client and certificate (409). Two grants on one client never write the same path, counting Traefik `certs/<name>` files and grants awaiting agent removal (409), or two grants on the client both set Traefik's default certificate for the same directory and store (409). 422 when the certificate's current version has no key and the layout or target needs one, or targetOptions invalid or not supported by the target type. Bumps the client's desired revision.
          */
         post: operations["createGrant"];
         delete?: never;
@@ -1568,7 +1568,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List a client's hook runs
+         * List a client's action runs
          * @description Needs clients:read. Newest first; stdout and stderr are capped at 8 KiB each.
          */
         get: operations["listClientHookRuns"];
@@ -1604,7 +1604,7 @@ export interface paths {
         head?: never;
         /**
          * Change a grant
-         * @description Needs clients:write. Replaces delivery, layout, deploy target, hooks and auto-remediation; the certificate cannot change. Re-renders the deployment and bumps the client's revision. 409 when another of the client's grants (including one awaiting agent removal) would write one of the same file paths, or two grants on the client both set Traefik's default certificate for the same directory and store. 422 when the certificate's current version has no key and the layout or target needs one, or targetOptions invalid or not supported by the target type.
+         * @description Needs clients:write. Replaces delivery, layout, deploy target, steps and auto-remediation; the certificate cannot change. Re-renders the deployment and bumps the client's revision. 409 when another of the client's grants (including one awaiting agent removal) would write one of the same file paths, or two grants on the client both set Traefik's default certificate for the same directory and store. 422 when the certificate's current version has no key and the layout or target needs one, or targetOptions invalid or not supported by the target type.
          */
         patch: operations["updateGrant"];
         trace?: never;
@@ -1625,7 +1625,7 @@ export interface paths {
         put?: never;
         /**
          * Redeploy a grant
-         * @description Needs clients:write. A force reinstall, whether or not anything changed since the last deploy — bumps the grant's redeploySeq, marks the deployment pending and bumps the client's revision so the agent rewrites every file, re-runs its hooks, and reports again.
+         * @description Needs clients:write. A force reinstall, whether or not anything changed since the last deploy — bumps the grant's redeploySeq, marks the deployment pending and bumps the client's revision so the agent rewrites every file, re-runs its actions, and reports again.
          */
         post: operations["redeployGrant"];
         delete?: never;
@@ -1877,8 +1877,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List a server-side deploy target's hook runs
-         * @description Needs clients:read. Newest first; the ssh target's own pre and post commands and post actions of grants on the target. stdout and stderr are capped at 8 KiB each.
+         * List a server-side deploy target's action runs
+         * @description Needs clients:read. Newest first; the ssh target's own pre and post commands and the server actions of grants on the target. stdout and stderr are capped at 8 KiB each.
          */
         get: operations["listTargetHookRuns"];
         put?: never;
@@ -1918,7 +1918,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/orgs/{orgId}/hooks": {
+    "/orgs/{orgId}/actions": {
         parameters: {
             query?: never;
             header?: never;
@@ -1929,23 +1929,23 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List hooks
+         * List actions
          * @description Needs delivery:read.
          */
-        get: operations["listHooks"];
+        get: operations["listActions"];
         put?: never;
         /**
-         * Create a hook
-         * @description Needs delivery:write. argv[0] is an absolute executable path; hooks never run through a shell, and an agent runs a hook only when argv[0] is in its CF_HOOK_ALLOW list.
+         * Create an action
+         * @description Needs delivery:write. config is validated against the kind schema from GET /meta/schemas (actions); fields with secret true are stored encrypted and never returned (secretKeys names the ones stored). A kind with a targetId needs a deploy target in this org of an accepted type (422 on config.targetId); notify needs a channel in this org. An action of kind exec or restart runs on agents (argv[0] must be in the agent's CF_HOOK_ALLOW list, never through a shell); every other kind runs on the server.
          */
-        post: operations["createHook"];
+        post: operations["createAction"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/orgs/{orgId}/hooks/{id}": {
+    "/orgs/{orgId}/actions/{id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1958,24 +1958,84 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get a hook
+         * Get an action
          * @description Needs delivery:read.
          */
-        get: operations["getHook"];
+        get: operations["getAction"];
         put?: never;
         post?: never;
         /**
-         * Delete a hook
-         * @description Needs delivery:write. 409 while any grant uses it; the detail names up to five client/certificate pairs.
+         * Delete an action
+         * @description Needs delivery:write. 409 while a grant step or an action group uses it; the detail names up to six dependents.
          */
-        delete: operations["deleteHook"];
+        delete: operations["deleteAction"];
         options?: never;
         head?: never;
         /**
-         * Replace a hook
-         * @description Needs delivery:write. Clients whose grants use it get a revision bump.
+         * Replace an action
+         * @description Needs delivery:write. Replaces the action; a secret field of config sent as "__unchanged__" or omitted keeps its stored value, "" or {} clears it. Agents whose grants use it get a revision bump.
          */
-        patch: operations["updateHook"];
+        patch: operations["updateAction"];
+        trace?: never;
+    };
+    "/orgs/{orgId}/action-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List action groups
+         * @description Needs delivery:read.
+         */
+        get: operations["listActionGroups"];
+        put?: never;
+        /**
+         * Create an action group
+         * @description Needs delivery:write. An ordered list of up to 32 actions in this org; groups cannot contain groups. A grant step can name a group to run all its actions in order.
+         */
+        post: operations["createActionGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/action-groups/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get an action group
+         * @description Needs delivery:read.
+         */
+        get: operations["getActionGroup"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete an action group
+         * @description Needs delivery:write. 409 while a grant step uses it; the detail names up to six client/certificate pairs.
+         */
+        delete: operations["deleteActionGroup"];
+        options?: never;
+        head?: never;
+        /**
+         * Replace an action group
+         * @description Needs delivery:write. Replaces the group. Agents whose grants use it get a revision bump.
+         */
+        patch: operations["updateActionGroup"];
         trace?: never;
     };
     "/agents/ca": {
@@ -2623,8 +2683,29 @@ export interface components {
             /** @description Whether this type ever needs the certificate's private key; deploy targets only. */
             keyPolicy?: components["schemas"]["KeyPolicy"];
         };
+        /** @description One action kind. */
+        ActionSchemaEntry: {
+            /** @description Stable kind code, for example pfsense_restart. */
+            code: string;
+            /** @description Display name. */
+            name: string;
+            /** @description JSON Schema for the action's config. Fields with secret true are write-only. */
+            schema: {
+                [key: string]: unknown;
+            };
+            runsOn: components["schemas"]["RunsOn"];
+            /**
+             * @description The phase the UI suggests; empty for none.
+             * @enum {string}
+             */
+            phaseHint: "" | "pre_deploy" | "post_deploy";
+            /** @description Deploy target types config.targetId accepts; empty when the kind has no targetId. */
+            targetTypes: string[];
+        };
         /** @description Pluggable type schemas grouped by kind. */
         MetaSchemas: {
+            /** @description Action kinds and their config schemas. */
+            actions: components["schemas"]["ActionSchemaEntry"][];
             /** @description Deploy credential kinds and their field schemas. */
             deployCredentials: components["schemas"]["SchemaEntry"][];
             /** @description DNS-01 providers. */
@@ -4008,7 +4089,7 @@ export interface components {
             disabled: boolean;
         };
         /**
-         * @description What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials (without secrets); dnscreds:reveal also reads DNS credentials and may reveal their stored secrets; deploycreds:reveal also reads deploy credentials and may reveal their stored secrets; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks, and reads deploy credentials (without secrets); alerts covers notification channels, events and external monitors; admin is everything.
+         * @description What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials (without secrets); dnscreds:reveal also reads DNS credentials and may reveal their stored secrets; deploycreds:reveal also reads deploy credentials and may reveal their stored secrets; clients:read also reads orgs and sites; delivery covers layouts, deploy targets, actions and action groups, and reads deploy credentials (without secrets); alerts covers notification channels, events and external monitors; admin is everything.
          * @enum {string}
          */
         ApiKeyScope: "certs:read" | "certs:write" | "certs:issue" | "keys:export" | "dnscreds:reveal" | "deploycreds:reveal" | "clients:read" | "clients:write" | "delivery:read" | "delivery:write" | "alerts:read" | "alerts:write" | "admin";
@@ -4698,25 +4779,22 @@ export interface components {
             items: components["schemas"]["DeployTarget"][];
         };
         /**
-         * @description exec runs an allowlisted command; restart restarts a Docker container or systemd unit listed in the agent's CF_RESTART_ALLOW.
+         * @description What the action does; matches a code from GET /meta/schemas actions. exec and restart run on an agent, every other kind on the server.
          * @enum {string}
          */
-        HookKind: "exec" | "restart";
+        ActionKind: "exec" | "restart" | "ssh" | "pfsense_shell" | "pfsense_restart" | "truenas_restart" | "routeros_restart" | "http" | "notify" | "verify_tls" | "wait";
         /**
-         * @description pre_deploy runs before files are written (a failure stops the deploy); post_deploy runs after.
+         * @description pre_deploy runs before the certificate is written (a failure stops the deploy, unless the action is optional); post_deploy runs after.
          * @enum {string}
          */
-        HookPhase: "pre_deploy" | "post_deploy";
-        /** @description A command an agent runs around a deploy, only if its argv[0] is in the agent's CF_HOOK_ALLOW. */
-        Hook: {
+        ActionPhase: "pre_deploy" | "post_deploy";
+        /** @description A reusable step a grant runs around a deploy, on an agent or on the server depending on its kind. */
+        Action: {
             /**
              * Format: uuid
-             * @description Hook id.
+             * @description Action id.
              */
             id: string;
-            kind: components["schemas"]["HookKind"];
-            /** @description For a restart hook, docker:<container> or systemd:<unit>; empty for exec. */
-            target: string;
             /**
              * Format: uuid
              * @description Owning org.
@@ -4724,12 +4802,20 @@ export interface components {
             orgId: string;
             /** @description Name */
             name: string;
-            phase: components["schemas"]["HookPhase"];
-            /** @description Executable path and arguments; never run through a shell. */
-            argv: string[];
-            /** @description The process group is killed after this long. */
+            kind: components["schemas"]["ActionKind"];
+            phase: components["schemas"]["ActionPhase"];
+            runsOn: components["schemas"]["RunsOn"];
+            /** @description Kind-specific configuration */
+            config: {
+                [key: string]: unknown;
+            };
+            /** @description Names of the secret config fields that have a stored value. */
+            secretKeys: string[];
+            /** @description The step is stopped after this long. */
             timeoutSeconds: number;
-            /** @description Live grants using it. */
+            /** @description Server-run actions only: a failure is recorded but never fails the deploy. */
+            optional: boolean;
+            /** @description Live grants naming it directly as a step. */
             grantCount: number;
             /**
              * Format: date-time
@@ -4742,31 +4828,91 @@ export interface components {
              */
             updatedAt: string;
         };
-        /** @description A hook's definition. */
-        HookInput: {
+        /** @description An action's definition. */
+        ActionInput: {
             /** @description Name */
             name: string;
+            kind: components["schemas"]["ActionKind"];
+            phase: components["schemas"]["ActionPhase"];
+            /** @description Kind-specific configuration */
+            config: {
+                [key: string]: unknown;
+            };
             /**
-             * @description exec (default) or restart.
-             * @default exec
-             */
-            kind: components["schemas"]["HookKind"];
-            /** @description Required for restart: docker:<container> or systemd:<unit>. */
-            target?: string;
-            phase: components["schemas"]["HookPhase"];
-            /** @description Exec only. Absolute executable path */
-            argv: string[];
-            /**
-             * @description Seconds before the hook is killed.
+             * @description Seconds before the step is stopped.
              * @default 60
              */
             timeoutSeconds: number;
+            /**
+             * @description Applies to server-run actions only (agent-run exec and restart reject true with 422): record a failure but do not fail the deploy.
+             * @default false
+             */
+            optional: boolean;
         };
-        /** @description An org's hooks. */
-        HookList: {
-            /** @description Hooks sorted by name. */
-            items: components["schemas"]["Hook"][];
+        /** @description An org's actions. */
+        ActionList: {
+            /** @description Actions sorted by name. */
+            items: components["schemas"]["Action"][];
         };
+        /** @description An ordered list of actions a grant step can name as one unit. */
+        ActionGroup: {
+            /**
+             * Format: uuid
+             * @description Group id.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Owning org.
+             */
+            orgId: string;
+            /** @description Name */
+            name: string;
+            /** @description Actions in run order. */
+            actionIds: string[];
+            /** @description Live grants naming it as a step. */
+            grantCount: number;
+            /**
+             * Format: date-time
+             * @description Creation time.
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Last change.
+             */
+            updatedAt: string;
+        };
+        /** @description An action group's definition. */
+        ActionGroupInput: {
+            /** @description Name */
+            name: string;
+            /** @description Actions in the same org */
+            actionIds: string[];
+        };
+        /** @description An org's action groups. */
+        ActionGroupList: {
+            /** @description Groups sorted by name. */
+            items: components["schemas"]["ActionGroup"][];
+        };
+        /** @description A grant step that runs one action. */
+        GrantStepAction: {
+            /**
+             * Format: uuid
+             * @description Action in the grant's org.
+             */
+            action: string;
+        };
+        /** @description A grant step that runs every action of a group, in the group's order. */
+        GrantStepGroup: {
+            /**
+             * Format: uuid
+             * @description Action group in the grant's org.
+             */
+            group: string;
+        };
+        /** @description One entry of a grant's ordered steps. Steps expand in order (groups inline) and split by each action's phase; at most 32 actions after expansion, and every action must run where the grant does (agent grants take exec and restart, server grants every other kind). */
+        GrantStep: components["schemas"]["GrantStepAction"] | components["schemas"]["GrantStepGroup"];
         /**
          * @description push nudges the agent over its socket on every change; pull waits for the agent's own schedule or a manual certforge-agent pull.
          * @enum {string}
@@ -4845,8 +4991,8 @@ export interface components {
             targetOptions: {
                 [key: string]: unknown;
             };
-            /** @description Hooks in run order. */
-            hookIds: string[];
+            /** @description Actions and action groups to run around the deploy */
+            steps: components["schemas"]["GrantStep"][];
             /** @description On drift */
             autoRemediate: boolean;
             /** @description Agent-side deployment state; null for a server grant (see serverDeployment). */
@@ -4854,8 +5000,6 @@ export interface components {
             runsOn: components["schemas"]["RunsOn"];
             /** @description Server-side deployment state; null for an agent grant (see deployment). */
             serverDeployment: components["schemas"]["ServerDeployment"] | null;
-            /** @description Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only. */
-            postAction?: components["schemas"]["PostAction"] | null;
             /** @description A TLS endpoint CertForge polls to confirm the deployed certificate is the one served; a grant-owned monitor, hourly. Null when none. Server grants only. */
             verify?: components["schemas"]["GrantVerify"] | null;
             /**
@@ -4899,8 +5043,8 @@ export interface components {
             targetOptions: {
                 [key: string]: unknown;
             };
-            /** @description Hooks in the same org */
-            hookIds?: string[];
+            /** @description Actions and action groups in the same org, in run order. An action that runs on the wrong side is 422 on steps[i]. */
+            steps?: components["schemas"]["GrantStep"][];
             /**
              * @description Reinstall automatically on drift.
              * @default false
@@ -4924,12 +5068,10 @@ export interface components {
             targetOptions: {
                 [key: string]: unknown;
             };
-            /** @description Hooks in run order. */
-            hookIds: string[];
+            /** @description Actions and action groups in run order. An action that runs on the wrong side is 422 on steps[i]. A server grant with steps needs delivery:write. */
+            steps: components["schemas"]["GrantStep"][];
             /** @description Reinstall automatically on drift. */
             autoRemediate: boolean;
-            /** @description Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only. */
-            postAction?: components["schemas"]["PostAction"] | null;
             /** @description A TLS endpoint CertForge polls to confirm the deployed certificate is the one served; a grant-owned monitor, hourly. Null when none. Absent or null removes it. Server grants only; a client grant with verify is 422. */
             verify?: components["schemas"]["GrantVerify"] | null;
         };
@@ -4950,12 +5092,12 @@ export interface components {
              * @description Output layout in the same org
              */
             layoutId?: string | null;
-            /** @description Per-type options for the deploy target, validated against the type's grantSchema from GET /meta/schemas. A pfSense target takes pfsenseRestart: {mode: all|selected|none, services: [keys]}. */
+            /** @description Per-type options for the deploy target, validated against the type's grantSchema from GET /meta/schemas. */
             targetOptions?: {
                 [key: string]: unknown;
             };
-            /** @description Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only. */
-            postAction?: components["schemas"]["PostAction"] | null;
+            /** @description Server actions (every kind except exec and restart) to run around the deploy, in order; needs delivery:write. An action that runs on an agent is 422 on steps[i]. */
+            steps?: components["schemas"]["GrantStep"][];
             /** @description A TLS endpoint CertForge polls to confirm the deployed certificate is the one served; a grant-owned monitor, hourly. Null when none. Server grants only. */
             verify?: components["schemas"]["GrantVerify"] | null;
             /**
@@ -4978,27 +5120,6 @@ export interface components {
              */
             intervalSeconds: number;
         };
-        /** @description One command run after a server grant deploys. Kind ssh runs it over SSH using an existing ssh or pikvm deploy target's host, credentials and host key. Kind pfsense runs it as a shell command on a firewall through an existing pfsense deploy target. */
-        PostAction: {
-            /**
-             * @description What runs the command. Kind ssh takes an ssh or pikvm target. Rows saved before kinds existed read as ssh.
-             * @default ssh
-             * @enum {string}
-             */
-            kind: "ssh" | "pfsense";
-            /**
-             * Format: uuid
-             * @description A deploy target in the same org whose type matches the kind. Rows saved before kinds existed used the name sshTargetId; the server still reads that.
-             */
-            targetId: string;
-            /** @description Command to run on that host. */
-            command: string;
-            /**
-             * @description Time allowed for connecting and running.
-             * @default 60
-             */
-            timeoutSeconds: number;
-        };
         /** @description The pfSense services that use a server grant's certificate. */
         PfSenseUsage: {
             /** @description The certificate's id on the firewall; null when the firewall does not hold it yet. */
@@ -5008,7 +5129,7 @@ export interface components {
         };
         /** @description One pfSense service that uses a certificate. */
         PfSenseService: {
-            /** @description Stable id for a per-grant restart selection: webgui, openvpn:server:<id>, openvpn:client:<id>, ipsec, captiveportal:<zone>, package:<name>. */
+            /** @description Stable id for a pfsense_restart action's services list: webgui, openvpn:server:<id>, openvpn:client:<id>, ipsec, captiveportal:<zone>, package:<name>. */
             key: string;
             /** @description Human label such as WebGUI, OpenVPN server 1, IPsec, Captive portal zone x, package name. */
             label: string;
@@ -5085,8 +5206,8 @@ export interface components {
             /** @description Deployments sorted by client name. */
             items: components["schemas"]["CertificateDeployment"][];
         };
-        /** @description One hook execution an agent reported, or a server-side command run for an ssh target or a grant's post action. */
-        HookRun: {
+        /** @description One action execution an agent reported, or a step the server ran for a server grant or an ssh target. */
+        ActionRun: {
             /**
              * Format: uuid
              * @description Run id.
@@ -5099,13 +5220,15 @@ export interface components {
             grantId: string | null;
             /**
              * Format: uuid
-             * @description Hook; null once the hook is gone.
+             * @description Action; null once the action is gone.
              */
-            hookId: string | null;
-            /** @description Hook name; empty once the hook is gone. */
-            hookName: string;
-            phase: components["schemas"]["HookPhase"];
-            /** @description Command that ran. */
+            actionId: string | null;
+            /** @description Action name; empty once the action is gone. */
+            actionName: string;
+            /** @description Action kind (see ActionKind); empty once the action is gone. */
+            actionKind: string;
+            phase: components["schemas"]["ActionPhase"];
+            /** @description Command or request that ran. */
             argv: string[];
             /** @description Exit status; -1 when it was not allowed */
             exitCode: number;
@@ -5124,10 +5247,10 @@ export interface components {
              */
             ranAt: string;
         };
-        /** @description One page of hook runs. */
-        HookRunList: {
+        /** @description One page of action runs. */
+        ActionRunList: {
             /** @description Runs */
-            items: components["schemas"]["HookRun"][];
+            items: components["schemas"]["ActionRun"][];
             /** @description Cursor for the next page; null on the last page. */
             nextCursor?: string | null;
         };
@@ -8423,13 +8546,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description One page of hook runs. */
+            /** @description One page of action runs. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HookRunList"];
+                    "application/json": components["schemas"]["ActionRunList"];
                 };
             };
             400: components["responses"]["BadRequest"];
@@ -9103,13 +9226,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description One page of hook runs. */
+            /** @description One page of action runs. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HookRunList"];
+                    "application/json": components["schemas"]["ActionRunList"];
                 };
             };
             400: components["responses"]["BadRequest"];
@@ -9187,7 +9310,7 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
-    listHooks: {
+    listActions: {
         parameters: {
             query?: never;
             header?: never;
@@ -9199,13 +9322,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Hooks sorted by name. */
+            /** @description Actions sorted by name. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HookList"];
+                    "application/json": components["schemas"]["ActionList"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -9214,7 +9337,7 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
-    createHook: {
+    createAction: {
         parameters: {
             query?: never;
             header?: never;
@@ -9226,7 +9349,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["HookInput"];
+                "application/json": components["schemas"]["ActionInput"];
             };
         };
         responses: {
@@ -9236,7 +9359,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Hook"];
+                    "application/json": components["schemas"]["Action"];
                 };
             };
             400: components["responses"]["BadRequest"];
@@ -9250,7 +9373,7 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
-    getHook: {
+    getAction: {
         parameters: {
             query?: never;
             header?: never;
@@ -9264,13 +9387,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The hook. */
+            /** @description The action. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Hook"];
+                    "application/json": components["schemas"]["Action"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -9279,7 +9402,7 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
-    deleteHook: {
+    deleteAction: {
         parameters: {
             query?: never;
             header?: never;
@@ -9307,7 +9430,7 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
-    updateHook: {
+    updateAction: {
         parameters: {
             query?: never;
             header?: never;
@@ -9321,17 +9444,175 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["HookInput"];
+                "application/json": components["schemas"]["ActionInput"];
             };
         };
         responses: {
-            /** @description Updated hook. */
+            /** @description Updated action. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Hook"];
+                    "application/json": components["schemas"]["Action"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listActionGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Action groups sorted by name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionGroupList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createActionGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActionGroupInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionGroup"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getActionGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The action group. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionGroup"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteActionGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateActionGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActionGroupInput"];
+            };
+        };
+        responses: {
+            /** @description Updated action group. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionGroup"];
                 };
             };
             400: components["responses"]["BadRequest"];

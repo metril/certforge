@@ -987,10 +987,10 @@ func TestServerGrantRejectsTargetOptions(t *testing.T) {
 	}
 	g := res.(gen.CreateServerGrant201JSONResponse)
 	_, err = f.srv.UpdateGrant(op, gen.UpdateGrantRequestObject{OrgId: f.org, Id: g.Id, Body: &gen.GrantUpdate{
-		Delivery: push(), HookIds: []uuid.UUID{}, TargetOptions: map[string]interface{}{"defaultCert": true}}})
+		Delivery: push(), Steps: []gen.GrantStep{}, TargetOptions: map[string]interface{}{"defaultCert": true}}})
 	wantStatus(t, err, 422)
 	if _, err := f.srv.UpdateGrant(op, gen.UpdateGrantRequestObject{OrgId: f.org, Id: g.Id, Body: &gen.GrantUpdate{
-		Delivery: push(), HookIds: []uuid.UUID{}, TargetOptions: map[string]interface{}{}}}); err != nil {
+		Delivery: push(), Steps: []gen.GrantStep{}, TargetOptions: map[string]interface{}{}}}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -1234,5 +1234,32 @@ func TestServerGrantVerifyInterval(t *testing.T) {
 	}
 	if v := res.(gen.CreateServerGrant201JSONResponse).Verify; v == nil || v.IntervalSeconds == nil || *v.IntervalSeconds != 3600 {
 		t.Fatalf("default verify = %+v", v)
+	}
+}
+
+func TestServerGrantStepsCannotCrossOrgs(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	ctx := context.Background()
+	q := sqlcgen.New(f.pool)
+	other := dbtest.Org(t, f.pool)
+	oa, err := q.CreateAction(ctx, sqlcgen.CreateActionParams{OrgID: other, Name: "w", Kind: "wait",
+		Phase: "post_deploy", Config: []byte(`{"seconds":1}`), TimeoutSeconds: 60})
+	if err != nil {
+		t.Fatal(err)
+	}
+	og, err := q.CreateActionGroup(ctx, sqlcgen.CreateActionGroupParams{OrgID: other, Name: "g", ActionIds: []uuid.UUID{oa.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetID, _ := f.serverTarget(t, "vault-x", nil)
+	certID, _ := f.currentCert(t, "web-x")
+	for _, steps := range [][]gen.GrantStep{stepsOf(oa.ID), {groupStep(og.ID)}} {
+		_, err := f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+			Body: &gen.ServerGrantInput{CertificateId: certID, Steps: &steps}})
+		wantStatus(t, err, 422)
+		if got := problemTitle(err); got != "Invalid steps[0]" {
+			t.Fatalf("title %q", got)
+		}
 	}
 }

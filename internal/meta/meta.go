@@ -19,6 +19,8 @@ const (
 	KindDeployCredential Kind = "deployCredentials"
 	KindNotifier         Kind = "notifiers"
 	KindSigner           Kind = "signers"
+	// KindAction lists the action kinds (internal/actions).
+	KindAction Kind = "actions"
 )
 
 // Entry is one pluggable type and its configuration schema.

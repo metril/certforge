@@ -6,13 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/metril/certforge/internal/actions"
 	"github.com/metril/certforge/internal/agentproto"
 	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/api/gen"
@@ -61,7 +61,7 @@ func grantOut(r sqlcgen.GrantViewsRow) (gen.Grant, error) {
 	}
 	clientName := r.ClientName
 	return gen.Grant{Id: r.ID, ClientId: r.ClientID, ClientName: &clientName, CertificateId: r.CertID, CertificateName: r.CertificateName,
-		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, TargetOptions: opts, HookIds: r.HookIds,
+		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, TargetOptions: opts, Steps: stepsOut(r.Steps),
 		AutoRemediate: r.AutoRemediate, Deployment: &d, RunsOn: gen.RunsOn("agent"), ServerDeployment: nil,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}, nil
 }
@@ -158,8 +158,11 @@ func (s *Server) CreateGrant(ctx context.Context, r gen.CreateGrantRequestObject
 	}
 	in := agents.GrantInput{CertID: r.Body.CertificateId, Delivery: string(r.Body.Delivery), LayoutID: r.Body.LayoutId, TargetID: r.Body.DeployTargetId,
 		RequireKey: requireKeysExport(r.OrgId)}
-	if r.Body.HookIds != nil {
-		in.HookIDs = *r.Body.HookIds
+	if r.Body.Steps != nil {
+		var err error
+		if in.Steps, err = stepsIn(*r.Body.Steps); err != nil {
+			return nil, err
+		}
 	}
 	if r.Body.AutoRemediate != nil {
 		in.AutoRemediate = *r.Body.AutoRemediate
@@ -201,14 +204,15 @@ func (s *Server) UpdateGrant(ctx context.Context, r gen.UpdateGrantRequestObject
 	if runsOn == "server" {
 		return s.updateServerGrant(ctx, r)
 	}
-	if r.Body.PostAction != nil {
-		return nil, unprocessable("postAction", "only server grants have a post action")
-	}
 	if r.Body.Verify != nil {
 		return nil, unprocessable("verify", "only server grants have a verify endpoint")
 	}
+	steps, err := stepsIn(r.Body.Steps)
+	if err != nil {
+		return nil, err
+	}
 	in := agents.GrantInput{Delivery: string(r.Body.Delivery), LayoutID: r.Body.LayoutId, TargetID: r.Body.DeployTargetId,
-		HookIDs: r.Body.HookIds, AutoRemediate: r.Body.AutoRemediate, RequireKey: requireKeysExport(r.OrgId)}
+		Steps: steps, AutoRemediate: r.Body.AutoRemediate, RequireKey: requireKeysExport(r.OrgId)}
 	if err := requireCertsDirPerm(ctx, r.OrgId, r.Body.TargetOptions); err != nil {
 		return nil, err
 	}
@@ -342,9 +346,9 @@ func serverGrantOut(r sqlcgen.ServerGrantViewsRow) gen.Grant {
 			LastError: lastError, DeployedAt: r.DeployedAt, UpdatedAt: updatedAt}
 	}
 	return gen.Grant{Id: r.ID, ClientId: nil, ClientName: nil, CertificateId: r.CertID, CertificateName: r.CertificateName,
-		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, TargetOptions: opts, HookIds: r.HookIds,
+		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, TargetOptions: opts, Steps: stepsOut(r.Steps),
 		AutoRemediate: r.AutoRemediate, Deployment: nil, RunsOn: gen.RunsOn("server"), ServerDeployment: sd,
-		PostAction: postActionOut(r.PostAction), Verify: verifyOut(r), MonitorId: r.MonitorID, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
+		Verify: verifyOut(r), MonitorId: r.MonitorID, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
 }
 
 // verifyOut maps the grant-owned monitor's endpoint columns; nil when none.
@@ -398,56 +402,47 @@ func (s *Server) grantMonitorInput(ctx context.Context, name string, interval in
 	return in, nil
 }
 
-// postAuditOut is a post action's audit form: where and what, never secrets.
-func postAuditOut(p *gen.PostAction) any {
-	if p == nil {
-		return nil
-	}
-	kind := "ssh"
-	if p.Kind != nil {
-		kind = string(*p.Kind)
-	}
-	return map[string]any{"kind": kind, "targetId": p.TargetId, "command": p.Command}
-}
-
-// postActionOut maps a stored post_action; nil when none (or unreadable).
-func postActionOut(raw []byte) *gen.PostAction {
-	pa, err := deploy.ParsePostAction(raw)
-	if err != nil || pa == nil {
-		return nil
-	}
-	t := pa.TimeoutSeconds
-	kind := gen.PostActionKind(pa.Kind)
-	return &gen.PostAction{Kind: &kind, TargetId: pa.TargetID, Command: pa.Command, TimeoutSeconds: &t}
-}
-
-// postActionIn validates a request's post action in orgID and returns its
-// stored form: nil (stored as {}) for none. The referenced target must be of
-// the same org and of the type the kind runs against.
-func postActionIn(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, in *gen.PostAction) ([]byte, error) {
-	if in == nil {
+// stepsIn converts a request's steps to the stored form, 422 on steps[i]
+// for a malformed entry. Whether they exist and run where the grant does is
+// checked under lock by agents.Service.CheckSteps.
+func stepsIn(in []gen.GrantStep) ([]actions.Step, error) {
+	if len(in) == 0 {
 		return nil, nil
 	}
-	pa := deploy.PostAction{TargetID: in.TargetId, Command: in.Command}
-	if in.Kind != nil {
-		pa.Kind = string(*in.Kind)
+	b, err := json.Marshal(in)
+	if err != nil {
+		return nil, badRequest("steps is not a list")
 	}
-	if in.TimeoutSeconds != nil {
-		pa.TimeoutSeconds = *in.TimeoutSeconds
+	steps, err := actions.ParseSteps(b)
+	if err != nil {
+		return nil, mapDeliveryErr(err)
 	}
-	if err := pa.Validate(); err != nil {
-		return nil, unprocessable("postAction", err.Error())
+	return steps, nil
+}
+
+// stepsOut maps stored grant steps to their API shape; never nil.
+func stepsOut(raw []byte) []gen.GrantStep {
+	steps, _ := actions.ParseSteps(raw)
+	out := make([]gen.GrantStep, 0, len(steps))
+	for _, st := range steps {
+		var gs gen.GrantStep
+		if st.Action != nil {
+			_ = gs.FromGrantStepAction(gen.GrantStepAction{Action: *st.Action})
+		} else if st.Group != nil {
+			_ = gs.FromGrantStepGroup(gen.GrantStepGroup{Group: *st.Group})
+		}
+		out = append(out, gs)
 	}
-	t, err := q.GetDeployTarget(ctx, sqlcgen.GetDeployTargetParams{ID: pa.TargetID, OrgID: orgID})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, unprocessable("postAction.targetId", fmt.Sprintf("deploy target %s is not in this org", pa.TargetID))
-	} else if err != nil {
-		return nil, err
+	return out
+}
+
+// stepsJSON is steps as stored: [] when empty.
+func stepsJSON(steps []actions.Step) []byte {
+	if len(steps) == 0 {
+		return []byte("[]")
 	}
-	if types := pa.TargetTypes(); !slices.Contains(types, t.Type) {
-		return nil, unprocessable("postAction.targetId", fmt.Sprintf("a %s post action needs %s target", pa.Kind, postTargetPhrase(types)))
-	}
-	return json.Marshal(pa)
+	b, _ := json.Marshal(steps)
+	return b
 }
 
 func (s *Server) serverGrantByID(ctx context.Context, orgID, id uuid.UUID) (gen.Grant, error) {
@@ -617,14 +612,21 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 		return nil, err
 	}
 
-	if r.Body.PostAction != nil {
-		if _, err := authorize(ctx, authz.ActionDeliveryWrite, &r.OrgId); err != nil {
+	var steps []actions.Step
+	if r.Body.Steps != nil {
+		if steps, err = stepsIn(*r.Body.Steps); err != nil {
 			return nil, err
 		}
 	}
-	postAction, err := postActionIn(ctx, q, r.OrgId, r.Body.PostAction)
-	if err != nil {
-		return nil, err
+	// Running actions on the server is a delivery change on top of
+	// clients:write.
+	if len(steps) > 0 {
+		if _, err := authorize(ctx, authz.ActionDeliveryWrite, &r.OrgId); err != nil {
+			return nil, err
+		}
+		if err := s.d.Agents.CheckSteps(ctx, q, r.OrgId, steps, targets.Server); err != nil {
+			return nil, mapAgentErr(err)
+		}
 	}
 	var createOpts map[string]interface{}
 	if r.Body.TargetOptions != nil {
@@ -648,7 +650,7 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 			return nil, err
 		}
 	}
-	g, err := q.CreateServerGrant(ctx, sqlcgen.CreateServerGrantParams{CertID: r.Body.CertificateId, OutputSpecID: r.Body.LayoutId, DeployTargetID: &r.Id, AutoRemediate: autoRemediate, PostAction: postAction, TargetOptions: targetOpts})
+	g, err := q.CreateServerGrant(ctx, sqlcgen.CreateServerGrantParams{CertID: r.Body.CertificateId, OutputSpecID: r.Body.LayoutId, DeployTargetID: &r.Id, AutoRemediate: autoRemediate, Steps: stepsJSON(steps), TargetOptions: targetOpts})
 	if pgCode(err) == pgUniqueViolation {
 		return nil, conflict("This target already has a grant for that certificate.")
 	}
@@ -675,7 +677,7 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 	}
 	s.audit(ctx, audit.Event{Action: "grant.create", ResourceType: "grant", ResourceID: g.ID.String(), OrgID: &r.OrgId,
 		Details: map[string]any{"deployTargetId": r.Id, "certificateId": r.Body.CertificateId, "layoutId": r.Body.LayoutId,
-			"runsOn": "server", "includeKey": needsKey, "postAction": postAuditOut(r.Body.PostAction),
+			"runsOn": "server", "includeKey": needsKey, "steps": json.RawMessage(stepsJSON(steps)),
 			"autoRemediate": autoRemediate, "verify": verifyAuditOut(r.Body.Verify)}})
 	out, err := s.serverGrantByID(ctx, r.OrgId, g.ID)
 	if err != nil {
@@ -791,20 +793,19 @@ func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequest
 	if err := deploy.CheckServerGrantPaths(ctx, q, r.OrgId, *g.DeployTargetID); err != nil {
 		return nil, mapErr(err)
 	}
-	var postIn *gen.PostAction
-	if r.Body != nil {
-		postIn = r.Body.PostAction
+	newSteps, err := stepsIn(r.Body.Steps)
+	if err != nil {
+		return nil, err
 	}
-	// Running commands on an ssh host is a delivery change: setting, changing
-	// or clearing a post action needs delivery:write on top of clients:write.
-	if pa, _ := deploy.ParsePostAction(g.PostAction); postIn != nil || pa != nil {
+	// Running actions on the server is a delivery change: setting, changing
+	// or clearing steps needs delivery:write on top of clients:write.
+	if curSteps, _ := actions.ParseSteps(g.Steps); len(newSteps) > 0 || len(curSteps) > 0 {
 		if _, err := authorize(ctx, authz.ActionDeliveryWrite, &r.OrgId); err != nil {
 			return nil, err
 		}
 	}
-	postAction, err := postActionIn(ctx, q, r.OrgId, postIn)
-	if err != nil {
-		return nil, err
+	if err := s.d.Agents.CheckSteps(ctx, q, r.OrgId, newSteps, targets.Server); err != nil {
+		return nil, mapAgentErr(err)
 	}
 	var optsIn map[string]interface{}
 	if r.Body != nil {
@@ -818,7 +819,7 @@ func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequest
 	if err != nil {
 		return nil, err
 	}
-	if _, err := q.UpdateServerGrant(ctx, sqlcgen.UpdateServerGrantParams{ID: r.Id, OutputSpecID: layoutID, AutoRemediate: r.Body.AutoRemediate, PostAction: postAction, TargetOptions: targetOpts}); err != nil {
+	if _, err := q.UpdateServerGrant(ctx, sqlcgen.UpdateServerGrantParams{ID: r.Id, OutputSpecID: layoutID, AutoRemediate: r.Body.AutoRemediate, Steps: stepsJSON(newSteps), TargetOptions: targetOpts}); err != nil {
 		return nil, err
 	}
 	var verifyIn *gen.GrantVerify
@@ -876,7 +877,7 @@ func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequest
 		return nil, err
 	}
 	s.audit(ctx, audit.Event{Action: "grant.update", ResourceType: "grant", ResourceID: r.Id.String(), OrgID: &r.OrgId,
-		Details: map[string]any{"before": map[string]any{"layoutId": g.OutputSpecID}, "after": map[string]any{"layoutId": layoutID, "postAction": postAuditOut(postIn),
+		Details: map[string]any{"before": map[string]any{"layoutId": g.OutputSpecID, "steps": json.RawMessage(g.Steps)}, "after": map[string]any{"layoutId": layoutID, "steps": json.RawMessage(stepsJSON(newSteps)),
 			"autoRemediate": r.Body.AutoRemediate, "verify": verifyAuditOut(verifyIn)},
 			"runsOn": "server", "includeKey": needsKey}})
 	out, err := s.serverGrantByID(ctx, r.OrgId, r.Id)
