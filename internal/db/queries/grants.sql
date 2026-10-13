@@ -155,6 +155,12 @@ WHERE (steps @> jsonb_build_array(jsonb_build_object('action', sqlc.arg(action_i
                     AND steps @> jsonb_build_array(jsonb_build_object('group', ag.id))))
   AND removed_at IS NULL AND client_id IS NOT NULL;
 
+-- name: LiveGrantIDsUsingActionGroup :many
+-- Live client grants whose steps name the group.
+SELECT id FROM client_cert_grants
+WHERE steps @> jsonb_build_array(jsonb_build_object('group', sqlc.arg(group_id)::uuid))
+  AND removed_at IS NULL AND client_id IS NOT NULL;
+
 -- name: CountLiveGrantsByCert :many
 SELECT cert_id, count(*)::bigint AS grants FROM client_cert_grants
 WHERE cert_id = ANY(sqlc.arg(ids)::uuid[]) AND removed_at IS NULL GROUP BY cert_id;

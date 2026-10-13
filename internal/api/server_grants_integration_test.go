@@ -987,10 +987,10 @@ func TestServerGrantRejectsTargetOptions(t *testing.T) {
 	}
 	g := res.(gen.CreateServerGrant201JSONResponse)
 	_, err = f.srv.UpdateGrant(op, gen.UpdateGrantRequestObject{OrgId: f.org, Id: g.Id, Body: &gen.GrantUpdate{
-		Delivery: push(), HookIds: []uuid.UUID{}, TargetOptions: map[string]interface{}{"defaultCert": true}}})
+		Delivery: push(), Steps: []gen.GrantStep{}, TargetOptions: map[string]interface{}{"defaultCert": true}}})
 	wantStatus(t, err, 422)
 	if _, err := f.srv.UpdateGrant(op, gen.UpdateGrantRequestObject{OrgId: f.org, Id: g.Id, Body: &gen.GrantUpdate{
-		Delivery: push(), HookIds: []uuid.UUID{}, TargetOptions: map[string]interface{}{}}}); err != nil {
+		Delivery: push(), Steps: []gen.GrantStep{}, TargetOptions: map[string]interface{}{}}}); err != nil {
 		t.Fatal(err)
 	}
 }

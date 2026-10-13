@@ -101,7 +101,7 @@ UPDATE clients SET last_seen = now() WHERE id = $1;
 
 -- name: ListHookRuns :many
 SELECT r.id, r.client_id, r.grant_id, r.hook_id, r.phase, r.argv, r.exit_code, r.duration_ms, r.stdout, r.stderr, r.ran_at,
-       COALESCE(h.name, '')::text AS hook_name, COALESCE(h.kind, '')::text AS action_kind
+       COALESCE(h.name, '')::text AS action_name, COALESCE(h.kind, '')::text AS action_kind
 FROM hook_runs r LEFT JOIN actions h ON h.id = r.hook_id
 WHERE r.client_id = sqlc.arg(client_id)
   AND (NOT sqlc.arg(has_cursor)::bool OR (r.ran_at, r.id) < (sqlc.arg(before_ts)::timestamptz, sqlc.arg(before_id)::uuid))

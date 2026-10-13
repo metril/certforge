@@ -796,6 +796,33 @@ func (q *Queries) LiveGrantIDsUsingAction(ctx context.Context, actionID uuid.UUI
 	return items, nil
 }
 
+const liveGrantIDsUsingActionGroup = `-- name: LiveGrantIDsUsingActionGroup :many
+SELECT id FROM client_cert_grants
+WHERE steps @> jsonb_build_array(jsonb_build_object('group', $1::uuid))
+  AND removed_at IS NULL AND client_id IS NOT NULL
+`
+
+// Live client grants whose steps name the group.
+func (q *Queries) LiveGrantIDsUsingActionGroup(ctx context.Context, groupID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, liveGrantIDsUsingActionGroup, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const liveGrantIDsUsingLayout = `-- name: LiveGrantIDsUsingLayout :many
 SELECT id FROM client_cert_grants WHERE output_spec_id = $1 AND removed_at IS NULL AND client_id IS NOT NULL
 `

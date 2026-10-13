@@ -41,9 +41,9 @@ tags:
   - name: audit
     description: The audit log.
   - name: clients
-    description: Enrolled agents, their grants, deployments and hook runs.
+    description: Enrolled agents, their grants, deployments and action runs.
   - name: delivery
-    description: Output layouts, deploy targets and hooks that grants use.
+    description: Output layouts, deploy targets, actions and action groups that grants use.
   - name: agents
     description: The internal agent CA and the agent listener.
   - name: notifications
@@ -102,7 +102,7 @@ paths:
       operationId: getMetaSchemas
       tags: [meta]
       summary: List pluggable type schemas
-      description: JSON Schemas for every registered DNS provider, deploy target, notifier, and signer. The UI renders forms from them.
+      description: JSON Schemas for every registered DNS provider, deploy target, deploy credential, notifier, signer and action kind. The UI renders forms from them.
       responses:
         "200":
           description: Schemas grouped by kind.
@@ -1838,7 +1838,7 @@ paths:
       operationId: deleteClient
       tags: [clients]
       summary: Delete a client
-      description: Needs clients:write. Only pending or revoked clients can be deleted (409 otherwise); their grants, deployments and hook runs go with them. 409, naming up to five certificates, when a verification rule's clientId still points at it.
+      description: Needs clients:write. Only pending or revoked clients can be deleted (409 otherwise); their grants, deployments and action runs go with them. 409, naming up to five certificates, when a verification rule's clientId still points at it.
       responses:
         "204": {description: Deleted.}
         "401": {$ref: "#/components/responses/Unauthorized"}
@@ -1903,7 +1903,7 @@ paths:
       tags: [clients]
       summary: Grant a certificate to a client
       description: >-
-        Needs clients:write. The certificate, layout, deploy target and hooks must be in the
+        Needs clients:write. The certificate, layout, deploy target and steps must be in the
         client's org (422 otherwise); a layout or a deploy target is required. One grant per
         client and certificate (409). Two grants on one client never write the same path, counting
         Traefik `certs/<name>` files and grants awaiting agent removal (409), or two grants on
@@ -1936,17 +1936,17 @@ paths:
     get:
       operationId: listClientHookRuns
       tags: [clients]
-      summary: List a client's hook runs
+      summary: List a client's action runs
       description: Needs clients:read. Newest first; stdout and stderr are capped at 8 KiB each.
       parameters:
         - {$ref: "#/components/parameters/ListLimit"}
         - {$ref: "#/components/parameters/ListCursor"}
       responses:
         "200":
-          description: One page of hook runs.
+          description: One page of action runs.
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/HookRunList"}
+              schema: {$ref: "#/components/schemas/ActionRunList"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -1960,7 +1960,7 @@ paths:
       tags: [clients]
       summary: Change a grant
       description: >-
-        Needs clients:write. Replaces delivery, layout, deploy target, hooks and
+        Needs clients:write. Replaces delivery, layout, deploy target, steps and
         auto-remediation; the certificate cannot change. Re-renders the deployment and bumps
         the client's revision. 409 when another of the client's grants (including one awaiting
         agent removal) would write one of the same file paths, or two grants on the client both
@@ -2007,7 +2007,7 @@ paths:
       operationId: redeployGrant
       tags: [clients]
       summary: Redeploy a grant
-      description: Needs clients:write. A force reinstall, whether or not anything changed since the last deploy — bumps the grant's redeploySeq, marks the deployment pending and bumps the client's revision so the agent rewrites every file, re-runs its hooks, and reports again.
+      description: Needs clients:write. A force reinstall, whether or not anything changed since the last deploy — bumps the grant's redeploySeq, marks the deployment pending and bumps the client's revision so the agent rewrites every file, re-runs its actions, and reports again.
       responses:
         "200":
           description: The grant.
@@ -2383,17 +2383,17 @@ paths:
     get:
       operationId: listTargetHookRuns
       tags: [clients]
-      summary: List a server-side deploy target's hook runs
-      description: Needs clients:read. Newest first; the ssh target's own pre and post commands and post actions of grants on the target. stdout and stderr are capped at 8 KiB each.
+      summary: List a server-side deploy target's action runs
+      description: Needs clients:read. Newest first; the ssh target's own pre and post commands and the server actions of grants on the target. stdout and stderr are capped at 8 KiB each.
       parameters:
         - {$ref: "#/components/parameters/ListLimit"}
         - {$ref: "#/components/parameters/ListCursor"}
       responses:
         "200":
-          description: One page of hook runs.
+          description: One page of action runs.
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/HookRunList"}
+              schema: {$ref: "#/components/schemas/ActionRunList"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -2449,39 +2449,39 @@ paths:
         "415": {$ref: "#/components/responses/UnsupportedMediaType"}
         "422": {$ref: "#/components/responses/UnprocessableEntity"}
         "500": {$ref: "#/components/responses/InternalError"}
-  /orgs/{orgId}/hooks:
+  /orgs/{orgId}/actions:
     parameters: [{$ref: "#/components/parameters/OrgId"}]
     get:
-      operationId: listHooks
+      operationId: listActions
       tags: [delivery]
-      summary: List hooks
+      summary: List actions
       description: Needs delivery:read.
       responses:
         "200":
-          description: Hooks sorted by name.
+          description: Actions sorted by name.
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/HookList"}
+              schema: {$ref: "#/components/schemas/ActionList"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/InternalError"}
     post:
-      operationId: createHook
+      operationId: createAction
       tags: [delivery]
-      summary: Create a hook
-      description: Needs delivery:write. argv[0] is an absolute executable path; hooks never run through a shell, and an agent runs a hook only when argv[0] is in its CF_HOOK_ALLOW list.
+      summary: Create an action
+      description: Needs delivery:write. config is validated against the kind schema from GET /meta/schemas (actions); fields with secret true are stored encrypted and never returned (secretKeys names the ones stored). A kind with a targetId needs a deploy target in this org of an accepted type (422 on config.targetId); notify needs a channel in this org. An action of kind exec or restart runs on agents (argv[0] must be in the agent's CF_HOOK_ALLOW list, never through a shell); every other kind runs on the server.
       requestBody:
         required: true
         content:
           application/json:
-            schema: {$ref: "#/components/schemas/HookInput"}
+            schema: {$ref: "#/components/schemas/ActionInput"}
       responses:
         "201":
           description: Created.
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/Hook"}
+              schema: {$ref: "#/components/schemas/Action"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -2491,39 +2491,39 @@ paths:
         "415": {$ref: "#/components/responses/UnsupportedMediaType"}
         "422": {$ref: "#/components/responses/UnprocessableEntity"}
         "500": {$ref: "#/components/responses/InternalError"}
-  /orgs/{orgId}/hooks/{id}:
+  /orgs/{orgId}/actions/{id}:
     parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
     get:
-      operationId: getHook
+      operationId: getAction
       tags: [delivery]
-      summary: Get a hook
+      summary: Get an action
       description: Needs delivery:read.
       responses:
         "200":
-          description: The hook.
+          description: The action.
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/Hook"}
+              schema: {$ref: "#/components/schemas/Action"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/InternalError"}
     patch:
-      operationId: updateHook
+      operationId: updateAction
       tags: [delivery]
-      summary: Replace a hook
-      description: Needs delivery:write. Clients whose grants use it get a revision bump.
+      summary: Replace an action
+      description: Needs delivery:write. Replaces the action; a secret field of config sent as "__unchanged__" or omitted keeps its stored value, "" or {} clears it. Agents whose grants use it get a revision bump.
       requestBody:
         required: true
         content:
           application/json:
-            schema: {$ref: "#/components/schemas/HookInput"}
+            schema: {$ref: "#/components/schemas/ActionInput"}
       responses:
         "200":
-          description: Updated hook.
+          description: Updated action.
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/Hook"}
+              schema: {$ref: "#/components/schemas/Action"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -2534,10 +2534,106 @@ paths:
         "422": {$ref: "#/components/responses/UnprocessableEntity"}
         "500": {$ref: "#/components/responses/InternalError"}
     delete:
-      operationId: deleteHook
+      operationId: deleteAction
       tags: [delivery]
-      summary: Delete a hook
-      description: Needs delivery:write. 409 while any grant uses it; the detail names up to five client/certificate pairs.
+      summary: Delete an action
+      description: Needs delivery:write. 409 while a grant step or an action group uses it; the detail names up to six dependents.
+      responses:
+        "204": {description: Deleted.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/action-groups:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: listActionGroups
+      tags: [delivery]
+      summary: List action groups
+      description: Needs delivery:read.
+      responses:
+        "200":
+          description: Action groups sorted by name.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ActionGroupList"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    post:
+      operationId: createActionGroup
+      tags: [delivery]
+      summary: Create an action group
+      description: Needs delivery:write. An ordered list of up to 32 actions in this org; groups cannot contain groups. A grant step can name a group to run all its actions in order.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ActionGroupInput"}
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ActionGroup"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/action-groups/{id}:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    get:
+      operationId: getActionGroup
+      tags: [delivery]
+      summary: Get an action group
+      description: Needs delivery:read.
+      responses:
+        "200":
+          description: The action group.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ActionGroup"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    patch:
+      operationId: updateActionGroup
+      tags: [delivery]
+      summary: Replace an action group
+      description: Needs delivery:write. Replaces the group. Agents whose grants use it get a revision bump.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ActionGroupInput"}
+      responses:
+        "200":
+          description: Updated action group.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ActionGroup"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/PayloadTooLarge"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+        "422": {$ref: "#/components/responses/UnprocessableEntity"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    delete:
+      operationId: deleteActionGroup
+      tags: [delivery]
+      summary: Delete an action group
+      description: Needs delivery:write. 409 while a grant step uses it; the detail names up to six client/certificate pairs.
       responses:
         "204": {description: Deleted.}
         "401": {$ref: "#/components/responses/Unauthorized"}
@@ -3448,11 +3544,27 @@ components:
           description: JSON Schema for a grant's targetOptions; absent when the type has none.
         runsOn: {allOf: [{$ref: "#/components/schemas/TargetRunsOn"}], description: "Where this type runs; deploy targets only."}
         keyPolicy: {allOf: [{$ref: "#/components/schemas/KeyPolicy"}], description: "Whether this type ever needs the certificate's private key; deploy targets only."}
+    ActionSchemaEntry:
+      type: object
+      description: One action kind.
+      required: [code, name, schema, runsOn, phaseHint, targetTypes]
+      properties:
+        code: {type: string, description: "Stable kind code, for example pfsense_restart."}
+        name: {type: string, description: Display name.}
+        schema: {type: object, additionalProperties: true, description: JSON Schema for the action's config. Fields with secret true are write-only.}
+        runsOn: {$ref: "#/components/schemas/RunsOn"}
+        phaseHint: {type: string, enum: ["", pre_deploy, post_deploy], description: "The phase the UI suggests; empty for none."}
+        targetTypes: {type: array, items: {type: string}, description: Deploy target types config.targetId accepts; empty when the kind has no targetId.}
     MetaSchemas:
       type: object
       description: Pluggable type schemas grouped by kind.
-      required: [dnsProviders, deployTargets, notifiers, signers, deployCredentials]
+      required: [dnsProviders, deployTargets, notifiers, signers, deployCredentials, actions]
       properties:
+        actions:
+          type: array
+          description: Action kinds and their config schemas.
+          items:
+            $ref: "#/components/schemas/ActionSchemaEntry"
         deployCredentials:
           type: array
           description: Deploy credential kinds and their field schemas.
@@ -4558,7 +4670,7 @@ components:
     ApiKeyScope:
       type: string
       enum: ["certs:read", "certs:write", "certs:issue", "keys:export", "dnscreds:reveal", "deploycreds:reveal", "clients:read", "clients:write", "delivery:read", "delivery:write", "alerts:read", "alerts:write", "admin"]
-      description: What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials (without secrets); dnscreds:reveal also reads DNS credentials and may reveal their stored secrets; deploycreds:reveal also reads deploy credentials and may reveal their stored secrets; clients:read also reads orgs and sites; delivery covers layouts, deploy targets and hooks, and reads deploy credentials (without secrets); alerts covers notification channels, events and external monitors; admin is everything.
+      description: What a key may do. certs:read also reads orgs, sites, CAs, accounts and DNS credentials (without secrets); dnscreds:reveal also reads DNS credentials and may reveal their stored secrets; deploycreds:reveal also reads deploy credentials and may reveal their stored secrets; clients:read also reads orgs and sites; delivery covers layouts, deploy targets, actions and action groups, and reads deploy credentials (without secrets); alerts covers notification channels, events and external monitors; admin is everything.
     ApiKey:
       type: object
       description: An API key without its secret.
@@ -4714,7 +4826,7 @@ components:
         lastSeen: {type: string, format: date-time, nullable: true, description: Last hello, heartbeat or report (written at most every 10 seconds).}
         agentCertNotAfter: {type: string, format: date-time, nullable: true, description: Expiry of the agent's client certificate; the agent renews at two thirds of its lifetime.}
         agentCaId: {type: string, format: uuid, nullable: true, description: Agent CA that signed the client's current certificate; null until enrolled.}
-        desiredRevision: {type: integer, format: int64, description: Bumped by every grant, layout, target, hook or certificate version change affecting this client.}
+        desiredRevision: {type: integer, format: int64, description: Bumped by every grant, layout, target, action or certificate version change affecting this client.}
         appliedRevision: {type: integer, format: int64, description: Highest revision the agent has reported applying.}
         grantCount: {type: integer, description: Live grants.}
         driftCount: {type: integer, description: Grants whose deployment is in drift.}
@@ -4992,47 +5104,91 @@ components:
       required: [items]
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/DeployTarget"}, description: Targets sorted by name.}
-    HookKind:
+    ActionKind:
       type: string
-      enum: [exec, restart]
-      description: exec runs an allowlisted command; restart restarts a Docker container or systemd unit listed in the agent's CF_RESTART_ALLOW.
-    HookPhase:
+      enum: [exec, restart, ssh, pfsense_shell, pfsense_restart, truenas_restart, routeros_restart, http, notify, verify_tls, wait]
+      description: What the action does; matches a code from GET /meta/schemas actions. exec and restart run on an agent, every other kind on the server.
+    ActionPhase:
       type: string
       enum: [pre_deploy, post_deploy]
-      description: pre_deploy runs before files are written (a failure stops the deploy); post_deploy runs after.
-    Hook:
+      description: pre_deploy runs before the certificate is written (a failure stops the deploy, unless the action is optional); post_deploy runs after.
+    Action:
       type: object
-      description: A command an agent runs around a deploy, only if its argv[0] is in the agent's CF_HOOK_ALLOW.
-      required: [id, orgId, name, phase, kind, target, argv, timeoutSeconds, grantCount, createdAt, updatedAt]
+      description: A reusable step a grant runs around a deploy, on an agent or on the server depending on its kind.
+      required: [id, orgId, name, kind, phase, runsOn, config, secretKeys, timeoutSeconds, optional, grantCount, createdAt, updatedAt]
       properties:
-        id: {type: string, format: uuid, description: Hook id.}
-        kind: {$ref: "#/components/schemas/HookKind"}
-        target: {type: string, description: "For a restart hook, docker:<container> or systemd:<unit>; empty for exec."}
+        id: {type: string, format: uuid, description: Action id.}
         orgId: {type: string, format: uuid, description: Owning org.}
         name: {type: string, description: Name, unique in the org.}
-        phase: {$ref: "#/components/schemas/HookPhase"}
-        argv: {type: array, items: {type: string}, description: Executable path and arguments; never run through a shell.}
-        timeoutSeconds: {type: integer, description: The process group is killed after this long.}
-        grantCount: {type: integer, description: Live grants using it.}
+        kind: {$ref: "#/components/schemas/ActionKind"}
+        phase: {$ref: "#/components/schemas/ActionPhase"}
+        runsOn: {$ref: "#/components/schemas/RunsOn"}
+        config: {type: object, additionalProperties: true, description: Kind-specific configuration, valid against the kind's schema, with secret fields removed.}
+        secretKeys: {type: array, items: {type: string}, description: Names of the secret config fields that have a stored value.}
+        timeoutSeconds: {type: integer, description: The step is stopped after this long.}
+        optional: {type: boolean, description: A failure is recorded but never fails the deploy.}
+        grantCount: {type: integer, description: Live grants naming it directly as a step.}
         createdAt: {type: string, format: date-time, description: Creation time.}
         updatedAt: {type: string, format: date-time, description: Last change.}
-    HookInput:
+    ActionInput:
       type: object
-      description: A hook's definition.
-      required: [name, phase, argv]
+      description: An action's definition.
+      required: [name, kind, phase, config]
       properties:
         name: {type: string, minLength: 1, maxLength: 100, description: Name, unique in the org.}
-        kind: {allOf: [{$ref: "#/components/schemas/HookKind"}], default: exec, description: "exec (default) or restart."}
-        target: {type: string, maxLength: 140, description: "Required for restart: docker:<container> or systemd:<unit>."}
-        phase: {$ref: "#/components/schemas/HookPhase"}
-        argv: {type: array, maxItems: 64, items: {type: string}, description: Exec only. Absolute executable path, then arguments; empty for restart.}
-        timeoutSeconds: {type: integer, minimum: 1, maximum: 3600, default: 60, description: Seconds before the hook is killed.}
-    HookList:
+        kind: {$ref: "#/components/schemas/ActionKind"}
+        phase: {$ref: "#/components/schemas/ActionPhase"}
+        config: {type: object, additionalProperties: true, description: Kind-specific configuration, validated against the kind's schema from GET /meta/schemas (actions). A secret field sent as "__unchanged__" or omitted keeps its stored value on update.}
+        timeoutSeconds: {type: integer, minimum: 1, maximum: 3600, default: 60, description: Seconds before the step is stopped.}
+        optional: {type: boolean, default: false, description: Record a failure but do not fail the deploy.}
+    ActionList:
       type: object
-      description: An org's hooks.
+      description: An org's actions.
       required: [items]
       properties:
-        items: {type: array, items: {$ref: "#/components/schemas/Hook"}, description: Hooks sorted by name.}
+        items: {type: array, items: {$ref: "#/components/schemas/Action"}, description: Actions sorted by name.}
+    ActionGroup:
+      type: object
+      description: An ordered list of actions a grant step can name as one unit.
+      required: [id, orgId, name, actionIds, grantCount, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid, description: Group id.}
+        orgId: {type: string, format: uuid, description: Owning org.}
+        name: {type: string, description: Name, unique in the org.}
+        actionIds: {type: array, items: {type: string, format: uuid}, description: Actions in run order.}
+        grantCount: {type: integer, description: Live grants naming it as a step.}
+        createdAt: {type: string, format: date-time, description: Creation time.}
+        updatedAt: {type: string, format: date-time, description: Last change.}
+    ActionGroupInput:
+      type: object
+      description: An action group's definition.
+      required: [name, actionIds]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100, description: Name, unique in the org.}
+        actionIds: {type: array, maxItems: 32, items: {type: string, format: uuid}, description: Actions in the same org, in run order; a repeat is allowed.}
+    ActionGroupList:
+      type: object
+      description: An org's action groups.
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/ActionGroup"}, description: Groups sorted by name.}
+    GrantStepAction:
+      type: object
+      description: A grant step that runs one action.
+      required: [action]
+      properties:
+        action: {type: string, format: uuid, description: Action in the grant's org.}
+    GrantStepGroup:
+      type: object
+      description: A grant step that runs every action of a group, in the group's order.
+      required: [group]
+      properties:
+        group: {type: string, format: uuid, description: Action group in the grant's org.}
+    GrantStep:
+      description: One entry of a grant's ordered steps. Steps expand in order (groups inline) and split by each action's phase; at most 32 actions after expansion, and every action must run where the grant does (agent grants take exec and restart, server grants every other kind).
+      oneOf:
+        - $ref: "#/components/schemas/GrantStepAction"
+        - $ref: "#/components/schemas/GrantStepGroup"
     GrantDelivery:
       type: string
       enum: [push, pull]
@@ -5063,7 +5219,7 @@ components:
     Grant:
       type: object
       description: A certificate granted to a client (runsOn agent) or a server-side deploy target (runsOn server), with how it is delivered.
-      required: [id, clientId, clientName, certificateId, certificateName, delivery, layoutId, deployTargetId, targetOptions, hookIds, autoRemediate, deployment, runsOn, serverDeployment, createdAt, updatedAt]
+      required: [id, clientId, clientName, certificateId, certificateName, delivery, layoutId, deployTargetId, targetOptions, steps, autoRemediate, deployment, runsOn, serverDeployment, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid, description: Grant id.}
         clientId: {type: string, format: uuid, nullable: true, description: Client; null for a server grant.}
@@ -5074,7 +5230,7 @@ components:
         layoutId: {type: string, format: uuid, nullable: true, description: Output layout; null for a target-only grant.}
         deployTargetId: {type: string, format: uuid, nullable: true, description: Deploy target; null for files only.}
         targetOptions: {type: object, additionalProperties: true, description: Per-type options for the deploy target, validated against the type's grantSchema from GET /meta/schemas. Empty when the type has none.}
-        hookIds: {type: array, items: {type: string, format: uuid}, description: Hooks in run order.}
+        steps: {type: array, maxItems: 32, items: {$ref: "#/components/schemas/GrantStep"}, description: Actions and action groups to run around the deploy, in order.}
         autoRemediate: {type: boolean, description: On drift, bump the revision so the agent reinstalls.}
         deployment:
           description: Agent-side deployment state; null for a server grant (see serverDeployment).
@@ -5086,11 +5242,6 @@ components:
           description: Server-side deployment state; null for an agent grant (see deployment).
           allOf:
             - $ref: "#/components/schemas/ServerDeployment"
-          nullable: true
-        postAction:
-          description: Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only.
-          allOf:
-            - $ref: "#/components/schemas/PostAction"
           nullable: true
         verify:
           description: "A TLS endpoint CertForge polls to confirm the deployed certificate is the one served; a grant-owned monitor, hourly. Null when none. Server grants only."
@@ -5110,24 +5261,19 @@ components:
         layoutId: {type: string, format: uuid, nullable: true, description: Output layout in the same org.}
         deployTargetId: {type: string, format: uuid, nullable: true, description: Deploy target in the same org.}
         targetOptions: {type: object, additionalProperties: true, default: {}, description: Per-type options for the deploy target, validated against the type's grantSchema from GET /meta/schemas.}
-        hookIds: {type: array, maxItems: 16, items: {type: string, format: uuid}, description: Hooks in the same org, in run order.}
+        steps: {type: array, maxItems: 32, items: {$ref: "#/components/schemas/GrantStep"}, description: "Actions and action groups in the same org, in run order. An action that runs on the wrong side is 422 on steps[i]."}
         autoRemediate: {type: boolean, default: false, description: Reinstall automatically on drift.}
     GrantUpdate:
       type: object
       description: A grant's replaceable fields; all are sent.
-      required: [delivery, layoutId, deployTargetId, targetOptions, hookIds, autoRemediate]
+      required: [delivery, layoutId, deployTargetId, targetOptions, steps, autoRemediate]
       properties:
         delivery: {$ref: "#/components/schemas/GrantDelivery"}
         layoutId: {type: string, format: uuid, nullable: true, description: Output layout in the same org.}
         deployTargetId: {type: string, format: uuid, nullable: true, description: Deploy target in the same org.}
         targetOptions: {type: object, additionalProperties: true, description: Per-type options for the deploy target, validated against the type's grantSchema from GET /meta/schemas.}
-        hookIds: {type: array, maxItems: 16, items: {type: string, format: uuid}, description: Hooks in run order.}
+        steps: {type: array, maxItems: 32, items: {$ref: "#/components/schemas/GrantStep"}, description: "Actions and action groups in run order. An action that runs on the wrong side is 422 on steps[i]. A server grant with steps needs delivery:write."}
         autoRemediate: {type: boolean, description: Reinstall automatically on drift.}
-        postAction:
-          description: Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only.
-          allOf:
-            - $ref: "#/components/schemas/PostAction"
-          nullable: true
         verify:
           description: "A TLS endpoint CertForge polls to confirm the deployed certificate is the one served; a grant-owned monitor, hourly. Null when none. Absent or null removes it. Server grants only; a client grant with verify is 422."
           allOf:
@@ -5146,12 +5292,8 @@ components:
       properties:
         certificateId: {type: string, format: uuid, description: Certificate in the target's org.}
         layoutId: {type: string, format: uuid, nullable: true, description: Output layout in the same org, for a target that renders files from a layout.}
-        targetOptions: {type: object, additionalProperties: true, description: "Per-type options for the deploy target, validated against the type's grantSchema from GET /meta/schemas. A pfSense target takes pfsenseRestart: {mode: all|selected|none, services: [keys]}."}
-        postAction:
-          description: Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only.
-          allOf:
-            - $ref: "#/components/schemas/PostAction"
-          nullable: true
+        targetOptions: {type: object, additionalProperties: true, description: "Per-type options for the deploy target, validated against the type's grantSchema from GET /meta/schemas."}
+        steps: {type: array, maxItems: 32, items: {$ref: "#/components/schemas/GrantStep"}, description: "Server actions (every kind except exec and restart) to run around the deploy, in order; needs delivery:write. An action that runs on an agent is 422 on steps[i]."}
         verify:
           description: "A TLS endpoint CertForge polls to confirm the deployed certificate is the one served; a grant-owned monitor, hourly. Null when none. Server grants only."
           allOf:
@@ -5167,15 +5309,6 @@ components:
         port: {type: integer, minimum: 1, maximum: 65535, description: TCP port to connect to.}
         sni: {type: string, nullable: true, maxLength: 253, description: TLS server name to send; omitted or null uses host.}
         intervalSeconds: {type: integer, minimum: 300, maximum: 86400, default: 3600, description: Seconds between scheduled checks. Default 3600. On update, omitted keeps the monitor's current interval.}
-    PostAction:
-      type: object
-      description: One command run after a server grant deploys. Kind ssh runs it over SSH using an existing ssh or pikvm deploy target's host, credentials and host key. Kind pfsense runs it as a shell command on a firewall through an existing pfsense deploy target.
-      required: [targetId, command]
-      properties:
-        kind: {type: string, enum: [ssh, pfsense], default: ssh, description: "What runs the command. Kind ssh takes an ssh or pikvm target. Rows saved before kinds existed read as ssh."}
-        targetId: {type: string, format: uuid, description: A deploy target in the same org whose type matches the kind. Rows saved before kinds existed used the name sshTargetId; the server still reads that.}
-        command: {type: string, minLength: 1, maxLength: 512, description: Command to run on that host.}
-        timeoutSeconds: {type: integer, minimum: 5, maximum: 300, default: 60, description: Time allowed for connecting and running.}
     PfSenseUsage:
       type: object
       description: The pfSense services that use a server grant's certificate.
@@ -5188,7 +5321,7 @@ components:
       description: One pfSense service that uses a certificate.
       required: [key, label]
       properties:
-        key: {type: string, maxLength: 80, description: "Stable id for a per-grant restart selection: webgui, openvpn:server:<id>, openvpn:client:<id>, ipsec, captiveportal:<zone>, package:<name>."}
+        key: {type: string, maxLength: 80, description: "Stable id for a pfsense_restart action's services list: webgui, openvpn:server:<id>, openvpn:client:<id>, ipsec, captiveportal:<zone>, package:<name>."}
         label: {type: string, description: "Human label such as WebGUI, OpenVPN server 1, IPsec, Captive portal zone x, package name."}
     ServerDeploymentStatus:
       type: string
@@ -5228,28 +5361,29 @@ components:
       required: [items]
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/CertificateDeployment"}, description: Deployments sorted by client name.}
-    HookRun:
+    ActionRun:
       type: object
-      description: One hook execution an agent reported, or a server-side command run for an ssh target or a grant's post action.
-      required: [id, grantId, hookId, hookName, phase, argv, exitCode, durationMs, stdout, stderr, ranAt]
+      description: One action execution an agent reported, or a step the server ran for a server grant or an ssh target.
+      required: [id, grantId, actionId, actionName, actionKind, phase, argv, exitCode, durationMs, stdout, stderr, ranAt]
       properties:
         id: {type: string, format: uuid, description: Run id.}
         grantId: {type: string, format: uuid, nullable: true, description: Grant; null once the grant is gone.}
-        hookId: {type: string, format: uuid, nullable: true, description: Hook; null once the hook is gone.}
-        hookName: {type: string, description: Hook name; empty once the hook is gone.}
-        phase: {$ref: "#/components/schemas/HookPhase"}
-        argv: {type: array, items: {type: string}, description: Command that ran.}
+        actionId: {type: string, format: uuid, nullable: true, description: Action; null once the action is gone.}
+        actionName: {type: string, description: Action name; empty once the action is gone.}
+        actionKind: {type: string, description: "Action kind (see ActionKind); empty once the action is gone."}
+        phase: {$ref: "#/components/schemas/ActionPhase"}
+        argv: {type: array, items: {type: string}, description: Command or request that ran.}
         exitCode: {type: integer, description: Exit status; -1 when it was not allowed, failed to start or timed out.}
         durationMs: {type: integer, format: int64, description: Wall time in milliseconds.}
         stdout: {type: string, description: Standard output, capped at 8 KiB.}
         stderr: {type: string, description: Standard error, capped at 8 KiB.}
         ranAt: {type: string, format: date-time, description: When the server recorded it.}
-    HookRunList:
+    ActionRunList:
       type: object
-      description: One page of hook runs.
+      description: One page of action runs.
       required: [items]
       properties:
-        items: {type: array, items: {$ref: "#/components/schemas/HookRun"}, description: Runs, newest first.}
+        items: {type: array, items: {$ref: "#/components/schemas/ActionRun"}, description: Runs, newest first.}
         nextCursor: {type: string, nullable: true, description: Cursor for the next page; null on the last page.}
     ChannelType:
       type: string

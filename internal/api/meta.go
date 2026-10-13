@@ -33,6 +33,9 @@ func (s *Server) GetMetaSchemas(ctx context.Context, _ gen.GetMetaSchemasRequest
 	if out.Signers, err = s.schemaEntries(meta.KindSigner); err != nil {
 		return nil, err
 	}
+	if out.Actions, err = actionMetaEntries(); err != nil {
+		return nil, err
+	}
 	return gen.GetMetaSchemas200JSONResponse(out), nil
 }
 

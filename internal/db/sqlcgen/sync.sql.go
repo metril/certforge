@@ -413,7 +413,7 @@ func (q *Queries) InsertServerHookRun(ctx context.Context, arg InsertServerHookR
 
 const listHookRuns = `-- name: ListHookRuns :many
 SELECT r.id, r.client_id, r.grant_id, r.hook_id, r.phase, r.argv, r.exit_code, r.duration_ms, r.stdout, r.stderr, r.ran_at,
-       COALESCE(h.name, '')::text AS hook_name, COALESCE(h.kind, '')::text AS action_kind
+       COALESCE(h.name, '')::text AS action_name, COALESCE(h.kind, '')::text AS action_kind
 FROM hook_runs r LEFT JOIN actions h ON h.id = r.hook_id
 WHERE r.client_id = $1
   AND (NOT $2::bool OR (r.ran_at, r.id) < ($3::timestamptz, $4::uuid))
@@ -441,7 +441,7 @@ type ListHookRunsRow struct {
 	Stdout     string     `json:"stdout"`
 	Stderr     string     `json:"stderr"`
 	RanAt      time.Time  `json:"ran_at"`
-	HookName   string     `json:"hook_name"`
+	ActionName string     `json:"action_name"`
 	ActionKind string     `json:"action_kind"`
 }
 
@@ -472,7 +472,7 @@ func (q *Queries) ListHookRuns(ctx context.Context, arg ListHookRunsParams) ([]L
 			&i.Stdout,
 			&i.Stderr,
 			&i.RanAt,
-			&i.HookName,
+			&i.ActionName,
 			&i.ActionKind,
 		); err != nil {
 			return nil, err

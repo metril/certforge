@@ -124,7 +124,7 @@ func TestGrantLifecycle(t *testing.T) {
 		t.Fatalf("rev %d msgs %v", rev(), f.hub.messages(c.ID))
 	}
 	if _, err := f.srv.UpdateGrant(op, gen.UpdateGrantRequestObject{OrgId: f.org, Id: g.Id, Body: &gen.GrantUpdate{
-		Delivery: gen.GrantDelivery("pull"), LayoutId: &layout, HookIds: []uuid.UUID{}, AutoRemediate: true}}); err != nil {
+		Delivery: gen.GrantDelivery("pull"), LayoutId: &layout, Steps: []gen.GrantStep{}, AutoRemediate: true}}); err != nil {
 		t.Fatal(err)
 	}
 	if rev() != 2 || len(f.hub.messages(c.ID)) != 1 {
@@ -219,7 +219,7 @@ func TestGrantRejectsCrossOrgReferences(t *testing.T) {
 	for name, in := range map[string]gen.GrantInput{
 		"cert":     {CertificateId: oc.ID, Delivery: push(), LayoutId: &layout},
 		"layout":   {CertificateId: certID, Delivery: push(), LayoutId: &ol.ID},
-		"hook":     {CertificateId: certID, Delivery: push(), LayoutId: &layout, HookIds: &[]uuid.UUID{oh.ID}},
+		"hook":     {CertificateId: certID, Delivery: push(), LayoutId: &layout, Steps: stepsPtr(oh.ID)},
 		"neither":  {CertificateId: certID, Delivery: push()},
 		"delivery": {CertificateId: certID, Delivery: gen.GrantDelivery("email"), LayoutId: &layout},
 	} {
@@ -339,11 +339,11 @@ func TestGrantVsDeleteHookNoDangling(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			_, createErr = f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
-				Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &layout, HookIds: &[]uuid.UUID{h.ID}}})
+				Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &layout, Steps: stepsPtr(h.ID)}})
 		}()
 		go func() {
 			defer wg.Done()
-			_, deleteErr = f.srv.DeleteHook(op, gen.DeleteHookRequestObject{OrgId: f.org, Id: h.ID})
+			_, deleteErr = f.srv.DeleteAction(op, gen.DeleteActionRequestObject{OrgId: f.org, Id: h.ID})
 		}()
 		wg.Wait()
 		if createErr == nil && deleteErr == nil {
@@ -835,16 +835,11 @@ func TestConcurrentHookUpdateVsCreateGrantNoDeadlock(t *testing.T) {
 	op, ctx := f.as("operator"), context.Background()
 	c := f.activeClient(t, "web-1")
 	sixty := 60
-	hRes, err := f.srv.CreateHook(op, gen.CreateHookRequestObject{OrgId: f.org,
-		Body: &gen.HookInput{Name: "reload", Phase: gen.HookPhase("post_deploy"), Argv: []string{"/bin/true"}, TimeoutSeconds: &sixty}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	h := hRes.(gen.CreateHook201JSONResponse)
+	h := f.execAction(t, "reload")
 	cert1, _ := f.currentCert(t, "web-1st")
 	layout1 := f.layout(t, "l1", "/etc/ssl/first.pem")
 	if _, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
-		Body: &gen.GrantInput{CertificateId: cert1, Delivery: push(), LayoutId: &layout1, HookIds: &[]uuid.UUID{h.Id}}}); err != nil {
+		Body: &gen.GrantInput{CertificateId: cert1, Delivery: push(), LayoutId: &layout1, Steps: stepsPtr(h.Id)}}); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 8; i++ {
@@ -855,13 +850,13 @@ func TestConcurrentHookUpdateVsCreateGrantNoDeadlock(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			_, updErr = f.srv.UpdateHook(op, gen.UpdateHookRequestObject{OrgId: f.org, Id: h.Id,
-				Body: &gen.HookInput{Name: fmt.Sprintf("reload-%d", i), Phase: gen.HookPhase("post_deploy"), Argv: []string{"/bin/true"}, TimeoutSeconds: &sixty}})
+			_, updErr = f.srv.UpdateAction(op, gen.UpdateActionRequestObject{OrgId: f.org, Id: h.Id,
+				Body: &gen.ActionInput{Name: fmt.Sprintf("reload-%d", i), Kind: "exec", Phase: gen.ActionPhase("post_deploy"), Config: map[string]interface{}{"argv": []interface{}{"/bin/true"}}, TimeoutSeconds: &sixty}})
 		}()
 		go func() {
 			defer wg.Done()
 			_, createErr = f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
-				Body: &gen.GrantInput{CertificateId: certI, Delivery: push(), LayoutId: &layoutI, HookIds: &[]uuid.UUID{h.Id}}})
+				Body: &gen.GrantInput{CertificateId: certI, Delivery: push(), LayoutId: &layoutI, Steps: stepsPtr(h.Id)}})
 		}()
 		wg.Wait()
 		for _, err := range []error{updErr, createErr} {
@@ -1068,7 +1063,7 @@ func TestUpdateGrantKeylessCert422(t *testing.T) {
 	}
 
 	_, err = f.srv.UpdateGrant(f.as("admin"), gen.UpdateGrantRequestObject{OrgId: f.org, Id: gid, Body: &gen.GrantUpdate{
-		Delivery: gen.GrantDelivery("push"), LayoutId: &keyLayout.ID, HookIds: []uuid.UUID{}, AutoRemediate: false}})
+		Delivery: gen.GrantDelivery("push"), LayoutId: &keyLayout.ID, Steps: []gen.GrantStep{}, AutoRemediate: false}})
 	wantStatus(t, err, 422)
 }
 
@@ -1279,7 +1274,7 @@ func TestGrantTargetOptionsRoundTrip(t *testing.T) {
 		t.Fatalf("targetOptions %v", g.TargetOptions)
 	}
 	up, err := f.srv.UpdateGrant(op, gen.UpdateGrantRequestObject{OrgId: f.org, Id: g.Id, Body: &gen.GrantUpdate{
-		Delivery: push(), DeployTargetId: &tid, HookIds: []uuid.UUID{}, TargetOptions: map[string]interface{}{}}})
+		Delivery: push(), DeployTargetId: &tid, Steps: []gen.GrantStep{}, TargetOptions: map[string]interface{}{}}})
 	if err != nil {
 		t.Fatal(err)
 	}

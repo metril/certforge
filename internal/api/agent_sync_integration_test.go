@@ -305,7 +305,7 @@ func TestHookRunKeepsOnlyGrantHooks(t *testing.T) {
 	runs := res.(gen.ListClientHookRuns200JSONResponse).Items
 	names := map[string]int{}
 	for _, r := range runs {
-		names[r.HookName]++
+		names[r.ActionName]++
 	}
 	if len(runs) != 2 || names["mine"] != 1 || names[""] != 1 {
 		t.Fatalf("runs %+v", runs)
@@ -383,7 +383,7 @@ func TestReportFailedAndHookRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	runs := res.(gen.ListClientHookRuns200JSONResponse).Items
-	if len(runs) != 1 || runs[0].ExitCode != 1 || len(runs[0].Stdout) != 8192 || runs[0].HookId != nil || runs[0].Stderr != "badbyte" || runs[0].HookName != "" {
+	if len(runs) != 1 || runs[0].ExitCode != 1 || len(runs[0].Stdout) != 8192 || runs[0].ActionId != nil || runs[0].Stderr != "badbyte" || runs[0].ActionName != "" {
 		t.Fatalf("runs %+v", runs)
 	}
 }

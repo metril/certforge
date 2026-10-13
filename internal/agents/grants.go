@@ -46,6 +46,8 @@ const (
 	RefLayout RefKind = iota + 1
 	RefTarget
 	RefHook
+	// RefGroup is an action group edit.
+	RefGroup
 	// RefCredential is a deploy credential rotation: every live grant whose
 	// target uses it is re-rendered (the files and version are unchanged, so
 	// an agent reinstalls nothing).
@@ -93,11 +95,11 @@ func (in GrantInput) stepsJSON() []byte {
 	return b
 }
 
-// checkSteps locks the actions and groups the steps name FOR SHARE (groups
+// CheckSteps locks the actions and groups the steps name FOR SHARE (groups
 // first, then the actions they and the steps name), expands them in order
-// and requires every action to be able to run on an agent. Errors name
-// steps[i].
-func (s *Service) checkSteps(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, steps []actions.Step) error {
+// and requires every action to be able to run on mode (Agent or Server).
+// Errors name steps[i].
+func (s *Service) CheckSteps(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, steps []actions.Step, mode targets.Mode) error {
 	if len(steps) == 0 {
 		return nil
 	}
@@ -150,7 +152,10 @@ func (s *Service) checkSteps(ctx context.Context, q *sqlcgen.Queries, orgID uuid
 	}
 	for i, st := range steps {
 		one, _ := actions.Expand([]actions.Step{st}, groups, lookup)
-		if actions.RunsOnMismatch(one, targets.Agent) >= 0 {
+		if actions.RunsOnMismatch(one, mode) >= 0 {
+			if mode == targets.Server {
+				return invalid(fmt.Sprintf("steps[%d]", i), "this step runs on an agent, not the server")
+			}
 			return invalid(fmt.Sprintf("steps[%d]", i), "this step runs on the server, not an agent")
 		}
 	}
@@ -172,13 +177,13 @@ func (s *Service) checkRefs(ctx context.Context, q *sqlcgen.Queries, orgID uuid.
 		return invalid("deployTargetId", "deploy target %s is not in this org", *in.TargetID)
 	}
 	// steps is plain JSON with no FK, so an action or group could otherwise
-	// be deleted between this check and the write below. checkSteps locks
+	// be deleted between this check and the write below. CheckSteps locks
 	// the referenced rows FOR SHARE in this transaction (see the package
 	// comment for the global lock order: referenced rows, then client, then
 	// deployments), so DeleteAction/DeleteActionGroup either serialize with
 	// this grant winning (and then see it as a dependent) or win and the
 	// lookup here reports the missing row.
-	if err := s.checkSteps(ctx, q, orgID, in.Steps); err != nil {
+	if err := s.CheckSteps(ctx, q, orgID, in.Steps, targets.Agent); err != nil {
 		return err
 	}
 	// output_spec_id and deploy_target_id are real FKs: an insert/update
@@ -1090,13 +1095,15 @@ func (s *Service) Resync(ctx context.Context, q *sqlcgen.Queries, ref RefKind, i
 		ids, err = q.LiveGrantIDsUsingTarget(ctx, &id)
 	case RefHook:
 		ids, err = q.LiveGrantIDsUsingAction(ctx, id)
+	case RefGroup:
+		ids, err = q.LiveGrantIDsUsingActionGroup(ctx, id)
 	case RefCredential:
 		ids, err = q.LiveGrantIDsUsingCredential(ctx, &id)
 	}
 	if err != nil {
 		return nil, err
 	}
-	return s.resyncTx(ctx, q, ids, ref != RefHook)
+	return s.resyncTx(ctx, q, ids, ref != RefHook && ref != RefGroup)
 }
 
 // ResyncCertificateRename re-renders every live grant of certID inside q,
