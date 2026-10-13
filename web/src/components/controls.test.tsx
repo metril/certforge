@@ -430,3 +430,59 @@ it('secret: after a replaced value is saved (reset to the sentinel) the field re
   expect(screen.getByText('Stored')).toBeInTheDocument();
   expect(screen.queryByLabelText('Recovery token')).toBeNull();
 });
+
+const KEY = '-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----';
+
+function KeyHarness({ stored = false }: { stored?: boolean }) {
+  const [v, setV] = useState<string | undefined>(undefined);
+  return (
+    <>
+      <SecretInput id="pk" label="Private key" stored={stored} value={v} onChange={setV} multiline />
+      <output data-testid="value">{String(v)}</output>
+    </>
+  );
+}
+
+it('secret multiline: renders a textarea and uploading a key emits its text', async () => {
+  const { user } = renderUI(<KeyHarness />);
+  expect(screen.getByLabelText('Private key').tagName).toBe('TEXTAREA');
+  await user.upload(screen.getByLabelText('Upload Private key'), new File([KEY], 'id_ed25519.pem'));
+  await waitFor(() => expect(screen.getByTestId('value').textContent).toBe(KEY + '\n'));
+});
+
+it('secret multiline: a non-key or encrypted file shows the error and emits nothing', async () => {
+  const { user } = renderUI(<KeyHarness />);
+  await user.upload(screen.getByLabelText('Upload Private key'), new File(['hello'], 'x.pem'));
+  expect(await screen.findByText('Not a PEM private key.')).toBeInTheDocument();
+  await user.upload(screen.getByLabelText('Upload Private key'), new File(['-----BEGIN ENCRYPTED PRIVATE KEY-----\nx'], 'y.pem'));
+  expect(await screen.findByText('Passphrase-protected keys are not supported.')).toBeInTheDocument();
+  expect(screen.getByTestId('value')).toHaveTextContent('undefined');
+});
+
+it('secret multiline: dropping a key file emits it', async () => {
+  const { user } = renderUI(<KeyHarness />);
+  const ta = screen.getByLabelText('Private key');
+  const file = new File([KEY], 'k.pem');
+  const { fireEvent } = await import('@testing-library/react');
+  fireEvent.drop(ta.parentElement!, { dataTransfer: { files: [file] } });
+  await waitFor(() => expect(screen.getByTestId('value').textContent).toBe(KEY + '\n'));
+  void user;
+});
+
+it('secret multiline: stored, Replace, upload, Keep stored and clearing behave', async () => {
+  const { user } = renderUI(<KeyHarness stored />);
+  await user.click(screen.getByRole('button', { name: 'Replace Private key' }));
+  await user.upload(screen.getByLabelText('Upload Private key'), new File([KEY], 'k.pem'));
+  await waitFor(() => expect(screen.getByTestId('value').textContent).toBe(KEY + '\n'));
+  await user.click(screen.getByRole('button', { name: 'Keep stored Private key' }));
+  expect(screen.getByTestId('value')).toHaveTextContent(UNCHANGED);
+  await user.click(screen.getByRole('button', { name: 'Replace Private key' }));
+  await user.type(screen.getByLabelText('Private key'), 'x');
+  await user.clear(screen.getByLabelText('Private key'));
+  expect(screen.getByTestId('value')).toHaveTextContent(UNCHANGED);
+  await user.click(screen.getByRole('button', { name: 'Keep stored Private key' }));
+  await user.click(screen.getByRole('button', { name: 'Remove Private key' }));
+  await user.type(screen.getByLabelText('Private key'), 'x');
+  await user.clear(screen.getByLabelText('Private key'));
+  expect(screen.getByTestId('value').textContent).toBe('');
+});

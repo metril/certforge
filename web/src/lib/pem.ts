@@ -175,3 +175,11 @@ export function summarizeBundle(text: string): BundleSummary {
 export function cnOfDn(dn: string): string {
   return /(?:^|,)\s*CN=((?:\\,|[^,])+)/.exec(dn)?.[1]?.replace(/\\,/g, ',') ?? dn;
 }
+
+/** Advisory client check for an SSH private key; the server stays the authority. */
+export function privateKeyProblem(text: string): string | null {
+  if (text.length > 8192) return 'Private key is longer than 8192 characters.';
+  if (/ENCRYPTED PRIVATE KEY/.test(text) || /Proc-Type:\s*4,ENCRYPTED/.test(text)) return 'Passphrase-protected keys are not supported.';
+  if (!/-----BEGIN ([A-Z0-9]+ )*PRIVATE KEY-----/.test(text)) return 'Not a PEM private key.';
+  return null;
+}

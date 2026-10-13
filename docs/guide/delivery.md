@@ -228,11 +228,11 @@ An SSH target writes certificate files to a remote host and runs optional comman
 | **Command after writing** (`postCommand`) | Always run when set, even after a failed write, so state is restored. | None |
 | **Timeout** (`timeoutSeconds`) | Seconds for the whole deploy, 5 to 300. | 60 |
 
-Get the host key with `ssh-keyscan -t ed25519 <host>` and paste the key line it prints. Compare it with the device's own fingerprint if you can.
+Click **Fetch from server** next to the host key to read it from the device, or run `ssh-keyscan -t ed25519 <host>` and paste the key line it prints. Compare it with the device's own fingerprint if you can.
 
 The private key is sent only when a file asks for `key` or `bundle` (or a layout file, which may hold it), and needs the `keys:export` permission. Files are written atomically with a restrictive umask, then set to the chosen mode.
 
-**PiKVM and GL.iNet Comet.** Their root filesystem is read-only, so the **PiKVM / GL.iNet Comet** preset wraps the write: `rw` before, then `ro; systemctl restart kvmd-nginx` after. It writes `/etc/kvmd/user/ssl/server.crt` and `server.key`. Older PiKVM images use `/etc/kvmd/nginx/ssl/`: pick **PiKVM (legacy paths)**. Log in as `root`.
+**PiKVM and GL.iNet Comet.** Their root filesystem is read-only, so the **PiKVM / GL.iNet Comet** preset wraps the write: `rw` before, then `systemctl restart kvmd-nginx; rc=$?; ro; exit $rc` after. It writes `/etc/kvmd/nginx/ssl/server.crt` and `server.key`, where kvmd's nginx reads them. The preset hides the files and commands; pick **Custom** to show and edit them. Log in as `root`.
 
 Every command the SSH target runs, before or after the files, is recorded as a hook run. Open the target and pick the **Hook runs** tab to see the command, exit status, duration and output (8 KiB each).
 

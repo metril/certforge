@@ -274,3 +274,18 @@ func TestCredentialKinds(t *testing.T) {
 		}
 	}
 }
+
+func TestSSHNeedsKeyFromFiles(t *testing.T) {
+	r := targets.NewRegistry()
+	r.Register(SSH{})
+	cases := map[string]bool{
+		`{"files":[{"path":"/a","content":"fullchain"},{"path":"/b","content":"key"}]}`: true,
+		`{"files":[{"path":"/a","content":"fullchain"}]}`:                               false,
+	}
+	for public, want := range cases {
+		got, err := r.NeedsKey("ssh", json.RawMessage(public))
+		if err != nil || got != want {
+			t.Errorf("NeedsKey(%s) = %v, %v; want %v", public, got, err, want)
+		}
+	}
+}

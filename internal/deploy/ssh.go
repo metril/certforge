@@ -68,8 +68,8 @@ const sshSchema = `{
     "port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 22, "title": "Port"},
     "username": {"type": "string", "title": "Username"},
     "password": {"type": "string", "secret": true, "title": "Password", "description": "Password login. Provide a password, a private key, or both."},
-    "privateKey": {"type": "string", "secret": true, "maxLength": 8192, "title": "Private key", "description": "PEM private key (not passphrase-protected)."},
-    "hostKey": {"type": "string", "maxLength": 2048, "title": "Host key", "description": "Pinned server key: a known_hosts line or '<type> <base64>'. Get it with: ssh-keyscan -t ed25519 <host>"},
+    "privateKey": {"type": "string", "format": "private-key", "secret": true, "maxLength": 8192, "title": "Private key", "description": "PEM private key (not passphrase-protected)."},
+    "hostKey": {"type": "string", "format": "ssh-host-key", "maxLength": 2048, "title": "Host key", "description": "Pinned server key: a known_hosts line or '<type> <base64>'. Fetch it from the host below, or run ssh-keyscan -t ed25519 <host>."},
     "files": {
       "type": "array", "minItems": 1, "maxItems": 16, "title": "Files",
       "items": {
@@ -140,7 +140,6 @@ func (t SSH) Parse(raw json.RawMessage) (targets.Config, error) {
 	if len(c.Files) < 1 || len(c.Files) > 16 {
 		return bad("files", "must hold 1 to 16 files")
 	}
-	needsKey := false
 	for i := range c.Files {
 		f := &c.Files[i]
 		if !strings.HasPrefix(f.Path, "/") || strings.ContainsAny(f.Path, "\x00\n") {
@@ -155,10 +154,8 @@ func (t SSH) Parse(raw json.RawMessage) (targets.Config, error) {
 		if !sshModeRe.MatchString(f.Mode) {
 			return bad(fmt.Sprintf("files[%d].mode", i), "must match ^0[0-7]{3}$")
 		}
-		if f.Content == "key" || f.Content == "bundle" || !sshCanon[f.Content] {
-			needsKey = true
-		}
 	}
+	needsKey := sshFilesNeedKey(c.Files)
 	if len(c.PreCommand) > 512 || len(c.PostCommand) > 512 {
 		return bad("preCommand", "commands are limited to 512 characters")
 	}
@@ -334,4 +331,26 @@ func (SSH) Deploy(ctx context.Context, req targets.Request) (targets.Result, err
 		return fail(first)
 	}
 	return targets.Result{Detail: fmt.Sprintf("%d files written%s", written, post)}, nil
+}
+
+// sshFilesNeedKey reports whether any file's content is the key, the bundle,
+// or a custom (non-canonical) content that may embed the key.
+func sshFilesNeedKey(files []SSHFile) bool {
+	for _, f := range files {
+		if f.Content == "key" || f.Content == "bundle" || !sshCanon[f.Content] {
+			return true
+		}
+	}
+	return false
+}
+
+// NeedsKey implements targets.KeyNeeder from the public config's file list.
+func (SSH) NeedsKey(public json.RawMessage) (bool, error) {
+	var doc struct {
+		Files []SSHFile `json:"files"`
+	}
+	if err := json.Unmarshal(public, &doc); err != nil {
+		return false, fmt.Errorf("ssh: %w", err)
+	}
+	return sshFilesNeedKey(doc.Files), nil
 }

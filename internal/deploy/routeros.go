@@ -75,7 +75,7 @@ const routerOSSchema = `{
     "username": {"type": "string", "title": "Username", "description": "RouterOS user allowed to use SSH, REST and manage certificates."},
     "password": {"type": "string", "secret": true, "title": "Password", "description": "Used for both REST and SSH."},
     "sshPort": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 22, "title": "SSH port"},
-    "hostKey": {"type": "string", "title": "SSH host key", "description": "The router's SSH public key, e.g. from ssh-keyscan -t ed25519."},
+    "hostKey": {"type": "string", "format": "ssh-host-key", "title": "SSH host key", "description": "The router's SSH public key, e.g. from ssh-keyscan -t ed25519."},
     "certName": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,40}$", "default": "certforge", "title": "Certificate name prefix", "description": "Certificates are named <prefix>-<fingerprint>; older ones with this prefix are removed."},
     "services": {"type": "array", "uniqueItems": true, "items": {"type": "string", "enum": ["www-ssl", "api-ssl", "sstp", "ovpn"]}, "default": ["www-ssl", "api-ssl"], "title": "Services", "description": "Where to bind the certificate."},
     "caPem": {"type": "string", "format": "pem-bundle", "title": "CA certificate", "description": "PEM certificate(s) to trust for the router's REST TLS certificate, in addition to the system roots."},

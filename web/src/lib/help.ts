@@ -72,6 +72,9 @@ export const help = {
   // CA detail sheet's own trust-bundle download, a different field.
   'ca.importTrustBundle': { text: 'PEM roots for a private ACME server, such as step-ca or Pebble.' },
   // CA bundle input (every pem-bundle field).
+  'sshFiles.content': { text: "Which bytes go in the file: a certificate part or a file name from the grant's layout." },
+  'sshFiles.needsKey': { text: 'This file includes the private key, so the target must be allowed the key.' },
+  'secret.privateKeyUpload': { text: 'A PEM private key file (id_ed25519, .pem, .key), not passphrase-protected. It replaces what is here.' },
   'caBundle.upload': { text: 'A PEM or DER certificate file (.pem, .crt, .cer, .der). It is added below what is already here.' },
   'caBundle.fetch': { text: 'Reads the chain the server presents. CertForge connects from its own server, so a host only an agent can reach will not answer.' },
   'caBundle.tofu': {
@@ -79,6 +82,10 @@ export const help = {
     learnMore: 'guide/delivery.md#trusting-a-private-ca',
   },
   'caBundle.saved': { text: "Copies the CA's current certificate here. Pick it again after the CA rotates." },
+  'hostKey.fetch': { text: 'Reads the key the SSH server presents. CertForge connects from its own server, so a host only an agent can reach will not answer.' },
+  'hostKey.tofu': {
+    text: "Trust on first use: anything in between could present its own key. Compare the fingerprint on the device with ssh-keygen -lf on its host key.",
+  },
   'ca.eab': { text: 'External account binding ties orders to your account at the CA. Some CAs require it.' },
   'ca.resolvers': { text: 'Propagation-check DNS servers: host[:port] or a DoH URL (https://cloudflare-dns.com/dns-query) for networks that intercept port 53. Empty uses system resolvers.' },
   // Task 3: private CA detail sheet.

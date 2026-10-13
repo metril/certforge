@@ -39,7 +39,14 @@ export function defaultRunsOn(meta: Pick<ProviderSchema, 'runsOn'> | undefined):
  * `never` (or an unset policy) never. */
 export function needsKey(keyPolicy: KeyPolicy | undefined, config: Record<string, unknown>): boolean {
   if (keyPolicy === 'always') return true;
-  if (keyPolicy === 'optional') return !!config.includeKey;
+  if (keyPolicy === 'optional') {
+    if (config.includeKey) return true;
+    const files = config.files;
+    if (Array.isArray(files)) {
+      const plain = ['fullchain', 'cert', 'chain'];
+      return files.some((f: { content?: unknown }) => !plain.includes(String(f?.content)));
+    }
+  }
   return false;
 }
 
@@ -94,19 +101,41 @@ export function toTargetInput(d: TargetDraft, schema: RJSFSchema, storedSecrets:
   return input;
 }
 
-export type SshPreset = { id: string; label: string; config: Record<string, unknown> };
+export type SshPreset = { id: string; label: string; summary?: string; config: Record<string, unknown> };
 
-const kvmFiles = (dir: string) => [
-  { path: `${dir}/server.crt`, content: 'fullchain', mode: '0644' },
-  { path: `${dir}/server.key`, content: 'key', mode: '0600' },
-];
-
-/** Starting configs for the ssh target type (PiKVM and GL.iNet Comet keep a read-only root filesystem). */
+/** Starting configs for the ssh target type (PiKVM and GL.iNet Comet keep a read-only root filesystem; kvmd's nginx reads /etc/kvmd/nginx/ssl). */
 export const SSH_PRESETS: SshPreset[] = [
-  { id: 'kvm', label: 'PiKVM / GL.iNet Comet', config: { files: kvmFiles('/etc/kvmd/user/ssl'), preCommand: 'rw', postCommand: 'ro; systemctl restart kvmd-nginx' } },
-  { id: 'kvm-legacy', label: 'PiKVM (legacy paths)', config: { files: kvmFiles('/etc/kvmd/nginx/ssl'), preCommand: 'rw', postCommand: 'ro; systemctl restart kvmd-nginx' } },
+  {
+    id: 'kvm',
+    label: 'PiKVM / GL.iNet Comet',
+    summary: 'Writes /etc/kvmd/nginx/ssl/server.crt and server.key; runs rw before, then restarts kvmd-nginx and runs ro after.',
+    config: {
+      files: [
+        { path: '/etc/kvmd/nginx/ssl/server.crt', content: 'fullchain', mode: '0644' },
+        { path: '/etc/kvmd/nginx/ssl/server.key', content: 'key', mode: '0600' },
+      ],
+      preCommand: 'rw',
+      postCommand: 'systemctl restart kvmd-nginx; rc=$?; ro; exit $rc',
+    },
+  },
   { id: 'custom', label: 'Custom', config: {} },
 ];
+
+/** The fields a preset owns; the form hides them while the preset is selected. */
+export const PRESET_HIDDEN_KEYS = ['files', 'preCommand', 'postCommand'];
+
+const presetKey = (c: Record<string, unknown>) =>
+  JSON.stringify([
+    ((c.files as { path?: unknown; content?: unknown; mode?: string }[] | undefined) ?? []).map((f) => [f.path, f.content, f.mode ?? '0644']),
+    c.preCommand ?? '',
+    c.postCommand ?? '',
+  ]);
+
+/** The preset an ssh config matches ('kvm'), else 'custom'. */
+export function presetFor(config: Record<string, unknown>): string {
+  const kvm = SSH_PRESETS.find((p) => p.id === 'kvm')!;
+  return presetKey(config ?? {}) === presetKey(kvm.config) ? 'kvm' : 'custom';
+}
 
 /** The deploy credential kinds a target type accepts (its schema's credentialKinds). */
 export function credentialKindsOf(schema: unknown): string[] {

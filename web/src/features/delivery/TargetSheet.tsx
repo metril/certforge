@@ -5,7 +5,7 @@ import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
 import { CircleAlert, Cpu, Server as ServerIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError, errorMessage } from '@/api/errors';
-import { createDeployTarget, updateDeployTarget } from '@/api/queries/delivery';
+import { createDeployTarget, layoutsQuery, updateDeployTarget } from '@/api/queries/delivery';
 import { invalidateGrants } from '@/api/queries/grants';
 import { CREDENTIAL_KIND_LABEL, deployCredentialsQuery, suppliedFields } from '@/api/queries/deployCredentials';
 import type { DeployTarget, ProviderSchema } from '@/api/types';
@@ -25,7 +25,7 @@ import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { caBundleScope, can } from '@/lib/permissions';
 import { stripSecretDefaults, storedSecretsFor, settledConfig } from '@/lib/secretForm';
-import { RUNS_ON_META, SSH_PRESETS, credentialKindsOf, defaultRunsOn, forcedRunsOn, keyGateBlocks, locationChanged, omitFields, toTargetInput, typeHelpKey, typeMeta } from '@/lib/targets';
+import { PRESET_HIDDEN_KEYS, RUNS_ON_META, SSH_PRESETS, credentialKindsOf, defaultRunsOn, forcedRunsOn, keyGateBlocks, locationChanged, omitFields, presetFor, toTargetInput, typeHelpKey, typeMeta } from '@/lib/targets';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 
 function omitKeys(o: Record<string, unknown>, keys: string[]): Record<string, unknown> {
@@ -45,7 +45,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
   const initialMeta = typeMeta(types, target?.type ?? types[0]!.code) ?? types[0]!;
   const [runsOn, setRunsOn] = useState<'server' | 'agent'>(target?.runsOn ?? defaultRunsOn(initialMeta));
   const [config, setConfig] = useState<Record<string, unknown>>((target?.config as Record<string, unknown> | undefined) ?? {});
-  const [preset, setPreset] = useState('custom');
+  const [preset, setPreset] = useState(() => (target?.type === 'ssh' ? presetFor((target.config as Record<string, unknown> | undefined) ?? {}) : 'custom'));
   const [nameError, setNameError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [extra, setExtra] = useState<ErrorSchema | null>(null);
@@ -69,7 +69,26 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
   // Settled so the form's mount-time onChange (defaults, secret sentinels) is not an edit.
   const dirty = useDirty({ name, type, runsOn, credentialId, config: settledConfig(schema, config, storedSecrets) });
   const canExportKeys = can(me, 'keys:export', orgId);
-  const formContext = useMemo(() => ({ caBundle: caBundleScope(me, orgId) }), [me, orgId]);
+  const layoutsQ = useQuery({ ...layoutsQuery(orgId), enabled: type === 'ssh' });
+  // The SSH files editor suggests layout file names: the dispatcher resolves
+  // a file's content by the base name of the layout path.
+  const sshContentNames = useMemo(() => {
+    const seen = new Set(['fullchain', 'cert', 'chain', 'key', 'bundle']);
+    const out: { name: string; layout: string }[] = [];
+    for (const l of layoutsQ.data ?? []) {
+      for (const f of l.files) {
+        const name = f.path.split('/').pop() ?? '';
+        if (name === '' || seen.has(name)) continue;
+        seen.add(name);
+        out.push({ name, layout: l.name });
+      }
+    }
+    return out;
+  }, [layoutsQ.data]);
+  const formContext = useMemo(
+    () => ({ caBundle: caBundleScope(me, orgId), sshHostKey: { orgId, canPeek: can(me, 'delivery:write', orgId) }, sshContentNames }),
+    [me, orgId, sshContentNames],
+  );
   // Locked once the target exists (R3: runsOn/type are immutable after
   // create) or for a viewer opening it read-only.
   const locked = !!target || readOnly;
@@ -103,6 +122,10 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
     schema.properties && 'includeKey' in schema.properties
       ? { includeKey: { 'ui:description': help['target.includeKey'].text, 'ui:options': { permission: 'keys:export', allowed: runsOn !== 'server' || canExportKeys } } }
       : undefined;
+
+  const presetHidden =
+    type === 'ssh' && preset === 'kvm' && !readOnly ? Object.fromEntries(PRESET_HIDDEN_KEYS.map((k) => [k, { 'ui:widget': 'hidden' }])) : undefined;
+  const uiOverrides = includeKeyOverride || presetHidden ? { ...includeKeyOverride, ...presetHidden } : undefined;
 
   const blocked = keyGateBlocks(me, orgId, runsOn, meta.keyPolicy, config);
   // Attaching a credential, or moving a credential-backed target to another
@@ -217,7 +240,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
               ]}
             />
           </Field>
-          {type === 'ssh' && !locked && (
+          {type === 'ssh' && !readOnly && (
             <Field id="target-preset" label="Preset">
               <SegmentedControl<string>
                 id="target-preset"
@@ -227,11 +250,12 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
                   setPreset(v);
                   // Keep what is already typed (host, credentials); a preset only sets files and commands.
                   const p = SSH_PRESETS.find((x) => x.id === v);
-                  if (p) setConfig((c) => ({ ...c, files: undefined, preCommand: undefined, postCommand: undefined, ...p.config }));
+                  if (p && v !== 'custom') setConfig((c) => ({ ...c, files: undefined, preCommand: undefined, postCommand: undefined, ...p.config }));
                   setExtra(null);
                 }}
                 options={SSH_PRESETS.map((p) => ({ value: p.id, label: p.label }))}
               />
+              {SSH_PRESETS.find((p) => p.id === preset)?.summary && <p className="mt-1 text-xs text-ink-muted">{SSH_PRESETS.find((p) => p.id === preset)?.summary}</p>}
             </Field>
           )}
           {credKinds.length > 0 && (
@@ -286,7 +310,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
               storedSecrets={storedSecrets}
               readonly={readOnly}
               extraErrors={extra ?? undefined}
-              uiSchemaOverrides={includeKeyOverride}
+              uiSchemaOverrides={uiOverrides}
               formContext={formContext}
             />
             )}

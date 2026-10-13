@@ -123,3 +123,34 @@ it('points a pem-bundle field at its form URL field for Fetch', () => {
   const t = { type: 'object', properties: { endpoint: { type: 'string', format: 'uri' }, caPem: { type: 'string', format: 'pem-bundle' } } } as unknown as RJSFSchema;
   expect(buildUiSchema(t).caPem).toMatchObject({ 'ui:options': { urlKey: 'endpoint' } });
 });
+
+it('routes an ssh-host-key field to the host key widget with its host and port fields', () => {
+  const f = { type: 'string', format: 'ssh-host-key' };
+  const a = { type: 'object', properties: { host: { type: 'string' }, port: { type: 'integer' }, hostKey: f } } as unknown as RJSFSchema;
+  expect(buildUiSchema(a).hostKey).toMatchObject({ 'ui:widget': 'sshHostKey', 'ui:options': { hostKey: 'host', portKey: 'port' } });
+  const b = { type: 'object', properties: { url: { type: 'string', format: 'uri' }, hostKey: f } } as unknown as RJSFSchema;
+  expect(buildUiSchema(b).hostKey).toMatchObject({ 'ui:widget': 'sshHostKey', 'ui:options': { hostKey: 'url' } });
+});
+
+it('routes a private-key secret to a multiline secret widget; a plain password stays single-line', () => {
+  const s = {
+    type: 'object',
+    properties: { privateKey: { type: 'string', format: 'private-key', secret: true }, password: { type: 'string', secret: true } },
+  } as unknown as RJSFSchema;
+  const ui = buildUiSchema(s);
+  expect(ui.privateKey).toMatchObject({ 'ui:widget': 'secret', 'ui:options': { stored: false, multiline: true } });
+  expect(ui.password).toMatchObject({ 'ui:widget': 'secret', 'ui:options': { stored: false } });
+});
+
+it('routes an array of {path, content, mode} objects to the sshFiles field; plain string arrays stay listArray', () => {
+  const s = {
+    type: 'object',
+    properties: {
+      files: { type: 'array', items: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' }, mode: { type: 'string' } } } },
+      tags: { type: 'array', items: { type: 'string' } },
+    },
+  } as unknown as RJSFSchema;
+  const ui = buildUiSchema(s);
+  expect(ui.files).toMatchObject({ 'ui:field': 'sshFiles' });
+  expect(ui.tags).toMatchObject({ 'ui:field': 'listArray' });
+});

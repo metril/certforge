@@ -5,7 +5,7 @@ import { UNCHANGED } from '@/api/types';
 // non-standard keywords Ajv ignores (strict: false, see SchemaForm.tsx):
 // `secret` marks a write-only credential field, `serverPath` marks a field
 // the server derives itself and 422s if the client sends it (preflight A10).
-type Prop = RJSFSchema & { secret?: boolean; serverPath?: boolean };
+type Prop = RJSFSchema & { secret?: boolean; serverPath?: boolean; format?: string };
 
 // An array of plain strings (no `items.enum`) maps to the ListInput chip
 // widget (theme/fields.tsx's `listArray` field) instead of RJSF's default
@@ -13,6 +13,14 @@ type Prop = RJSFSchema & { secret?: boolean; serverPath?: boolean };
 function isPlainStringArray(p: Prop): boolean {
   const items = p.items;
   return p.type === 'array' && typeof items === 'object' && !Array.isArray(items) && items.type === 'string' && items.enum === undefined;
+}
+
+// The SSH target's `files`: an array of {path, content, mode} objects maps to
+// the structured SshFilesField instead of RJSF's default per-item rows.
+function isSshFileList(p: Prop): boolean {
+  const items = p.items;
+  if (p.type !== 'array' || typeof items !== 'object' || Array.isArray(items) || typeof items.properties !== 'object') return false;
+  return ['path', 'content', 'mode'].every((k) => k in items.properties!);
 }
 
 // An object field keyed by an arbitrary name (`patternProperties`/
@@ -112,12 +120,19 @@ export function buildUiSchema(schema: RJSFSchema, opts: { storedSecrets?: string
     else if (typeof p.default === 'string' && p.default !== '') base['ui:placeholder'] = p.default;
 
     if (p.secret === true) {
-      ui[key] = { ...base, 'ui:widget': 'secret', 'ui:options': { stored: stored.has(key) } };
+      ui[key] = { ...base, 'ui:widget': 'secret', 'ui:options': { stored: stored.has(key), ...(p.format === 'private-key' ? { multiline: true } : {}) } };
     } else if (p.type === 'string' && p.format === 'pem-bundle') {
       const urlKey = urlKeyOf(schema);
       ui[key] = { ...base, 'ui:widget': 'caBundle', ...(urlKey ? { 'ui:options': { urlKey } } : {}) };
+    } else if (p.type === 'string' && p.format === 'ssh-host-key') {
+      const has = (k: string) => key !== k && props(schema).some(([n]) => n === k);
+      const hostKey = ['host', 'url'].find(has);
+      const portKey = ['port', 'sshPort'].find(has);
+      ui[key] = { ...base, 'ui:widget': 'sshHostKey', 'ui:options': { ...(hostKey ? { hostKey } : {}), ...(portKey ? { portKey } : {}) } };
     } else if (p.type === 'string' && (p.format === 'textarea' || (p.maxLength ?? 0) > 200)) {
       ui[key] = { ...base, 'ui:widget': 'textarea' };
+    } else if (isSshFileList(p)) {
+      ui[key] = { ...base, 'ui:field': 'sshFiles', 'ui:hideError': true };
     } else if (isPlainStringArray(p)) {
       ui[key] = { ...base, 'ui:field': 'listArray' };
     } else if (isHeaderMap(p)) {

@@ -3,6 +3,7 @@ package targets_test
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/metril/certforge/internal/targets"
@@ -192,6 +193,24 @@ func TestResolveSideMatrix(t *testing.T) {
 				t.Fatalf("ResolveSide(%q) = %q, want %q", c.requested, got, c.want)
 			}
 		})
+	}
+}
+
+// keyNeederTarget answers NeedsKey from its own config, ignoring includeKey.
+type keyNeederTarget struct{ *targetstest.Secret }
+
+func (keyNeederTarget) NeedsKey(public json.RawMessage) (bool, error) {
+	return strings.Contains(string(public), "wantkey"), nil
+}
+
+func TestNeedsKeyNeederOverridesIncludeKey(t *testing.T) {
+	r := targets.NewRegistry()
+	r.Register(keyNeederTarget{&targetstest.Secret{Code: "kn-test", Mode: targets.Server, Policy: targets.Optional}})
+	for public, want := range map[string]bool{`{"includeKey":true}`: false, `{"wantkey":1}`: true} {
+		got, err := r.NeedsKey("kn-test", json.RawMessage(public))
+		if err != nil || got != want {
+			t.Errorf("NeedsKey(%s) = %v, %v; want %v", public, got, err, want)
+		}
 	}
 }
 

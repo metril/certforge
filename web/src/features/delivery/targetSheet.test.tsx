@@ -226,19 +226,21 @@ it('target secrets not cached', async () => {
   expect(cached).not.toContain('s3cr3t-token');
 });
 
-it('ssh preset fills files and commands; custom clears them', async () => {
+it('ssh kvm preset hides files and commands; custom reveals them', async () => {
   server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, sshSchema], notifiers: [], signers: [] })));
   const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
   const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
   expect(within(sheet).queryByRole('radio', { name: 'PiKVM / GL.iNet Comet' })).not.toBeInTheDocument();
   await user.click(within(sheet).getByRole('radio', { name: /^SSH/ }));
   await user.click(within(sheet).getByRole('radio', { name: 'PiKVM / GL.iNet Comet' }));
-  expect(await within(sheet).findByDisplayValue('/etc/kvmd/user/ssl/server.crt')).toBeInTheDocument();
-  expect(within(sheet).getByDisplayValue('ro; systemctl restart kvmd-nginx')).toBeInTheDocument();
-  await user.click(within(sheet).getByRole('radio', { name: 'PiKVM (legacy paths)' }));
-  expect(await within(sheet).findByDisplayValue('/etc/kvmd/nginx/ssl/server.key')).toBeInTheDocument();
+  expect(await within(sheet).findByText(/restarts kvmd-nginx and runs ro after/)).toBeInTheDocument();
+  expect(within(sheet).queryByDisplayValue('/etc/kvmd/nginx/ssl/server.crt')).not.toBeInTheDocument();
+  expect(within(sheet).queryByDisplayValue('rw')).not.toBeInTheDocument();
+  expect(within(sheet).queryByRole('radio', { name: 'PiKVM (legacy paths)' })).not.toBeInTheDocument();
   await user.click(within(sheet).getByRole('radio', { name: 'Custom' }));
-  await waitFor(() => expect(within(sheet).queryByDisplayValue('rw')).not.toBeInTheDocument());
+  expect(await within(sheet).findByDisplayValue('/etc/kvmd/nginx/ssl/server.crt')).toBeInTheDocument();
+  expect(within(sheet).getByDisplayValue('rw')).toBeInTheDocument();
+  expect(within(sheet).queryByText(/restarts kvmd-nginx and runs ro after/)).not.toBeInTheDocument();
 });
 
 it('type field is radios with few types and a combobox with many', async () => {

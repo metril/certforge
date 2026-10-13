@@ -38,15 +38,30 @@ type Props = {
   mono?: boolean;
   /** Show the trailing clear button when a value is picked (default false; opt in for truly optional values). */
   clearable?: boolean;
+  /** Typed text that matches no option can be used as the value (letters, digits, . _ -). */
+  creatable?: boolean;
+  'aria-invalid'?: boolean;
   'aria-label'?: string;
 };
 
-export function Combobox({ id, value, onChange, options, placeholder, emptyText, footer, disabled, mono, clearable = false, ...rest }: Props) {
+const CREATABLE = /^[A-Za-z0-9._-]+$/;
+
+export function Combobox({ id, value, onChange, options, placeholder, emptyText, footer, disabled, mono, clearable = false, creatable = false, ...rest }: Props) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const selected = options.find((o) => o.value === value);
+  const typed = search.trim();
+  const canCreate = creatable && typed !== '' && !options.some((o) => o.value === typed);
+  const typedValid = CREATABLE.test(typed);
   return (
     <div className="flex items-center gap-1">
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover
+        open={open}
+        onOpenChange={(o) => {
+          setOpen(o);
+          if (!o) setSearch('');
+        }}
+      >
         <PopoverTrigger asChild>
           <Button
             id={id}
@@ -55,16 +70,22 @@ export function Combobox({ id, value, onChange, options, placeholder, emptyText,
             role="combobox"
             aria-expanded={open}
             aria-label={rest['aria-label']}
+            aria-invalid={rest['aria-invalid']}
             disabled={disabled}
             className={cn('h-9 min-w-0 flex-1 justify-between bg-field font-normal hover:border-ink-muted hover:bg-field focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring/40', mono && 'font-mono text-xs')}
           >
-            {selected ? <span className="truncate">{selected.label}</span> : <span className="text-ink-muted">{placeholder}</span>}
+            {selected ? <span className="truncate">{selected.label}</span> : creatable && value ? <span className="truncate">{value}</span> : <span className="text-ink-muted">{placeholder}</span>}
             <ChevronsUpDown className="size-4 shrink-0 text-ink-muted" aria-hidden />
           </Button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-(--radix-popover-trigger-width) min-w-64 p-0">
           <Command filter={keywordFilter}>
-            <CommandInput placeholder="Search" />
+            <CommandInput placeholder="Search" value={creatable ? search : undefined} onValueChange={creatable ? setSearch : undefined} />
+            {canCreate && !typedValid && (
+              <p role="alert" className="px-3 py-1.5 text-xs text-failed">
+                Use letters, digits, dot, dash or underscore.
+              </p>
+            )}
             <CommandList>
               <CommandEmpty>{emptyText}</CommandEmpty>
               <CommandGroup>
@@ -87,6 +108,19 @@ export function Combobox({ id, value, onChange, options, placeholder, emptyText,
                   </OptionWithHint>
                 ))}
               </CommandGroup>
+              {canCreate && typedValid && (
+                <CommandItem
+                  value={`__create__${typed}`}
+                  forceMount
+                  onSelect={() => {
+                    onChange(typed);
+                    setOpen(false);
+                    setSearch('');
+                  }}
+                >
+                  <span className="truncate">Use “{typed}”</span>
+                </CommandItem>
+              )}
             </CommandList>
             {footer && (
               <div className="border-t border-border p-1" onClick={() => setOpen(false)}>

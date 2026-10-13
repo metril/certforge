@@ -1016,8 +1016,8 @@ export const sshSchema = {
       port: { type: 'integer', minimum: 1, maximum: 65535, default: 22, title: 'Port' },
       username: { type: 'string', title: 'Username' },
       password: { type: 'string', secret: true, title: 'Password' },
-      privateKey: { type: 'string', secret: true, maxLength: 8192, title: 'Private key' },
-      hostKey: { type: 'string', maxLength: 2048, title: 'Host key' },
+      privateKey: { type: 'string', format: 'private-key', secret: true, maxLength: 8192, title: 'Private key' },
+      hostKey: { type: 'string', format: 'ssh-host-key', maxLength: 2048, title: 'Host key' },
       files: {
         type: 'array', minItems: 1, maxItems: 16, title: 'Files',
         items: {
@@ -1049,7 +1049,7 @@ export const deployCredentialKinds = [
       properties: {
         username: { type: 'string', minLength: 1, title: 'Username' },
         password: { type: 'string', secret: true, title: 'Password' },
-        privateKey: { type: 'string', secret: true, maxLength: 8192, title: 'Private key' },
+        privateKey: { type: 'string', format: 'private-key', secret: true, maxLength: 8192, title: 'Private key' },
       },
     },
   },

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, it } from 'vitest';
-import { appendPem, cnOfDn, derToPem, fileBytesToPem, parseCert, summarizeBundle } from './pem';
+import { appendPem, cnOfDn, derToPem, fileBytesToPem, parseCert, privateKeyProblem, summarizeBundle } from './pem';
 
 const fixtures = path.resolve(import.meta.dirname, '../../e2e/fixtures');
 const PEM = readFileSync(path.join(fixtures, 'ca.pem'), 'utf8');
@@ -36,4 +36,18 @@ it('takes the CN from a distinguished name', () => {
   expect(cnOfDn('CN=a\\, b,O=x')).toBe('a, b');
   expect(cnOfDn('O=x,CN=y')).toBe('y');
   expect(cnOfDn('O=x')).toBe('O=x');
+});
+
+it('privateKeyProblem accepts unencrypted PEM private keys', () => {
+  for (const k of ['OPENSSH ', 'RSA ', 'EC ', '']) {
+    expect(privateKeyProblem(`-----BEGIN ${k}PRIVATE KEY-----\nabc\n-----END ${k}PRIVATE KEY-----\n`)).toBeNull();
+  }
+});
+
+it('privateKeyProblem rejects certificates, junk, encrypted keys and oversize input', () => {
+  expect(privateKeyProblem(PEM)).not.toBeNull();
+  expect(privateKeyProblem('junk')).not.toBeNull();
+  expect(privateKeyProblem('-----BEGIN ENCRYPTED PRIVATE KEY-----\nx\n')).toBe('Passphrase-protected keys are not supported.');
+  expect(privateKeyProblem('-----BEGIN RSA PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\nx\n')).toBe('Passphrase-protected keys are not supported.');
+  expect(privateKeyProblem(`-----BEGIN PRIVATE KEY-----\n${'a'.repeat(8200)}`)).not.toBeNull();
 });

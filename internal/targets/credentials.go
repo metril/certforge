@@ -34,7 +34,7 @@ var credentialKindSchemas = map[string]json.RawMessage{
   "properties": {
     "username": {"type": "string", "minLength": 1, "title": "Username"},
     "password": {"type": "string", "secret": true, "title": "Password"},
-    "privateKey": {"type": "string", "secret": true, "maxLength": 8192, "title": "Private key", "description": "PEM private key (not passphrase-protected)."}
+    "privateKey": {"type": "string", "format": "private-key", "secret": true, "maxLength": 8192, "title": "Private key", "description": "PEM private key (not passphrase-protected)."}
   }
 }`),
 	CredKindPassword: json.RawMessage(`{
