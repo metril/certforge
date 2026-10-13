@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, makeAuditEvent, makeClient, makeHookRun, meWith, org, url } from '@/test/fixtures';
+import { authHandlers, makeAuditEvent, makeClient, makeActionRun, meWith, org, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let auditQuery: URLSearchParams;
@@ -15,10 +15,10 @@ beforeEach(() => {
     http.get(url('/orgs/org-1/clients/cl-1/hook-runs'), () =>
       HttpResponse.json({
         items: [
-          makeHookRun({ id: 'hr-1', stdout: 'reloaded\n' }),
-          makeHookRun({ id: 'hr-2', exitCode: 2, stderr: 'nginx: [emerg] bad config', durationMs: 1400 }),
-          makeHookRun({ id: 'hr-3', hookId: null, hookName: '', exitCode: -1, phase: 'pre_deploy' }),
-          makeHookRun({ id: 'hr-4', exitCode: -1, stderr: '[certforge-agent: killed after 30s]', durationMs: 30_000 }),
+          makeActionRun({ id: 'hr-1', stdout: 'reloaded\n' }),
+          makeActionRun({ id: 'hr-2', exitCode: 2, stderr: 'nginx: [emerg] bad config', durationMs: 1400 }),
+          makeActionRun({ id: 'hr-3', actionId: null, actionName: '', actionKind: '', exitCode: -1, phase: 'pre_deploy' }),
+          makeActionRun({ id: 'hr-4', exitCode: -1, stderr: '[certforge-agent: killed after 30s]', durationMs: 30_000 }),
         ],
         nextCursor: null,
       }),
@@ -33,16 +33,18 @@ beforeEach(() => {
   );
 });
 
-it('lists hook runs with exit, phase, command and output', async () => {
+it('lists action runs with exit, kind, phase, command and output', async () => {
   const { user } = renderRoute('/o/acme/clients/cl-1/hooks');
-  const runs = await screen.findByRole('list', { name: 'Hook runs' });
+  const runs = await screen.findByRole('list', { name: 'Action runs' });
   const [ok, bad, refused, timedOut] = within(runs).getAllByRole('listitem');
   expect(within(ok!).getByText('0')).toBeInTheDocument();
+  expect(within(ok!).getByText('reload nginx')).toBeInTheDocument();
+  expect(within(ok!).getByText('Command')).toBeInTheDocument();
   expect(within(ok!).getByText('/usr/sbin/nginx -s reload')).toBeInTheDocument();
   expect(within(bad!).getByText('2')).toBeInTheDocument();
   expect(within(bad!).getByText('1.4 s')).toBeInTheDocument();
   expect(within(refused!).getByText('Not run')).toBeInTheDocument();
-  expect(within(refused!).getByText('Deleted hook')).toBeInTheDocument();
+  expect(within(refused!).getByText('Deleted action')).toBeInTheDocument();
   expect(within(refused!).getByText('Pre-deploy')).toBeInTheDocument();
   expect(within(timedOut!).getByText('Timed out')).toBeInTheDocument();
   await user.click(within(bad!).getByRole('button', { name: 'Output of reload nginx' }));
