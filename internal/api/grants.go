@@ -363,7 +363,7 @@ func verifyAuditOut(v *gen.GrantVerify) any {
 	if v == nil {
 		return nil
 	}
-	return map[string]any{"host": v.Host, "port": v.Port, "sni": v.Sni}
+	return map[string]any{"host": v.Host, "port": v.Port, "sni": v.Sni, "intervalSeconds": v.IntervalSeconds}
 }
 
 // grantMonitorName is a grant-owned monitor's name, "<target> · <cert>"
