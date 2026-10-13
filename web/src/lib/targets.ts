@@ -152,6 +152,13 @@ export function omitFields(schema: RJSFSchema, fields: string[]): RJSFSchema {
   return { ...schema, properties, required };
 }
 
+/** Drops fields from `required` but keeps them in the schema (shown read-only,
+ * filled from a credential). */
+export function unrequireFields(schema: RJSFSchema, fields: string[]): RJSFSchema {
+  if (fields.length === 0 || !schema.required) return schema;
+  return { ...schema, required: schema.required.filter((k) => !fields.includes(k)) };
+}
+
 // Mirrors the server's requireCredentialWrite: where a saved credential's
 // secret is sent (url, host, port, RouterOS sshPort) and the pinned hostKey.
 const LOCATION_KEYS = ['url', 'host', 'port', 'sshPort', 'hostKey'];

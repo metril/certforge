@@ -285,8 +285,11 @@ describe('saved credentials', () => {
     // Only kinds the type accepts are offered.
     expect(screen.queryByRole('option', { name: /cloudflare/ })).not.toBeInTheDocument();
     await user.click(await screen.findByRole('option', { name: /lab ssh/ }));
-    expect(within(sheet).queryByLabelText('Username')).not.toBeInTheDocument();
+    const username = within(sheet).getByLabelText('Username');
+    expect(username).toBeDisabled();
+    expect(username).toHaveValue('root');
     expect(within(sheet).queryByLabelText('Private key')).not.toBeInTheDocument();
+    expect(within(sheet).getByText('Stored')).toBeInTheDocument();
     expect(within(sheet).getByText('Password')).toBeInTheDocument();
     await user.click(within(sheet).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(posted).toMatchObject({ type: 'ssh', credentialId: 'dc-1', config: { host: 'kvm.lan' } }));
@@ -304,7 +307,7 @@ describe('saved credentials', () => {
     expect(select).toHaveTextContent('lab ssh');
     await user.hover(select.parentElement!.parentElement!);
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Needs the deploycreds:write permission');
-    expect(within(sheet).queryByLabelText('Username')).not.toBeInTheDocument();
+    expect(within(sheet).getByLabelText('Username')).toBeDisabled();
     expect(within(sheet).getByRole('button', { name: 'Save' })).toBeEnabled();
     await user.clear(within(sheet).getByLabelText('Host'));
     await user.type(within(sheet).getByLabelText('Host'), 'evil.lan');
@@ -329,6 +332,22 @@ describe('saved credentials', () => {
     await user.type(within(sheet).getByLabelText('Username'), 'root');
     await user.click(within(sheet).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(patched).toMatchObject({ credentialId: null, config: { username: 'root' } }));
+  });
+
+  it('prefill from the credential is not an edit and Enter manually frees the fields', async () => {
+    useSsh([sshTarget]);
+    const { user } = renderRoute('/o/acme/delivery/targets?edit=t-ssh');
+    const sheet = await screen.findByRole('dialog', { name: 'Edit kvm' });
+    expect(await within(sheet).findByLabelText('Username')).toHaveValue('root');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit kvm' })).not.toBeInTheDocument());
+    renderRoute('/o/acme/delivery/targets?edit=t-ssh');
+    const again = await screen.findByRole('dialog', { name: 'Edit kvm' });
+    await user.click(await within(again).findByRole('combobox', { name: 'Credential' }));
+    await user.click(await screen.findByRole('option', { name: 'Enter manually' }));
+    const u = within(again).getByLabelText('Username');
+    expect(u).toBeEnabled();
+    expect(u).toHaveValue('');
   });
 
   it('the detail sheet links to the credential', async () => {
