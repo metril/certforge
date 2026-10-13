@@ -31,6 +31,8 @@ type Service struct {
 	Settings *settings.Store
 	Now      func() time.Time
 	Dial     DialFunc
+	// Drift, when set, reacts to checks of grant-owned monitors.
+	Drift DriftHandler
 }
 
 func (s *Service) now() time.Time {
@@ -216,21 +218,47 @@ func (s *Service) Check(ctx context.Context, id uuid.UUID) (Monitor, error) {
 
 	// The event is emitted in the transition's own transaction: a failed
 	// emit rolls the transition back, so the next check retries both.
+	var after func()
+	emit := shouldEmit(m.State, newState)
+	drift := m.GrantID != nil && s.Drift != nil && obs.Err == nil && (newState == "mismatch" || newState == "ok")
 	var onWin func(pgx.Tx) error
-	if shouldEmit(m.State, newState) {
+	if emit || drift {
 		onWin = func(tx pgx.Tx) error {
-			_, err := s.Emitter.Emit(ctx, tx, buildEvent(m, newState, obs, stateChangedAt, now))
-			return err
+			if emit {
+				if _, err := s.Emitter.Emit(ctx, tx, buildEvent(m, newState, obs, stateChangedAt, now)); err != nil {
+					return err
+				}
+			}
+			if drift {
+				a, err := s.Drift.OnCheck(ctx, tx, id, newState, obs.Fingerprint, expectedFP)
+				if err != nil {
+					return err
+				}
+				after = a
+			}
+			return nil
 		}
 	}
-	if _, err := s.Store.TransitionStateWith(ctx, TransitionParams{
+	won, err := s.Store.TransitionStateWith(ctx, TransitionParams{
 		ID: id, OldState: m.State, NewState: newState, StateChangedAt: stateChangedAt, CheckedAt: now,
 		NextCheckAt: nextCheckAt, LastFingerprint: lastFP, LastNotAfter: lastNotAfter, LastIssuer: lastIssuer, LastError: lastError,
 		ConsecutiveFailures: failures, OldFailures: m.ConsecutiveFailures,
-	}, onWin); err != nil {
+	}, onWin)
+	if err != nil {
 		return Monitor{}, err
 	}
+	if won && after != nil {
+		after()
+	}
 	return s.Store.GetByID(ctx, id)
+}
+
+// DriftHandler reacts, inside a grant-owned monitor's winning state
+// transition, to a mismatch or ok observation (server grant drift). It runs
+// in the transition's transaction; the returned after func, if non-nil, runs
+// once that transaction has committed.
+type DriftHandler interface {
+	OnCheck(ctx context.Context, tx pgx.Tx, monitorID uuid.UUID, newState, observedFP, expectedFP string) (after func(), err error)
 }
 
 // buildEvent is the event raised for m's transition into newState.

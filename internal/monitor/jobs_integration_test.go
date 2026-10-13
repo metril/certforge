@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 
 	"github.com/metril/certforge/internal/db/dbtest"
@@ -199,3 +200,60 @@ func TestCheckMonitorInline(t *testing.T) {
 }
 
 func strPtr(s string) *string { return &s }
+
+type fakeDrift struct {
+	calls []string
+	after int
+}
+
+func (f *fakeDrift) OnCheck(_ context.Context, _ pgx.Tx, _ uuid.UUID, newState, _, _ string) (func(), error) {
+	f.calls = append(f.calls, newState)
+	return func() { f.after++ }, nil
+}
+
+// TestCheckDriftHandlerOnlyForGrantOwned: a check of a grant-owned monitor
+// calls the DriftHandler (and its after func post-commit); a standalone
+// monitor's check never does.
+func TestCheckDriftHandlerOnlyForGrantOwned(t *testing.T) {
+	pool, q := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	ctx := context.Background()
+	var certID uuid.UUID
+	if err := pool.QueryRow(ctx, `INSERT INTO certificates (org_id, name, common_name) VALUES ($1, 'c', 'c.example.test') RETURNING id`, org).Scan(&certID); err != nil {
+		t.Fatal(err)
+	}
+	tgt, err := q.CreateDeployTarget(ctx, sqlcgen.CreateDeployTargetParams{OrgID: org, Name: "t", Type: "vault-kv", RunsOn: "server", Config: []byte(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := q.CreateServerGrant(ctx, sqlcgen.CreateServerGrantParams{CertID: certID, DeployTargetID: &tgt.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	owned := insertMonitor(t, pool, monitorRow{orgID: org, name: "owned", host: "example.test", expectedCertID: &certID})
+	plain := insertMonitor(t, pool, monitorRow{orgID: org, name: "plain", host: "example.test", expectedCertID: &certID})
+	if _, err := pool.Exec(ctx, `UPDATE external_monitors SET grant_id = $1 WHERE id = $2`, g.ID, owned); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := newService(pool, &fakeNotifyInserter{})
+	fd := &fakeDrift{}
+	svc.Drift = fd
+	svc.Dial = func(string, int, string, bool) monitor.Observation {
+		return monitor.Observation{Fingerprint: "ffff", NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(1000 * time.Hour)}
+	}
+	if _, err := svc.Check(ctx, plain); err != nil {
+		t.Fatal(err)
+	}
+	if len(fd.calls) != 0 {
+		t.Fatalf("handler called for standalone monitor: %v", fd.calls)
+	}
+	for i := 0; i < 2; i++ { // unchanged state still reaches the handler
+		if _, err := svc.Check(ctx, owned); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(fd.calls) != 2 || fd.calls[0] != "mismatch" || fd.after != 2 {
+		t.Fatalf("calls = %v after = %d, want 2 mismatch calls and 2 afters", fd.calls, fd.after)
+	}
+}
