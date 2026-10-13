@@ -221,18 +221,18 @@ An SSH target writes certificate files to a remote host and runs optional comman
 |---|---|---|
 | **Host**, **Port** (`host`, `port`) | The SSH server. | Port 22 |
 | **Username** (`username`) | Login name. | None |
-| **Password**, **Private key** (`password`, `privateKey`) | At least one. The key is PEM and must not have a passphrase. Stored encrypted. | None |
+| **Password**, **Private key** (`password`, `privateKey`) | At least one. The key is PEM and must not have a passphrase. Paste it, or use **Upload** or drag a key file onto the field; a passphrase-protected key is rejected. Stored encrypted. | None |
 | **Host key** (`hostKey`) | The pinned server key, a `known_hosts` line or `<type> <base64>`. Required: there is no trust on first use, and a mismatch fails before anything runs. | None |
-| **Files** (`files`) | 1 to 16 entries of `path` (absolute), `content` and `mode`. `content` is `fullchain`, `cert`, `chain`, `key`, `bundle` (fullchain plus key, as HAProxy and lighttpd want) or the name of a file from the grant's layout. | Mode `0644` |
+| **Files** (`files`) | 1 to 16 rows, edited with **Add file** and **Remove**: **Remote path** (absolute), **Content** and **Mode**. A key badge marks a row whose file needs the private key. **Content** is `fullchain`, `cert`, `chain`, `key`, `bundle` (fullchain plus key, as HAProxy and lighttpd want) or the name of a file from the grant's layout. | Mode `0644` |
 | **Command before writing** (`preCommand`) | Run first. A non-zero exit aborts the deploy. | None |
 | **Command after writing** (`postCommand`) | Always run when set, even after a failed write, so state is restored. | None |
 | **Timeout** (`timeoutSeconds`) | Seconds for the whole deploy, 5 to 300. | 60 |
 
-Click **Fetch from server** next to the host key to read it from the device, or run `ssh-keyscan -t ed25519 <host>` and paste the key line it prints. Compare it with the device's own fingerprint if you can.
+Click **Fetch from server** next to the host key to read it from the device, or run `ssh-keyscan -t ed25519 <host>` and paste the key line it prints. The form shows the fingerprint and warns that this is trust on first use: anything between CertForge and the host could present its own key, so compare the fingerprint with the device's own before you save. CertForge connects from its own server under the same address policy as targets, so a host only an agent can reach will not answer. It needs `delivery:write`, allows two fetches at once, and is audited as `ssh.peek` with the host and port.
 
-The private key is sent only when a file asks for `key` or `bundle` (or a layout file, which may hold it), and needs the `keys:export` permission. Files are written atomically with a restrictive umask, then set to the chosen mode.
+The private key is sent only when a file uses `key`, `bundle` or a layout file name (a layout file may hold it), and needs the `keys:export` permission. Files are written atomically with a restrictive umask, then set to the chosen mode.
 
-**PiKVM and GL.iNet Comet.** Their root filesystem is read-only, so the **PiKVM / GL.iNet Comet** preset wraps the write: `rw` before, then `systemctl restart kvmd-nginx; rc=$?; ro; exit $rc` after. It writes `/etc/kvmd/nginx/ssl/server.crt` and `server.key`, where kvmd's nginx reads them. The preset hides the files and commands; pick **Custom** to show and edit them. Log in as `root`.
+**PiKVM and GL.iNet Comet.** Their root filesystem is read-only, so the single **PiKVM / GL.iNet Comet** preset wraps the write: `rw` before, then `systemctl restart kvmd-nginx; rc=$?; ro; exit $rc` after. It writes `/etc/kvmd/nginx/ssl/server.crt` (`fullchain`, `0644`) and `server.key` (`key`, `0600`), where kvmd's nginx reads them. The preset hides the files and commands; pick **Custom** to show and edit them. Log in as `root`.
 
 Every command the SSH target runs, before or after the files, is recorded as a hook run. Open the target and pick the **Hook runs** tab to see the command, exit status, duration and output (8 KiB each).
 
@@ -279,7 +279,7 @@ A RouterOS target installs a certificate on RouterOS 7.x. It runs on the server.
 | **REST URL** (`url`) | https URL of the router, for example `https://router.example.net`. The REST API is served by `www-ssl`. | None |
 | **Username**, **Password** (`username`, `password`) | A user allowed to use SSH and REST and to manage certificates. The password is used for both and stored encrypted. | None |
 | **SSH port** (`sshPort`) | Port for the SCP upload. | 22 |
-| **SSH host key** (`hostKey`) | The router's pinned SSH public key, from `ssh-keyscan -t ed25519 <host>`. | None |
+| **SSH host key** (`hostKey`) | The router's pinned SSH public key. Click **Fetch from server** to read it (trust on first use, as for [SSH](#ssh)), or use `ssh-keyscan -t ed25519 <host>`. | None |
 | **Certificate name prefix** (`certName`) | Certificates are named `<prefix>-<fingerprint>`. | `certforge` |
 | **Services** (`services`) | Where to bind it: `www-ssl`, `api-ssl`, `sstp`, `ovpn`. | `www-ssl`, `api-ssl` |
 | **CA certificate** (`caPem`) | PEM to trust for the router's REST TLS certificate, on top of the system roots. | None |
@@ -362,7 +362,7 @@ A saved credential holds a login once so many targets can use it. When the same 
 
 | Kind | Fields | Accepted by |
 |---|---|---|
-| SSH | Username, plus a password, a private key or both | SSH |
+| SSH | Username, plus a password, a private key (pasted or uploaded; no passphrase) or both | SSH |
 | Password | Username and password | SSH, pfSense Plus, MikroTik RouterOS |
 | API key | API key, optional username | TrueNAS SCALE |
 | Token | Token | Authentik |
