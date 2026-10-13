@@ -9,11 +9,14 @@ import type { Grant, GrantUpdate, PostAction } from '@/api/types';
 import { ChipSet } from '@/components/ChipSet';
 import { Combobox } from '@/components/Combobox';
 import { Field } from '@/components/Field';
+import { FormSection } from '@/components/FormSection';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+
+import { verifyDefault } from './verifyDefault';
 
 type Props = { orgId: string; targetId: string; editing?: Grant; onBack: () => void; onDone: () => void };
 
@@ -53,6 +56,18 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
   const [certError, setCertError] = useState<string | null>(null);
   const [layoutError, setLayoutError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const target = targetsQ.data?.find((t) => t.id === targetId);
+  const vDef = verifyDefault(target);
+  const [verifyOn, setVerifyOn] = useState<boolean | undefined>(editing ? !!editing.verify : undefined);
+  const [hostEdit, setHostEdit] = useState<string | undefined>(undefined);
+  const [portEdit, setPortEdit] = useState<string | undefined>(undefined);
+  const [sniEdit, setSniEdit] = useState<string | undefined>(undefined);
+  const [autoRemediate, setAutoRemediate] = useState(editing?.autoRemediate ?? false);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const vHost = hostEdit ?? editing?.verify?.host ?? vDef?.host ?? '';
+  const vPort = portEdit ?? String(editing?.verify?.port ?? vDef?.port ?? '443');
+  const vSni = sniEdit ?? editing?.verify?.sni ?? '';
+  const vOn = vDef ? (verifyOn ?? vHost !== '') : false;
   const isPf = targetsQ.data?.find((t) => t.id === targetId)?.type === 'pfsense';
   const stored = storedRestart(editing);
   const [pickedMode, setRestartMode] = useState<RestartMode | undefined>(undefined);
@@ -106,6 +121,16 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
     setCertError(null);
     setLayoutError(null);
     setFormError(null);
+    setVerifyError(null);
+    let verify: { host: string; port: number; sni?: string } | null = null;
+    if (vOn) {
+      const port = Number(vPort);
+      if (!vHost.trim() || !Number.isInteger(port) || port < 1 || port > 65535) {
+        setVerifyError('Enter a host and a port from 1 to 65535.');
+        return;
+      }
+      verify = { host: vHost.trim(), port, ...(vSni.trim() && { sni: vSni.trim() }) };
+    }
     if (!editing && !certificateId) {
       setCertError('Pick a certificate.');
       return;
@@ -140,9 +165,9 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
         // internal/api/grants.go's updateServerGrant only reads LayoutId and
         // PostAction for a server grant; the other GrantUpdate fields are
         // agent-only and ignored server-side. Omitting postAction clears it.
-        await update.mutateAsync({ id: editing.id, body: { layoutId: layoutId ?? null, autoRemediate: editing.autoRemediate, ...(editing.verify && { verify: editing.verify }), ...(targetOptions && { targetOptions }), ...(postAction && { postAction }) } as GrantUpdate });
+        await update.mutateAsync({ id: editing.id, body: { layoutId: layoutId ?? null, autoRemediate: vOn && autoRemediate, verify, ...(targetOptions && { targetOptions }), ...(postAction && { postAction }) } as GrantUpdate });
       } else {
-        await create.mutateAsync({ certificateId: certificateId!, autoRemediate: false, layoutId: layoutId ?? null, ...(targetOptions && Object.keys(targetOptions).length > 0 && { targetOptions }), ...(postAction && { postAction }) });
+        await create.mutateAsync({ certificateId: certificateId!, autoRemediate: vOn && autoRemediate, layoutId: layoutId ?? null, ...(verify && { verify }), ...(targetOptions && Object.keys(targetOptions).length > 0 && { targetOptions }), ...(postAction && { postAction }) });
       }
       onDone();
     } catch (e) {
@@ -262,6 +287,25 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
           </>
         )}
       </div>
+      {vDef && (
+        <FormSection title="Verify" help="grant.verify">
+          <SwitchField id="server-grant-verify" label="Verify the endpoint" help="grant.verify" checked={vOn} onCheckedChange={setVerifyOn} onText="Check the served certificate" offText="Off" />
+          {vOn && (
+            <>
+              <Field id="server-grant-verify-host" label="Host" error={verifyError}>
+                <Input id="server-grant-verify-host" className="font-mono" placeholder="pikvm.example" value={vHost} onChange={(e) => setHostEdit(e.target.value)} />
+              </Field>
+              <Field id="server-grant-verify-port" label="Port">
+                <Input id="server-grant-verify-port" type="number" min={1} max={65535} value={vPort} onChange={(e) => setPortEdit(e.target.value)} />
+              </Field>
+              <Field id="server-grant-verify-sni" label="SNI" optional>
+                <Input id="server-grant-verify-sni" className="font-mono" value={vSni} onChange={(e) => setSniEdit(e.target.value)} />
+              </Field>
+              <SwitchField id="server-grant-auto" label="Auto-remediate" help="grant.autoRemediateServer" checked={autoRemediate} onCheckedChange={setAutoRemediate} onText="Redeploy on drift" offText="Report only" />
+            </>
+          )}
+        </FormSection>
+      )}
       {formError && (
         <p role="alert" className="flex items-center gap-1 text-sm text-failed">
           <CircleAlert className="size-3.5 shrink-0" aria-hidden />

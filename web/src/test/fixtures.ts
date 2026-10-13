@@ -866,7 +866,7 @@ export function makeMonitor(p: Partial<Monitor> = {}): Monitor {
     id: 'mon-1', orgId: org.id, name: 'edge', host: 'edge.example.com', port: 443, sni: null,
     intervalSeconds: 3600, expectedCertificateId: null, expectedCertificateName: null, enabled: true,
     state: 'unknown', lastCheckedAt: null, nextCheckAt: iso(0), lastFingerprint: null, lastNotAfter: null,
-    lastIssuer: null, lastError: null, createdAt: iso(-5), updatedAt: iso(-5), ...p,
+    lastIssuer: null, lastError: null, grantId: null, createdAt: iso(-5), updatedAt: iso(-5), ...p,
   };
 }
 

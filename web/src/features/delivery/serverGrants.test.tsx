@@ -82,7 +82,7 @@ it('create posts certificate and layout', async () => {
   await user.click(within(dialog).getByRole('combobox', { name: 'Layout' }));
   await user.click(await screen.findByRole('option', { name: /^nginx/ }));
   await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
-  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: 'l-1' }));
+  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: 'l-1', autoRemediate: false }));
 });
 
 it('creating and deleting a server grant refetches the targets list', async () => {
@@ -107,7 +107,7 @@ it('creating and deleting a server grant refetches the targets list', async () =
   await user.click(within(dialog).getByRole('combobox', { name: 'Certificate' }));
   await user.click(await screen.findByRole('option', { name: /^api/ }));
   await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
-  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null }));
+  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null, autoRemediate: false }));
   await waitFor(() => expect(targetGets).toBeGreaterThan(afterOpen));
   const afterCreate = targetGets;
 
@@ -145,7 +145,7 @@ it('edit sends layout only', async () => {
   await user.click(within(dialog).getByRole('combobox', { name: 'Layout' }));
   await user.click(await screen.findByRole('option', { name: 'Target files' }));
   await user.click(within(dialog).getByRole('button', { name: 'Save' }));
-  await waitFor(() => expect(patched).toEqual({ layoutId: null }));
+  await waitFor(() => expect(patched).toEqual({ layoutId: null, autoRemediate: false, verify: null }));
 });
 
 it('redeploy toasts queued', async () => {
@@ -324,6 +324,7 @@ it('create posts the post action', async () => {
     expect(posted).toEqual({
       certificateId: 'c-2',
       layoutId: null,
+      autoRemediate: false,
       postAction: { kind: 'ssh', targetId: 't-ssh', command: 'systemctl reload nginx', timeoutSeconds: 60 },
     }),
   );
@@ -378,6 +379,7 @@ it('pfSense kind prefills the restart command and posts it', async () => {
     expect(posted).toEqual({
       certificateId: 'c-2',
       layoutId: null,
+      autoRemediate: false,
       postAction: { kind: 'pfsense', targetId: 't-pf', command: '/etc/rc.restart_webgui', timeoutSeconds: 60 },
     }),
   );
@@ -440,7 +442,7 @@ it('new pfSense grant: restart mode defaults to all, Only these waits for a firs
   await user.click(within(dialog).getByRole('combobox', { name: 'Certificate' }));
   await user.click(await screen.findByRole('option', { name: /^api/ }));
   await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
-  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null }));
+  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null, autoRemediate: false, verify: { host: 'fw.example.net', port: 443 } }));
 });
 
 it('new pfSense grant posts restart none', async () => {
@@ -452,7 +454,7 @@ it('new pfSense grant posts restart none', async () => {
   await user.click(await screen.findByRole('option', { name: /^api/ }));
   await user.click(within(dialog).getByRole('radio', { name: 'None' }));
   await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
-  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null, targetOptions: { pfsenseRestart: { mode: 'none' } } }));
+  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null, autoRemediate: false, verify: { host: 'fw.example.net', port: 443 }, targetOptions: { pfsenseRestart: { mode: 'none' } } }));
 });
 
 it('editing a pfSense grant toggles services, keeps ones no longer in use, and saves the selection', async () => {
@@ -469,7 +471,7 @@ it('editing a pfSense grant toggles services, keeps ones no longer in use, and s
   await user.click(within(chips).getByRole('button', { name: 'WebGUI' }));
   await user.click(within(dialog).getByRole('button', { name: 'Save' }));
   await waitFor(() =>
-    expect(patched).toEqual({ layoutId: 'l-1', targetOptions: { pfsenseRestart: { mode: 'selected', services: ['ipsec', 'openvpn:server:1'] } } }),
+    expect(patched).toEqual({ layoutId: 'l-1', autoRemediate: false, verify: null, targetOptions: { pfsenseRestart: { mode: 'selected', services: ['ipsec', 'openvpn:server:1'] } } }),
   );
 });
 
@@ -496,7 +498,7 @@ it('pfSense grant inherits restartServices false from the target and sends nothi
   await user.click(within(dialog).getByRole('combobox', { name: 'Certificate' }));
   await user.click(await screen.findByRole('option', { name: /^api/ }));
   await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
-  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null }));
+  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null, autoRemediate: false, verify: { host: 'fw.example.net', port: 443 } }));
 });
 
 it('Save stays disabled until the targets have loaded', async () => {
@@ -514,4 +516,31 @@ it('Save stays disabled until the targets have loaded', async () => {
   release();
   await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled());
   expect(screen.getByRole('radio', { name: 'None' })).toBeChecked();
+});
+
+it('vault-kv hides the Verify section', async () => {
+  const { user } = openDetail();
+  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  await user.click(await within(dialog).findByRole('button', { name: 'New server grant' }));
+  await within(dialog).findByRole('combobox', { name: 'Certificate' });
+  expect(within(dialog).queryByText('Verify')).not.toBeInTheDocument();
+});
+
+it('posts verify and autoRemediate prefilled from a pfSense target', async () => {
+  const pf = makeTarget({ id: 't-pf', name: 'fw', type: 'pfsense', runsOn: 'server', config: { url: 'https://fw.lan:8443' } });
+  server.use(
+    http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [pf] })),
+    http.post(url('/orgs/org-1/deploy-targets/t-pf/grants'), async ({ request }) => {
+      posted = await request.json();
+      return HttpResponse.json(grantServer, { status: 201 });
+    }),
+  );
+  const { user } = renderUI(<ServerGrantForm orgId="org-1" targetId="t-pf" onBack={() => {}} onDone={() => {}} />);
+  expect(await screen.findByLabelText('Host')).toHaveValue('fw.lan');
+  expect(screen.getByLabelText('Port')).toHaveValue(8443);
+  await user.click(screen.getByRole('switch', { name: /Auto-remediate/ }));
+  await user.click(screen.getByRole('combobox', { name: 'Certificate' }));
+  await user.click(await screen.findByRole('option', { name: /^api/ }));
+  await user.click(screen.getByRole('button', { name: 'Grant' }));
+  await waitFor(() => expect(posted).toMatchObject({ certificateId: 'c-2', autoRemediate: true, verify: { host: 'fw.lan', port: 8443 } }));
 });

@@ -9,6 +9,8 @@ import { describe, expect, it } from 'vitest';
 import type { CertStatus } from '@/api/types';
 import { STATUS_META } from '@/lib/status';
 import { CHIP, CHIP_TINT, StatusChip } from './StatusChip';
+import { ServerDeploymentChip } from './ServerDeploymentChip';
+import { TooltipProvider } from './ui/tooltip';
 
 // Controller ruling (Task 6): chip words use the `ink` token in both themes;
 // this proves each tone's real background — panel blended with the tone
@@ -79,5 +81,16 @@ describe('StatusChip', () => {
     const { container } = render(<StatusChip status={status} />);
     expect(container).toHaveTextContent(STATUS_META[status].label);
     expect(container.querySelector('svg')).toBeInTheDocument();
+  });
+});
+
+describe('ServerDeploymentChip', () => {
+  it('renders Drift', () => {
+    const { getByText } = render(
+      <TooltipProvider>
+        <ServerDeploymentChip status="drift" />
+      </TooltipProvider>,
+    );
+    expect(getByText('Drift')).toBeInTheDocument();
   });
 });

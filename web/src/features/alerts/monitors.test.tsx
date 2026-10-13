@@ -301,3 +301,12 @@ it('state chip reads Expired for an expiring monitor past notAfter', () => {
   rerender(<MonitorStateChip state="expiring" enabled notAfter={iso(9)} now={NOW} />);
   expect(screen.getByText('Expiring')).toBeInTheDocument();
 });
+
+it('marks a grant-owned monitor with a Grant badge and does not open its edit sheet', async () => {
+  monitors = [makeMonitor({ id: 'mon-g', name: 'fw verify', grantId: 'g-1' })];
+  const { user } = renderRoute('/o/acme/alerts/monitors');
+  const row = (await screen.findByText('fw verify')).closest('tr')!;
+  expect(within(row).getByText('Grant')).toBeInTheDocument();
+  await user.click(within(row).getByText('fw verify'));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});

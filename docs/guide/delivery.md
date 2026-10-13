@@ -317,6 +317,10 @@ Per grant, three icon buttons sit on the row:
 - **Edit layout** changes the grant's layout and post action.
 - **Remove** stops CertForge pushing this certificate. What is already in Vault stays. You confirm by typing the certificate name.
 
+### Drift and auto-remediation
+
+A server grant can verify the endpoint it deploys to and redeploy when it serves a different certificate.
+
 ### Post actions
 
 A server grant can run one command after a successful deploy, for example `systemctl reload nginx` on the host that serves the certificate. Switch **Post action** on in the grant form, pick a **Kind** and an existing target of that kind, and enter the command (up to 512 characters) and a timeout of 5 to 300 seconds. The post action reuses that target's host, credentials and pinned host key; its files and own commands are not used. Any server-run target type can have one.

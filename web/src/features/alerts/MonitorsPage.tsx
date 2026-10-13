@@ -12,6 +12,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { PrimaryCell } from '@/components/PrimaryCell';
 import { PermissionTip } from '@/components/PermissionTip';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -53,6 +54,19 @@ function CheckNowButton({ monitor, orgId }: { monitor: Monitor; orgId: string })
   );
 }
 
+function GrantBadge() {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge variant="outline" tabIndex={0}>
+          Grant
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent>Owned by a server grant; change it in the grant's Verify settings.</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function TargetCell({ monitor }: { monitor: Monitor }) {
   return (
     <div className="grid min-w-0 gap-0.5">
@@ -86,7 +100,12 @@ function monitorColumns(orgId: string) {
   return [
     col.accessor('name', {
       header: 'Name',
-      cell: ({ row }) => <PrimaryCell primary={row.original.name} meta={monitorMeta(row.original)} />,
+      cell: ({ row }) => (
+        <span className="flex items-center gap-2">
+          <PrimaryCell primary={row.original.name} meta={monitorMeta(row.original)} />
+          {row.original.grantId && <GrantBadge />}
+        </span>
+      ),
     }),
     col.display({
       id: 'state',
@@ -129,6 +148,11 @@ function MonitorCard({ monitor, orgId, onOpen }: { monitor: Monitor; orgId: stri
           <MonitorStateChip state={monitor.state} enabled={monitor.enabled} lastError={monitor.lastError} notAfter={monitor.lastNotAfter} />
         </span>
         <span className="text-xs text-ink-muted">{fmtInterval(monitor.intervalSeconds)}</span>
+        {monitor.grantId && (
+          <span className="relative z-10">
+            <GrantBadge />
+          </span>
+        )}
       </div>
       {monitor.lastFingerprint && (
         <div className="relative z-10 w-fit max-w-full">
@@ -153,13 +177,16 @@ export function MonitorsPage() {
   const canWrite = can(me, 'alerts:write', org.id);
   const atLimit = monitors.length >= MONITOR_LIMIT;
   const addAllowed = canWrite && !atLimit;
-  const openSheet = (id: string | undefined) =>
+  // A grant-owned monitor is edited through its grant, so it never opens the edit sheet.
+  const openSheet = (id: string | undefined) => {
+    if (id && monitors.find((m) => m.id === id)?.grantId) return;
     void navigate({
       search: (prev) => ({ ...prev, edit: id }),
       replace: id === undefined,
     });
+  };
   const columns = useMemo(() => monitorColumns(org.id), [org.id]);
-  const editing = monitors.find((m) => m.id === edit);
+  const editing = monitors.find((m) => m.id === edit && !m.grantId);
   const editNotFound = !q.isPending && !q.isError && !!edit && edit !== 'new' && !editing;
 
   const add = (
