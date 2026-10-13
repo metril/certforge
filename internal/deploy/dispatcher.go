@@ -17,6 +17,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
 
+	"github.com/metril/certforge/internal/actions"
 	"github.com/metril/certforge/internal/agentproto"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/certstore"
@@ -110,6 +111,8 @@ type Dispatcher struct {
 	// — the hourly notify.Sources.Scan's own ScanFailedServerDeployments
 	// still catches it later, as a backstop (Deviations R7).
 	Events Events
+	// Notify sends notify action steps; nil makes them fail.
+	Notify Notifier
 	River  Inserter
 	Log    *slog.Logger
 	// Auditor records deployment.drift events (OnCheck); nil skips them.
@@ -459,6 +462,11 @@ func (d *Dispatcher) deploy(ctx context.Context, grantID, versionID uuid.UUID, w
 		return d.fail(ctx, row, versionID, seq, redact, err)
 	}
 
+	refs, err := d.loadSteps(ctx, row)
+	if err != nil {
+		return d.fail(ctx, row, versionID, seq, redact, err)
+	}
+
 	req := targets.Request{
 		GrantID:      grantID.String(),
 		OrgSlug:      row.OrgSlug,
@@ -476,8 +484,39 @@ func (d *Dispatcher) deploy(ctx context.Context, grantID, versionID uuid.UUID, w
 	if row.DeployTargetID != nil {
 		req.Recorder = hookRecorder{d: d, grant: grantID, target: *row.DeployTargetID}
 	}
+	// A pfsense_restart step on the grant's own target replaces the target's
+	// built-in restart, so the services restart once, in step order.
+	for _, a := range refs {
+		if a.Kind == "pfsense_restart" && row.TargetType == TypePfSense && row.DeployTargetID != nil && stepTargetID(a) == *row.DeployTargetID {
+			req.GrantOptions = json.RawMessage(`{"pfsenseRestart":{"mode":"none"}}`)
+		}
+	}
+	for _, a := range refs {
+		if a.Phase != "pre_deploy" {
+			continue
+		}
+		if err := d.runAction(ctx, row, a, req); err != nil {
+			if a.Optional {
+				d.log().Warn("deploy: optional pre action failed", "grant", grantID, "action", a.Name, "err", err)
+				continue
+			}
+			return d.fail(ctx, row, versionID, seq, redact, fmt.Errorf("pre action %s failed; not deployed: %w", a.Name, err))
+		}
+	}
 	if _, err := target.Deploy(ctx, req); err != nil {
 		return d.fail(ctx, row, versionID, seq, redact, err)
+	}
+	for _, a := range refs {
+		if a.Phase != "post_deploy" {
+			continue
+		}
+		if err := d.runAction(ctx, row, a, req); err != nil {
+			if a.Optional {
+				d.log().Warn("deploy: optional post action failed", "grant", grantID, "action", a.Name, "err", err)
+				continue
+			}
+			return d.fail(ctx, row, versionID, seq, redact, fmt.Errorf("deployed, but post action %s failed: %w", a.Name, err))
+		}
 	}
 	if err := d.Q.MarkServerDeploymentDeployed(ctx, sqlcgen.MarkServerDeploymentDeployedParams{GrantID: grantID, VersionID: &versionID, DeploySeq: seq}); err != nil {
 		return err
@@ -487,6 +526,72 @@ func (d *Dispatcher) deploy(ctx context.Context, grantID, versionID uuid.UUID, w
 		d.log().Warn("nudge grant monitor failed", "grant", grantID, "err", err)
 	}
 	return nil
+}
+
+// stepTargetID is the targetId an action's config names, or uuid.Nil.
+func stepTargetID(a stepAction) uuid.UUID {
+	var c struct {
+		TargetID uuid.UUID `json:"targetId"`
+	}
+	_ = json.Unmarshal(a.Config, &c)
+	return c.TargetID
+}
+
+// loadSteps expands the grant's steps (groups inline, in order) into the
+// actions to run, each with its name and sealed secrets. An action that
+// cannot run on the server fails the deploy.
+func (d *Dispatcher) loadSteps(ctx context.Context, row sqlcgen.ServerDeployGrantRow) ([]stepAction, error) {
+	steps, err := actions.ParseSteps(row.Steps)
+	if err != nil || len(steps) == 0 {
+		return nil, err
+	}
+	var gids, aids []uuid.UUID
+	for _, s := range steps {
+		if s.Group != nil {
+			gids = append(gids, *s.Group)
+		} else if s.Action != nil {
+			aids = append(aids, *s.Action)
+		}
+	}
+	groups := map[uuid.UUID][]uuid.UUID{}
+	if len(gids) > 0 {
+		rows, err := d.Q.ActionGroupsByIDs(ctx, gids)
+		if err != nil {
+			return nil, err
+		}
+		for _, g := range rows {
+			groups[g.ID] = g.ActionIds
+			aids = append(aids, g.ActionIds...)
+		}
+	}
+	byID := map[uuid.UUID]stepAction{}
+	rows, err := d.Q.ServerActionsByIDs(ctx, sqlcgen.ServerActionsByIDsParams{Ids: uniq(aids), OrgID: row.OrgID})
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		k, ok := actions.Default.Get(r.Kind)
+		if !ok {
+			return nil, fmt.Errorf("deploy: unknown action kind %q", r.Kind)
+		}
+		byID[r.ID] = stepAction{Name: r.Name, Sealed: r.SecretCfg, ActionRef: actions.ActionRef{ID: r.ID, Kind: r.Kind, Phase: r.Phase,
+			RunsOn: k.RunsOn(), Optional: r.Optional, TimeoutSeconds: int(r.TimeoutSeconds), Config: r.Config}}
+	}
+	refs, err := actions.Expand(steps, groups, func(id uuid.UUID) (actions.ActionRef, bool) {
+		a, ok := byID[id]
+		return a.ActionRef, ok
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]stepAction, len(refs))
+	for i, r := range refs {
+		out[i] = byID[r.ID]
+	}
+	if i := actions.RunsOnMismatch(refs, targets.Server); i >= 0 {
+		return nil, fmt.Errorf("deploy: action %s runs on an agent, not the server", out[i].Name)
+	}
+	return out, nil
 }
 
 // openTargetSecrets opens sealed (a deploy target's secret_cfg; nil/empty

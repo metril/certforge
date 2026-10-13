@@ -173,6 +173,98 @@ func (t RouterOS) Parse(raw json.RawMessage) (targets.Config, error) {
 	return targets.Config{Public: pub, Secrets: secrets, NeedsKey: true, URLs: []string{c.URL, ssh}}, nil
 }
 
+// roCaller returns a function that calls the router's REST API with the
+// target's credentials, under the SSRF policy.
+func roCaller(client *httpx.Client, cfg RouterOSConfig, allowLoopback bool) func(ctx context.Context, method, path string, body any) ([]byte, error) {
+	base := strings.TrimRight(cfg.URL, "/")
+	return func(ctx context.Context, method, path string, body any) ([]byte, error) {
+		full := base + path
+		if err := httpx.CheckURL(full, allowLoopback); err != nil {
+			return nil, err
+		}
+		var rd io.Reader
+		if body != nil {
+			b, _ := json.Marshal(body)
+			rd = bytes.NewReader(b)
+		}
+		hr, err := http.NewRequestWithContext(ctx, method, full, rd)
+		if err != nil {
+			return nil, err
+		}
+		hr.SetBasicAuth(cfg.Username, cfg.Password)
+		hr.Header.Set("Accept", "application/json")
+		if body != nil {
+			hr.Header.Set("Content-Type", "application/json")
+		}
+		resp, err := client.HTTPClient().Do(hr)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		b, err := io.ReadAll(io.LimitReader(resp.Body, roMaxBody))
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode < 200 || resp.StatusCode > 299 {
+			snippet := b
+			if len(snippet) > roErrCap {
+				snippet = snippet[:roErrCap]
+			}
+			return nil, fmt.Errorf("%s %s: status %d: %s", method, path, resp.StatusCode, strings.Map(func(r rune) rune {
+				if r < 0x20 || r == 0x7f {
+					return ' '
+				}
+				return r
+			}, string(snippet)))
+		}
+		return b, nil
+	}
+}
+
+// roBindServices points each of services at the certificate named name.
+func roBindServices(services []string, name string, call func(method, path string, body any) ([]byte, error)) error {
+	var svcs []struct {
+		ID   string `json:".id"`
+		Name string `json:"name"`
+	}
+	for _, s := range services {
+		if s != "www-ssl" && s != "api-ssl" || svcs != nil {
+			continue
+		}
+		b, err := call(http.MethodGet, roIPService, nil)
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(b, &svcs); err != nil {
+			return fmt.Errorf("decoding service list: %w", err)
+		}
+	}
+	for _, s := range services {
+		var err error
+		switch s {
+		case "www-ssl", "api-ssl":
+			id := ""
+			for _, v := range svcs {
+				if v.Name == s {
+					id = v.ID
+				}
+			}
+			if id == "" {
+				return fmt.Errorf("service %s not found", s)
+			}
+			_, err = call(http.MethodPost, roIPSvcSet, map[string]string{".id": id, "certificate": name})
+		case "sstp":
+			_, err = call(http.MethodPost, roSSTPSet, map[string]string{"certificate": name})
+		case "ovpn":
+			_, err = call(http.MethodPost, roOVPNSet, map[string]string{"certificate": name})
+		}
+		if err != nil {
+			return fmt.Errorf("bind %s: %w", s, err)
+		}
+	}
+	return nil
+}
+
 type roCert struct {
 	ID, Name, FP string
 	HasKey       bool
@@ -226,49 +318,7 @@ func (RouterOS) Deploy(ctx context.Context, req targets.Request) (targets.Result
 	if err != nil {
 		return fail(err)
 	}
-	base := strings.TrimRight(cfg.URL, "/")
-	callCtx := func(ctx context.Context, method, path string, body any) ([]byte, error) {
-		full := base + path
-		if err := httpx.CheckURL(full, req.HTTP.AllowLoopback); err != nil {
-			return nil, err
-		}
-		var rd io.Reader
-		if body != nil {
-			b, _ := json.Marshal(body)
-			rd = bytes.NewReader(b)
-		}
-		hr, err := http.NewRequestWithContext(ctx, method, full, rd)
-		if err != nil {
-			return nil, err
-		}
-		hr.SetBasicAuth(cfg.Username, cfg.Password)
-		hr.Header.Set("Accept", "application/json")
-		if body != nil {
-			hr.Header.Set("Content-Type", "application/json")
-		}
-		resp, err := client.HTTPClient().Do(hr)
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
-		b, err := io.ReadAll(io.LimitReader(resp.Body, roMaxBody))
-		if err != nil {
-			return nil, err
-		}
-		if resp.StatusCode < 200 || resp.StatusCode > 299 {
-			snippet := b
-			if len(snippet) > roErrCap {
-				snippet = snippet[:roErrCap]
-			}
-			return nil, fmt.Errorf("%s %s: status %d: %s", method, path, resp.StatusCode, strings.Map(func(r rune) rune {
-				if r < 0x20 || r == 0x7f {
-					return ' '
-				}
-				return r
-			}, string(snippet)))
-		}
-		return b, nil
-	}
+	callCtx := roCaller(client, cfg, req.HTTP.AllowLoopback)
 	call := func(method, path string, body any) ([]byte, error) {
 		return callCtx(ctx, method, path, body)
 	}
@@ -372,44 +422,8 @@ func (RouterOS) Deploy(ctx context.Context, req targets.Request) (targets.Result
 		}
 	}
 
-	var svcs []struct {
-		ID   string `json:".id"`
-		Name string `json:"name"`
-	}
-	for _, s := range cfg.Services {
-		if s != "www-ssl" && s != "api-ssl" || svcs != nil {
-			continue
-		}
-		b, err := call(http.MethodGet, roIPService, nil)
-		if err != nil {
-			return fail(err)
-		}
-		if err := json.Unmarshal(b, &svcs); err != nil {
-			return fail(fmt.Errorf("decoding service list: %w", err))
-		}
-	}
-	for _, s := range cfg.Services {
-		var err error
-		switch s {
-		case "www-ssl", "api-ssl":
-			id := ""
-			for _, v := range svcs {
-				if v.Name == s {
-					id = v.ID
-				}
-			}
-			if id == "" {
-				return fail(fmt.Errorf("service %s not found", s))
-			}
-			_, err = call(http.MethodPost, roIPSvcSet, map[string]string{".id": id, "certificate": newName})
-		case "sstp":
-			_, err = call(http.MethodPost, roSSTPSet, map[string]string{"certificate": newName})
-		case "ovpn":
-			_, err = call(http.MethodPost, roOVPNSet, map[string]string{"certificate": newName})
-		}
-		if err != nil {
-			return fail(fmt.Errorf("bind %s: %w", s, err))
-		}
+	if err := roBindServices(cfg.Services, newName, call); err != nil {
+		return fail(err)
 	}
 
 	oldRe := regexp.MustCompile("^" + regexp.QuoteMeta(cfg.CertName) + "-[0-9a-f]{8}$")

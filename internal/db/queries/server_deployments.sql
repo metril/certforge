@@ -155,3 +155,9 @@ UPDATE server_deployments SET
        state_changed_at = CASE WHEN status = 'drift' AND version_id = sqlc.arg(current_version_id) THEN now() ELSE state_changed_at END,
        remediations = 0, remediated_fp = NULL
 WHERE grant_id = sqlc.arg(grant_id);
+
+-- name: ServerActionsByIDs :many
+-- The actions a server grant's steps name, with their sealed secrets, for
+-- Dispatcher.Deploy to run.
+SELECT id, name, kind, phase, config, secret_cfg, timeout_seconds, optional
+FROM actions WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND org_id = sqlc.arg(org_id);

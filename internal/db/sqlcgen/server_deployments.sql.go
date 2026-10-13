@@ -213,6 +213,58 @@ func (q *Queries) ResetServerDrift(ctx context.Context, arg ResetServerDriftPara
 	return err
 }
 
+const serverActionsByIDs = `-- name: ServerActionsByIDs :many
+SELECT id, name, kind, phase, config, secret_cfg, timeout_seconds, optional
+FROM actions WHERE id = ANY($1::uuid[]) AND org_id = $2
+`
+
+type ServerActionsByIDsParams struct {
+	Ids   []uuid.UUID `json:"ids"`
+	OrgID uuid.UUID   `json:"org_id"`
+}
+
+type ServerActionsByIDsRow struct {
+	ID             uuid.UUID `json:"id"`
+	Name           string    `json:"name"`
+	Kind           string    `json:"kind"`
+	Phase          string    `json:"phase"`
+	Config         []byte    `json:"config"`
+	SecretCfg      []byte    `json:"secret_cfg"`
+	TimeoutSeconds int32     `json:"timeout_seconds"`
+	Optional       bool      `json:"optional"`
+}
+
+// The actions a server grant's steps name, with their sealed secrets, for
+// Dispatcher.Deploy to run.
+func (q *Queries) ServerActionsByIDs(ctx context.Context, arg ServerActionsByIDsParams) ([]ServerActionsByIDsRow, error) {
+	rows, err := q.db.Query(ctx, serverActionsByIDs, arg.Ids, arg.OrgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ServerActionsByIDsRow{}
+	for rows.Next() {
+		var i ServerActionsByIDsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Kind,
+			&i.Phase,
+			&i.Config,
+			&i.SecretCfg,
+			&i.TimeoutSeconds,
+			&i.Optional,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const serverDeployGrant = `-- name: ServerDeployGrant :one
 SELECT g.id, g.cert_id, g.deploy_target_id, t.org_id, o.slug AS org_slug, t.type AS target_type, t.config AS target_config,
        t.secret_cfg AS target_secret_cfg, dc.kind AS credential_kind, dc.public AS credential_public, dc.secret_cfg AS credential_secret_cfg, t.name AS target_name, g.steps, g.target_options,
