@@ -55,7 +55,7 @@ function FieldTemplate({ id, label, displayLabel, rawDescription, required, rawE
               heading doesn't get one (skipped for every nested object, not
               just when `required` happens to be set — `required` here is
               never meaningful for one of these object fields today). */}
-          {!isNestedObject && !required && <span className="text-xs text-ink-muted">Optional</span>}
+          {!isNestedObject && !required && !uiSchema?.["ui:disabled"] && <span className="text-xs text-ink-muted">Optional</span>}
           {rawDescription && <HelpTip text={rawDescription} />}
         </div>
       )}
