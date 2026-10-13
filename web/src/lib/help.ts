@@ -324,6 +324,7 @@ export const help = {
     text: 'Pull grants get no push from the server. With CF_AGENT_PULL_INTERVAL=0 they deploy only when the agent reconnects or runs pull.',
     learnMore: 'guide/agents.md#pull-mode',
   },
+  'grant.restartStep': { text: 'A deploy only writes the certificate. Add a restart action as a post-deploy step so the device serves it.', learnMore: 'guide/delivery.md#actions' },
   'grant.layout': { text: 'Files the agent writes, built from PEM parts.', learnMore: 'guide/agents.md#file-layouts' },
   'grant.target': { text: 'What the agent does besides writing files, such as updating Traefik.', learnMore: 'guide/delivery.md#traefik' },
   'grant.targetOptions': { text: "Per-grant settings for this target type, e.g. Traefik's default certificate." },

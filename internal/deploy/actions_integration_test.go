@@ -245,6 +245,47 @@ func TestActionOnPiKVMTarget(t *testing.T) {
 	}
 }
 
+func TestPiKVMRestartAction(t *testing.T) {
+	u := newStepSetup(t)
+	if _, err := u.f.pool.Exec(context.Background(), `UPDATE deploy_targets SET type = 'pikvm' WHERE type = 'ssh'`); err != nil {
+		t.Fatal(err)
+	}
+	a := u.f.action(t, "kvm", "pikvm_restart", "post_deploy", map[string]any{"targetId": u.ssh})
+	b := u.f.action(t, "vnc", "pikvm_restart", "post_deploy", map[string]any{"targetId": u.ssh, "service": "kvmd-vnc"})
+	u.f.setSteps(t, u.g, step(a), step(b))
+	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
+		t.Fatal(err)
+	}
+	if len(u.srv.Cmds) != 2 || u.srv.Cmds[0] != "systemctl restart kvmd-nginx" || u.srv.Cmds[1] != "systemctl restart kvmd-vnc" {
+		t.Fatalf("cmds = %q", u.srv.Cmds)
+	}
+	if runs := u.f.runs(t, u.g); len(runs) != 2 || strings.Join(runs[0].argv, "|") != "pikvm_restart|127.0.0.1|kvmd-nginx" {
+		t.Fatalf("runs = %+v", runs)
+	}
+	// A non-zero exit fails; optional swallows it.
+	u.srv.Exit = 5
+	u.f.pending(t, u.g, u.ver)
+	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err == nil {
+		t.Fatal("expected error")
+	}
+	opt := u.f.action(t, "kvm-opt", "pikvm_restart", "post_deploy", map[string]any{"targetId": u.ssh}, actionOpts{optional: true})
+	u.f.setSteps(t, u.g, step(opt))
+	u.f.pending(t, u.g, u.ver)
+	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
+		t.Fatal(err)
+	}
+	// A non-pikvm target is rejected.
+	if _, err := u.f.pool.Exec(context.Background(), `UPDATE deploy_targets SET type = 'ssh' WHERE type = 'pikvm'`); err != nil {
+		t.Fatal(err)
+	}
+	u.srv.Exit = 0
+	u.f.setSteps(t, u.g, step(a))
+	u.f.pending(t, u.g, u.ver)
+	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err == nil {
+		t.Fatal("expected error for non-pikvm target")
+	}
+}
+
 func TestPreActionFailureDeploysNothing(t *testing.T) {
 	u := newStepSetup(t)
 	u.srv.Exit = 2
@@ -479,13 +520,14 @@ func TestActionPfSenseRestart(t *testing.T) {
 	}
 }
 
-func TestPfSenseRestartStepSuppressesBuiltIn(t *testing.T) {
+func TestPfSenseDeployNeverRestartsStepDoes(t *testing.T) {
 	u := newStepSetup(t)
 	f := &fakePF{list: `[{"refid":"abc","descr":"web"}]`, phpOut: pfPHPOut}
 	srv := httptest.NewServer(f)
 	defer srv.Close()
 	u.pfSenseTarget(t, srv)
-	// The fake "pfsense" Target type stands in for the real one.
+	// The fake "pfsense" Target type stands in for the real one, which never
+	// restarts; only the step does (usage lookup, then the restart).
 	u.sec.Code = "pfsense"
 	u.f.reg.Register(u.sec)
 	a := u.f.action(t, "restart", "pfsense_restart", "post_deploy", map[string]any{"targetId": u.target, "mode": "all"})
@@ -493,30 +535,10 @@ func TestPfSenseRestartStepSuppressesBuiltIn(t *testing.T) {
 	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
 		t.Fatal(err)
 	}
-	if len(u.sec.Calls) != 1 || string(u.sec.Calls[0].GrantOptions) != `{"pfsenseRestart":{"mode":"none"}}` {
+	if len(u.sec.Calls) != 1 || strings.Contains(string(u.sec.Calls[0].GrantOptions), "pfsenseRestart") {
 		t.Fatalf("calls = %+v", u.sec.Calls)
 	}
-	if len(f.php) != 2 { // usage lookup, then the restart
+	if len(f.php) != 2 {
 		t.Fatalf("php = %d", len(f.php))
-	}
-	// Without the step nothing is suppressed.
-	u.f.setSteps(t, u.g)
-	u.f.pending(t, u.g, u.ver)
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
-		t.Fatal(err)
-	}
-	if len(u.sec.Calls) != 2 || strings.Contains(string(u.sec.Calls[1].GrantOptions), "pfsenseRestart") {
-		t.Fatalf("calls = %+v", u.sec.Calls)
-	}
-	// A pre-deploy restart runs before the new certificate is on the box, so
-	// the built-in post-write restart must not be suppressed.
-	pre := u.f.action(t, "restart-pre", "pfsense_restart", "pre_deploy", map[string]any{"targetId": u.target, "mode": "all"})
-	u.f.setSteps(t, u.g, step(pre))
-	u.f.pending(t, u.g, u.ver)
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
-		t.Fatal(err)
-	}
-	if len(u.sec.Calls) != 3 || strings.Contains(string(u.sec.Calls[2].GrantOptions), "pfsenseRestart") {
-		t.Fatalf("pre-deploy step suppressed the built-in restart: %+v", u.sec.Calls)
 	}
 }

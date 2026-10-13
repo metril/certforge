@@ -4697,7 +4697,7 @@ export interface components {
             value: string;
         };
         /**
-         * @description Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh and pikvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key and restarts kvmd-nginx.
+         * @description Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh and pikvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key; restart kvmd-nginx with a pikvm_restart action.
          * @enum {string}
          */
         DeployTargetType: "traefik" | "vault-kv" | "authentik" | "pfsense" | "truenas" | "routeros" | "ssh" | "pikvm";
@@ -4782,7 +4782,7 @@ export interface components {
          * @description What the action does; matches a code from GET /meta/schemas actions. exec and restart run on an agent, every other kind on the server.
          * @enum {string}
          */
-        ActionKind: "exec" | "restart" | "ssh" | "pfsense_shell" | "pfsense_restart" | "truenas_restart" | "routeros_restart" | "http" | "notify" | "verify_tls" | "wait";
+        ActionKind: "exec" | "restart" | "ssh" | "pfsense_shell" | "pfsense_restart" | "pikvm_restart" | "truenas_restart" | "routeros_restart" | "http" | "notify" | "verify_tls" | "wait";
         /**
          * @description pre_deploy runs before the certificate is written (a failure stops the deploy, unless the action is optional); post_deploy runs after.
          * @enum {string}

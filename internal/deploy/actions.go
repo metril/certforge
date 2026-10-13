@@ -180,6 +180,7 @@ func (d *Dispatcher) execAction(ctx context.Context, row sqlcgen.ServerDeployGra
 		Command   string                  `json:"command"`
 		Mode      string                  `json:"mode"`
 		Services  []string                `json:"services"`
+		Service   string                  `json:"service"`
 		Seconds   int                     `json:"seconds"`
 		Method    string                  `json:"method"`
 		URL       string                  `json:"url"`
@@ -222,6 +223,38 @@ func (d *Dispatcher) execAction(ctx context.Context, row sqlcgen.ServerDeployGra
 		}
 		defer func() { _ = cl.Close() }()
 		stdout, stderr, code, err := cl.Run(ctx, c.Command)
+		if err != nil {
+			return err
+		}
+		res.exit, res.stdout, res.stderr = code, string(stdout), string(stderr)
+		if code != 0 {
+			return fmt.Errorf("exit %d: %s", code, sshSnippet(stderr))
+		}
+	case "pikvm_restart":
+		rt, err := target([]string{TypePiKVM}, "pikvm")
+		if err != nil {
+			return err
+		}
+		var cfg SSHConfig
+		if err := json.Unmarshal(rt.cfg, &cfg); err != nil {
+			return errors.New("pikvm target config invalid")
+		}
+		svc := c.Service
+		if svc == "" {
+			svc = "kvmd-nginx"
+		}
+		if svc != "kvmd-nginx" && svc != "kvmd-vnc" {
+			return errors.New("action config invalid")
+		}
+		cmd := "systemctl restart " + svc
+		res.argv = []string{"pikvm_restart", cfg.Host, svc}
+		cl, err := sshx.Dial(ctx, sshx.Opts{Host: cfg.Host, Port: cfg.Port, User: cfg.Username, Password: cfg.Password,
+			PrivateKeyPEM: cfg.PrivateKey, PrivateKeyPassphrase: cfg.PrivateKeyPassphrase, HostKey: cfg.HostKey, AllowLoopback: req.HTTP.AllowLoopback, Timeout: timeout})
+		if err != nil {
+			return err
+		}
+		defer func() { _ = cl.Close() }()
+		stdout, stderr, code, err := cl.Run(ctx, cmd)
 		if err != nil {
 			return err
 		}

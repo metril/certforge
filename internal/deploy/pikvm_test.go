@@ -11,7 +11,7 @@ import (
 	"github.com/metril/certforge/internal/targets/sshx/sshxtest"
 )
 
-const pikvmPost = "systemctl restart kvmd-nginx; rc=$?; ro; exit $rc"
+const pikvmPost = "ro"
 
 func pikvmCfgT(t *testing.T, s *sshxtest.Server, mut func(map[string]any)) json.RawMessage {
 	t.Helper()

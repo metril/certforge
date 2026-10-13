@@ -5043,7 +5043,7 @@ components:
     DeployTargetType:
       type: string
       enum: [traefik, vault-kv, authentik, pfsense, truenas, routeros, ssh, pikvm]
-      description: Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh and pikvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key and restarts kvmd-nginx.
+      description: Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh and pikvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key; restart kvmd-nginx with a pikvm_restart action.
     RunsOn:
       type: string
       enum: [agent, server]
@@ -5106,7 +5106,7 @@ components:
         items: {type: array, items: {$ref: "#/components/schemas/DeployTarget"}, description: Targets sorted by name.}
     ActionKind:
       type: string
-      enum: [exec, restart, ssh, pfsense_shell, pfsense_restart, truenas_restart, routeros_restart, http, notify, verify_tls, wait]
+      enum: [exec, restart, ssh, pfsense_shell, pfsense_restart, pikvm_restart, truenas_restart, routeros_restart, http, notify, verify_tls, wait]
       description: What the action does; matches a code from GET /meta/schemas actions. exec and restart run on an agent, every other kind on the server.
     ActionPhase:
       type: string

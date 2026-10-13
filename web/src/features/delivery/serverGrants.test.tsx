@@ -404,3 +404,43 @@ it('edit shows the saved check interval and posts a changed one', async () => {
   await user.click(screen.getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(patched).toMatchObject({ verify: { host: 'fw.lan', port: 8443, intervalSeconds: 300 } }));
 });
+
+const HINT = /No restart step/;
+const hintCase = (type: string, kind: string) => async (steps: unknown[], actions: unknown[], groups: unknown[] = []) => {
+  const t = makeTarget({ id: 't-r', name: 'dev', type: type as never, runsOn: 'server', config: {} });
+  server.use(
+    http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [t] })),
+    http.get(url('/orgs/org-1/actions'), () => HttpResponse.json({ items: actions })),
+    http.get(url('/orgs/org-1/action-groups'), () => HttpResponse.json({ items: groups })),
+  );
+  const g = { ...grantServer, deployTargetId: 't-r', steps } as never;
+  renderUI(<ServerGrantForm orgId="org-1" targetId="t-r" editing={g} onBack={() => {}} onDone={() => {}} />);
+  await screen.findByRole('button', { name: 'Save' });
+  void kind;
+};
+
+it.each([['pikvm', 'pikvm_restart'], ['pfsense', 'pfsense_restart']])('%s grant without a %s step shows the restart hint, and a direct step or group clears it', async (type, kind) => {
+  const act = makeAction({ id: 'a-r', name: 'restart it', kind, runsOn: 'server' } as never);
+  await hintCase(type, kind)([], [act]);
+  await waitFor(() => expect(screen.getByText(HINT)).toBeInTheDocument());
+});
+
+it.each([['pikvm', 'pikvm_restart'], ['pfsense', 'pfsense_restart']])('%s hint is gone with a direct restart step', async (type, kind) => {
+  const act = makeAction({ id: 'a-r', name: 'restart it', kind, runsOn: 'server' } as never);
+  await hintCase(type, kind)([{ action: 'a-r' }], [act]);
+  await screen.findByText('restart it');
+  expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+});
+
+it('hint is gone when a chosen group holds a restart action', async () => {
+  const act = makeAction({ id: 'a-r', name: 'restart it', kind: 'pikvm_restart', runsOn: 'server' } as never);
+  await hintCase('pikvm', 'pikvm_restart')([{ group: 'ag-r' }], [act], [makeActionGroup({ id: 'ag-r', name: 'kvm restart', actionIds: ['a-r'] })]);
+  await screen.findByText('kvm restart');
+  expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+});
+
+it('other target types never show the restart hint', async () => {
+  await hintCase('ssh', '')([], []);
+  await new Promise((r) => setTimeout(r, 50));
+  expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+});

@@ -1,15 +1,11 @@
 package deploy
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"regexp"
 	"strings"
-
-	"github.com/metril/certforge/internal/delivery"
 )
 
 // Restart modes of a pfSense grant.
@@ -19,8 +15,6 @@ const (
 	PfRestartNone     = "none"
 )
 
-const pfMaxRestartKeys = 64
-
 // pfKeyRe matches every service key pfServices.Keyed can produce.
 var pfKeyRe = regexp.MustCompile(`^(webgui|ipsec|openvpn:[a-z]{1,16}:[0-9]{1,9}|captiveportal:[A-Za-z0-9_.-]{1,64}|package:[A-Za-z0-9_.+-]{1,64}|service:[A-Za-z0-9_.-]{1,64})$`)
 
@@ -28,68 +22,6 @@ var pfKeyRe = regexp.MustCompile(`^(webgui|ipsec|openvpn:[a-z]{1,16}:[0-9]{1,9}|
 type PfRestart struct {
 	Mode     string   `json:"mode"`
 	Services []string `json:"services,omitempty"`
-}
-
-// PfSenseGrantOptions are a pfsense grant's own options (targetOptions).
-type PfSenseGrantOptions struct {
-	Restart *PfRestart `json:"pfsenseRestart,omitempty"`
-}
-
-// ParsePfSenseGrantOptions decodes and validates a grant's pfsense options;
-// empty, null or {} is the zero value.
-func ParsePfSenseGrantOptions(raw json.RawMessage) (PfSenseGrantOptions, error) {
-	var o PfSenseGrantOptions
-	if t := bytes.TrimSpace(raw); len(t) == 0 || string(t) == "null" {
-		return o, nil
-	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&o); err != nil {
-		return PfSenseGrantOptions{}, &delivery.FieldError{Field: "targetOptions", Msg: err.Error()}
-	}
-	r := o.Restart
-	if r == nil {
-		return o, nil
-	}
-	const f = "targetOptions.pfsenseRestart"
-	switch r.Mode {
-	case PfRestartAll, PfRestartNone:
-		if len(r.Services) > 0 {
-			return PfSenseGrantOptions{}, &delivery.FieldError{Field: f + ".services", Msg: "only allowed when mode is selected"}
-		}
-	case PfRestartSelected:
-		if len(r.Services) == 0 {
-			return PfSenseGrantOptions{}, &delivery.FieldError{Field: f + ".services", Msg: "pick at least one service, or use mode none"}
-		}
-		if len(r.Services) > pfMaxRestartKeys {
-			return PfSenseGrantOptions{}, &delivery.FieldError{Field: f + ".services", Msg: fmt.Sprintf("at most %d services", pfMaxRestartKeys)}
-		}
-		seen := map[string]bool{}
-		for _, k := range r.Services {
-			if !pfKeyRe.MatchString(k) {
-				return PfSenseGrantOptions{}, &delivery.FieldError{Field: f + ".services", Msg: fmt.Sprintf("invalid service key %q", k)}
-			}
-			if seen[k] {
-				return PfSenseGrantOptions{}, &delivery.FieldError{Field: f + ".services", Msg: fmt.Sprintf("duplicate service key %q", k)}
-			}
-			seen[k] = true
-		}
-	default:
-		return PfSenseGrantOptions{}, &delivery.FieldError{Field: f + ".mode", Msg: "must be all, selected or none"}
-	}
-	return o, nil
-}
-
-// restartMode is the restart choice a deploy uses: the grant's own, else the
-// target's restartServices (true or unset: all, false: none).
-func (c PfSenseConfig) restartMode(o PfSenseGrantOptions) PfRestart {
-	if o.Restart != nil {
-		return *o.Restart
-	}
-	if c.RestartServices == nil || *c.RestartServices {
-		return PfRestart{Mode: PfRestartAll}
-	}
-	return PfRestart{Mode: PfRestartNone}
 }
 
 // PfSenseService is one service that uses a certificate: a stable key and a

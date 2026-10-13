@@ -484,15 +484,6 @@ func (d *Dispatcher) deploy(ctx context.Context, grantID, versionID uuid.UUID, w
 	if row.DeployTargetID != nil {
 		req.Recorder = hookRecorder{d: d, grant: grantID, target: *row.DeployTargetID}
 	}
-	// A post-deploy pfsense_restart step on the grant's own target replaces
-	// the target's built-in restart, so the services restart once, in step
-	// order. A pre-deploy one runs before the new certificate exists on the
-	// box, so the built-in restart must still follow the write.
-	for _, a := range refs {
-		if a.Kind == "pfsense_restart" && a.Phase == "post_deploy" && row.TargetType == TypePfSense && row.DeployTargetID != nil && stepTargetID(a) == *row.DeployTargetID {
-			req.GrantOptions = json.RawMessage(`{"pfsenseRestart":{"mode":"none"}}`)
-		}
-	}
 	for _, a := range refs {
 		if a.Phase != "pre_deploy" {
 			continue
@@ -528,15 +519,6 @@ func (d *Dispatcher) deploy(ctx context.Context, grantID, versionID uuid.UUID, w
 		d.log().Warn("nudge grant monitor failed", "grant", grantID, "err", err)
 	}
 	return nil
-}
-
-// stepTargetID is the targetId an action's config names, or uuid.Nil.
-func stepTargetID(a stepAction) uuid.UUID {
-	var c struct {
-		TargetID uuid.UUID `json:"targetId"`
-	}
-	_ = json.Unmarshal(a.Config, &c)
-	return c.TargetID
 }
 
 // loadSteps expands the grant's steps (groups inline, in order) into the

@@ -36,6 +36,7 @@ const (
 	ActionKindNotify          ActionKind = "notify"
 	ActionKindPfsenseRestart  ActionKind = "pfsense_restart"
 	ActionKindPfsenseShell    ActionKind = "pfsense_shell"
+	ActionKindPikvmRestart    ActionKind = "pikvm_restart"
 	ActionKindRestart         ActionKind = "restart"
 	ActionKindRouterosRestart ActionKind = "routeros_restart"
 	ActionKindSsh             ActionKind = "ssh"
@@ -1945,7 +1946,7 @@ type DeployTarget struct {
 	// StoredSecrets Secret fields that have a stored value.
 	StoredSecrets []string `json:"storedSecrets"`
 
-	// Type Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh and pikvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key and restarts kvmd-nginx.
+	// Type Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh and pikvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key; restart kvmd-nginx with a pikvm_restart action.
 	Type DeployTargetType `json:"type"`
 
 	// UpdatedAt Last change.
@@ -1966,7 +1967,7 @@ type DeployTargetInput struct {
 	// RunsOn Required for a type whose own runsOn is either; optional and must match otherwise. Immutable after create.
 	RunsOn *RunsOn `json:"runsOn,omitempty"`
 
-	// Type Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh and pikvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key and restarts kvmd-nginx.
+	// Type Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh and pikvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key; restart kvmd-nginx with a pikvm_restart action.
 	Type DeployTargetType `json:"type"`
 }
 
@@ -1976,7 +1977,7 @@ type DeployTargetList struct {
 	Items []DeployTarget `json:"items"`
 }
 
-// DeployTargetType Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh and pikvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key and restarts kvmd-nginx.
+// DeployTargetType Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh and pikvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key; restart kvmd-nginx with a pikvm_restart action.
 type DeployTargetType string
 
 // Deployment What a grant should have installed and what the agent last reported.
