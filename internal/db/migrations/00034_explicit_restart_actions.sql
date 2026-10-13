@@ -87,8 +87,10 @@ UPDATE client_cert_grants g SET steps = COALESCE((
 WHERE g.steps <> '[]'::jsonb;
 UPDATE action_groups SET action_ids = ARRAY(
     SELECT x FROM unnest(action_ids) WITH ORDINALITY AS u(x, o)
-    WHERE x NOT IN (SELECT id FROM actions WHERE kind = 'pikvm_restart') ORDER BY o)
-WHERE action_ids && ARRAY(SELECT id FROM actions WHERE kind = 'pikvm_restart');
+    WHERE x NOT IN (SELECT id FROM actions
+        WHERE kind = 'pikvm_restart' OR (kind = 'pfsense_restart' AND name LIKE 'Restart pfSense services · %')) ORDER BY o)
+WHERE action_ids && ARRAY(SELECT id FROM actions
+    WHERE kind = 'pikvm_restart' OR (kind = 'pfsense_restart' AND name LIKE 'Restart pfSense services · %'));
 DELETE FROM actions WHERE kind = 'pikvm_restart'
    OR (kind = 'pfsense_restart' AND name LIKE 'Restart pfSense services · %');
 
