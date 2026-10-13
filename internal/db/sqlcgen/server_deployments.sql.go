@@ -129,6 +129,22 @@ func (q *Queries) MarkServerDeploymentDeployed(ctx context.Context, arg MarkServ
 	return err
 }
 
+const markServerDeploymentDrift = `-- name: MarkServerDeploymentDrift :exec
+UPDATE server_deployments SET status = 'drift', last_error = $1, updated_at = now(),
+       state_changed_at = CASE WHEN status IS DISTINCT FROM 'drift' THEN now() ELSE state_changed_at END
+WHERE grant_id = $2
+`
+
+type MarkServerDeploymentDriftParams struct {
+	LastError string    `json:"last_error"`
+	GrantID   uuid.UUID `json:"grant_id"`
+}
+
+func (q *Queries) MarkServerDeploymentDrift(ctx context.Context, arg MarkServerDeploymentDriftParams) error {
+	_, err := q.db.Exec(ctx, markServerDeploymentDrift, arg.LastError, arg.GrantID)
+	return err
+}
+
 const markServerDeploymentFailed = `-- name: MarkServerDeploymentFailed :exec
 UPDATE server_deployments SET status = 'failed', last_error = $1, updated_at = now(),
        state_changed_at = CASE WHEN status IS DISTINCT FROM 'failed' THEN now() ELSE state_changed_at END
@@ -157,6 +173,43 @@ func (q *Queries) MarkServerDeploymentFailed(ctx context.Context, arg MarkServer
 		arg.VersionID,
 		arg.DeploySeq,
 	)
+	return err
+}
+
+const recordServerRemediation = `-- name: RecordServerRemediation :exec
+UPDATE server_deployments SET remediations = $1, remediated_fp = $2
+WHERE grant_id = $3
+`
+
+type RecordServerRemediationParams struct {
+	Remediations int32     `json:"remediations"`
+	RemediatedFp *string   `json:"remediated_fp"`
+	GrantID      uuid.UUID `json:"grant_id"`
+}
+
+func (q *Queries) RecordServerRemediation(ctx context.Context, arg RecordServerRemediationParams) error {
+	_, err := q.db.Exec(ctx, recordServerRemediation, arg.Remediations, arg.RemediatedFp, arg.GrantID)
+	return err
+}
+
+const resetServerDrift = `-- name: ResetServerDrift :exec
+UPDATE server_deployments SET
+       status = CASE WHEN status = 'drift' AND version_id = $1 THEN 'deployed' ELSE status END,
+       last_error = CASE WHEN status = 'drift' AND version_id = $1 THEN '' ELSE last_error END,
+       state_changed_at = CASE WHEN status = 'drift' AND version_id = $1 THEN now() ELSE state_changed_at END,
+       remediations = 0, remediated_fp = NULL
+WHERE grant_id = $2
+`
+
+type ResetServerDriftParams struct {
+	CurrentVersionID *uuid.UUID `json:"current_version_id"`
+	GrantID          uuid.UUID  `json:"grant_id"`
+}
+
+// The monitor saw the expected certificate again: clear the flap guard and
+// return a drifted deployment of the current version to deployed.
+func (q *Queries) ResetServerDrift(ctx context.Context, arg ResetServerDriftParams) error {
+	_, err := q.db.Exec(ctx, resetServerDrift, arg.CurrentVersionID, arg.GrantID)
 	return err
 }
 
@@ -242,6 +295,48 @@ func (q *Queries) ServerDeployGrant(ctx context.Context, id uuid.UUID) (ServerDe
 		&i.LayoutExtraCertIds,
 		&i.PendingVersionID,
 		&i.PendingDeploySeq,
+	)
+	return i, err
+}
+
+const serverGrantForMonitor = `-- name: ServerGrantForMonitor :one
+SELECT g.id AS grant_id, ce.org_id, g.cert_id, g.auto_remediate,
+       sd.status, sd.version_id, ce.current_version_id, sd.remediations, sd.remediated_fp
+FROM client_cert_grants g
+JOIN certificates ce ON ce.id = g.cert_id
+JOIN server_deployments sd ON sd.grant_id = g.id
+WHERE g.id = $1 AND g.client_id IS NULL AND g.removed_at IS NULL
+FOR UPDATE OF sd
+`
+
+type ServerGrantForMonitorRow struct {
+	GrantID          uuid.UUID  `json:"grant_id"`
+	OrgID            uuid.UUID  `json:"org_id"`
+	CertID           uuid.UUID  `json:"cert_id"`
+	AutoRemediate    bool       `json:"auto_remediate"`
+	Status           string     `json:"status"`
+	VersionID        *uuid.UUID `json:"version_id"`
+	CurrentVersionID *uuid.UUID `json:"current_version_id"`
+	Remediations     int32      `json:"remediations"`
+	RemediatedFp     *string    `json:"remediated_fp"`
+}
+
+// A grant-owned monitor's check reaction (drift detection): the grant, its
+// certificate's current version and the deployment's drift/flap state. Locks
+// the deployment row so concurrent checks and deploys serialize.
+func (q *Queries) ServerGrantForMonitor(ctx context.Context, grantID uuid.UUID) (ServerGrantForMonitorRow, error) {
+	row := q.db.QueryRow(ctx, serverGrantForMonitor, grantID)
+	var i ServerGrantForMonitorRow
+	err := row.Scan(
+		&i.GrantID,
+		&i.OrgID,
+		&i.CertID,
+		&i.AutoRemediate,
+		&i.Status,
+		&i.VersionID,
+		&i.CurrentVersionID,
+		&i.Remediations,
+		&i.RemediatedFp,
 	)
 	return i, err
 }

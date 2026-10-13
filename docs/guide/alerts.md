@@ -131,6 +131,10 @@ An agent waiting for approval raises a **Client awaiting approval** event when *
 
 A monitor checks which certificate a TLS endpoint serves, whether or not CertForge deployed it, and raises an event when that changes. Use it to catch a deploy that did not take effect or an expired certificate. An org can have up to 500 monitors.
 
+### Grant-owned monitors
+
+A server grant with **Verify the endpoint** on creates its own monitor, marked with a **Grant** badge. Its expected certificate is the grant's certificate, and you edit it through the grant, not on the **Monitors** page. You can delete it there; removing the grant deletes it too. See [Drift and auto-remediation](delivery.md#drift-and-auto-remediation).
+
 ### Add a monitor
 
 1. Open **Alerts → Monitors** and select **Add monitor**.

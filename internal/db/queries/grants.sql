@@ -281,7 +281,7 @@ SELECT * FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR SHARE;
 -- client_id is NULL, delivery is always 'push' (there is no agent pull
 -- schedule for a server grant), hook_ids is empty (hooks are agent-side).
 INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, post_action, target_options)
-VALUES (NULL, sqlc.arg(cert_id), 'push', sqlc.narg(output_spec_id), sqlc.narg(deploy_target_id), '{}', false, COALESCE(sqlc.narg(post_action)::jsonb, '{}'), COALESCE(sqlc.narg(target_options)::jsonb, '{}')) RETURNING *;
+VALUES (NULL, sqlc.arg(cert_id), 'push', sqlc.narg(output_spec_id), sqlc.narg(deploy_target_id), '{}', sqlc.arg(auto_remediate), COALESCE(sqlc.narg(post_action)::jsonb, '{}'), COALESCE(sqlc.narg(target_options)::jsonb, '{}')) RETURNING *;
 
 -- name: LockServerGrant :one
 -- Org-scoped through deploy_targets.org_id (pre-flight ruling): locks only
@@ -293,8 +293,8 @@ WHERE g.id = $1 AND g.client_id IS NULL AND g.removed_at IS NULL AND t.org_id = 
 FOR UPDATE OF g;
 
 -- name: UpdateServerGrant :one
--- A server grant's editable fields: its layout, post action and target options.
-UPDATE client_cert_grants SET output_spec_id = sqlc.narg(output_spec_id), post_action = COALESCE(sqlc.narg(post_action)::jsonb, '{}'), target_options = COALESCE(sqlc.narg(target_options)::jsonb, '{}'), updated_at = now()
+-- A server grant's editable fields: its layout, auto-remediate flag, post action and target options.
+UPDATE client_cert_grants SET output_spec_id = sqlc.narg(output_spec_id), auto_remediate = sqlc.arg(auto_remediate), post_action = COALESCE(sqlc.narg(post_action)::jsonb, '{}'), target_options = COALESCE(sqlc.narg(target_options)::jsonb, '{}'), updated_at = now()
 WHERE id = sqlc.arg(id) RETURNING *;
 
 -- name: GrantRunsOn :one
@@ -317,11 +317,13 @@ WHERE g.id = $1
 -- name: ServerGrantViews :many
 SELECT g.id, g.deploy_target_id, g.cert_id, ce.name AS certificate_name, g.delivery,
        g.output_spec_id, g.hook_ids, g.auto_remediate, g.post_action, g.target_options, g.created_at, g.updated_at,
-       sd.status, sd.version_id, sd.last_error, sd.deployed_at, sd.updated_at AS deployment_updated_at
+       sd.status, sd.version_id, sd.last_error, sd.deployed_at, sd.updated_at AS deployment_updated_at,
+       m.id AS monitor_id, m.host, m.port, m.sni
 FROM client_cert_grants g
 JOIN deploy_targets t ON t.id = g.deploy_target_id
 JOIN certificates ce ON ce.id = g.cert_id
 LEFT JOIN server_deployments sd ON sd.grant_id = g.id
+LEFT JOIN external_monitors m ON m.grant_id = g.id
 WHERE g.client_id IS NULL AND g.removed_at IS NULL AND t.org_id = sqlc.arg(org_id)
   AND (sqlc.narg(target_id)::uuid IS NULL OR g.deploy_target_id = sqlc.narg(target_id)::uuid)
   AND (sqlc.narg(grant_id)::uuid IS NULL OR g.id = sqlc.narg(grant_id)::uuid)

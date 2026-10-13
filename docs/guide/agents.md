@@ -236,6 +236,7 @@ Each heartbeat (**Heartbeat interval (seconds)**, default 60) carries the SHA-25
 
 - Without auto-remediate, the deployment stays in **Drift** until you choose **Redeploy** on the grant.
 - With **Auto-remediate** on the grant (under **Advanced** in the grant sheet), the server asks the agent to reinstall the files: at once for **Push**, on the next pull for **Pull**. The deployment returns to **Deployed** on the next report or heartbeat.
+- Server grants detect drift differently, by checking the served certificate: see [Drift and auto-remediation](delivery.md#drift-and-auto-remediation).
 - **Redeploy** always reinstalls and re-runs the hooks, even when nothing changed.
 
 ## Pull mode

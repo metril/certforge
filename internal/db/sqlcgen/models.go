@@ -274,6 +274,7 @@ type ExternalMonitor struct {
 	CreatedAt           time.Time  `json:"created_at"`
 	UpdatedAt           time.Time  `json:"updated_at"`
 	ConsecutiveFailures int32      `json:"consecutive_failures"`
+	GrantID             *uuid.UUID `json:"grant_id"`
 }
 
 type Hook struct {
@@ -424,6 +425,8 @@ type ServerDeployment struct {
 	UpdatedAt      time.Time  `json:"updated_at"`
 	StateChangedAt time.Time  `json:"state_changed_at"`
 	DeploySeq      int64      `json:"deploy_seq"`
+	Remediations   int32      `json:"remediations"`
+	RemediatedFp   *string    `json:"remediated_fp"`
 }
 
 type Session struct {

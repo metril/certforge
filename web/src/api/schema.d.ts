@@ -4856,6 +4856,13 @@ export interface components {
             serverDeployment: components["schemas"]["ServerDeployment"] | null;
             /** @description Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only. */
             postAction?: components["schemas"]["PostAction"] | null;
+            /** @description A TLS endpoint CertForge polls to confirm the deployed certificate is the one served; a grant-owned monitor, hourly. Null when none. Server grants only. */
+            verify?: components["schemas"]["GrantVerify"] | null;
+            /**
+             * Format: uuid
+             * @description The grant-owned monitor behind verify; null when none. Server grants only.
+             */
+            monitorId?: string | null;
             /**
              * Format: date-time
              * @description Creation time.
@@ -4923,6 +4930,8 @@ export interface components {
             autoRemediate: boolean;
             /** @description Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only. */
             postAction?: components["schemas"]["PostAction"] | null;
+            /** @description A TLS endpoint CertForge polls to confirm the deployed certificate is the one served; a grant-owned monitor, hourly. Null when none. Absent or null removes it. Server grants only; a client grant with verify is 422. */
+            verify?: components["schemas"]["GrantVerify"] | null;
         };
         /** @description A client's live grants. */
         GrantList: {
@@ -4947,6 +4956,22 @@ export interface components {
             };
             /** @description Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only. */
             postAction?: components["schemas"]["PostAction"] | null;
+            /** @description A TLS endpoint CertForge polls to confirm the deployed certificate is the one served; a grant-owned monitor, hourly. Null when none. Server grants only. */
+            verify?: components["schemas"]["GrantVerify"] | null;
+            /**
+             * @description Redeploy automatically when the verify endpoint serves a different certificate.
+             * @default false
+             */
+            autoRemediate: boolean;
+        };
+        /** @description The TLS endpoint a server grant's monitor polls. */
+        GrantVerify: {
+            /** @description Hostname or IP address to connect to. */
+            host: string;
+            /** @description TCP port to connect to. */
+            port: number;
+            /** @description TLS server name to send; omitted or null uses host. */
+            sni?: string | null;
         };
         /** @description One command run after a server grant deploys. Kind ssh runs it over SSH using an existing ssh deploy target's host, credentials and host key. Kind pfsense runs it as a shell command on a firewall through an existing pfsense deploy target. */
         PostAction: {
@@ -4987,7 +5012,7 @@ export interface components {
          * @description A server grant's deploy state.
          * @enum {string}
          */
-        ServerDeploymentStatus: "pending" | "deployed" | "failed";
+        ServerDeploymentStatus: "pending" | "deployed" | "failed" | "drift";
         /** @description A server grant's deployment state, in place of the agent-side Deployment. */
         ServerDeployment: {
             status: components["schemas"]["ServerDeploymentStatus"];
@@ -5421,6 +5446,11 @@ export interface components {
             expectedCertificateName: string | null;
             /** @description Checked on the scan schedule and countable toward the org's monitor limit. */
             enabled: boolean;
+            /**
+             * Format: uuid
+             * @description The server grant that owns this monitor; null for a standalone monitor. A grant-owned monitor is edited through the grant's verify.
+             */
+            grantId?: string | null;
             state: components["schemas"]["MonitorState"];
             /**
              * Format: date-time

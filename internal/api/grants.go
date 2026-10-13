@@ -19,6 +19,7 @@ import (
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
 	"github.com/metril/certforge/internal/deploy"
+	"github.com/metril/certforge/internal/monitor"
 	"github.com/metril/certforge/internal/targets"
 )
 
@@ -201,6 +202,9 @@ func (s *Server) UpdateGrant(ctx context.Context, r gen.UpdateGrantRequestObject
 	if r.Body.PostAction != nil {
 		return nil, unprocessable("postAction", "only server grants have a post action")
 	}
+	if r.Body.Verify != nil {
+		return nil, unprocessable("verify", "only server grants have a verify endpoint")
+	}
 	in := agents.GrantInput{Delivery: string(r.Body.Delivery), LayoutID: r.Body.LayoutId, TargetID: r.Body.DeployTargetId,
 		HookIDs: r.Body.HookIds, AutoRemediate: r.Body.AutoRemediate, RequireKey: requireKeysExport(r.OrgId)}
 	if err := requireCertsDirPerm(ctx, r.OrgId, r.Body.TargetOptions); err != nil {
@@ -338,7 +342,53 @@ func serverGrantOut(r sqlcgen.ServerGrantViewsRow) gen.Grant {
 	return gen.Grant{Id: r.ID, ClientId: nil, ClientName: nil, CertificateId: r.CertID, CertificateName: r.CertificateName,
 		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, TargetOptions: opts, HookIds: r.HookIds,
 		AutoRemediate: r.AutoRemediate, Deployment: nil, RunsOn: gen.RunsOn("server"), ServerDeployment: sd,
-		PostAction: postActionOut(r.PostAction), CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
+		PostAction: postActionOut(r.PostAction), Verify: verifyOut(r), MonitorId: r.MonitorID, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
+}
+
+// verifyOut maps the grant-owned monitor's endpoint columns; nil when none.
+func verifyOut(r sqlcgen.ServerGrantViewsRow) *gen.GrantVerify {
+	if r.MonitorID == nil || r.Host == nil || r.Port == nil {
+		return nil
+	}
+	return &gen.GrantVerify{Host: *r.Host, Port: int(*r.Port), Sni: r.Sni}
+}
+
+// verifyAuditOut is a verify endpoint's audit form.
+func verifyAuditOut(v *gen.GrantVerify) any {
+	if v == nil {
+		return nil
+	}
+	return map[string]any{"host": v.Host, "port": v.Port, "sni": v.Sni}
+}
+
+// grantMonitorName is a grant-owned monitor's name, "<target> · <cert>"
+// truncated to the monitor name limit.
+func grantMonitorName(target, cert string) string {
+	n := []rune(target + " · " + cert)
+	if len(n) > 100 {
+		n = n[:100]
+	}
+	return string(n)
+}
+
+// grantMonitorInput builds a grant-owned monitor's input from a verify
+// endpoint and validates it. name, interval and enabled come from the caller
+// (new defaults on create, the existing values on update).
+func (s *Server) grantMonitorInput(ctx context.Context, name string, interval int, enabled bool, certID uuid.UUID, v *gen.GrantVerify) (monitor.Input, error) {
+	allowLoopback, err := s.monitorAllowLoopback(ctx)
+	if err != nil {
+		return monitor.Input{}, err
+	}
+	in, err := monitor.ValidateInput(monitor.Input{Name: name, Host: v.Host, Port: v.Port, SNI: v.Sni,
+		IntervalSeconds: interval, ExpectedCertID: &certID, Enabled: enabled}, allowLoopback)
+	if err != nil {
+		var ve *monitor.ValidationError
+		if errors.As(err, &ve) && ve.Field != "name" {
+			return monitor.Input{}, unprocessable("verify."+ve.Field, ve.Msg)
+		}
+		return monitor.Input{}, mapMonitorErr(err, certID)
+	}
+	return in, nil
 }
 
 // postAuditOut is a post action's audit form: where and what, never secrets.
@@ -577,7 +627,21 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 	if err != nil {
 		return nil, err
 	}
-	g, err := q.CreateServerGrant(ctx, sqlcgen.CreateServerGrantParams{CertID: r.Body.CertificateId, OutputSpecID: r.Body.LayoutId, DeployTargetID: &r.Id, PostAction: postAction, TargetOptions: targetOpts})
+	autoRemediate := r.Body.AutoRemediate != nil && *r.Body.AutoRemediate
+	var verifyIn monitor.Input
+	if r.Body.Verify != nil {
+		if _, err := authorize(ctx, authz.ActionAlertsWrite, &r.OrgId); err != nil {
+			return nil, err
+		}
+		certName, err := q.CertificateNameInOrg(ctx, sqlcgen.CertificateNameInOrgParams{ID: r.Body.CertificateId, OrgID: r.OrgId})
+		if err != nil {
+			return nil, err
+		}
+		if verifyIn, err = s.grantMonitorInput(ctx, grantMonitorName(target.Name, certName), 3600, true, r.Body.CertificateId, r.Body.Verify); err != nil {
+			return nil, err
+		}
+	}
+	g, err := q.CreateServerGrant(ctx, sqlcgen.CreateServerGrantParams{CertID: r.Body.CertificateId, OutputSpecID: r.Body.LayoutId, DeployTargetID: &r.Id, AutoRemediate: autoRemediate, PostAction: postAction, TargetOptions: targetOpts})
 	if pgCode(err) == pgUniqueViolation {
 		return nil, conflict("This target already has a grant for that certificate.")
 	}
@@ -586,6 +650,11 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 	}
 	if err := deploy.CheckServerGrantPaths(ctx, q, r.OrgId, r.Id); err != nil {
 		return nil, mapErr(err)
+	}
+	if r.Body.Verify != nil {
+		if _, err := s.d.Monitors.Store.CreateTx(ctx, tx, r.OrgId, verifyIn, g.ID, monitor.MaxPerOrg); err != nil {
+			return nil, mapGrantMonitorErr(err, verifyIn.Name)
+		}
 	}
 	versionID, err := q.CertificateCurrentVersion(ctx, r.Body.CertificateId)
 	if err != nil {
@@ -599,12 +668,24 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 	}
 	s.audit(ctx, audit.Event{Action: "grant.create", ResourceType: "grant", ResourceID: g.ID.String(), OrgID: &r.OrgId,
 		Details: map[string]any{"deployTargetId": r.Id, "certificateId": r.Body.CertificateId, "layoutId": r.Body.LayoutId,
-			"runsOn": "server", "includeKey": needsKey, "postAction": postAuditOut(r.Body.PostAction)}})
+			"runsOn": "server", "includeKey": needsKey, "postAction": postAuditOut(r.Body.PostAction),
+			"autoRemediate": autoRemediate, "verify": verifyAuditOut(r.Body.Verify)}})
 	out, err := s.serverGrantByID(ctx, r.OrgId, g.ID)
 	if err != nil {
 		return nil, err
 	}
 	return gen.CreateServerGrant201JSONResponse(out), nil
+}
+
+// mapGrantMonitorErr maps a grant-owned monitor write's error.
+func mapGrantMonitorErr(err error, name string) error {
+	switch {
+	case errors.Is(err, monitor.ErrOverCap):
+		return unprocessable("verify", "at most 500 monitors per org")
+	case pgCode(err) == pgUniqueViolation:
+		return conflict("A monitor named %q exists in this org.", name)
+	}
+	return err
 }
 
 // ListTargetGrants returns a server-run deploy target's live grants.
@@ -730,8 +811,52 @@ func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequest
 	if err != nil {
 		return nil, err
 	}
-	if _, err := q.UpdateServerGrant(ctx, sqlcgen.UpdateServerGrantParams{ID: r.Id, OutputSpecID: layoutID, PostAction: postAction, TargetOptions: targetOpts}); err != nil {
+	if _, err := q.UpdateServerGrant(ctx, sqlcgen.UpdateServerGrantParams{ID: r.Id, OutputSpecID: layoutID, AutoRemediate: r.Body.AutoRemediate, PostAction: postAction, TargetOptions: targetOpts}); err != nil {
 		return nil, err
+	}
+	var verifyIn *gen.GrantVerify
+	if r.Body != nil {
+		verifyIn = r.Body.Verify
+	}
+	curMon, monErr := q.GetMonitorByGrant(ctx, &r.Id)
+	if monErr != nil && !errors.Is(monErr, pgx.ErrNoRows) {
+		return nil, monErr
+	}
+	hasMon := monErr == nil
+	// A monitor is alert-side state, so adding, moving or removing one needs
+	// alerts:write; an unchanged endpoint lets a clients:write caller edit the
+	// rest of the grant.
+	if verifyChanged(verifyIn, hasMon, curMon) {
+		if _, err := authorize(ctx, authz.ActionAlertsWrite, &r.OrgId); err != nil {
+			return nil, err
+		}
+	}
+	switch {
+	case verifyIn != nil && !hasMon:
+		certName, err := q.CertificateNameInOrg(ctx, sqlcgen.CertificateNameInOrgParams{ID: g.CertID, OrgID: r.OrgId})
+		if err != nil {
+			return nil, err
+		}
+		in, err := s.grantMonitorInput(ctx, grantMonitorName(targetT.Name, certName), 3600, true, g.CertID, verifyIn)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := s.d.Monitors.Store.CreateTx(ctx, tx, r.OrgId, in, r.Id, monitor.MaxPerOrg); err != nil {
+			return nil, mapGrantMonitorErr(err, in.Name)
+		}
+	case verifyIn != nil && hasMon:
+		in, err := s.grantMonitorInput(ctx, curMon.Name, int(curMon.IntervalSeconds), curMon.Enabled, g.CertID, verifyIn)
+		if err != nil {
+			return nil, err
+		}
+		cur := monitor.Monitor{Host: curMon.Host, Port: int(curMon.Port), SNI: curMon.Sni, ExpectedCertID: curMon.ExpectedCertID}
+		if _, err := s.d.Monitors.Store.UpdateTx(ctx, tx, r.OrgId, curMon.ID, in, monitor.ResetsState(cur, in)); err != nil {
+			return nil, mapMonitorErr(err, curMon.ID)
+		}
+	case verifyIn == nil && hasMon:
+		if _, err := q.DeleteMonitor(ctx, sqlcgen.DeleteMonitorParams{ID: curMon.ID, OrgID: r.OrgId}); err != nil {
+			return nil, err
+		}
 	}
 	versionID, err := q.CertificateCurrentVersion(ctx, g.CertID)
 	if err != nil {
@@ -744,7 +869,8 @@ func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequest
 		return nil, err
 	}
 	s.audit(ctx, audit.Event{Action: "grant.update", ResourceType: "grant", ResourceID: r.Id.String(), OrgID: &r.OrgId,
-		Details: map[string]any{"before": map[string]any{"layoutId": g.OutputSpecID}, "after": map[string]any{"layoutId": layoutID, "postAction": postAuditOut(postIn)},
+		Details: map[string]any{"before": map[string]any{"layoutId": g.OutputSpecID}, "after": map[string]any{"layoutId": layoutID, "postAction": postAuditOut(postIn),
+			"autoRemediate": r.Body.AutoRemediate, "verify": verifyAuditOut(verifyIn)},
 			"runsOn": "server", "includeKey": needsKey}})
 	out, err := s.serverGrantByID(ctx, r.OrgId, r.Id)
 	if err != nil {
@@ -878,4 +1004,23 @@ func (s *Server) GetGrantPfSenseUsage(ctx context.Context, r gen.GetGrantPfSense
 		out.Refid = &refid
 	}
 	return gen.GetGrantPfSenseUsage200JSONResponse(out), nil
+}
+
+// verifyChanged reports whether in differs from the grant's current monitor:
+// one is set and the other is not, or the host, port or SNI moved.
+func verifyChanged(in *gen.GrantVerify, hasMon bool, cur sqlcgen.ExternalMonitor) bool {
+	if (in != nil) != hasMon {
+		return true
+	}
+	if in == nil {
+		return false
+	}
+	sni, curSni := "", ""
+	if in.Sni != nil {
+		sni = *in.Sni
+	}
+	if cur.Sni != nil {
+		curSni = *cur.Sni
+	}
+	return in.Host != cur.Host || in.Port != int(cur.Port) || sni != curSni
 }

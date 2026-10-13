@@ -18,6 +18,7 @@ import (
 	"github.com/riverqueue/river/rivertype"
 
 	"github.com/metril/certforge/internal/agentproto"
+	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/certstore"
 	"github.com/metril/certforge/internal/crypto"
 	"github.com/metril/certforge/internal/db/sqlcgen"
@@ -111,6 +112,8 @@ type Dispatcher struct {
 	Events Events
 	River  Inserter
 	Log    *slog.Logger
+	// Auditor records deployment.drift events (OnCheck); nil skips them.
+	Auditor *audit.Auditor
 
 	// afterStaleRead, when set, runs in SweepDeployments right after the
 	// stale list is read (test seam for the read-then-enqueue race).
@@ -482,7 +485,14 @@ func (d *Dispatcher) deploy(ctx context.Context, grantID, versionID uuid.UUID, w
 			return d.fail(ctx, row, versionID, seq, redact, fmt.Errorf("deployed, but %w", err))
 		}
 	}
-	return d.Q.MarkServerDeploymentDeployed(ctx, sqlcgen.MarkServerDeploymentDeployedParams{GrantID: grantID, VersionID: &versionID, DeploySeq: seq})
+	if err := d.Q.MarkServerDeploymentDeployed(ctx, sqlcgen.MarkServerDeploymentDeployedParams{GrantID: grantID, VersionID: &versionID, DeploySeq: seq}); err != nil {
+		return err
+	}
+	// Verify the new deployment promptly (best effort).
+	if err := d.Q.NudgeGrantMonitor(ctx, &grantID); err != nil {
+		d.log().Warn("nudge grant monitor failed", "grant", grantID, "err", err)
+	}
+	return nil
 }
 
 // openTargetSecrets opens sealed (a deploy target's secret_cfg; nil/empty

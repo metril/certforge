@@ -62,7 +62,7 @@ The **Action** filter offers each group and each action below. Several names are
 | Issuers | `ca.create`, `ca.update`, `ca.delete`, `ca.rotate`, `acme_account.create`, `acme_account.delete`, `dns_credential.create`, `dns_credential.update`, `dns_credential.delete`, `dns_credential.test`, `dns_credential.secret_revealed` |
 | Clients and enrollment | `client.create`, `client.update`, `client.delete`, `client.revoke`, `client.reenroll` (a new token was issued), `client.enrol_requested` (an agent presented a valid token and awaits approval), `client.enrol_approved`, `client.enrol_rejected`, `client.enrolled` (the agent received its certificate), `client.cert_renewed` (an agent renewed its identity certificate) |
 | Agent CA | `agent_ca.rotate`, `agent_ca.retire` |
-| Delivery | `grant.create`, `grant.update`, `grant.delete`, `grant.redeploy`, `grant.bundle_fetched` (a client downloaded its files), `deployment.ok`, `deployment.failed`, `deployment.drift`, `layout.*`, `deploy_target.*`, `hook.create`, `hook.update`, `hook.delete`, `hook.run` |
+| Delivery | `grant.create`, `grant.update`, `grant.delete`, `grant.redeploy`, `grant.bundle_fetched` (a client downloaded its files), `deployment.ok`, `deployment.failed`, `deployment.drift` (agent grants and server grants), `layout.*`, `deploy_target.*`, `hook.create`, `hook.update`, `hook.delete`, `hook.run` |
 | Alerts | `channel.create`, `channel.update`, `channel.delete`, `channel.test`, `monitor.create`, `monitor.update`, `monitor.delete`, `monitor.check` |
 | Backup and keys | `backup.created`, `backup.failed`, `kek.rewrap_started`, `kek.rewrap_finished` |
 | The log itself | `audit.export`, `audit.anchor_initialized` (the tamper-check anchor was created on upgrade) |

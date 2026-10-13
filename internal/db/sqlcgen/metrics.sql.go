@@ -190,8 +190,8 @@ type MetricsDeploymentsByStatusRow struct {
 }
 
 // Agent-run grants (deployments.state is already pending/ok/failed/drift)
-// unioned with server-run grants (server_deployments.status has no drift
-// state; deployed maps to ok, matching the agent side's own terminal
+// unioned with server-run grants (server_deployments.status also has drift;
+// deployed maps to ok, matching the agent side's own terminal
 // success state). Two rows for the same (org, status) pair are summed in
 // Go, not here, since the two SELECTs group independently.
 func (q *Queries) MetricsDeploymentsByStatus(ctx context.Context) ([]MetricsDeploymentsByStatusRow, error) {

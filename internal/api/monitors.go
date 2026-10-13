@@ -22,7 +22,7 @@ func monitorOut(m monitor.Monitor) gen.Monitor {
 		IntervalSeconds: m.IntervalSeconds, ExpectedCertificateId: m.ExpectedCertID, ExpectedCertificateName: m.ExpectedCertificateName,
 		Enabled: m.Enabled, State: gen.MonitorState(m.State), LastCheckedAt: m.LastCheckedAt, NextCheckAt: &nextCheckAt,
 		LastFingerprint: strOrNil(m.LastFingerprint), LastNotAfter: m.LastNotAfter, LastIssuer: strOrNil(m.LastIssuer),
-		LastError: strOrNil(m.LastError), CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
+		LastError: strOrNil(m.LastError), GrantId: m.GrantID, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
 }
 
@@ -188,12 +188,15 @@ func (s *Server) UpdateMonitor(ctx context.Context, r gen.UpdateMonitorRequestOb
 	if err != nil {
 		return nil, mapMonitorErr(err, r.OrgId)
 	}
-	if err := s.checkExpectedCert(ctx, r.OrgId, in); err != nil {
-		return nil, err
-	}
 	cur, err := s.d.Monitors.Store.Get(ctx, r.OrgId, r.Id)
 	if err != nil {
 		return nil, mapMonitorErr(err, r.Id)
+	}
+	if cur.GrantID != nil {
+		return nil, conflict("Managed by grant; edit the grant's Verify.")
+	}
+	if err := s.checkExpectedCert(ctx, r.OrgId, in); err != nil {
+		return nil, err
 	}
 	resetState := monitor.ResetsState(cur, in)
 	m, err := s.d.Monitors.Store.Update(ctx, r.OrgId, r.Id, in, resetState)

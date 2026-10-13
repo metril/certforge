@@ -18,6 +18,7 @@ import (
 	"github.com/metril/certforge/internal/crypto/cryptotest"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
+	"github.com/metril/certforge/internal/monitor"
 )
 
 // fakeHub records what the agents service sends to sockets.
@@ -83,6 +84,7 @@ func newAgentFixture(t *testing.T) *agentFixture {
 		Settings: agents.StaticSettings(agents.Settings{}, "https://cf.example.test"), Log: slog.Default(), Reg: f.srv.d.Targets}
 	f.srv.d.Queries = q
 	f.srv.d.Agents = svc
+	f.srv.d.Monitors = &monitor.Service{Store: &monitor.Store{Pool: f.pool, Q: q}, Settings: f.srv.d.Settings}
 	// Same as cmd/certforge/serve.go (final review finding 5): a rename
 	// also re-enqueues the renamed certificate's own live server grants,
 	// not only its agent grants.

@@ -924,8 +924,8 @@ type ScanFailedServerDeploymentsRow struct {
 }
 
 // deploy.failed for server-run grants (task-7 brief:
-// "server_deployments.status failed"): server_deployments has no drift
-// state (no agent reports installed files back for a server target), so
+// "server_deployments.status failed"): server_deployments' drift status
+// (set by a grant-owned monitor) is not scanned here, so
 // this only ever emits deploy.failed. state_changed_at >= since (final
 // review fix wave, finding 1; supersedes batch-3 review finding 2's
 // updated_at bound): same reasoning as ScanFailedOrDriftedDeployments —

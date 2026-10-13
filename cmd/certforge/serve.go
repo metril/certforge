@@ -219,6 +219,8 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		st, err := agentSettings.Get(ctx)
 		return st.Names(), err
 	}}
+	dispatcher.Auditor = aud
+	monitorSvc.Drift = dispatcher
 	agentSvc := &agents.Service{Pool: pool, Q: q, CA: agentCA, Certs: certStore, Box: box, Auditor: aud, Settings: agentSettings, Log: log, Reg: targetsReg}
 	agentSvc.OnPendingApproval = func(ctx context.Context, e agents.PendingApproval) {
 		_, err := notifyEmitter.Emit(ctx, nil, notify.Event{Kind: "client.pending_approval", OrgID: &e.OrgID,
