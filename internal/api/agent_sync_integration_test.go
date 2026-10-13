@@ -284,7 +284,7 @@ func TestHookRunKeepsOnlyGrantHooks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.pool.Exec(ctx, `UPDATE client_cert_grants SET hook_ids = ARRAY[$2::uuid] WHERE id = $1`, gid, mine.ID); err != nil {
+	if _, err := e.pool.Exec(ctx, `UPDATE client_cert_grants SET steps = jsonb_build_array(jsonb_build_object('action', $2::uuid)) WHERE id = $1`, gid, mine.ID); err != nil {
 		t.Fatal(err)
 	}
 	hc := e.httpClient(t, &cert)

@@ -145,7 +145,8 @@ func seedAllTables(t *testing.T, ctx context.Context, pool *pgxpool.Pool) { //no
 	outputSpec := scanID(`INSERT INTO output_specs (org_id, name) VALUES ($1, 'output1') RETURNING id`, org)
 	deployCred := scanID(`INSERT INTO deploy_credentials (org_id, name, kind, secret_cfg) VALUES ($1, 'cred1', 'password', E'\\x00') RETURNING id`, org)
 	target := scanID(`INSERT INTO deploy_targets (org_id, name, type, runs_on, credential_id) VALUES ($1, 'target1', 'traefik', 'agent', $2) RETURNING id`, org, deployCred)
-	exec(`INSERT INTO hooks (org_id, name, phase, argv) VALUES ($1, 'hook1', 'pre_deploy', '{/bin/true}')`, org)
+	action := scanID(`INSERT INTO actions (org_id, name, phase, kind, config) VALUES ($1, 'hook1', 'pre_deploy', 'exec', '{"argv":["/bin/true"]}') RETURNING id`, org)
+	exec(`INSERT INTO action_groups (org_id, name, action_ids) VALUES ($1, 'group1', ARRAY[$2::uuid])`, org, action)
 
 	grant := scanID(`INSERT INTO client_cert_grants (client_id, cert_id, output_spec_id) VALUES ($1, $2, $3) RETURNING id`, client, cert, outputSpec)
 	// target_options (00026) is past the load floor; seed it only where the

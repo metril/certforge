@@ -350,8 +350,10 @@ func TestGrantVsDeleteHookNoDangling(t *testing.T) {
 			t.Fatalf("iteration %d: both the grant create and the hook delete succeeded", i)
 		}
 		var dangling int
-		_ = f.pool.QueryRow(ctx, `SELECT count(*) FROM client_cert_grants g WHERE $1 = ANY(g.hook_ids)
-			AND NOT EXISTS (SELECT 1 FROM hooks h WHERE h.id = $1)`, h.ID).Scan(&dangling)
+		if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM client_cert_grants g WHERE g.steps @> jsonb_build_array(jsonb_build_object('action', $1::uuid))
+			AND NOT EXISTS (SELECT 1 FROM actions h WHERE h.id = $1)`, h.ID).Scan(&dangling); err != nil {
+			t.Fatal(err)
+		}
 		if dangling > 0 {
 			t.Fatalf("iteration %d: a grant references hook %s which no longer exists", i, h.ID)
 		}
@@ -367,7 +369,7 @@ func TestGrantVsDeleteHookNoDangling(t *testing.T) {
 		// on a create win, DeleteHook lost and the hook is still there
 		// (its only dependent, the grant above, is now gone, so this is
 		// safe); on a delete win it is a no-op.
-		if _, err := f.pool.Exec(ctx, `DELETE FROM hooks WHERE id = $1`, h.ID); err != nil {
+		if _, err := f.pool.Exec(ctx, `DELETE FROM actions WHERE id = $1`, h.ID); err != nil {
 			t.Fatal(err)
 		}
 	}
