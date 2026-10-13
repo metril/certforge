@@ -282,6 +282,24 @@ func newDefault() *Registry {
 			}
 			return nil
 		})
+	add("pikvm_restart", "Restart PiKVM service", post, targets.Server, []string{"pikvm"}, nil,
+		func(_ map[string]json.RawMessage, raw json.RawMessage) error {
+			var c struct {
+				TargetID string `json:"targetId"`
+				Service  string `json:"service"`
+			}
+			if err := decode(raw, &c); err != nil {
+				return err
+			}
+			if err := checkUUID("targetId", c.TargetID); err != nil {
+				return err
+			}
+			switch c.Service {
+			case "", "kvmd-nginx", "kvmd-vnc":
+				return nil
+			}
+			return fe("service", "service must be kvmd-nginx or kvmd-vnc")
+		})
 	add("truenas_restart", "Restart TrueNAS services", post, targets.Server, []string{"truenas"}, nil,
 		func(_ map[string]json.RawMessage, raw json.RawMessage) error { return targetOnly(raw) })
 	add("routeros_restart", "Restart RouterOS services", post, targets.Server, []string{"routeros"}, nil,

@@ -14,13 +14,13 @@ import (
 )
 
 // TypePiKVM is the pikvm deploy target type: a server-run target that writes
-// kvmd's nginx certificate and key over SSH and restarts kvmd-nginx.
+// kvmd's nginx certificate and key over SSH. A pikvm_restart action restarts it.
 const TypePiKVM = "pikvm"
 
 const pikvmSchema = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "PiKVM / GL.iNet Comet",
-  "description": "Writes kvmd's nginx certificate and key over SSH and restarts kvmd-nginx. The root filesystem is switched read-write and back around the write. Log in as root. Runs on the server.",
+  "description": "Writes kvmd's nginx certificate and key over SSH. The writes are wrapped in rw/ro (root filesystem read-write, then read-only). A pikvm_restart action restarts kvmd-nginx. Log in as root. Runs on the server.",
   "credentialKinds": ["ssh", "password"],
   "type": "object",
   "additionalProperties": false,
@@ -119,7 +119,8 @@ func (t PiKVM) Parse(raw json.RawMessage) (targets.Config, error) {
 }
 
 // Deploy implements targets.Target: remount rw, write the certificate and
-// key, then restart kvmd-nginx and remount ro (always, once connected).
+// key, then remount ro (always, once connected). It does not restart
+// anything; the pikvm_restart action does.
 func (PiKVM) Deploy(ctx context.Context, req targets.Request) (targets.Result, error) {
 	var c PiKVMConfig
 	if err := json.Unmarshal(req.Config, &c); err != nil {
@@ -134,7 +135,7 @@ func (PiKVM) Deploy(ctx context.Context, req targets.Request) (targets.Result, e
 			{Path: "/etc/kvmd/nginx/ssl/server.key", Content: "key", Mode: "0600"},
 		},
 		PreCommand:  "rw",
-		PostCommand: "systemctl restart kvmd-nginx; rc=$?; ro; exit $rc",
+		PostCommand: "ro",
 	}
 	return sshDeploy(ctx, req, cfg, "pikvm")
 }

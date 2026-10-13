@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/metril/certforge/internal/delivery"
 	"github.com/metril/certforge/internal/render"
 	"github.com/metril/certforge/internal/targets"
 )
@@ -122,12 +120,7 @@ func (f *fakePF) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func pfRequest(t *testing.T, url, ca string, web bool, m *render.Material) targets.Request {
 	t.Helper()
-	return pfRequestRS(t, url, ca, web, false, m)
-}
-
-func pfRequestRS(t *testing.T, url, ca string, web, restart bool, m *render.Material) targets.Request {
-	t.Helper()
-	cfg, _ := json.Marshal(map[string]any{"url": url + "/api", "username": "admin", "password": pfPass, "caPem": ca, "setWebGuiCert": web, "restartServices": restart, "timeoutSeconds": 5})
+	cfg, _ := json.Marshal(map[string]any{"url": url + "/api", "username": "admin", "password": pfPass, "caPem": ca, "setWebGuiCert": web, "timeoutSeconds": 5})
 	return targets.Request{CertName: "web", Material: m, Config: cfg, HTTP: targets.HTTPFactory{AllowLoopback: true}}
 }
 
@@ -318,62 +311,14 @@ func TestPfSenseNoDevicesCallsBase(t *testing.T) {
 
 const pfPHPOut = `CFJSON:{"webgui":true,"services":[{"name":"openvpn","extras":{"vpnmode":"server","id":"1"}},{"name":"openvpn","extras":{"vpnmode":"client","id":2}},{"name":"ipsec"},{"name":"captiveportal","extras":{"zone":"guest"}}],"packages":["haproxy"]}`
 
-func TestPfSenseRestartsServices(t *testing.T) {
+func TestPfSenseDeployNeverRestarts(t *testing.T) {
 	m, _ := akMaterial(t)
 	f := &fakePF{list: `[{"refid":"abc","descr":"web"}]`, phpOut: pfPHPOut}
 	srv := httptest.NewServer(f)
 	defer srv.Close()
-	res, err := PfSense{}.Deploy(context.Background(), pfRequestRS(t, srv.URL, "", false, true, m))
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := "certificate abc updated, restarted: WebGUI, OpenVPN server 1, OpenVPN client 2, IPsec, Captive portal zone guest, package haproxy"
-	if res.Detail != want {
-		t.Fatalf("detail = %q", res.Detail)
-	}
-	if len(f.php) != 1 || !strings.Contains(f.php[0], `cert_get_all_services("abc")`) || !strings.Contains(f.php[0], "cert_restart_services($s)") {
-		t.Fatalf("php = %q", f.php)
-	}
-}
-
-func TestPfSenseRestartDefaultsOnAndRunsWhenUnchanged(t *testing.T) {
-	m, _ := akMaterial(t)
-	leaf := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: m.LeafDER}))
-	f := &fakePF{list: `{"certs":[{"refid":"abc","descr":"web","crt":"` + base64.StdEncoding.EncodeToString([]byte(leaf)) + `"}]}`}
-	srv := httptest.NewServer(f)
-	defer srv.Close()
-	req := pfRequestRS(t, srv.URL, "", false, true, m)
-	var c map[string]any
-	_ = json.Unmarshal(req.Config, &c)
-	delete(c, "restartServices") // default
-	req.Config, _ = json.Marshal(c)
-	res, err := PfSense{}.Deploy(context.Background(), req)
-	if err != nil || res.Detail != "certificate abc unchanged, no services use it" || len(f.php) != 1 {
-		t.Fatalf("res=%+v err=%v php=%d", res, err, len(f.php))
-	}
-}
-
-func TestPfSenseRestartDisabled(t *testing.T) {
-	m, _ := akMaterial(t)
-	f := &fakePF{list: `[{"refid":"abc","descr":"web"}]`}
-	srv := httptest.NewServer(f)
-	defer srv.Close()
-	if _, err := (PfSense{}).Deploy(context.Background(), pfRequest(t, srv.URL, "", false, m)); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.php) != 0 {
-		t.Fatalf("php ran: %q", f.php)
-	}
-}
-
-func TestPfSenseRestartFailureSurfaces(t *testing.T) {
-	m, _ := akMaterial(t)
-	f := &fakePF{list: `[{"refid":"abc","descr":"web"}]`, phpBad: true}
-	srv := httptest.NewServer(f)
-	defer srv.Close()
-	_, err := PfSense{}.Deploy(context.Background(), pfRequestRS(t, srv.URL, "", false, true, m))
-	if err == nil || !strings.Contains(err.Error(), "certificate deployed (certificate abc updated) but restarting its services failed") || !strings.Contains(err.Error(), "status 500") {
-		t.Fatalf("err = %v", err)
+	res, err := PfSense{}.Deploy(context.Background(), pfRequest(t, srv.URL, "", false, m))
+	if err != nil || res.Detail != "certificate abc updated" || len(f.php) != 0 {
+		t.Fatalf("res=%+v err=%v php=%q", res, err, f.php)
 	}
 }
 
@@ -501,75 +446,18 @@ func TestPfSensePHPErrorSnippet(t *testing.T) {
 	}
 }
 
-func pfGrantReq(t *testing.T, url string, restartCfg *bool, opts string, m *render.Material) targets.Request {
-	t.Helper()
-	req := pfRequestRS(t, url, "", false, true, m)
-	var c map[string]any
-	_ = json.Unmarshal(req.Config, &c)
-	delete(c, "restartServices")
-	if restartCfg != nil {
-		c["restartServices"] = *restartCfg
-	}
-	req.Config, _ = json.Marshal(c)
-	if opts != "" {
-		req.GrantOptions = json.RawMessage(opts)
-	}
-	return req
-}
-
-func TestPfSenseGrantRestartModes(t *testing.T) {
-	no, yes := false, true
-	cases := []struct {
-		name    string
-		cfg     *bool
-		opts    string
-		php     int
-		want    string
-		lastPHP []string // substrings the last PHP must contain
-	}{
-		{"unset follows target false", &no, ``, 0, "certificate abc updated", nil},
-		{"unset follows target true", &yes, ``, 1, "restarted: WebGUI, OpenVPN server 1, OpenVPN client 2, IPsec, Captive portal zone guest, package haproxy", []string{"cert_get_all_services"}},
-		{"none overrides target true", &yes, `{"pfsenseRestart":{"mode":"none"}}`, 0, "certificate abc updated", nil},
-		{"all overrides target false", &no, `{"pfsenseRestart":{"mode":"all"}}`, 1, "restarted: WebGUI,", nil},
-		{"selected", &yes, `{"pfsenseRestart":{"mode":"selected","services":["openvpn:client:2","ipsec","package:haproxy"]}}`, 2,
-			"restarted: OpenVPN client 2, IPsec, package haproxy", []string{"json_decode(base64_decode(", "cert_restart_services($s)"}},
-		{"selected skips stale", &yes, `{"pfsenseRestart":{"mode":"selected","services":["webgui","openvpn:server:9","captiveportal:gone"]}}`, 2,
-			"restarted: WebGUI; skipped, no longer in use: openvpn:server:9, captiveportal:gone", nil},
-		{"selected all stale", &yes, `{"pfsenseRestart":{"mode":"selected","services":["openvpn:server:9"]}}`, 1,
-			"none of the selected services use it; skipped, no longer in use: openvpn:server:9", nil},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			m, _ := akMaterial(t)
-			f := &fakePF{list: `[{"refid":"abc","descr":"web"}]`, phpOut: pfPHPOut}
-			srv := httptest.NewServer(f)
-			defer srv.Close()
-			res, err := PfSense{}.Deploy(context.Background(), pfGrantReq(t, srv.URL, tc.cfg, tc.opts, m))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !strings.Contains(res.Detail, tc.want) {
-				t.Fatalf("detail = %q, want %q", res.Detail, tc.want)
-			}
-			if len(f.php) != tc.php {
-				t.Fatalf("php calls = %d, want %d: %q", len(f.php), tc.php, f.php)
-			}
-			for _, sub := range tc.lastPHP {
-				if !strings.Contains(f.php[len(f.php)-1], sub) && !strings.Contains(f.php[0], sub) {
-					t.Fatalf("php lacks %q: %q", sub, f.php)
-				}
-			}
-		})
-	}
-}
-
 func TestPfSenseSelectedSendsFilteredStructure(t *testing.T) {
 	m, _ := akMaterial(t)
 	f := &fakePF{list: `[{"refid":"abc","descr":"web"}]`, phpOut: pfPHPOut}
 	srv := httptest.NewServer(f)
 	defer srv.Close()
-	yes := true
-	if _, err := (PfSense{}).Deploy(context.Background(), pfGrantReq(t, srv.URL, &yes, `{"pfsenseRestart":{"mode":"selected","services":["openvpn:server:1","package:haproxy"]}}`, m)); err != nil {
+	var cfg PfSenseConfig
+	_ = json.Unmarshal(pfRequest(t, srv.URL, "", false, m).Config, &cfg)
+	n, err := newNexusClient(context.Background(), targets.HTTPFactory{AllowLoopback: true}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := n.restartSelected(context.Background(), "abc", []string{"openvpn:server:1", "package:haproxy"}); err != nil {
 		t.Fatal(err)
 	}
 	code := f.php[1]
@@ -586,26 +474,6 @@ func TestPfSenseSelectedSendsFilteredStructure(t *testing.T) {
 	}
 	if strings.Contains(code, "openvpn:server") {
 		t.Fatalf("key leaked into php: %q", code)
-	}
-}
-
-func TestParsePfSenseGrantOptions(t *testing.T) {
-	for _, ok := range []string{``, `null`, `{}`, `{"pfsenseRestart":{"mode":"all"}}`, `{"pfsenseRestart":{"mode":"none"}}`,
-		`{"pfsenseRestart":{"mode":"selected","services":["webgui","ipsec","openvpn:server:1","openvpn:client:12","captiveportal:guest_1","package:haproxy","service:dhcpd"]}}`} {
-		if _, err := ParsePfSenseGrantOptions(json.RawMessage(ok)); err != nil {
-			t.Errorf("rejected %s: %v", ok, err)
-		}
-	}
-	for _, bad := range []string{`{"x":1}`, `{"pfsenseRestart":{"mode":"some"}}`, `{"pfsenseRestart":{}}`,
-		`{"pfsenseRestart":{"mode":"selected"}}`, `{"pfsenseRestart":{"mode":"all","services":["webgui"]}}`,
-		`{"pfsenseRestart":{"mode":"selected","services":["webgui","webgui"]}}`,
-		`{"pfsenseRestart":{"mode":"selected","services":["openvpn:server"]}}`,
-		`{"pfsenseRestart":{"mode":"selected","services":["package:a\");system(1);"]}}`,
-		`{"pfsenseRestart":{"mode":"selected","services":["ipsec "]}}`} {
-		var fe *delivery.FieldError
-		if _, err := ParsePfSenseGrantOptions(json.RawMessage(bad)); !errors.As(err, &fe) {
-			t.Errorf("accepted %s (err=%v)", bad, err)
-		}
 	}
 }
 

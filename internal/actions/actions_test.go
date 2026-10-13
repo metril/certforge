@@ -37,6 +37,10 @@ func TestParse(t *testing.T) {
 		{"pfsense_restart", `{"targetId":"` + id1 + `","mode":"selected","services":["webgui","webgui"]}`, "services"},
 		{"pfsense_restart", `{"targetId":"` + id1 + `","mode":"all","services":["webgui"]}`, "services"},
 		{"pfsense_restart", `{"targetId":"` + id1 + `","mode":"selected","services":["webgui","openvpn:server:1","package:acme"]}`, ""},
+		{"pikvm_restart", `{"targetId":"` + id1 + `"}`, ""},
+		{"pikvm_restart", `{"targetId":"` + id1 + `","service":"kvmd-vnc"}`, ""},
+		{"pikvm_restart", `{"targetId":"` + id1 + `","service":"sshd"}`, "service"},
+		{"pikvm_restart", `{}`, "targetId"},
 		{"truenas_restart", `{"targetId":"` + id1 + `"}`, ""},
 		{"truenas_restart", `{}`, "targetId"},
 		{"routeros_restart", `{"targetId":"` + id1 + `"}`, ""},
@@ -93,7 +97,7 @@ func TestHTTPSecretSplit(t *testing.T) {
 
 func TestRegistry(t *testing.T) {
 	all := Default.All()
-	if len(all) != 11 {
+	if len(all) != 12 {
 		t.Fatalf("kinds = %d", len(all))
 	}
 	for i, k := range all {

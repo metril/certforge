@@ -246,7 +246,7 @@ A PiKVM target installs the certificate on a PiKVM or GL.iNet Comet KVM. It runs
 | **Host key** (`hostKey`) | The pinned server key. **Fetch from server** reads it, as for SSH. Required. | None |
 | **Timeout** (`timeoutSeconds`) | Seconds for the whole deploy, 5 to 300. | 60 |
 
-Each deploy runs `rw` (the root filesystem is read-only), writes `/etc/kvmd/nginx/ssl/server.crt` (`fullchain`, `0644`) and `server.key` (`key`, `0600`), then runs `systemctl restart kvmd-nginx; rc=$?; ro; exit $rc`, so the filesystem is switched back even when the restart fails. The grant needs the private key, so it needs `keys:export`. Commands are recorded as hook runs, as for SSH.
+Each deploy runs `rw` (the root filesystem is read-only), writes `/etc/kvmd/nginx/ssl/server.crt` (`fullchain`, `0644`) and `server.key` (`key`, `0600`), then runs `ro`. It does not restart anything: add a **Restart PiKVM service** (`pikvm_restart`) step to restart `kvmd-nginx` or `kvmd-vnc`. The grant needs the private key, so it needs `keys:export`. Commands are recorded as hook runs, as for SSH.
 
 Existing SSH targets set up for PiKVM keep working; no migration is needed.
 
@@ -261,7 +261,6 @@ A pfSense Plus target pushes a certificate into pfSense through the Netgate Nexu
 | **Device** (`device`) | Name, alias or ID of the firewall in Nexus. | The only managed device |
 | **Certificate name** (`certName`) | Description of the certificate in pfSense, letters, digits, space, `.`, `_` and `-`. | The certificate's name |
 | **Use for the WebGUI** (`setWebGuiCert`) | Also select this certificate for the pfSense web interface. | Off |
-| **Restart services that use it** (`restartServices`) | Default for grants that don't choose: restart every service that uses the certificate after deploying. | On |
 | **CA certificate** (`caPem`) | PEM to trust for pfSense's TLS certificate, on top of the system roots. | None |
 | **Timeout** (`timeoutSeconds`) | Seconds per request, 5 to 120. | 30 |
 
@@ -396,7 +395,7 @@ The URL and body may contain `{{cert.name}}`, `{{cert.fingerprint}}`, `{{cert.no
 
 ### pfSense restart
 
-A pfSense target's built-in **Restart services that use it** option still applies to its grants. A **post-deploy pfSense restart** step on the grant's own target replaces that built-in restart, so the services restart once, in the mode the step chose. Service keys are `webgui`, `openvpn:server:<id>`, `openvpn:client:<id>`, `ipsec`, `captiveportal:<zone>` and `package:<name>`. **Check usage** on a pfSense grant (`GET /orgs/{orgId}/grants/{id}/pfsense-usage`) asks the firewall which services use the certificate without changing anything.
+A pfSense deploy never restarts services: add a **post-deploy pfSense restart** step to the grant, in the mode you want. Service keys are `webgui`, `openvpn:server:<id>`, `openvpn:client:<id>`, `ipsec`, `captiveportal:<zone>` and `package:<name>`. **Check usage** on a pfSense grant (`GET /orgs/{orgId}/grants/{id}/pfsense-usage`) asks the firewall which services use the certificate without changing anything.
 
 ### Run history
 

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Restart PiKVM service",
+  "description": "Restarts a kvmd service on a PiKVM or GL.iNet Comet over SSH, so it serves the new certificate. Runs on the server.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["targetId"],
+  "properties": {
+    "targetId": {"type": "string", "format": "uuid", "title": "Target", "description": "The PiKVM deploy target."},
+    "service": {"type": "string", "enum": ["kvmd-nginx", "kvmd-vnc"], "default": "kvmd-nginx", "title": "Service", "description": "The service to restart."}
+  }
+}
