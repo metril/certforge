@@ -165,6 +165,7 @@ const (
 const (
 	DeployTargetTypeAuthentik DeployTargetType = "authentik"
 	DeployTargetTypePfsense   DeployTargetType = "pfsense"
+	DeployTargetTypePikvm     DeployTargetType = "pikvm"
 	DeployTargetTypeRouteros  DeployTargetType = "routeros"
 	DeployTargetTypeSsh       DeployTargetType = "ssh"
 	DeployTargetTypeTraefik   DeployTargetType = "traefik"

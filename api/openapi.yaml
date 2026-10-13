@@ -4930,7 +4930,7 @@ components:
         value: {type: string, description: The stored plaintext value.}
     DeployTargetType:
       type: string
-      enum: [traefik, vault-kv, authentik, pfsense, truenas, routeros, ssh]
+      enum: [traefik, vault-kv, authentik, pfsense, truenas, routeros, ssh, pikvm]
       description: Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today.
     RunsOn:
       type: string

@@ -21,10 +21,10 @@ func registryCodes(reg *targets.Registry) []string {
 
 // TestProductRegistriesHaveNoTestTypes guards the server and agent
 // registries against ever holding a targetstest type: exactly {authentik,
-// pfsense, routeros, ssh, traefik, truenas, vault-kv} and {traefik}, respectively.
+// pfsense, pikvm, routeros, ssh, traefik, truenas, vault-kv} and {traefik}, respectively.
 func TestProductRegistriesHaveNoTestTypes(t *testing.T) {
-	if got := registryCodes(newTargetsRegistry(nil)); len(got) != 7 || got[0] != "authentik" || got[1] != "pfsense" || got[2] != "routeros" || got[3] != "ssh" || got[4] != "traefik" || got[5] != "truenas" || got[6] != "vault-kv" {
-		t.Fatalf("server registry codes = %v, want [authentik pfsense routeros ssh traefik truenas vault-kv]", got)
+	if got := registryCodes(newTargetsRegistry(nil)); len(got) != 8 || got[0] != "authentik" || got[1] != "pfsense" || got[2] != "pikvm" || got[3] != "routeros" || got[4] != "ssh" || got[5] != "traefik" || got[6] != "truenas" || got[7] != "vault-kv" {
+		t.Fatalf("server registry codes = %v, want [authentik pfsense pikvm routeros ssh traefik truenas vault-kv]", got)
 	}
 	if got := registryCodes(agent.NewTargetsRegistry()); len(got) != 1 || got[0] != "traefik" {
 		t.Fatalf("agent registry codes = %v, want [traefik]", got)
@@ -55,6 +55,7 @@ func TestRegistryModesMatrix(t *testing.T) {
 	}{
 		{"authentik", targets.Server, targets.Always},
 		{"ssh", targets.Server, targets.Optional},
+		{"pikvm", targets.Server, targets.Always},
 		{"pfsense", targets.Server, targets.Always},
 		{"routeros", targets.Server, targets.Always},
 		{"traefik", targets.Agent, targets.Always},
@@ -84,7 +85,7 @@ func TestMetaDeployTargetAttrs(t *testing.T) {
 	targets.AddToMeta(reg, metaReg)
 
 	entries := metaReg.List(meta.KindDeployTarget)
-	if len(entries) != 7 {
+	if len(entries) != 8 {
 		t.Fatalf("entries = %+v", entries)
 	}
 	byCode := map[string]meta.Entry{}
@@ -99,6 +100,9 @@ func TestMetaDeployTargetAttrs(t *testing.T) {
 	}
 	if a := byCode["ssh"].Attrs; a["runsOn"] != "server" || a["keyPolicy"] != "optional" {
 		t.Fatalf("ssh attrs = %+v", a)
+	}
+	if a := byCode["pikvm"].Attrs; a["runsOn"] != "server" || a["keyPolicy"] != "always" {
+		t.Fatalf("pikvm attrs = %+v", a)
 	}
 	if a := byCode["pfsense"].Attrs; a["runsOn"] != "server" || a["keyPolicy"] != "always" {
 		t.Fatalf("pfsense attrs = %+v", a)

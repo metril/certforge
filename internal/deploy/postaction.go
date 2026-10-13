@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -54,12 +55,12 @@ func (p *PostAction) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// TargetType is the deploy target type this kind runs against.
-func (p *PostAction) TargetType() string {
+// TargetTypes are the deploy target types this kind runs against.
+func (p *PostAction) TargetTypes() []string {
 	if p.Kind == PostActionPfSense {
-		return TypePfSense
+		return []string{TypePfSense}
 	}
-	return "ssh"
+	return []string{TypeSSH, TypePiKVM}
 }
 
 // MaxPostActionCommand bounds PostAction.Command.
@@ -126,15 +127,15 @@ type resolvedTarget struct {
 	redact map[string]string
 }
 
-// loadTarget opens the org's deploy target id, which must be of type typ.
+// loadTarget opens the org's deploy target id, which must be one of types.
 // Errors name the target kind (label) and carry no secrets.
-func (d *Dispatcher) loadTarget(ctx context.Context, orgID, id uuid.UUID, typ, label string) (resolvedTarget, error) {
+func (d *Dispatcher) loadTarget(ctx context.Context, orgID, id uuid.UUID, types []string, label string) (resolvedTarget, error) {
 	var rt resolvedTarget
 	t, err := d.Q.GetDeployTarget(ctx, sqlcgen.GetDeployTargetParams{ID: id, OrgID: orgID})
 	if err != nil {
 		return rt, errors.New(label + " target not found")
 	}
-	if t.Type != typ {
+	if !slices.Contains(types, t.Type) {
 		return rt, errors.New("target is not a " + label + " target")
 	}
 	secrets, err := d.openTargetSecrets(ctx, t.SecretCfg)
@@ -168,7 +169,7 @@ func (d *Dispatcher) loadTarget(ctx context.Context, orgID, id uuid.UUID, typ, l
 // PfSenseUsage reports which pfSense services use the certificate named
 // certName on the org's pfsense target id (see the package-level PfSenseUsage).
 func (d *Dispatcher) PfSenseUsage(ctx context.Context, orgID, id uuid.UUID, certName string) (string, []PfSenseService, error) {
-	rt, err := d.loadTarget(ctx, orgID, id, TypePfSense, "pfsense")
+	rt, err := d.loadTarget(ctx, orgID, id, []string{TypePfSense}, "pfsense")
 	if err != nil {
 		return "", nil, err
 	}
@@ -181,8 +182,7 @@ func (d *Dispatcher) PfSenseUsage(ctx context.Context, orgID, id uuid.UUID, cert
 // runPostAction runs pa over the referenced target and records it. The
 // returned error is already redacted of the target's secrets.
 func (d *Dispatcher) runPostAction(ctx context.Context, row sqlcgen.ServerDeployGrantRow, pa *PostAction, hf targets.HTTPFactory) error {
-	label := pa.TargetType()
-	rt, err := d.loadTarget(ctx, row.OrgID, pa.TargetID, label, label)
+	rt, err := d.loadTarget(ctx, row.OrgID, pa.TargetID, pa.TargetTypes(), pa.Kind)
 	if err != nil {
 		return errors.New("post action: " + err.Error())
 	}

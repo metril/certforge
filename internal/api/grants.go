@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -442,8 +444,8 @@ func postActionIn(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, in *
 	} else if err != nil {
 		return nil, err
 	}
-	if want := pa.TargetType(); t.Type != want {
-		return nil, unprocessable("postAction.targetId", fmt.Sprintf("a %s post action needs a %s target", pa.Kind, want))
+	if types := pa.TargetTypes(); !slices.Contains(types, t.Type) {
+		return nil, unprocessable("postAction.targetId", fmt.Sprintf("a %s post action needs %s target", pa.Kind, postTargetPhrase(types)))
 	}
 	return json.Marshal(pa)
 }
@@ -1037,4 +1039,13 @@ func verifyInterval(v *gen.GrantVerify, def int) int {
 		return *v.IntervalSeconds
 	}
 	return def
+}
+
+// postTargetPhrase names post-action target types, e.g. "an ssh or pikvm".
+func postTargetPhrase(types []string) string {
+	art := "a"
+	if strings.ContainsRune("aeiou", rune(types[0][0])) {
+		art = "an"
+	}
+	return art + " " + strings.Join(types, " or ")
 }

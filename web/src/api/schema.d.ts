@@ -4619,7 +4619,7 @@ export interface components {
          * @description Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today.
          * @enum {string}
          */
-        DeployTargetType: "traefik" | "vault-kv" | "authentik" | "pfsense" | "truenas" | "routeros" | "ssh";
+        DeployTargetType: "traefik" | "vault-kv" | "authentik" | "pfsense" | "truenas" | "routeros" | "ssh" | "pikvm";
         /**
          * @description Where the target (and its grants) run — an enrolled agent, or this server (a server-side deploy target such as vault-kv).
          * @enum {string}

@@ -141,3 +141,19 @@ func TestPostActionDialFailureRecorded(t *testing.T) {
 		t.Fatalf("runs = %+v", runs)
 	}
 }
+
+func TestPostActionOnPiKVMTarget(t *testing.T) {
+	s := sshxtest.Start(t, nil)
+	f, g, ver, _ := postActionSetup(t, s, func(ssh uuid.UUID) PostAction {
+		return PostAction{TargetID: ssh, Command: "echo hi", TimeoutSeconds: 10}
+	})
+	if _, err := f.pool.Exec(context.Background(), `UPDATE deploy_targets SET type = 'pikvm' WHERE type = 'ssh'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.disp.Deploy(context.Background(), g, ver); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Cmds) != 1 || s.Cmds[0] != "echo hi" {
+		t.Fatalf("cmds = %q", s.Cmds)
+	}
+}
