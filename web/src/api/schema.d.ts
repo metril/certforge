@@ -4813,7 +4813,7 @@ export interface components {
             secretKeys: string[];
             /** @description The step is stopped after this long. */
             timeoutSeconds: number;
-            /** @description A failure is recorded but never fails the deploy. */
+            /** @description Server-run actions only: a failure is recorded but never fails the deploy. */
             optional: boolean;
             /** @description Live grants naming it directly as a step. */
             grantCount: number;
@@ -4844,7 +4844,7 @@ export interface components {
              */
             timeoutSeconds: number;
             /**
-             * @description Record a failure but do not fail the deploy.
+             * @description Applies to server-run actions only (agent-run exec and restart reject true with 422): record a failure but do not fail the deploy.
              * @default false
              */
             optional: boolean;

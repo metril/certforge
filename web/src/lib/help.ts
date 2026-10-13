@@ -540,7 +540,7 @@ export const help = {
     text: 'Restore runs offline with certforge restore while the server is stopped.',
     learnMore: 'guide/backup.md#restore',
   },
-  'grant.steps': { text: 'Actions that run around the deploy, in the numbered order. Pre-deploy ones run before the certificate is written, post-deploy ones after. A group runs its actions in place.', learnMore: 'guide/delivery.md#actions' },
+  'grant.steps': { text: 'Actions that run around the deploy, in this order; a group runs its actions in place. Pre-deploy ones run before the certificate is written, post-deploy ones after.', learnMore: 'guide/delivery.md#actions' },
 } satisfies Record<string, Help>;
 
 export type HelpKey = keyof typeof help;
