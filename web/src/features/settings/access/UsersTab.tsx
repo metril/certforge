@@ -256,7 +256,22 @@ export function UsersTab() {
                       </Badge>
                     ))}
                     {g.length > 3 && (
-                      <Badge variant="secondary">+{g.length - 3}</Badge>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span
+                            tabIndex={0}
+                            aria-label={`${g.length - 3} more groups`}
+                            className="inline-flex rounded-md"
+                          >
+                            <Badge variant="secondary">+{g.length - 3}</Badge>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="font-mono text-xs leading-snug">
+                          {g.slice(3).map((x) => (
+                            <div key={x}>{x}</div>
+                          ))}
+                        </TooltipContent>
+                      </Tooltip>
                     )}
                   </span>
                 );
