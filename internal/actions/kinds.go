@@ -138,6 +138,10 @@ func (r *Registry) All() []Kind {
 // Default holds the built-in kinds.
 var Default = newDefault()
 
+// pfKeyRe duplicates deploy.pfKeyRe (internal/deploy/pfsense_restart.go),
+// which this package cannot import; keep the two in sync.
+var pfKeyRe = regexp.MustCompile(`^(webgui|ipsec|openvpn:[a-z]{1,16}:[0-9]{1,9}|captiveportal:[A-Za-z0-9_.-]{1,64}|package:[A-Za-z0-9_.+-]{1,64}|service:[A-Za-z0-9_.-]{1,64})$`)
+
 func fe(field, msg string) error { return &delivery.FieldError{Field: field, Msg: msg} }
 
 // decode strictly decodes raw (unknown fields are an error) into v.
@@ -253,20 +257,28 @@ func newDefault() *Registry {
 			}
 			switch c.Mode {
 			case "", "all", "none":
+				if len(c.Services) > 0 {
+					return fe("services", "only allowed when mode is selected")
+				}
 			case "selected":
 				if len(c.Services) == 0 {
 					return fe("services", "select at least one service")
 				}
+				if len(c.Services) > 64 {
+					return fe("services", "at most 64 services")
+				}
+				seen := map[string]bool{}
+				for _, k := range c.Services {
+					if !pfKeyRe.MatchString(k) {
+						return fe("services", fmt.Sprintf("invalid service key %q", k))
+					}
+					if seen[k] {
+						return fe("services", fmt.Sprintf("duplicate service key %q", k))
+					}
+					seen[k] = true
+				}
 			default:
 				return fe("mode", "mode must be all, selected or none")
-			}
-			if len(c.Services) > 64 {
-				return fe("services", "at most 64 services")
-			}
-			for _, s := range c.Services {
-				if s == "" || len(s) > 64 {
-					return fe("services", "service names are 1 to 64 characters")
-				}
 			}
 			return nil
 		})

@@ -95,3 +95,28 @@ func RunsOnMismatch(refs []ActionRef, mode targets.Mode) int {
 	}
 	return -1
 }
+
+// DirectActionIDs returns the action ids named directly by raw steps (groups
+// are not expanded); malformed input yields none.
+func DirectActionIDs(raw []byte) []uuid.UUID {
+	var steps []Step
+	if json.Unmarshal(raw, &steps) != nil {
+		return nil
+	}
+	var ids []uuid.UUID
+	for _, s := range steps {
+		if s.Action != nil {
+			ids = append(ids, *s.Action)
+		}
+	}
+	return ids
+}
+
+// StepsOfActions builds a step list naming each action id in order.
+func StepsOfActions(ids []uuid.UUID) []Step {
+	steps := make([]Step, 0, len(ids))
+	for i := range ids {
+		steps = append(steps, Step{Action: &ids[i]})
+	}
+	return steps
+}

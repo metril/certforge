@@ -29,7 +29,7 @@ func TestVerifyManifestTableList(t *testing.T) {
 	}
 	for _, c := range cases {
 		s := sums(c.header...)
-		err := verifyManifest(c.header, s, s)
+		err := verifyManifest(Manifest, c.header, s, s)
 		if c.ok && err != nil {
 			t.Errorf("%s: %v", c.name, err)
 		}
@@ -38,7 +38,7 @@ func TestVerifyManifestTableList(t *testing.T) {
 		}
 	}
 	// header lists a table the tar lacks.
-	if err := verifyManifest(older, sums(older[:len(older)-1]...), sums(older...)); !errors.Is(err, ErrTampered) {
+	if err := verifyManifest(Manifest, older, sums(older[:len(older)-1]...), sums(older...)); !errors.Is(err, ErrTampered) {
 		t.Errorf("missing tar table: %v", err)
 	}
 }
