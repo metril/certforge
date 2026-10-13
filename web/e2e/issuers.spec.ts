@@ -265,6 +265,69 @@ test('server grant', async ({ page }) => {
   await expect(page.getByText('Redeploy queued')).toBeVisible();
 });
 
+test('server grant with verify creates a grant-owned monitor', async ({ page }) => {
+  test.setTimeout(180_000);
+
+  // Self-contained, same reasons as 'server grant' above.
+  const { api, headers, orgId } = await adminOrg();
+  const ca = await body<{ id: string }>(
+    api.post(`/api/v1/orgs/${orgId}/cas`, {
+      headers,
+      data: { name: 'e2e-drift-ca', type: 'localca', config: { subject: { commonName: 'e2e drift root' } } },
+    }),
+  );
+  let cert = await body<Cert>(
+    api.post(`/api/v1/orgs/${orgId}/certificates`, {
+      headers,
+      data: { name: 'e2e-drift-cert', commonName: 'drift.e2e.test', overrides: { caId: ca.id } },
+    }),
+  );
+  const certPath = `/api/v1/orgs/${orgId}/certificates/${cert.id}`;
+  const deadline = Date.now() + 60_000;
+  while (cert.status !== 'active') {
+    if (Date.now() > deadline) throw new Error(`certificate not active: ${cert.status} ${cert.lastError ?? ''}`);
+    await new Promise((r) => setTimeout(r, 1_000));
+    cert = await body<Cert>(api.get(certPath, { headers }));
+  }
+  await body(api.post(`/api/v1/orgs/${orgId}/deploy-targets`, { headers, data: { name: 'e2e-drift-truenas', type: 'truenas', config: { url: 'https://drift-nas.e2e.test', apiKey: 'e2e' } } }));
+  await api.dispose();
+
+  await page.goto('/login');
+  await signInLocal(page);
+  await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/overview`));
+
+  await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
+  await page.getByRole('table', { name: 'Deploy targets' }).getByRole('button', { name: 'Grants e2e-drift-truenas' }).click();
+  const targetDetail = page.getByRole('dialog', { name: 'e2e-drift-truenas' });
+  await expect(targetDetail).toBeVisible();
+  await targetDetail.getByRole('button', { name: 'New server grant' }).click();
+  await targetDetail.getByRole('combobox', { name: 'Certificate' }).click();
+  await page.getByRole('option', { name: /^e2e-drift-cert/ }).click();
+  // Verify is on and prefilled from the target URL; set the host explicitly.
+  await expect(targetDetail.getByRole('switch', { name: 'Verify the endpoint' })).toBeChecked();
+  await targetDetail.getByLabel('Host', { exact: true }).fill('drift-nas.e2e.test');
+  await targetDetail.getByRole('button', { name: 'Grant' }).click();
+  await expect(targetDetail.getByRole('table', { name: 'Grants' }).getByRole('row', { name: /e2e-drift-cert/ })).toBeVisible({ timeout: 60_000 });
+
+  await page.keyboard.press('Escape');
+  await page.goto(`/o/${E2E.orgSlug}/alerts/monitors`);
+  const monitorRow = page.getByRole('row').filter({ hasText: 'drift-nas.e2e.test' });
+  await expect(monitorRow).toBeVisible();
+  await expect(monitorRow.getByText('Grant', { exact: true })).toBeVisible();
+
+  await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
+  await page.getByRole('table', { name: 'Deploy targets' }).getByRole('button', { name: 'Grants e2e-drift-truenas' }).click();
+  await targetDetail.getByRole('button', { name: 'Remove e2e-drift-cert' }).click();
+  const confirm = page.getByRole('dialog', { name: 'Remove grant?' });
+  await confirm.getByRole('textbox').fill('e2e-drift-cert');
+  await confirm.getByRole('button', { name: 'Remove' }).click();
+  await expect(confirm).toBeHidden();
+
+  await page.goto(`/o/${E2E.orgSlug}/alerts/monitors`);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(page.getByRole('row').filter({ hasText: 'drift-nas.e2e.test' })).toHaveCount(0);
+});
+
 test('issuers, delivery and vault settings screens do not scroll sideways at 375 px', async ({ page }) => {
   // Self-contained (pre-flight ruling — same as 'server grant' above, and
   // :101's own comment): final review found this depending on 'CA kind
