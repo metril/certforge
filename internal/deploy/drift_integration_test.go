@@ -141,9 +141,34 @@ func TestDriftFlapGuardAndFingerprintReset(t *testing.T) {
 	if got := f.lastError(t, f.grant); got != "auto-remediation did not take effect after 3 attempts" {
 		t.Fatalf("last_error = %q", got)
 	}
+	if f.auditRows(t) != 1 {
+		t.Fatalf("audit rows = %d across one episode, want 1", f.auditRows(t))
+	}
 	f.check(t, "mismatch", "fpB") // a different fingerprint restarts the count
 	if n, fp := f.counts(t); n != 1 || *fp != "fpB" || len(f.ins.args) != 4 {
 		t.Fatalf("remediations = %d fp = %v jobs = %d; want 1, fpB, 4", n, fp, len(f.ins.args))
+	}
+	if f.auditRows(t) != 1 { // still the same unrecovered drift: no new audit row
+		t.Fatalf("audit rows = %d after a new fingerprint, want 1", f.auditRows(t))
+	}
+}
+
+// TestDriftIgnoresStaleVersion: between a renewal committing its new version
+// and the deploy landing, the monitor compares the old leaf with the new
+// expected fingerprint. That is a pending install, not drift.
+func TestDriftIgnoresStaleVersion(t *testing.T) {
+	f := newDriftFixture(t, true, "deployed")
+	var certID uuid.UUID
+	if err := f.pool.QueryRow(context.Background(), `SELECT cert_id FROM client_cert_grants WHERE id = $1`, f.grant).Scan(&certID); err != nil {
+		t.Fatal(err)
+	}
+	v2 := f.dispatcherFixture.version(t, certID, "2", false)
+	if _, err := f.pool.Exec(context.Background(), `UPDATE certificates SET current_version_id = $1 WHERE id = $2`, v2, certID); err != nil {
+		t.Fatal(err)
+	}
+	f.check(t, "mismatch", "fpA")
+	if got := f.status(t, f.grant); got != "deployed" || len(f.ins.args) != 0 || f.auditRows(t) != 0 {
+		t.Fatalf("stale version reacted: status %q jobs %d audit %d", got, len(f.ins.args), f.auditRows(t))
 	}
 }
 

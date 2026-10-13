@@ -49,13 +49,21 @@ func (d *Dispatcher) OnCheck(ctx context.Context, tx pgx.Tx, monitorID uuid.UUID
 		if row.Status != "deployed" && row.Status != "drift" {
 			return nil, nil
 		}
-		wasDeployed := row.Status == "deployed"
+		// A renewal commits its new version before the deploy is enqueued, so
+		// the monitor may briefly compare the old leaf with the new expected
+		// fingerprint; that is a pending install, not drift.
+		if row.CurrentVersionID == nil || row.VersionID == nil || *row.VersionID != *row.CurrentVersionID {
+			return nil, nil
+		}
+		// One audit per drift episode: the first mismatch, or a mismatch on a
+		// fingerprint no remediation has been tried on yet.
+		same := row.RemediatedFp != nil && *row.RemediatedFp == observedFP
+		firstSeen := row.Status == "deployed" && !same
 		msg := fmt.Sprintf("monitor saw %s instead of %s", short(observedFP), short(expectedFP))
 		if err := q.MarkServerDeploymentDrift(ctx, sqlcgen.MarkServerDeploymentDriftParams{LastError: msg, GrantID: row.GrantID}); err != nil {
 			return nil, err
 		}
 		if row.AutoRemediate {
-			same := row.RemediatedFp != nil && *row.RemediatedFp == observedFP
 			if same && row.Remediations >= maxRemediations {
 				if err := q.MarkServerDeploymentDrift(ctx, sqlcgen.MarkServerDeploymentDriftParams{
 					LastError: fmt.Sprintf("auto-remediation did not take effect after %d attempts", maxRemediations), GrantID: row.GrantID}); err != nil {
@@ -74,7 +82,7 @@ func (d *Dispatcher) OnCheck(ctx context.Context, tx pgx.Tx, monitorID uuid.UUID
 				}
 			}
 		}
-		if !wasDeployed || d.Auditor == nil {
+		if !firstSeen || d.Auditor == nil {
 			return nil, nil
 		}
 		ev := audit.Event{
