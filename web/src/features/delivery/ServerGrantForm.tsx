@@ -140,9 +140,9 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
         // internal/api/grants.go's updateServerGrant only reads LayoutId and
         // PostAction for a server grant; the other GrantUpdate fields are
         // agent-only and ignored server-side. Omitting postAction clears it.
-        await update.mutateAsync({ id: editing.id, body: { layoutId: layoutId ?? null, ...(targetOptions && { targetOptions }), ...(postAction && { postAction }) } as GrantUpdate });
+        await update.mutateAsync({ id: editing.id, body: { layoutId: layoutId ?? null, autoRemediate: editing.autoRemediate, ...(editing.verify && { verify: editing.verify }), ...(targetOptions && { targetOptions }), ...(postAction && { postAction }) } as GrantUpdate });
       } else {
-        await create.mutateAsync({ certificateId: certificateId!, layoutId: layoutId ?? null, ...(targetOptions && Object.keys(targetOptions).length > 0 && { targetOptions }), ...(postAction && { postAction }) });
+        await create.mutateAsync({ certificateId: certificateId!, autoRemediate: false, layoutId: layoutId ?? null, ...(targetOptions && Object.keys(targetOptions).length > 0 && { targetOptions }), ...(postAction && { postAction }) });
       }
       onDone();
     } catch (e) {

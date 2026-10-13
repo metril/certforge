@@ -80,7 +80,9 @@ type Monitor struct {
 	LastIssuer              string
 	LastError               string
 	ConsecutiveFailures     int
-	CreatedAt, UpdatedAt    time.Time
+	// GrantID is the server grant that owns this monitor; nil when standalone.
+	GrantID              *uuid.UUID
+	CreatedAt, UpdatedAt time.Time
 }
 
 // Input is a create or update's resolved fields (Shared contract:

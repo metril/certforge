@@ -116,3 +116,7 @@ UPDATE external_monitors SET grant_id = sqlc.arg(grant_id) WHERE id = sqlc.arg(i
 
 -- name: NudgeGrantMonitor :exec
 UPDATE external_monitors SET next_check_at = now() WHERE grant_id = $1 AND enabled;
+
+-- name: GetMonitorByGrant :one
+-- The monitor a server grant owns (its Verify endpoint); pgx.ErrNoRows when none.
+SELECT * FROM external_monitors WHERE grant_id = $1;

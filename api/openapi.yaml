@@ -5092,6 +5092,12 @@ components:
           allOf:
             - $ref: "#/components/schemas/PostAction"
           nullable: true
+        verify:
+          description: "A TLS endpoint CertForge polls to confirm the deployed certificate is the one served; a grant-owned monitor, hourly. Null when none. Server grants only."
+          allOf:
+            - $ref: "#/components/schemas/GrantVerify"
+          nullable: true
+        monitorId: {type: string, format: uuid, nullable: true, description: The grant-owned monitor behind verify; null when none. Server grants only.}
         createdAt: {type: string, format: date-time, description: Creation time.}
         updatedAt: {type: string, format: date-time, description: Last change.}
     GrantInput:
@@ -5122,6 +5128,11 @@ components:
           allOf:
             - $ref: "#/components/schemas/PostAction"
           nullable: true
+        verify:
+          description: "A TLS endpoint CertForge polls to confirm the deployed certificate is the one served; a grant-owned monitor, hourly. Null when none. Absent or null removes it. Server grants only; a client grant with verify is 422."
+          allOf:
+            - $ref: "#/components/schemas/GrantVerify"
+          nullable: true
     GrantList:
       type: object
       description: A client's live grants.
@@ -5141,6 +5152,20 @@ components:
           allOf:
             - $ref: "#/components/schemas/PostAction"
           nullable: true
+        verify:
+          description: "A TLS endpoint CertForge polls to confirm the deployed certificate is the one served; a grant-owned monitor, hourly. Null when none. Server grants only."
+          allOf:
+            - $ref: "#/components/schemas/GrantVerify"
+          nullable: true
+        autoRemediate: {type: boolean, default: false, description: Redeploy automatically when the verify endpoint serves a different certificate.}
+    GrantVerify:
+      type: object
+      description: The TLS endpoint a server grant's monitor polls.
+      required: [host, port]
+      properties:
+        host: {type: string, minLength: 1, maxLength: 253, description: Hostname or IP address to connect to.}
+        port: {type: integer, minimum: 1, maximum: 65535, description: TCP port to connect to.}
+        sni: {type: string, nullable: true, maxLength: 253, description: TLS server name to send; omitted or null uses host.}
     PostAction:
       type: object
       description: One command run after a server grant deploys. Kind ssh runs it over SSH using an existing ssh deploy target's host, credentials and host key. Kind pfsense runs it as a shell command on a firewall through an existing pfsense deploy target.
@@ -5451,6 +5476,7 @@ components:
         expectedCertificateId: {type: string, format: uuid, nullable: true, description: A CertForge certificate the observed leaf is compared against; null means the leaf must match the current version of some certificate in the org, otherwise the state is mismatch.}
         expectedCertificateName: {type: string, nullable: true, description: That certificate's name, for display; null when expectedCertificateId is null.}
         enabled: {type: boolean, description: Checked on the scan schedule and countable toward the org's monitor limit.}
+        grantId: {type: string, format: uuid, nullable: true, description: The server grant that owns this monitor; null for a standalone monitor. A grant-owned monitor is edited through the grant's verify.}
         state: {$ref: "#/components/schemas/MonitorState"}
         lastCheckedAt: {type: string, format: date-time, nullable: true, description: When the most recent check ran; null before the first check.}
         nextCheckAt: {type: string, format: date-time, nullable: true, description: When the next scheduled check is due.}

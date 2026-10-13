@@ -396,13 +396,14 @@ func (q *Queries) CreateGrant(ctx context.Context, arg CreateGrantParams) (Clien
 
 const createServerGrant = `-- name: CreateServerGrant :one
 INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, post_action, target_options)
-VALUES (NULL, $1, 'push', $2, $3, '{}', false, COALESCE($4::jsonb, '{}'), COALESCE($5::jsonb, '{}')) RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options, post_action
+VALUES (NULL, $1, 'push', $2, $3, '{}', $4, COALESCE($5::jsonb, '{}'), COALESCE($6::jsonb, '{}')) RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options, post_action
 `
 
 type CreateServerGrantParams struct {
 	CertID         uuid.UUID  `json:"cert_id"`
 	OutputSpecID   *uuid.UUID `json:"output_spec_id"`
 	DeployTargetID *uuid.UUID `json:"deploy_target_id"`
+	AutoRemediate  bool       `json:"auto_remediate"`
 	PostAction     []byte     `json:"post_action"`
 	TargetOptions  []byte     `json:"target_options"`
 }
@@ -414,6 +415,7 @@ func (q *Queries) CreateServerGrant(ctx context.Context, arg CreateServerGrantPa
 		arg.CertID,
 		arg.OutputSpecID,
 		arg.DeployTargetID,
+		arg.AutoRemediate,
 		arg.PostAction,
 		arg.TargetOptions,
 	)
@@ -1422,21 +1424,23 @@ func (q *Queries) UpdateGrant(ctx context.Context, arg UpdateGrantParams) (Clien
 }
 
 const updateServerGrant = `-- name: UpdateServerGrant :one
-UPDATE client_cert_grants SET output_spec_id = $1, post_action = COALESCE($2::jsonb, '{}'), target_options = COALESCE($3::jsonb, '{}'), updated_at = now()
-WHERE id = $4 RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options, post_action
+UPDATE client_cert_grants SET output_spec_id = $1, auto_remediate = $2, post_action = COALESCE($3::jsonb, '{}'), target_options = COALESCE($4::jsonb, '{}'), updated_at = now()
+WHERE id = $5 RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options, post_action
 `
 
 type UpdateServerGrantParams struct {
 	OutputSpecID  *uuid.UUID `json:"output_spec_id"`
+	AutoRemediate bool       `json:"auto_remediate"`
 	PostAction    []byte     `json:"post_action"`
 	TargetOptions []byte     `json:"target_options"`
 	ID            uuid.UUID  `json:"id"`
 }
 
-// A server grant's editable fields: its layout, post action and target options.
+// A server grant's editable fields: its layout, auto-remediate flag, post action and target options.
 func (q *Queries) UpdateServerGrant(ctx context.Context, arg UpdateServerGrantParams) (ClientCertGrant, error) {
 	row := q.db.QueryRow(ctx, updateServerGrant,
 		arg.OutputSpecID,
+		arg.AutoRemediate,
 		arg.PostAction,
 		arg.TargetOptions,
 		arg.ID,

@@ -993,3 +993,152 @@ func TestServerGrantRejectsTargetOptions(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// monitorForGrant reads the grant-owned monitor row, if any.
+func (f *agentFixture) monitorForGrant(t *testing.T, grantID uuid.UUID) (id uuid.UUID, host, state string, certID *uuid.UUID, ok bool) {
+	t.Helper()
+	err := f.pool.QueryRow(context.Background(),
+		`SELECT id, host, state, expected_cert_id FROM external_monitors WHERE grant_id = $1`, grantID).Scan(&id, &host, &state, &certID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, "", "", nil, false
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id, host, state, certID, true
+}
+
+func TestServerGrantVerifyLifecycle(t *testing.T) {
+	f := newAgentFixture(t)
+	ctx := context.Background()
+	op := f.as("operator")
+	targetID, _ := f.serverTarget(t, "vault", nil)
+	certID, _ := f.currentCert(t, "web")
+	yes := true
+
+	res, err := f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.ServerGrantInput{CertificateId: certID, AutoRemediate: &yes, Verify: &gen.GrantVerify{Host: "old.example.test", Port: 8443}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := res.(gen.CreateServerGrant201JSONResponse)
+	if !g.AutoRemediate || g.Verify == nil || g.Verify.Host != "old.example.test" || g.Verify.Port != 8443 || g.MonitorId == nil {
+		t.Fatalf("created grant = %+v", g)
+	}
+	mid, host, _, exp, ok := f.monitorForGrant(t, g.Id)
+	if !ok || host != "old.example.test" || exp == nil || *exp != certID || mid != *g.MonitorId {
+		t.Fatalf("monitor row = %v %s %v %v", mid, host, exp, ok)
+	}
+	if d := f.lastAuditDetails(t, "grant.create", g.Id.String()); !strings.Contains(d, `"autoRemediate"`) || !strings.Contains(d, `"verify"`) {
+		t.Fatalf("audit details: %s", d)
+	}
+
+	// The grant-owned monitor cannot be edited as a monitor, but can be deleted.
+	_, err = f.srv.UpdateMonitor(op, gen.UpdateMonitorRequestObject{OrgId: f.org, Id: mid, Body: monitorInput("x", "other.example.test")})
+	wantStatus(t, err, 409)
+
+	// Same endpoint: state survives; new host: state resets to unknown.
+	if _, err := f.pool.Exec(ctx, `UPDATE external_monitors SET state = 'ok' WHERE id = $1`, mid); err != nil {
+		t.Fatal(err)
+	}
+	upd := func(v *gen.GrantVerify, auto bool) gen.Grant {
+		t.Helper()
+		r, err := f.srv.UpdateGrant(op, gen.UpdateGrantRequestObject{OrgId: f.org, Id: g.Id,
+			Body: &gen.GrantUpdate{Delivery: gen.GrantDelivery("push"), AutoRemediate: auto, Verify: v}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return gen.Grant(r.(gen.UpdateGrant200JSONResponse))
+	}
+	upd(&gen.GrantVerify{Host: "old.example.test", Port: 8443}, false)
+	if _, _, state, _, _ := f.monitorForGrant(t, g.Id); state != "ok" {
+		t.Fatalf("state after unchanged verify = %s, want ok", state)
+	}
+	u := upd(&gen.GrantVerify{Host: "new.example.test", Port: 8443}, true)
+	if !u.AutoRemediate || u.Verify == nil || u.Verify.Host != "new.example.test" {
+		t.Fatalf("updated grant = %+v", u)
+	}
+	if id2, host, state, _, _ := f.monitorForGrant(t, g.Id); id2 != mid || host != "new.example.test" || state != "unknown" {
+		t.Fatalf("monitor after host change = %v %s %s", id2, host, state)
+	}
+
+	// Null removes the monitor; setting it again creates a new one.
+	if u = upd(nil, true); u.Verify != nil || u.MonitorId != nil {
+		t.Fatalf("grant after verify removed = %+v", u)
+	}
+	if _, _, _, _, ok := f.monitorForGrant(t, g.Id); ok {
+		t.Fatal("monitor still exists after verify removed")
+	}
+	upd(&gen.GrantVerify{Host: "new.example.test", Port: 443}, true)
+	if _, _, _, _, ok := f.monitorForGrant(t, g.Id); !ok {
+		t.Fatal("monitor not recreated")
+	}
+
+	// Deleting the grant cascades to its monitor.
+	if _, err := f.srv.DeleteGrant(op, gen.DeleteGrantRequestObject{OrgId: f.org, Id: g.Id, Params: gen.DeleteGrantParams{}}); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM external_monitors WHERE org_id = $1`, f.org).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("monitors after grant delete = %d err %v", n, err)
+	}
+}
+
+func TestServerGrantVerifyDeleteMonitorAllowed(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	targetID, _ := f.serverTarget(t, "vault", nil)
+	certID, _ := f.currentCert(t, "web")
+	res, err := f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.ServerGrantInput{CertificateId: certID, Verify: &gen.GrantVerify{Host: "a.example.test", Port: 443}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := res.(gen.CreateServerGrant201JSONResponse)
+	if _, err := f.srv.DeleteMonitor(op, gen.DeleteMonitorRequestObject{OrgId: f.org, Id: *g.MonitorId}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := f.srv.serverGrantByID(context.Background(), f.org, g.Id)
+	if err != nil || got.Verify != nil || got.MonitorId != nil {
+		t.Fatalf("grant after monitor delete = %+v err %v", got, err)
+	}
+}
+
+func TestClientGrantVerifyRejected(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	c := f.activeClient(t, "web-1")
+	certID, _ := f.currentCert(t, "web")
+	layout := f.layout(t, "pem", "/etc/ssl/web.pem")
+	res, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID, Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &layout}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := res.(gen.CreateGrant201JSONResponse)
+	_, err = f.srv.UpdateGrant(op, gen.UpdateGrantRequestObject{OrgId: f.org, Id: g.Id,
+		Body: &gen.GrantUpdate{Delivery: push(), LayoutId: &layout, Verify: &gen.GrantVerify{Host: "a.example.test", Port: 443}}})
+	wantStatus(t, err, 422)
+}
+
+func TestServerGrantVerifyOverCapAndInvalid(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	targetID, _ := f.serverTarget(t, "vault", nil)
+	certID, _ := f.currentCert(t, "web")
+
+	_, err := f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.ServerGrantInput{CertificateId: certID, Verify: &gen.GrantVerify{Host: "a.example.test", Port: 70000}}})
+	wantStatus(t, err, 422)
+
+	if _, err := f.pool.Exec(context.Background(),
+		`INSERT INTO external_monitors (org_id, name, host, port, interval_seconds) SELECT $1, 'm' || g, 'h.example.test', 443, 3600 FROM generate_series(1, 500) g`, f.org); err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.ServerGrantInput{CertificateId: certID, Verify: &gen.GrantVerify{Host: "a.example.test", Port: 443}}})
+	wantStatus(t, err, 422)
+	var n int
+	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM client_cert_grants WHERE client_id IS NULL`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("grants after over-cap create = %d err %v (tx must roll back)", n, err)
+	}
+}

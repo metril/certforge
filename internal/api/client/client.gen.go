@@ -2225,6 +2225,9 @@ type Grant struct {
 	// LayoutId Output layout; null for a target-only grant.
 	LayoutId *openapi_types.UUID `json:"layoutId"`
 
+	// MonitorId The grant-owned monitor behind verify; null when none. Server grants only.
+	MonitorId *openapi_types.UUID `json:"monitorId"`
+
 	// PostAction Command to run after a successful deploy, over SSH or on a pfSense firewall; null when none. Server grants only.
 	PostAction *PostAction `json:"postAction"`
 
@@ -2239,6 +2242,9 @@ type Grant struct {
 
 	// UpdatedAt Last change.
 	UpdatedAt time.Time `json:"updatedAt"`
+
+	// Verify A TLS endpoint CertForge polls to confirm the deployed certificate is the one served; a grant-owned monitor, hourly. Null when none. Server grants only.
+	Verify *GrantVerify `json:"verify"`
 }
 
 // GrantDelivery push nudges the agent over its socket on every change; pull waits for the agent's own schedule or a manual certforge-agent pull.
@@ -2296,6 +2302,21 @@ type GrantUpdate struct {
 
 	// TargetOptions Per-type options for the deploy target
 	TargetOptions map[string]interface{} `json:"targetOptions"`
+
+	// Verify A TLS endpoint CertForge polls to confirm the deployed certificate is the one served; a grant-owned monitor, hourly. Null when none. Absent or null removes it. Server grants only; a client grant with verify is 422.
+	Verify *GrantVerify `json:"verify"`
+}
+
+// GrantVerify The TLS endpoint a server grant's monitor polls.
+type GrantVerify struct {
+	// Host Hostname or IP address to connect to.
+	Host string `json:"host"`
+
+	// Port TCP port to connect to.
+	Port int `json:"port"`
+
+	// Sni TLS server name to send; omitted or null uses host.
+	Sni *string `json:"sni"`
 }
 
 // Hook A command an agent runs around a deploy, only if its argv[0] is in the agent's CF_HOOK_ALLOW.
@@ -2755,6 +2776,9 @@ type Monitor struct {
 
 	// ExpectedCertificateName That certificate's name
 	ExpectedCertificateName *string `json:"expectedCertificateName"`
+
+	// GrantId The server grant that owns this monitor; null for a standalone monitor. A grant-owned monitor is edited through the grant's verify.
+	GrantId *openapi_types.UUID `json:"grantId"`
 
 	// Host Hostname or IP address to connect to.
 	Host string `json:"host"`
@@ -3227,6 +3251,9 @@ type ServerDeploymentStatus string
 
 // ServerGrantInput A new grant on a server-side deploy target.
 type ServerGrantInput struct {
+	// AutoRemediate Redeploy automatically when the verify endpoint serves a different certificate.
+	AutoRemediate *bool `json:"autoRemediate,omitempty"`
+
 	// CertificateId Certificate in the target's org.
 	CertificateId openapi_types.UUID `json:"certificateId"`
 
@@ -3238,6 +3265,9 @@ type ServerGrantInput struct {
 
 	// TargetOptions Per-type options for the deploy target, validated against the type's grantSchema from GET /meta/schemas. A pfSense target takes pfsenseRestart: {mode: all|selected|none, services: [keys]}.
 	TargetOptions *map[string]interface{} `json:"targetOptions,omitempty"`
+
+	// Verify A TLS endpoint CertForge polls to confirm the deployed certificate is the one served; a grant-owned monitor, hourly. Null when none. Server grants only.
+	Verify *GrantVerify `json:"verify"`
 }
 
 // ServerInfo The running server's identity.

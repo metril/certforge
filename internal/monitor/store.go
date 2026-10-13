@@ -27,7 +27,7 @@ func fromRow(r sqlcgen.ExternalMonitor) Monitor {
 		IntervalSeconds: int(r.IntervalSeconds), ExpectedCertID: r.ExpectedCertID, Enabled: r.Enabled,
 		State: r.State, StateChangedAt: r.StateChangedAt, LastCheckedAt: r.LastCheckedAt, NextCheckAt: r.NextCheckAt,
 		LastFingerprint: r.LastFingerprint, LastNotAfter: r.LastNotAfter, LastIssuer: r.LastIssuer, LastError: r.LastError,
-		ConsecutiveFailures: int(r.ConsecutiveFailures), CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		ConsecutiveFailures: int(r.ConsecutiveFailures), GrantID: r.GrantID, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
 }
 
@@ -37,7 +37,7 @@ func fromGetRow(r sqlcgen.GetMonitorRow) Monitor {
 		IntervalSeconds: r.IntervalSeconds, ExpectedCertID: r.ExpectedCertID, Enabled: r.Enabled,
 		State: r.State, StateChangedAt: r.StateChangedAt, LastCheckedAt: r.LastCheckedAt, NextCheckAt: r.NextCheckAt,
 		LastFingerprint: r.LastFingerprint, LastNotAfter: r.LastNotAfter, LastIssuer: r.LastIssuer, LastError: r.LastError,
-		ConsecutiveFailures: r.ConsecutiveFailures, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		ConsecutiveFailures: r.ConsecutiveFailures, GrantID: r.GrantID, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	})
 	m.ExpectedCertificateName = r.ExpectedCertificateName
 	return m
@@ -141,23 +141,51 @@ func (s *Store) CreateCapped(ctx context.Context, orgID uuid.UUID, in Input, max
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.Q.WithTx(tx)
-	// An advisory lock keyed by the org, not LockOrg's FOR UPDATE, which
-	// would serialize every unrelated child-row insert of the org.
-	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended('cf.monitors:' || $1::text, 0))", orgID); err != nil {
+	if err := lockAndCount(ctx, tx, q, orgID, max); err != nil {
 		return Monitor{}, err
-	}
-	n, err := q.CountMonitorsInOrg(ctx, orgID)
-	if err != nil {
-		return Monitor{}, err
-	}
-	if int(n) >= max {
-		return Monitor{}, ErrOverCap
 	}
 	m, err := s.create(ctx, q, orgID, in)
 	if err != nil {
 		return Monitor{}, err
 	}
 	return m, tx.Commit(ctx)
+}
+
+// lockAndCount takes the per-org advisory lock and reports ErrOverCap when the
+// org already has max monitors. An advisory lock keyed by the org, not
+// LockOrg's FOR UPDATE, which would serialize every unrelated child-row
+// insert of the org.
+func lockAndCount(ctx context.Context, tx pgx.Tx, q *sqlcgen.Queries, orgID uuid.UUID, max int) error {
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended('cf.monitors:' || $1::text, 0))", orgID); err != nil {
+		return err
+	}
+	n, err := q.CountMonitorsInOrg(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	if int(n) >= max {
+		return ErrOverCap
+	}
+	return nil
+}
+
+// CreateTx is CreateCapped inside the caller's transaction, for a monitor
+// owned by a server grant: it takes the same per-org lock and cap check,
+// creates the monitor and links it to grantID. The caller commits.
+func (s *Store) CreateTx(ctx context.Context, tx pgx.Tx, orgID uuid.UUID, in Input, grantID uuid.UUID, max int) (Monitor, error) {
+	q := s.Q.WithTx(tx)
+	if err := lockAndCount(ctx, tx, q, orgID, max); err != nil {
+		return Monitor{}, err
+	}
+	m, err := s.create(ctx, q, orgID, in)
+	if err != nil {
+		return Monitor{}, err
+	}
+	if err := q.SetMonitorGrant(ctx, sqlcgen.SetMonitorGrantParams{ID: m.ID, OrgID: orgID, GrantID: &grantID}); err != nil {
+		return Monitor{}, err
+	}
+	m.GrantID = &grantID
+	return m, nil
 }
 
 func (s *Store) create(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, in Input) (Monitor, error) {
@@ -186,7 +214,16 @@ func (s *Store) create(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID,
 // (TransitionState) landing between the caller's read and this write is
 // never silently reverted (batch-3 review finding 4).
 func (s *Store) Update(ctx context.Context, orgID, id uuid.UUID, in Input, resetState bool) (Monitor, error) {
-	r, err := s.Q.UpdateMonitor(ctx, sqlcgen.UpdateMonitorParams{
+	return s.update(ctx, s.Q, orgID, id, in, resetState)
+}
+
+// UpdateTx is Update inside the caller's transaction.
+func (s *Store) UpdateTx(ctx context.Context, tx pgx.Tx, orgID, id uuid.UUID, in Input, resetState bool) (Monitor, error) {
+	return s.update(ctx, s.Q.WithTx(tx), orgID, id, in, resetState)
+}
+
+func (s *Store) update(ctx context.Context, q *sqlcgen.Queries, orgID, id uuid.UUID, in Input, resetState bool) (Monitor, error) {
+	r, err := q.UpdateMonitor(ctx, sqlcgen.UpdateMonitorParams{
 		ID: id, OrgID: orgID, Name: in.Name, Host: in.Host, Port: int32(in.Port), Sni: in.SNI,
 		IntervalSeconds: int32(in.IntervalSeconds), ExpectedCertID: in.ExpectedCertID, Enabled: in.Enabled,
 		ResetState: resetState,
@@ -196,7 +233,7 @@ func (s *Store) Update(ctx context.Context, orgID, id uuid.UUID, in Input, reset
 	}
 	m := fromRow(r)
 	if m.ExpectedCertID != nil {
-		if name, err := s.CertificateName(ctx, orgID, *m.ExpectedCertID); err == nil {
+		if name, err := q.CertificateNameInOrg(ctx, sqlcgen.CertificateNameInOrgParams{ID: *m.ExpectedCertID, OrgID: orgID}); err == nil {
 			m.ExpectedCertificateName = &name
 		}
 	}

@@ -281,7 +281,7 @@ SELECT * FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR SHARE;
 -- client_id is NULL, delivery is always 'push' (there is no agent pull
 -- schedule for a server grant), hook_ids is empty (hooks are agent-side).
 INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, post_action, target_options)
-VALUES (NULL, sqlc.arg(cert_id), 'push', sqlc.narg(output_spec_id), sqlc.narg(deploy_target_id), '{}', false, COALESCE(sqlc.narg(post_action)::jsonb, '{}'), COALESCE(sqlc.narg(target_options)::jsonb, '{}')) RETURNING *;
+VALUES (NULL, sqlc.arg(cert_id), 'push', sqlc.narg(output_spec_id), sqlc.narg(deploy_target_id), '{}', sqlc.arg(auto_remediate), COALESCE(sqlc.narg(post_action)::jsonb, '{}'), COALESCE(sqlc.narg(target_options)::jsonb, '{}')) RETURNING *;
 
 -- name: LockServerGrant :one
 -- Org-scoped through deploy_targets.org_id (pre-flight ruling): locks only
@@ -293,8 +293,8 @@ WHERE g.id = $1 AND g.client_id IS NULL AND g.removed_at IS NULL AND t.org_id = 
 FOR UPDATE OF g;
 
 -- name: UpdateServerGrant :one
--- A server grant's editable fields: its layout, post action and target options.
-UPDATE client_cert_grants SET output_spec_id = sqlc.narg(output_spec_id), post_action = COALESCE(sqlc.narg(post_action)::jsonb, '{}'), target_options = COALESCE(sqlc.narg(target_options)::jsonb, '{}'), updated_at = now()
+-- A server grant's editable fields: its layout, auto-remediate flag, post action and target options.
+UPDATE client_cert_grants SET output_spec_id = sqlc.narg(output_spec_id), auto_remediate = sqlc.arg(auto_remediate), post_action = COALESCE(sqlc.narg(post_action)::jsonb, '{}'), target_options = COALESCE(sqlc.narg(target_options)::jsonb, '{}'), updated_at = now()
 WHERE id = sqlc.arg(id) RETURNING *;
 
 -- name: GrantRunsOn :one

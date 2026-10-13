@@ -227,6 +227,40 @@ func (q *Queries) GetMonitor(ctx context.Context, arg GetMonitorParams) (GetMoni
 	return i, err
 }
 
+const getMonitorByGrant = `-- name: GetMonitorByGrant :one
+SELECT id, org_id, name, host, port, sni, interval_seconds, expected_cert_id, enabled, state, state_changed_at, last_checked_at, next_check_at, last_fingerprint, last_not_after, last_issuer, last_error, created_at, updated_at, consecutive_failures, grant_id FROM external_monitors WHERE grant_id = $1
+`
+
+// The monitor a server grant owns (its Verify endpoint); pgx.ErrNoRows when none.
+func (q *Queries) GetMonitorByGrant(ctx context.Context, grantID *uuid.UUID) (ExternalMonitor, error) {
+	row := q.db.QueryRow(ctx, getMonitorByGrant, grantID)
+	var i ExternalMonitor
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Host,
+		&i.Port,
+		&i.Sni,
+		&i.IntervalSeconds,
+		&i.ExpectedCertID,
+		&i.Enabled,
+		&i.State,
+		&i.StateChangedAt,
+		&i.LastCheckedAt,
+		&i.NextCheckAt,
+		&i.LastFingerprint,
+		&i.LastNotAfter,
+		&i.LastIssuer,
+		&i.LastError,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ConsecutiveFailures,
+		&i.GrantID,
+	)
+	return i, err
+}
+
 const getMonitorByID = `-- name: GetMonitorByID :one
 SELECT id, org_id, name, host, port, sni, interval_seconds, expected_cert_id, enabled, state, state_changed_at, last_checked_at, next_check_at, last_fingerprint, last_not_after, last_issuer, last_error, created_at, updated_at, consecutive_failures, grant_id FROM external_monitors WHERE id = $1
 `
