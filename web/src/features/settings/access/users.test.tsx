@@ -255,3 +255,16 @@ it('shows a delete 409 inline and keeps the row', async () => {
   expect(await within(dialog).findByRole('alert')).toHaveTextContent('Cannot delete the last global admin.');
   expect(within(table).getByText('Ann')).toBeInTheDocument();
 });
+
+it('shows the remaining groups in a tooltip on the +N badge', async () => {
+  const many = { ...annUser, groups: ['g1', 'g2', 'g3', 'g4-extra', 'g5-extra'] };
+  server.use(...authHandlers({ authed: true }), http.get(url('/users'), () => HttpResponse.json({ items: [adminUser, many] })));
+  const { user } = renderRoute('/settings/access');
+  const table = await screen.findByRole('table', { name: 'Users' });
+  for (const g of ['g1', 'g2', 'g3']) expect(within(table).getByText(g)).toBeInTheDocument();
+  expect(within(table).queryByText('g4-extra')).toBeNull();
+  expect(within(table).getByText('+2')).toBeInTheDocument();
+  await user.hover(within(table).getByLabelText('2 more groups'));
+  expect((await screen.findAllByText('g4-extra')).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText('g5-extra')).length).toBeGreaterThan(0);
+});
