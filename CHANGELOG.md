@@ -2,6 +2,33 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.35.0](https://github.com/metril/certforge/compare/v0.34.0...v0.35.0) (2026-10-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **api:** /orgs/{orgId}/hooks is replaced by /actions and /action-groups; grants take steps instead of hookIds/postAction
+
+### Features
+
+* **actions:** action kind registry, schemas and step expansion ([e8112f9](https://github.com/metril/certforge/commit/e8112f93cf82d84903e7ada228e2096cd6cb4531))
+* **agents:** build agent hook specs from grant action steps ([3aaa003](https://github.com/metril/certforge/commit/3aaa0036f10ea5715ecaae7bea7f895143bff1e0))
+* **api:** actions, action groups and grant steps replace hooks and post actions ([6f70db9](https://github.com/metril/certforge/commit/6f70db9411773af20aee1f274ea059a682644538))
+* **db:** unify hooks and post actions into actions, action groups and grant steps ([f21bfcb](https://github.com/metril/certforge/commit/f21bfcb48985b8bba97e0b09f160767a8d59f5a7))
+* **deploy:** run grant action steps around server deploys ([a9a4e29](https://github.com/metril/certforge/commit/a9a4e291d568222e7639964669c609770049b65b))
+* **web:** actions and action groups library ([4e6a666](https://github.com/metril/certforge/commit/4e6a666c20f9abbc010306d97f2f062387ed47ee))
+* **web:** ordered action steps on grants ([0bca4c1](https://github.com/metril/certforge/commit/0bca4c1f8134f11b2108b3eac2938fdb1f9daf4c))
+
+
+### Bug Fixes
+
+* **actions,backup:** pfSense service key grammar; restore pre-0033 archives ([8f255f2](https://github.com/metril/certforge/commit/8f255f23efed0619008b7d465200e3a94824258d))
+* **actions:** optional only for server-run kinds; steps cannot cross orgs; group edits cannot break grants ([3a9bfea](https://github.com/metril/certforge/commit/3a9bfea658b220a07826ef8ca70ce4dfff1a2ece))
+* **backup:** cover actions and action groups; update tests for steps ([3084b69](https://github.com/metril/certforge/commit/3084b69a03a8f51e73a4236e5df6bb4c2c62a13a))
+* **db:** GIN index on grant steps ([5643b8b](https://github.com/metril/certforge/commit/5643b8bdacbcf739fa8c036c2505052acb5e3edd))
+* **deploy:** only a post-deploy pfSense restart step replaces the built-in restart ([5b3b7ab](https://github.com/metril/certforge/commit/5b3b7abf0600a9e89f38334df4fd0ba7cd127de4))
+* **web:** steps picker filters groups by side and warns on disallowed restarts; no Optional for agent kinds ([c229976](https://github.com/metril/certforge/commit/c22997623829d7793431f011504da306d99e31d3))
+
 ## [0.34.0](https://github.com/metril/certforge/compare/v0.33.0...v0.34.0) (2026-10-13)
 
 
