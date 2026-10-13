@@ -41,9 +41,10 @@ beforeEach(() => {
               default: [],
             },
             heartbeatSeconds: { type: 'integer', title: 'Heartbeat interval (seconds)', minimum: 15, default: 60 },
+            serverRemediationAttempts: { type: 'integer', title: 'Auto-remediation attempts', minimum: 1, maximum: 10, default: 3 },
           },
         },
-        value: { agentUrl: '', listenerNames: [], heartbeatSeconds: 60 },
+        value: { agentUrl: '', listenerNames: [], heartbeatSeconds: 60, serverRemediationAttempts: 3 },
         stored: null,
         storedSecrets: [],
       }),
@@ -75,6 +76,11 @@ it('is a Settings section with the schema form', async () => {
   await waitFor(() => expect(put).toMatchObject({ agentUrl: 'https://cf.lan:8443', heartbeatSeconds: 60 }));
 });
 
+it('renders the auto-remediation attempts field with its default', async () => {
+  renderRoute('/settings/agents');
+  expect(await screen.findByLabelText('Auto-remediation attempts')).toHaveValue(3);
+});
+
 // Review fix round 1 (Important #1): RJSF forces displayLabel=false on any
 // field with a `ui:field` set (our `listArray` custom field for a plain
 // string array), so listenerNames rendered with no visible label and no
@@ -94,7 +100,7 @@ it('renders fields in AgentsSection\'s ui:order', async () => {
   const { container } = renderRoute('/settings/agents');
   await screen.findByLabelText('Agent URL');
   const labels = Array.from(container.querySelectorAll('label')).map((l) => l.textContent);
-  expect(labels).toEqual(['Agent URL', 'Listener names', 'Heartbeat interval (seconds)']);
+  expect(labels).toEqual(['Agent URL', 'Listener names', 'Heartbeat interval (seconds)', 'Auto-remediation attempts']);
 });
 
 it('shows the listener certificate, and flags it under 14 days', async () => {

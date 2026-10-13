@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
+import { INTERVALS, fmtInterval } from '@/lib/monitors';
 import { verifyDefault } from './verifyDefault';
 
 type Props = { orgId: string; targetId: string; editing?: Grant; onBack: () => void; onDone: () => void };
@@ -66,6 +67,8 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const vHost = hostEdit ?? editing?.verify?.host ?? vDef?.host ?? '';
   const vPort = portEdit ?? String(editing?.verify?.port ?? vDef?.port ?? '443');
+  const [intervalEdit, setIntervalEdit] = useState<number | undefined>(undefined);
+  const vInterval = intervalEdit ?? editing?.verify?.intervalSeconds ?? 3600;
   const vSni = sniEdit ?? editing?.verify?.sni ?? '';
   const vOn = vDef ? (verifyOn ?? vHost !== '') : false;
   const isPf = targetsQ.data?.find((t) => t.id === targetId)?.type === 'pfsense';
@@ -122,14 +125,14 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
     setLayoutError(null);
     setFormError(null);
     setVerifyError(null);
-    let verify: { host: string; port: number; sni?: string } | null = null;
+    let verify: { host: string; port: number; sni?: string; intervalSeconds: number } | null = null;
     if (vOn) {
       const port = Number(vPort);
       if (!vHost.trim() || !Number.isInteger(port) || port < 1 || port > 65535) {
         setVerifyError('Enter a host and a port from 1 to 65535.');
         return;
       }
-      verify = { host: vHost.trim(), port, ...(vSni.trim() && { sni: vSni.trim() }) };
+      verify = { host: vHost.trim(), port, intervalSeconds: vInterval, ...(vSni.trim() && { sni: vSni.trim() }) };
     }
     if (!editing && !certificateId) {
       setCertError('Pick a certificate.');
@@ -300,6 +303,18 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
               </Field>
               <Field id="server-grant-verify-sni" label="SNI" optional>
                 <Input id="server-grant-verify-sni" className="font-mono" value={vSni} onChange={(e) => setSniEdit(e.target.value)} />
+              </Field>
+              <Field id="server-grant-verify-interval" label="Check every" help="grant.verifyInterval">
+                <div className="grid gap-1">
+                  <SegmentedControl
+                    id="server-grant-verify-interval"
+                    aria-label="Check every"
+                    value={INTERVALS.some((i) => i.value === vInterval) ? String(vInterval) : ''}
+                    onChange={(v) => setIntervalEdit(Number(v))}
+                    options={INTERVALS.map((i) => ({ value: String(i.value), label: i.label }))}
+                  />
+                  {!INTERVALS.some((i) => i.value === vInterval) && <span className="text-xs text-ink-muted">Currently {fmtInterval(vInterval)}</span>}
+                </div>
               </Field>
               <SwitchField id="server-grant-auto" label="Auto-remediate" help="grant.autoRemediateServer" checked={autoRemediate} onCheckedChange={setAutoRemediate} onText="Redeploy on drift" offText="Report only" />
             </>

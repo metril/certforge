@@ -350,7 +350,12 @@ func verifyOut(r sqlcgen.ServerGrantViewsRow) *gen.GrantVerify {
 	if r.MonitorID == nil || r.Host == nil || r.Port == nil {
 		return nil
 	}
-	return &gen.GrantVerify{Host: *r.Host, Port: int(*r.Port), Sni: r.Sni}
+	v := &gen.GrantVerify{Host: *r.Host, Port: int(*r.Port), Sni: r.Sni}
+	if r.IntervalSeconds != nil {
+		iv := int(*r.IntervalSeconds)
+		v.IntervalSeconds = &iv
+	}
+	return v
 }
 
 // verifyAuditOut is a verify endpoint's audit form.
@@ -358,7 +363,7 @@ func verifyAuditOut(v *gen.GrantVerify) any {
 	if v == nil {
 		return nil
 	}
-	return map[string]any{"host": v.Host, "port": v.Port, "sni": v.Sni}
+	return map[string]any{"host": v.Host, "port": v.Port, "sni": v.Sni, "intervalSeconds": v.IntervalSeconds}
 }
 
 // grantMonitorName is a grant-owned monitor's name, "<target> · <cert>"
@@ -637,7 +642,7 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 		if err != nil {
 			return nil, err
 		}
-		if verifyIn, err = s.grantMonitorInput(ctx, grantMonitorName(target.Name, certName), 3600, true, r.Body.CertificateId, r.Body.Verify); err != nil {
+		if verifyIn, err = s.grantMonitorInput(ctx, grantMonitorName(target.Name, certName), verifyInterval(r.Body.Verify, 3600), true, r.Body.CertificateId, r.Body.Verify); err != nil {
 			return nil, err
 		}
 	}
@@ -837,7 +842,7 @@ func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequest
 		if err != nil {
 			return nil, err
 		}
-		in, err := s.grantMonitorInput(ctx, grantMonitorName(targetT.Name, certName), 3600, true, g.CertID, verifyIn)
+		in, err := s.grantMonitorInput(ctx, grantMonitorName(targetT.Name, certName), verifyInterval(verifyIn, 3600), true, g.CertID, verifyIn)
 		if err != nil {
 			return nil, err
 		}
@@ -845,7 +850,7 @@ func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequest
 			return nil, mapGrantMonitorErr(err, in.Name)
 		}
 	case verifyIn != nil && hasMon:
-		in, err := s.grantMonitorInput(ctx, curMon.Name, int(curMon.IntervalSeconds), curMon.Enabled, g.CertID, verifyIn)
+		in, err := s.grantMonitorInput(ctx, curMon.Name, verifyInterval(verifyIn, int(curMon.IntervalSeconds)), curMon.Enabled, g.CertID, verifyIn)
 		if err != nil {
 			return nil, err
 		}
@@ -1022,5 +1027,14 @@ func verifyChanged(in *gen.GrantVerify, hasMon bool, cur sqlcgen.ExternalMonitor
 	if cur.Sni != nil {
 		curSni = *cur.Sni
 	}
-	return in.Host != cur.Host || in.Port != int(cur.Port) || sni != curSni
+	return in.Host != cur.Host || in.Port != int(cur.Port) || sni != curSni ||
+		(in.IntervalSeconds != nil && *in.IntervalSeconds != int(cur.IntervalSeconds))
+}
+
+// verifyInterval is v's check interval, def when v leaves it unset.
+func verifyInterval(v *gen.GrantVerify, def int) int {
+	if v != nil && v.IntervalSeconds != nil {
+		return *v.IntervalSeconds
+	}
+	return def
 }

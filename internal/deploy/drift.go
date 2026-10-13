@@ -16,6 +16,16 @@ import (
 // for the same observed fingerprint before it gives up (flap guard).
 const maxRemediations = 3
 
+// remediationAttempts is the configured cap, maxRemediations when unset.
+func (d *Dispatcher) remediationAttempts(ctx context.Context) int {
+	if d.RemediationAttempts != nil {
+		if n := d.RemediationAttempts(ctx); n > 0 {
+			return n
+		}
+	}
+	return maxRemediations
+}
+
 func short(fp string) string {
 	if len(fp) > 8 {
 		return fp[:8]
@@ -65,9 +75,10 @@ func (d *Dispatcher) OnCheck(ctx context.Context, tx pgx.Tx, monitorID uuid.UUID
 			return nil, err
 		}
 		if row.AutoRemediate {
-			if same && row.Remediations >= maxRemediations {
+			maxAttempts := d.remediationAttempts(ctx)
+			if same && row.Remediations >= int32(maxAttempts) {
 				if err := q.MarkServerDeploymentDrift(ctx, sqlcgen.MarkServerDeploymentDriftParams{
-					LastError: fmt.Sprintf("auto-remediation did not take effect after %d attempts", maxRemediations), GrantID: row.GrantID}); err != nil {
+					LastError: fmt.Sprintf("auto-remediation did not take effect after %d attempts", maxAttempts), GrantID: row.GrantID}); err != nil {
 					return nil, err
 				}
 			} else {

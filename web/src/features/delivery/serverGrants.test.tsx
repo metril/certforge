@@ -442,7 +442,7 @@ it('new pfSense grant: restart mode defaults to all, Only these waits for a firs
   await user.click(within(dialog).getByRole('combobox', { name: 'Certificate' }));
   await user.click(await screen.findByRole('option', { name: /^api/ }));
   await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
-  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null, autoRemediate: false, verify: { host: 'fw.example.net', port: 443 } }));
+  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null, autoRemediate: false, verify: { host: 'fw.example.net', port: 443, intervalSeconds: 3600 } }));
 });
 
 it('new pfSense grant posts restart none', async () => {
@@ -454,7 +454,7 @@ it('new pfSense grant posts restart none', async () => {
   await user.click(await screen.findByRole('option', { name: /^api/ }));
   await user.click(within(dialog).getByRole('radio', { name: 'None' }));
   await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
-  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null, autoRemediate: false, verify: { host: 'fw.example.net', port: 443 }, targetOptions: { pfsenseRestart: { mode: 'none' } } }));
+  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null, autoRemediate: false, verify: { host: 'fw.example.net', port: 443, intervalSeconds: 3600 }, targetOptions: { pfsenseRestart: { mode: 'none' } } }));
 });
 
 it('editing a pfSense grant toggles services, keeps ones no longer in use, and saves the selection', async () => {
@@ -498,7 +498,7 @@ it('pfSense grant inherits restartServices false from the target and sends nothi
   await user.click(within(dialog).getByRole('combobox', { name: 'Certificate' }));
   await user.click(await screen.findByRole('option', { name: /^api/ }));
   await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
-  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null, autoRemediate: false, verify: { host: 'fw.example.net', port: 443 } }));
+  await waitFor(() => expect(posted).toEqual({ certificateId: 'c-2', layoutId: null, autoRemediate: false, verify: { host: 'fw.example.net', port: 443, intervalSeconds: 3600 } }));
 });
 
 it('Save stays disabled until the targets have loaded', async () => {
@@ -543,4 +543,22 @@ it('posts verify and autoRemediate prefilled from a pfSense target', async () =>
   await user.click(await screen.findByRole('option', { name: /^api/ }));
   await user.click(screen.getByRole('button', { name: 'Grant' }));
   await waitFor(() => expect(posted).toMatchObject({ certificateId: 'c-2', autoRemediate: true, verify: { host: 'fw.lan', port: 8443 } }));
+});
+
+it('edit shows the saved check interval and posts a changed one', async () => {
+  const pf = makeTarget({ id: 't-pf', name: 'fw', type: 'pfsense', runsOn: 'server', config: { url: 'https://fw.lan:8443' } });
+  const g = makeGrant({ id: 'g-v', runsOn: 'server', deployTargetId: 't-pf', clientId: null, clientName: null, deployment: null, serverDeployment: grantServer.serverDeployment, verify: { host: 'fw.lan', port: 8443, intervalSeconds: 21600 } } as never);
+  server.use(
+    http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [pf] })),
+    http.patch(url('/grants/g-v'), async ({ request }) => {
+      patched = await request.json();
+      return HttpResponse.json(g);
+    }),
+  );
+  const { user } = renderUI(<ServerGrantForm orgId="org-1" targetId="t-pf" editing={g} onBack={() => {}} onDone={() => {}} />);
+  const group = await screen.findByRole('radiogroup', { name: 'Check every' });
+  expect(within(group).getByRole('radio', { name: '6 h' })).toBeChecked();
+  await user.click(within(group).getByRole('radio', { name: '5 m' }));
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(patched).toMatchObject({ verify: { host: 'fw.lan', port: 8443, intervalSeconds: 300 } }));
 });

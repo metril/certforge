@@ -114,6 +114,9 @@ type Dispatcher struct {
 	Log    *slog.Logger
 	// Auditor records deployment.drift events (OnCheck); nil skips them.
 	Auditor *audit.Auditor
+	// RemediationAttempts returns the configured auto-remediation cap; nil or
+	// a non-positive result means 3.
+	RemediationAttempts func(ctx context.Context) int
 
 	// afterStaleRead, when set, runs in SweepDeployments right after the
 	// stale list is read (test seam for the read-then-enqueue race).

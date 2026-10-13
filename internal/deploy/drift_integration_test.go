@@ -153,6 +153,24 @@ func TestDriftFlapGuardAndFingerprintReset(t *testing.T) {
 	}
 }
 
+func TestDriftAttemptCapFromHook(t *testing.T) {
+	f := newDriftFixture(t, true, "deployed")
+	f.disp.RemediationAttempts = func(context.Context) int { return 2 }
+	for i := 1; i <= 2; i++ {
+		f.check(t, "mismatch", "fpA")
+		if _, err := f.pool.Exec(context.Background(), `UPDATE server_deployments SET status = 'deployed' WHERE grant_id = $1`, f.grant); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.check(t, "mismatch", "fpA")
+	if len(f.ins.args) != 2 {
+		t.Fatalf("jobs = %d, want 2", len(f.ins.args))
+	}
+	if got := f.lastError(t, f.grant); got != "auto-remediation did not take effect after 2 attempts" {
+		t.Fatalf("last_error = %q", got)
+	}
+}
+
 // TestDriftIgnoresStaleVersion: between a renewal committing its new version
 // and the deploy landing, the monitor compares the old leaf with the new
 // expected fingerprint. That is a pending install, not drift.

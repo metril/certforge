@@ -318,7 +318,7 @@ WHERE g.id = $1
 SELECT g.id, g.deploy_target_id, g.cert_id, ce.name AS certificate_name, g.delivery,
        g.output_spec_id, g.hook_ids, g.auto_remediate, g.post_action, g.target_options, g.created_at, g.updated_at,
        sd.status, sd.version_id, sd.last_error, sd.deployed_at, sd.updated_at AS deployment_updated_at,
-       m.id AS monitor_id, m.host, m.port, m.sni
+       m.id AS monitor_id, m.host, m.port, m.sni, m.interval_seconds
 FROM client_cert_grants g
 JOIN deploy_targets t ON t.id = g.deploy_target_id
 JOIN certificates ce ON ce.id = g.cert_id

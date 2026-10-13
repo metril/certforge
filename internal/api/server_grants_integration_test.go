@@ -1177,3 +1177,62 @@ func TestServerGrantUnchangedVerifyNeedsNoAlertsWrite(t *testing.T) {
 		Body: &gen.GrantUpdate{Delivery: gen.GrantDelivery("push"), Verify: nil}})
 	wantStatus(t, err, 403)
 }
+
+// TestServerGrantVerifyInterval: the interval round-trips on create and
+// read-back, an interval-only change keeps monitor state, and it needs
+// alerts:write.
+func TestServerGrantVerifyInterval(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	ctx := context.Background()
+	targetID, _ := f.serverTarget(t, "vault", nil)
+	certID, _ := f.currentCert(t, "web")
+	iv := 900
+	res, err := f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.ServerGrantInput{CertificateId: certID, Verify: &gen.GrantVerify{Host: "kvm.example.test", Port: 443, IntervalSeconds: &iv}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := res.(gen.CreateServerGrant201JSONResponse)
+	if g.Verify == nil || g.Verify.IntervalSeconds == nil || *g.Verify.IntervalSeconds != 900 {
+		t.Fatalf("create verify = %+v", g.Verify)
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE external_monitors SET state = 'ok' WHERE grant_id = $1`, g.Id); err != nil {
+		t.Fatal(err)
+	}
+	clientsOnly := authn.WithPrincipal(context.Background(), authn.Principal{
+		Kind: authn.KindAPIKey, UserID: uuid.New(), OrgIDs: []uuid.UUID{f.org},
+		Bindings: []authn.Binding{{Role: authz.RoleAdmin}},
+		APIKey:   &authn.APIKeyInfo{ID: uuid.New(), Scopes: []string{"clients:write"}, OrgID: &f.org},
+	})
+	iv2 := 1800
+	body := &gen.GrantUpdate{Delivery: gen.GrantDelivery("push"), Verify: &gen.GrantVerify{Host: "kvm.example.test", Port: 443, IntervalSeconds: &iv2}}
+	_, err = f.srv.UpdateGrant(clientsOnly, gen.UpdateGrantRequestObject{OrgId: f.org, Id: g.Id, Body: body})
+	wantStatus(t, err, 403)
+	// omitted interval keeps the current one without alerts:write
+	if _, err := f.srv.UpdateGrant(clientsOnly, gen.UpdateGrantRequestObject{OrgId: f.org, Id: g.Id,
+		Body: &gen.GrantUpdate{Delivery: gen.GrantDelivery("push"), Verify: &gen.GrantVerify{Host: "kvm.example.test", Port: 443}}}); err != nil {
+		t.Fatalf("omitted interval: %v", err)
+	}
+	if _, err := f.srv.UpdateGrant(op, gen.UpdateGrantRequestObject{OrgId: f.org, Id: g.Id, Body: body}); err != nil {
+		t.Fatal(err)
+	}
+	var got int
+	var state string
+	if err := f.pool.QueryRow(ctx, `SELECT interval_seconds, state FROM external_monitors WHERE grant_id = $1`, g.Id).Scan(&got, &state); err != nil {
+		t.Fatal(err)
+	}
+	if got != 1800 || state != "ok" {
+		t.Fatalf("interval = %d state = %q; want 1800, ok", got, state)
+	}
+	// default on create
+	certID2, _ := f.currentCert(t, "web2")
+	res, err = f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.ServerGrantInput{CertificateId: certID2, Verify: &gen.GrantVerify{Host: "b.example.test", Port: 443}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := res.(gen.CreateServerGrant201JSONResponse).Verify; v == nil || v.IntervalSeconds == nil || *v.IntervalSeconds != 3600 {
+		t.Fatalf("default verify = %+v", v)
+	}
+}
