@@ -36,7 +36,7 @@ test('actions: create a wait and an exec action, group them, delete', async ({ p
 
   // A group of both, in order.
   await page.getByRole('tab', { name: 'Groups' }).click();
-  await page.getByRole('button', { name: 'New action group' }).click();
+  await page.getByRole('button', { name: 'New group' }).click();
   const group = page.getByRole('dialog', { name: 'New action group' });
   await group.getByLabel('Name', { exact: true }).fill('e2e-group');
   for (const name of ['e2e-true', 'e2e-settle']) {
