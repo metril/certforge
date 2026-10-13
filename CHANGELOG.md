@@ -2,6 +2,21 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.34.0](https://github.com/metril/certforge/compare/v0.33.0...v0.34.0) (2026-10-13)
+
+
+### Features
+
+* **deploy:** PiKVM / GL.iNet Comet target type ([254434b](https://github.com/metril/certforge/commit/254434b8293229d5d5968fcff70925787c4d5b7d))
+* **ssh:** passphrase-protected private keys; validate keys at save time ([ad3aa2b](https://github.com/metril/certforge/commit/ad3aa2b353fe729660c8293153a6f8cd84417670))
+* **web:** PiKVM target type, passphrase-protected keys ([b9c894d](https://github.com/metril/certforge/commit/b9c894df5474c8f07ccd58e0269d1ecd8b3a1145))
+* **web:** show credential-supplied fields read-only on the target form ([0c695fd](https://github.com/metril/certforge/commit/0c695fdf3b0d82f4b512990c78f06011719a9d74))
+
+
+### Bug Fixes
+
+* **web:** no Optional marker on credential-supplied fields ([c9a82c2](https://github.com/metril/certforge/commit/c9a82c2befa4396274d8b25fe7e064fa6503f3bd))
+
 ## [0.33.0](https://github.com/metril/certforge/compare/v0.32.0...v0.33.0) (2026-10-13)
 
 
