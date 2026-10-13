@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/metril/certforge/internal/actions"
 	"github.com/metril/certforge/internal/agentproto"
 	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/api/gen"
@@ -61,7 +62,7 @@ func grantOut(r sqlcgen.GrantViewsRow) (gen.Grant, error) {
 	}
 	clientName := r.ClientName
 	return gen.Grant{Id: r.ID, ClientId: r.ClientID, ClientName: &clientName, CertificateId: r.CertID, CertificateName: r.CertificateName,
-		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, TargetOptions: opts, HookIds: agents.StepActionIDs(r.Steps),
+		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, TargetOptions: opts, HookIds: actions.DirectActionIDs(r.Steps),
 		AutoRemediate: r.AutoRemediate, Deployment: &d, RunsOn: gen.RunsOn("agent"), ServerDeployment: nil,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}, nil
 }
@@ -159,7 +160,7 @@ func (s *Server) CreateGrant(ctx context.Context, r gen.CreateGrantRequestObject
 	in := agents.GrantInput{CertID: r.Body.CertificateId, Delivery: string(r.Body.Delivery), LayoutID: r.Body.LayoutId, TargetID: r.Body.DeployTargetId,
 		RequireKey: requireKeysExport(r.OrgId)}
 	if r.Body.HookIds != nil {
-		in.HookIDs = *r.Body.HookIds
+		in.Steps = actions.StepsOfActions(*r.Body.HookIds)
 	}
 	if r.Body.AutoRemediate != nil {
 		in.AutoRemediate = *r.Body.AutoRemediate
@@ -208,7 +209,7 @@ func (s *Server) UpdateGrant(ctx context.Context, r gen.UpdateGrantRequestObject
 		return nil, unprocessable("verify", "only server grants have a verify endpoint")
 	}
 	in := agents.GrantInput{Delivery: string(r.Body.Delivery), LayoutID: r.Body.LayoutId, TargetID: r.Body.DeployTargetId,
-		HookIDs: r.Body.HookIds, AutoRemediate: r.Body.AutoRemediate, RequireKey: requireKeysExport(r.OrgId)}
+		Steps: hookIDsToSteps(r.Body.HookIds), AutoRemediate: r.Body.AutoRemediate, RequireKey: requireKeysExport(r.OrgId)}
 	if err := requireCertsDirPerm(ctx, r.OrgId, r.Body.TargetOptions); err != nil {
 		return nil, err
 	}
@@ -1037,4 +1038,10 @@ func postTargetPhrase(types []string) string {
 		art = "an"
 	}
 	return art + " " + strings.Join(types, " or ")
+}
+
+// hookIDsToSteps converts the API's hookIds (until grants carry steps) into
+// one action step per id.
+func hookIDsToSteps(ids []uuid.UUID) []actions.Step {
+	return actions.StepsOfActions(ids)
 }

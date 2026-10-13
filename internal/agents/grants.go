@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 
+	"github.com/metril/certforge/internal/actions"
 	"github.com/metril/certforge/internal/agentproto"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/db/sqlcgen"
@@ -26,7 +27,7 @@ type GrantInput struct {
 	Delivery      string
 	LayoutID      *uuid.UUID
 	TargetID      *uuid.UUID
-	HookIDs       []uuid.UUID
+	Steps         []actions.Step
 	AutoRemediate bool
 	// TargetOptions is the grant's per-type target options (targetOptions);
 	// empty or null means none and is stored as {}.
@@ -58,11 +59,13 @@ func (in GrantInput) validate() error {
 	if in.LayoutID == nil && in.TargetID == nil {
 		return invalid("layoutId", "choose a layout, a deploy target, or both")
 	}
-	if len(in.HookIDs) > 16 {
-		return invalid("hookIds", "a grant runs at most 16 hooks")
+	if len(in.Steps) > actions.MaxSteps {
+		return invalid("steps", "a grant has at most %d steps", actions.MaxSteps)
 	}
-	if len(uniq(in.HookIDs)) != len(in.HookIDs) {
-		return invalid("hookIds", "each hook may appear once")
+	for i, st := range in.Steps {
+		if (st.Action == nil) == (st.Group == nil) {
+			return invalid(fmt.Sprintf("steps[%d]", i), "set exactly one of action or group")
+		}
 	}
 	return nil
 }
@@ -81,16 +84,82 @@ func emptyOptions(raw []byte) bool {
 	return json.Unmarshal(raw, &m) != nil || len(m) == 0
 }
 
-func (in GrantInput) hooks() []uuid.UUID {
-	if in.HookIDs == nil {
-		return []uuid.UUID{}
+// stepsJSON is Steps as stored: [] when empty.
+func (in GrantInput) stepsJSON() []byte {
+	if len(in.Steps) == 0 {
+		return []byte("[]")
 	}
-	return in.HookIDs
+	b, _ := json.Marshal(in.Steps)
+	return b
+}
+
+// checkSteps locks the actions and groups the steps name FOR SHARE (groups
+// first, then the actions they and the steps name), expands them in order
+// and requires every action to be able to run on an agent. Errors name
+// steps[i].
+func (s *Service) checkSteps(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, steps []actions.Step) error {
+	if len(steps) == 0 {
+		return nil
+	}
+	var groupIDs, actionIDs []uuid.UUID
+	for _, st := range steps {
+		if st.Group != nil {
+			groupIDs = append(groupIDs, *st.Group)
+		}
+		if st.Action != nil {
+			actionIDs = append(actionIDs, *st.Action)
+		}
+	}
+	groups := map[uuid.UUID][]uuid.UUID{}
+	if len(groupIDs) > 0 {
+		rows, err := q.LockActionGroupsInOrg(ctx, sqlcgen.LockActionGroupsInOrgParams{Ids: uniq(groupIDs), OrgID: orgID})
+		if err != nil {
+			return err
+		}
+		for _, g := range rows {
+			groups[g.ID] = g.ActionIds
+			actionIDs = append(actionIDs, g.ActionIds...)
+		}
+	}
+	refs := map[uuid.UUID]actions.ActionRef{}
+	if len(actionIDs) > 0 {
+		locked, err := q.LockActionsInOrg(ctx, sqlcgen.LockActionsInOrgParams{Ids: uniq(actionIDs), OrgID: orgID})
+		if err != nil {
+			return err
+		}
+		rows, err := q.ActionsByIDs(ctx, locked)
+		if err != nil {
+			return err
+		}
+		for _, a := range rows {
+			ref := actions.ActionRef{ID: a.ID, Kind: a.Kind, Phase: a.Phase, Optional: a.Optional,
+				TimeoutSeconds: int(a.TimeoutSeconds), Config: a.Config}
+			if k, ok := actions.Default.Get(a.Kind); ok {
+				ref.RunsOn = k.RunsOn()
+			}
+			refs[a.ID] = ref
+		}
+	}
+	lookup := func(id uuid.UUID) (actions.ActionRef, bool) { r, ok := refs[id]; return r, ok }
+	if _, err := actions.Expand(steps, groups, lookup); err != nil {
+		var fe *delivery.FieldError
+		if errors.As(err, &fe) {
+			return invalid(fe.Field, "%s", fe.Msg)
+		}
+		return err
+	}
+	for i, st := range steps {
+		one, _ := actions.Expand([]actions.Step{st}, groups, lookup)
+		if actions.RunsOnMismatch(one, targets.Agent) >= 0 {
+			return invalid(fmt.Sprintf("steps[%d]", i), "this step runs on the server, not an agent")
+		}
+	}
+	return nil
 }
 
 func (s *Service) checkRefs(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, in GrantInput) error {
 	r, err := q.CheckGrantRefs(ctx, sqlcgen.CheckGrantRefsParams{CertID: in.CertID, OrgID: orgID,
-		LayoutID: in.LayoutID, TargetID: in.TargetID, ActionIds: in.hooks()})
+		LayoutID: in.LayoutID, TargetID: in.TargetID, ActionIds: []uuid.UUID{}})
 	if err != nil {
 		return err
 	}
@@ -101,32 +170,16 @@ func (s *Service) checkRefs(ctx context.Context, q *sqlcgen.Queries, orgID uuid.
 		return invalid("layoutId", "layout %s is not in this org", *in.LayoutID)
 	case !r.TargetOk:
 		return invalid("deployTargetId", "deploy target %s is not in this org", *in.TargetID)
-	case r.ActionsFound != int64(len(in.HookIDs)):
-		return invalid("hookIds", "every hook must be in this org")
 	}
-	// hook_ids is a plain array with no FK, so a hook could otherwise be
-	// deleted between the check above and the insert below. Lock the
-	// referenced hook rows FOR SHARE here, inside the same transaction as
-	// the grant write: DeleteHook takes the hook row FOR UPDATE before it
-	// re-checks dependents, so the two either serialize with this grant
-	// winning (DeleteHook then sees it and refuses) or DeleteHook wins and
-	// this recount below catches the now-missing hook.
-	//
-	// checkRefs runs, and so takes these locks, before CreateGrant/UpdateGrant
-	// lock the client row: see the package comment for the global lock
-	// order (referenced rows, then client, then deployments). Locking hooks
-	// here first matters because a hook update (internal/api.UpdateHook)
-	// locks the hook row before it locks affected clients via Resync; if a
-	// grant write locked the client first and hooks second, the two could
-	// deadlock (AB-BA).
-	if len(in.HookIDs) > 0 {
-		locked, err := q.LockActionsInOrg(ctx, sqlcgen.LockActionsInOrgParams{Ids: in.hooks(), OrgID: orgID})
-		if err != nil {
-			return err
-		}
-		if len(uniq(locked)) != len(uniq(in.HookIDs)) {
-			return invalid("hookIds", "every hook must be in this org")
-		}
+	// steps is plain JSON with no FK, so an action or group could otherwise
+	// be deleted between this check and the write below. checkSteps locks
+	// the referenced rows FOR SHARE in this transaction (see the package
+	// comment for the global lock order: referenced rows, then client, then
+	// deployments), so DeleteAction/DeleteActionGroup either serialize with
+	// this grant winning (and then see it as a dependent) or win and the
+	// lookup here reports the missing row.
+	if err := s.checkSteps(ctx, q, orgID, in.Steps); err != nil {
+		return err
 	}
 	// output_spec_id and deploy_target_id are real FKs: an insert/update
 	// that sets them would otherwise take this lock implicitly, at whatever
@@ -707,7 +760,7 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 
 func grantDetails(g sqlcgen.ClientCertGrant) map[string]any {
 	return map[string]any{"clientId": g.ClientID, "certificateId": g.CertID, "delivery": g.Delivery,
-		"layoutId": g.OutputSpecID, "deployTargetId": g.DeployTargetID, "hookIds": StepActionIDs(g.Steps), "autoRemediate": g.AutoRemediate}
+		"layoutId": g.OutputSpecID, "deployTargetId": g.DeployTargetID, "steps": json.RawMessage(g.Steps), "autoRemediate": g.AutoRemediate}
 }
 
 func (s *Service) lockGrant(ctx context.Context, q *sqlcgen.Queries, orgID, id uuid.UUID) (sqlcgen.ClientCertGrant, error) {
@@ -752,7 +805,7 @@ func (s *Service) CreateGrant(ctx context.Context, orgID, clientID uuid.UUID, in
 		return uuid.Nil, conflict("Revoked clients cannot receive grants.")
 	}
 	g, err := q.CreateGrant(ctx, sqlcgen.CreateGrantParams{ClientID: &clientID, CertID: in.CertID, Delivery: in.Delivery,
-		OutputSpecID: in.LayoutID, DeployTargetID: in.TargetID, Steps: stepsOfActions(in.hooks()), AutoRemediate: in.AutoRemediate, TargetOptions: in.targetOptions()})
+		OutputSpecID: in.LayoutID, DeployTargetID: in.TargetID, Steps: in.stepsJSON(), AutoRemediate: in.AutoRemediate, TargetOptions: in.targetOptions()})
 	if pgCode(err) == pgUniqueViolation {
 		return uuid.Nil, conflict("This client already has a grant for that certificate.")
 	}
@@ -810,7 +863,7 @@ func (s *Service) UpdateGrant(ctx context.Context, orgID, grantID uuid.UUID, in 
 		return err
 	}
 	g, err := q.UpdateGrant(ctx, sqlcgen.UpdateGrantParams{Delivery: in.Delivery, OutputSpecID: in.LayoutID,
-		DeployTargetID: in.TargetID, Steps: stepsOfActions(in.hooks()), AutoRemediate: in.AutoRemediate, TargetOptions: in.targetOptions(), ID: grantID})
+		DeployTargetID: in.TargetID, Steps: in.stepsJSON(), AutoRemediate: in.AutoRemediate, TargetOptions: in.targetOptions(), ID: grantID})
 	if err != nil {
 		return err
 	}

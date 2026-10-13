@@ -12,6 +12,35 @@ import (
 	"github.com/google/uuid"
 )
 
+const actionGroupsByIDs = `-- name: ActionGroupsByIDs :many
+SELECT id, action_ids FROM action_groups WHERE id = ANY($1::uuid[])
+`
+
+type ActionGroupsByIDsRow struct {
+	ID        uuid.UUID   `json:"id"`
+	ActionIds []uuid.UUID `json:"action_ids"`
+}
+
+func (q *Queries) ActionGroupsByIDs(ctx context.Context, ids []uuid.UUID) ([]ActionGroupsByIDsRow, error) {
+	rows, err := q.db.Query(ctx, actionGroupsByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ActionGroupsByIDsRow{}
+	for rows.Next() {
+		var i ActionGroupsByIDsRow
+		if err := rows.Scan(&i.ID, &i.ActionIds); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const actionsByIDs = `-- name: ActionsByIDs :many
 SELECT id, phase, kind, config, timeout_seconds, optional FROM actions WHERE id = ANY($1::uuid[])
 `

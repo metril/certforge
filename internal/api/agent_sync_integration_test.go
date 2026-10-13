@@ -406,3 +406,47 @@ func TestHeartbeatStoresRestartTargets(t *testing.T) {
 		t.Fatalf("stored %s (%v)", cl.RestartTargets, err)
 	}
 }
+
+// The assignments hooks follow the grant's step order (a group expands
+// inline, wait/server actions are not sent) and keep the pre-actions JSON
+// shape an older agent decodes.
+func TestAssignmentsHooksFollowStepsWithGroup(t *testing.T) {
+	e := newAgentEnv(t)
+	ctx := context.Background()
+	cert, _, gid := e.enrolledWithGrant(t, "web-1", false)
+	mk := func(name, kind, cfg string) sqlcgen.Action {
+		a, err := e.q.CreateAction(ctx, sqlcgen.CreateActionParams{OrgID: e.org, Name: name, Kind: kind, Phase: "post_deploy", Config: []byte(cfg), TimeoutSeconds: 60})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return a
+	}
+	x, r, z := mk("x", "exec", `{"argv":["/bin/x"]}`), mk("r", "restart", `{"target":"docker:web"}`), mk("z", "exec", `{"argv":["/bin/z"]}`)
+	w := mk("w", "wait", `{"seconds":1}`)
+	g, err := e.q.CreateActionGroup(ctx, sqlcgen.CreateActionGroupParams{OrgID: e.org, Name: "g", ActionIds: []uuid.UUID{r.ID, w.ID, z.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.pool.Exec(ctx, `UPDATE client_cert_grants SET steps = jsonb_build_array(jsonb_build_object('group', $2::uuid), jsonb_build_object('action', $3::uuid)) WHERE id = $1`, gid, g.ID, x.ID); err != nil {
+		t.Fatal(err)
+	}
+	var raw struct {
+		Grants []struct {
+			Hooks []json.RawMessage `json:"hooks"`
+		} `json:"grants"`
+	}
+	e.get(t, e.httpClient(t, &cert), "/agent/v1/assignments", &raw)
+	if len(raw.Grants) != 1 || len(raw.Grants[0].Hooks) != 3 {
+		t.Fatalf("hooks %+v", raw)
+	}
+	want := []string{
+		`{"id":"` + r.ID.String() + `","phase":"post_deploy","argv":null,"kind":"restart","target":"docker:web","timeoutSeconds":60}`,
+		`{"id":"` + z.ID.String() + `","phase":"post_deploy","argv":["/bin/z"],"kind":"exec","timeoutSeconds":60}`,
+		`{"id":"` + x.ID.String() + `","phase":"post_deploy","argv":["/bin/x"],"kind":"exec","timeoutSeconds":60}`,
+	}
+	for i, h := range raw.Grants[0].Hooks {
+		if string(h) != want[i] {
+			t.Fatalf("hook %d = %s, want %s", i, h, want[i])
+		}
+	}
+}

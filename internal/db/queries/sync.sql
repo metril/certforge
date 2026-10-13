@@ -22,6 +22,9 @@ ORDER BY g.created_at, g.id;
 -- name: ActionsByIDs :many
 SELECT id, phase, kind, config, timeout_seconds, optional FROM actions WHERE id = ANY(sqlc.arg(ids)::uuid[]);
 
+-- name: ActionGroupsByIDs :many
+SELECT id, action_ids FROM action_groups WHERE id = ANY(sqlc.arg(ids)::uuid[]);
+
 -- name: GrantForBundle :one
 -- extra_version_ids (from the deployment, the last render) pairs with
 -- layout_extra_cert_ids (from the layout, live) to render the bundle from
