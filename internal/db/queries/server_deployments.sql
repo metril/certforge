@@ -124,3 +124,34 @@ JOIN certificates ce ON ce.id = g.cert_id
 LEFT JOIN server_deployments sd ON sd.grant_id = g.id
 WHERE g.id = sqlc.arg(grant_id) AND g.removed_at IS NULL AND g.client_id IS NULL
 FOR UPDATE OF ce;
+
+-- name: ServerGrantForMonitor :one
+-- A grant-owned monitor's check reaction (drift detection): the grant, its
+-- certificate's current version and the deployment's drift/flap state. Locks
+-- the deployment row so concurrent checks and deploys serialize.
+SELECT g.id AS grant_id, ce.org_id, g.cert_id, g.auto_remediate,
+       sd.status, sd.version_id, ce.current_version_id, sd.remediations, sd.remediated_fp
+FROM client_cert_grants g
+JOIN certificates ce ON ce.id = g.cert_id
+JOIN server_deployments sd ON sd.grant_id = g.id
+WHERE g.id = sqlc.arg(grant_id) AND g.client_id IS NULL AND g.removed_at IS NULL
+FOR UPDATE OF sd;
+
+-- name: MarkServerDeploymentDrift :exec
+UPDATE server_deployments SET status = 'drift', last_error = sqlc.arg(last_error), updated_at = now(),
+       state_changed_at = CASE WHEN status IS DISTINCT FROM 'drift' THEN now() ELSE state_changed_at END
+WHERE grant_id = sqlc.arg(grant_id);
+
+-- name: RecordServerRemediation :exec
+UPDATE server_deployments SET remediations = sqlc.arg(remediations), remediated_fp = sqlc.arg(remediated_fp)
+WHERE grant_id = sqlc.arg(grant_id);
+
+-- name: ResetServerDrift :exec
+-- The monitor saw the expected certificate again: clear the flap guard and
+-- return a drifted deployment of the current version to deployed.
+UPDATE server_deployments SET
+       status = CASE WHEN status = 'drift' AND version_id = sqlc.arg(current_version_id) THEN 'deployed' ELSE status END,
+       last_error = CASE WHEN status = 'drift' AND version_id = sqlc.arg(current_version_id) THEN '' ELSE last_error END,
+       state_changed_at = CASE WHEN status = 'drift' AND version_id = sqlc.arg(current_version_id) THEN now() ELSE state_changed_at END,
+       remediations = 0, remediated_fp = NULL
+WHERE grant_id = sqlc.arg(grant_id);

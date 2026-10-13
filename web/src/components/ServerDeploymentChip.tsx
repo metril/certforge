@@ -1,4 +1,4 @@
-import { CircleCheck, CircleX, Clock, type LucideIcon } from 'lucide-react';
+import { CircleCheck, CircleX, Clock, FileDiff, type LucideIcon } from 'lucide-react';
 import type { ServerDeploymentStatus } from '@/api/types';
 import type { Tone } from '@/lib/status';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -12,6 +12,7 @@ const META: Record<ServerDeploymentStatus, { label: string; tone: Tone; icon: Lu
   pending: { label: 'Pending', tone: 'pending', icon: Clock },
   deployed: { label: 'Deployed', tone: 'valid', icon: CircleCheck },
   failed: { label: 'Failed', tone: 'failed', icon: CircleX },
+  drift: { label: 'Drift', tone: 'drift', icon: FileDiff },
 };
 
 /** A server-side deploy target's own deployment state (Grant.serverDeployment),

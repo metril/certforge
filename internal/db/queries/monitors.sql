@@ -110,3 +110,9 @@ WHERE id = $1 AND state = sqlc.arg(old_state)::text
 SELECT id, name FROM external_monitors
 WHERE org_id = sqlc.arg(org_id) AND expected_cert_id = sqlc.arg(cert_id)
 ORDER BY lower(name) LIMIT 6;
+
+-- name: SetMonitorGrant :exec
+UPDATE external_monitors SET grant_id = sqlc.arg(grant_id) WHERE id = sqlc.arg(id) AND org_id = sqlc.arg(org_id);
+
+-- name: NudgeGrantMonitor :exec
+UPDATE external_monitors SET next_check_at = now() WHERE grant_id = $1 AND enabled;

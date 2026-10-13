@@ -5166,7 +5166,7 @@ components:
         label: {type: string, description: "Human label such as WebGUI, OpenVPN server 1, IPsec, Captive portal zone x, package name."}
     ServerDeploymentStatus:
       type: string
-      enum: [pending, deployed, failed]
+      enum: [pending, deployed, failed, drift]
       description: A server grant's deploy state.
     ServerDeployment:
       type: object

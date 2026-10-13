@@ -399,6 +399,7 @@ const (
 // Defines values for ServerDeploymentStatus.
 const (
 	ServerDeploymentStatusDeployed ServerDeploymentStatus = "deployed"
+	ServerDeploymentStatusDrift    ServerDeploymentStatus = "drift"
 	ServerDeploymentStatusFailed   ServerDeploymentStatus = "failed"
 	ServerDeploymentStatusPending  ServerDeploymentStatus = "pending"
 )

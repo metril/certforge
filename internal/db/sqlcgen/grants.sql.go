@@ -1172,11 +1172,13 @@ func (q *Queries) RemovalPendingGrantsForClient(ctx context.Context, clientID *u
 const serverGrantViews = `-- name: ServerGrantViews :many
 SELECT g.id, g.deploy_target_id, g.cert_id, ce.name AS certificate_name, g.delivery,
        g.output_spec_id, g.hook_ids, g.auto_remediate, g.post_action, g.target_options, g.created_at, g.updated_at,
-       sd.status, sd.version_id, sd.last_error, sd.deployed_at, sd.updated_at AS deployment_updated_at
+       sd.status, sd.version_id, sd.last_error, sd.deployed_at, sd.updated_at AS deployment_updated_at,
+       m.id AS monitor_id, m.host, m.port, m.sni
 FROM client_cert_grants g
 JOIN deploy_targets t ON t.id = g.deploy_target_id
 JOIN certificates ce ON ce.id = g.cert_id
 LEFT JOIN server_deployments sd ON sd.grant_id = g.id
+LEFT JOIN external_monitors m ON m.grant_id = g.id
 WHERE g.client_id IS NULL AND g.removed_at IS NULL AND t.org_id = $1
   AND ($2::uuid IS NULL OR g.deploy_target_id = $2::uuid)
   AND ($3::uuid IS NULL OR g.id = $3::uuid)
@@ -1207,6 +1209,10 @@ type ServerGrantViewsRow struct {
 	LastError           *string     `json:"last_error"`
 	DeployedAt          *time.Time  `json:"deployed_at"`
 	DeploymentUpdatedAt *time.Time  `json:"deployment_updated_at"`
+	MonitorID           *uuid.UUID  `json:"monitor_id"`
+	Host                *string     `json:"host"`
+	Port                *int32      `json:"port"`
+	Sni                 *string     `json:"sni"`
 }
 
 func (q *Queries) ServerGrantViews(ctx context.Context, arg ServerGrantViewsParams) ([]ServerGrantViewsRow, error) {
@@ -1236,6 +1242,10 @@ func (q *Queries) ServerGrantViews(ctx context.Context, arg ServerGrantViewsPara
 			&i.LastError,
 			&i.DeployedAt,
 			&i.DeploymentUpdatedAt,
+			&i.MonitorID,
+			&i.Host,
+			&i.Port,
+			&i.Sni,
 		); err != nil {
 			return nil, err
 		}

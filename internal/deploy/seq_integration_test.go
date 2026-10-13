@@ -182,3 +182,33 @@ func TestSweepDeploymentsRereadsCurrentVersion(t *testing.T) {
 		})
 	}
 }
+
+// The status CHECK accepts drift, and a pending upsert keeps the flap guard.
+func TestDriftStatusAndRemediationsSurvivePendingUpsert(t *testing.T) {
+	f := newDispatcherFixture(t)
+	f.disp.River = &captureInserter{}
+	ctx := context.Background()
+	certID := f.cert(t, "drift")
+	versionID := f.version(t, certID, "1", false)
+	targetID, _ := f.target(t, "drift-target", targets.Server, targets.Never,
+		map[string]any{"url": "https://example.test/hook", "token": "tok-drift"})
+	grantID := f.grant(t, certID, targetID)
+	if _, err := f.pool.Exec(ctx, `INSERT INTO server_deployments (grant_id, version_id, status) VALUES ($1, $2, 'drift')
+		ON CONFLICT (grant_id) DO UPDATE SET status = 'drift', remediations = 2`, grantID, versionID); err != nil {
+		t.Fatalf("drift status rejected: %v", err)
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE server_deployments SET remediations = 2, remediated_fp = 'abc' WHERE grant_id = $1`, grantID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.disp.enqueueTx(ctx, grantID, &versionID); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	var fp *string
+	if err := f.pool.QueryRow(ctx, `SELECT remediations, remediated_fp FROM server_deployments WHERE grant_id = $1`, grantID).Scan(&n, &fp); err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 || fp == nil || *fp != "abc" {
+		t.Fatalf("remediations=%d fp=%v, want 2 abc", n, fp)
+	}
+}

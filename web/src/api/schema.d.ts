@@ -4987,7 +4987,7 @@ export interface components {
          * @description A server grant's deploy state.
          * @enum {string}
          */
-        ServerDeploymentStatus: "pending" | "deployed" | "failed";
+        ServerDeploymentStatus: "pending" | "deployed" | "failed" | "drift";
         /** @description A server grant's deployment state, in place of the agent-side Deployment. */
         ServerDeployment: {
             status: components["schemas"]["ServerDeploymentStatus"];

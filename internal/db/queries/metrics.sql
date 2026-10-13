@@ -43,8 +43,8 @@ JOIN orgs o ON o.id = c.org_id
 GROUP BY 1, 2;
 
 -- Agent-run grants (deployments.state is already pending/ok/failed/drift)
--- unioned with server-run grants (server_deployments.status has no drift
--- state; deployed maps to ok, matching the agent side's own terminal
+-- unioned with server-run grants (server_deployments.status also has drift;
+-- deployed maps to ok, matching the agent side's own terminal
 -- success state). Two rows for the same (org, status) pair are summed in
 -- Go, not here, since the two SELECTs group independently.
 -- name: MetricsDeploymentsByStatus :many

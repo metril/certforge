@@ -317,11 +317,13 @@ WHERE g.id = $1
 -- name: ServerGrantViews :many
 SELECT g.id, g.deploy_target_id, g.cert_id, ce.name AS certificate_name, g.delivery,
        g.output_spec_id, g.hook_ids, g.auto_remediate, g.post_action, g.target_options, g.created_at, g.updated_at,
-       sd.status, sd.version_id, sd.last_error, sd.deployed_at, sd.updated_at AS deployment_updated_at
+       sd.status, sd.version_id, sd.last_error, sd.deployed_at, sd.updated_at AS deployment_updated_at,
+       m.id AS monitor_id, m.host, m.port, m.sni
 FROM client_cert_grants g
 JOIN deploy_targets t ON t.id = g.deploy_target_id
 JOIN certificates ce ON ce.id = g.cert_id
 LEFT JOIN server_deployments sd ON sd.grant_id = g.id
+LEFT JOIN external_monitors m ON m.grant_id = g.id
 WHERE g.client_id IS NULL AND g.removed_at IS NULL AND t.org_id = sqlc.arg(org_id)
   AND (sqlc.narg(target_id)::uuid IS NULL OR g.deploy_target_id = sqlc.narg(target_id)::uuid)
   AND (sqlc.narg(grant_id)::uuid IS NULL OR g.id = sqlc.narg(grant_id)::uuid)
