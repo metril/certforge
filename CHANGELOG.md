@@ -2,6 +2,24 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.32.0](https://github.com/metril/certforge/compare/v0.31.0...v0.32.0) (2026-10-13)
+
+
+### Features
+
+* **api:** verify endpoint and autoRemediate for server grants ([80dabbf](https://github.com/metril/certforge/commit/80dabbfadb58873ce83a00898fd8bfdc1ae0a83c))
+* **db:** server_deployments drift status, flap guard columns, grant-owned monitors ([226f7ed](https://github.com/metril/certforge/commit/226f7ede8ee99d66432890a88b9260a8ce4f5c5c))
+* **deploy:** detect server grant drift from grant monitors and auto-remediate ([2517935](https://github.com/metril/certforge/commit/25179356f1e6a2709c69b52880c5e7c5fb586187))
+* **web:** verify endpoint, autoRemediate and drift chip for server grants ([4d475fc](https://github.com/metril/certforge/commit/4d475fcb3b3b5ba17f43775545123897f8ab3bc8))
+
+
+### Bug Fixes
+
+* **api:** alerts:write only when a server grant's verify endpoint changes ([a9696e0](https://github.com/metril/certforge/commit/a9696e0d88a755187b249855148b795fe1a9961c))
+* **db:** grant monitor foreign key is deferrable; errors.Is in drift handler ([9a88a6d](https://github.com/metril/certforge/commit/9a88a6d2cd5196697aea915be7d2b21ec0a1c749))
+* **deploy:** one drift audit per episode; ignore mismatches while a new version is pending ([6c379bb](https://github.com/metril/certforge/commit/6c379bb93ce427b3c7f7051e11cc12b2c7099b56))
+* **web:** grant-owned monitors open a read-only sheet instead of a dead row ([5047273](https://github.com/metril/certforge/commit/5047273798e2886c6bd89fe28a8b10ef70463ada))
+
 ## [0.31.0](https://github.com/metril/certforge/compare/v0.30.0...v0.31.0) (2026-10-13)
 
 
