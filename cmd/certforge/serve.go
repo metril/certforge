@@ -194,6 +194,13 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	if err != nil {
 		return err
 	}
+	dispatcher.RemediationAttempts = func(ctx context.Context) int {
+		st, err := agentSettings.Get(ctx)
+		if err != nil {
+			return 0
+		}
+		return st.ServerRemediationAttempts
+	}
 	agentCA := agentca.NewStore(pool, box)
 	// A failed canary means the KEK cannot be trusted to be the one this
 	// database was set up with: constructing a recording Auditor with

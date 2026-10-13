@@ -4972,6 +4972,11 @@ export interface components {
             port: number;
             /** @description TLS server name to send; omitted or null uses host. */
             sni?: string | null;
+            /**
+             * @description Seconds between scheduled checks. Default 3600. On update
+             * @default 3600
+             */
+            intervalSeconds: number;
         };
         /** @description One command run after a server grant deploys. Kind ssh runs it over SSH using an existing ssh deploy target's host, credentials and host key. Kind pfsense runs it as a shell command on a firewall through an existing pfsense deploy target. */
         PostAction: {

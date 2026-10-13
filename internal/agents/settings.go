@@ -48,11 +48,12 @@ const settingsSchema = `{
     "heartbeatSeconds": {"type": "integer", "title": "Heartbeat interval (seconds)", "description": "How often agents report installed files for drift detection.", "minimum": 15, "maximum": 3600, "default": 60},
     "offlineAfterSeconds": {"type": "integer", "title": "Offline after (seconds)", "description": "A client not seen for this long shows as offline.", "minimum": 30, "maximum": 86400, "default": 180},
     "requireApproval": {"type": "boolean", "title": "Require approval", "description": "An agent that presents a valid token waits for an administrator to approve its verification code before it receives a certificate. Turn off only if a token alone should be enough.", "default": true},
-    "pendingTtlHours": {"type": "integer", "title": "Approval window (hours)", "description": "How long a pending request waits for approval, and how long an approved agent has to collect its certificate.", "minimum": 1, "maximum": 168, "default": 24}
+    "pendingTtlHours": {"type": "integer", "title": "Approval window (hours)", "description": "How long a pending request waits for approval, and how long an approved agent has to collect its certificate.", "minimum": 1, "maximum": 168, "default": 24},
+    "serverRemediationAttempts": {"type": "integer", "title": "Auto-remediation attempts", "description": "How many times in a row a server grant is redeployed for the same observed certificate before auto-remediation stops.", "minimum": 1, "maximum": 10, "default": 3}
   }
 }`
 
-const settingsDefault = `{"agentUrl":"","listenerNames":[],"tokenTtlHours":24,"agentCertDays":90,"heartbeatSeconds":60,"offlineAfterSeconds":180,"requireApproval":true,"pendingTtlHours":24}`
+const settingsDefault = `{"agentUrl":"","listenerNames":[],"tokenTtlHours":24,"agentCertDays":90,"heartbeatSeconds":60,"offlineAfterSeconds":180,"requireApproval":true,"pendingTtlHours":24,"serverRemediationAttempts":3}`
 
 // Settings is the agents section. Get and Resolve return it with defaults filled.
 type Settings struct {
@@ -66,6 +67,8 @@ type Settings struct {
 	// (written before it existed) still resolves to the safe default, true.
 	RequireApproval *bool `json:"requireApproval"`
 	PendingTTLHours int   `json:"pendingTtlHours"`
+	// ServerRemediationAttempts caps auto-remediation redeploys per observed certificate.
+	ServerRemediationAttempts int `json:"serverRemediationAttempts"`
 }
 
 // RegisterSettings adds the agents section and its extra checks.
@@ -148,6 +151,9 @@ func Resolve(s Settings, baseURL string) Settings {
 	}
 	if s.PendingTTLHours <= 0 {
 		s.PendingTTLHours = 24
+	}
+	if s.ServerRemediationAttempts <= 0 {
+		s.ServerRemediationAttempts = 3
 	}
 	return s
 }

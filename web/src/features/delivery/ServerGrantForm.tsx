@@ -122,14 +122,14 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
     setLayoutError(null);
     setFormError(null);
     setVerifyError(null);
-    let verify: { host: string; port: number; sni?: string } | null = null;
+    let verify: { host: string; port: number; sni?: string; intervalSeconds: number } | null = null;
     if (vOn) {
       const port = Number(vPort);
       if (!vHost.trim() || !Number.isInteger(port) || port < 1 || port > 65535) {
         setVerifyError('Enter a host and a port from 1 to 65535.');
         return;
       }
-      verify = { host: vHost.trim(), port, ...(vSni.trim() && { sni: vSni.trim() }) };
+      verify = { host: vHost.trim(), port, intervalSeconds: editing?.verify?.intervalSeconds ?? 3600, ...(vSni.trim() && { sni: vSni.trim() }) };
     }
     if (!editing && !certificateId) {
       setCertError('Pick a certificate.');

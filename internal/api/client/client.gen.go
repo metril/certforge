@@ -2312,6 +2312,9 @@ type GrantVerify struct {
 	// Host Hostname or IP address to connect to.
 	Host string `json:"host"`
 
+	// IntervalSeconds Seconds between scheduled checks. Default 3600. On update
+	IntervalSeconds *int `json:"intervalSeconds,omitempty"`
+
 	// Port TCP port to connect to.
 	Port int `json:"port"`
 

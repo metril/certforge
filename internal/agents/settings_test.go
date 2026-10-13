@@ -14,7 +14,7 @@ import (
 func TestResolveDefaults(t *testing.T) {
 	s := Resolve(Settings{}, "https://cf.example.com")
 	if s.AgentURL != "https://cf.example.com:8443" || !slices.Equal(s.ListenerNames, []string{"cf.example.com", "localhost"}) ||
-		s.TokenTTLHours != 24 || s.AgentCertDays != 90 || s.HeartbeatSeconds != 60 || s.OfflineAfterSeconds != 180 {
+		s.TokenTTLHours != 24 || s.AgentCertDays != 90 || s.HeartbeatSeconds != 60 || s.OfflineAfterSeconds != 180 || s.ServerRemediationAttempts != 3 {
 		t.Fatalf("resolved %+v", s)
 	}
 	if got := Resolve(Settings{}, "").AgentURL; got != "https://localhost:8443" {
@@ -51,6 +51,8 @@ func TestSettingsSectionValidates(t *testing.T) {
 		"heartbeat low":          `{"heartbeatSeconds":10}`,
 		"offline <= hb":          `{"heartbeatSeconds":60,"offlineAfterSeconds":60}`,
 		"offline defaults <= hb": `{"heartbeatSeconds":600}`, // offlineAfterSeconds is absent, so it resolves to 180 (< 600)
+		"attempts zero":          `{"serverRemediationAttempts":0}`,
+		"attempts huge":          `{"serverRemediationAttempts":11}`,
 		"unknown":                `{"nope":1}`,
 		"ttl zero":               `{"pendingTtlHours":0}`,
 		"ttl huge":               `{"pendingTtlHours":1000}`,
