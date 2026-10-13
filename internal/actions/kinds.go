@@ -368,3 +368,12 @@ func newDefault() *Registry {
 	})
 	return r
 }
+
+// ValidateOptional rejects optional for a kind that runs on an agent: the
+// agent's hook spec has no optional flag, so a failure there always counts.
+func ValidateOptional(k Kind, optional bool) error {
+	if optional && k.RunsOn() == targets.Agent {
+		return &delivery.FieldError{Field: "optional", Msg: "agent-run actions cannot be optional"}
+	}
+	return nil
+}

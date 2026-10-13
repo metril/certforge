@@ -5126,7 +5126,7 @@ components:
         config: {type: object, additionalProperties: true, description: Kind-specific configuration, valid against the kind's schema, with secret fields removed.}
         secretKeys: {type: array, items: {type: string}, description: Names of the secret config fields that have a stored value.}
         timeoutSeconds: {type: integer, description: The step is stopped after this long.}
-        optional: {type: boolean, description: A failure is recorded but never fails the deploy.}
+        optional: {type: boolean, description: "Server-run actions only: a failure is recorded but never fails the deploy."}
         grantCount: {type: integer, description: Live grants naming it directly as a step.}
         createdAt: {type: string, format: date-time, description: Creation time.}
         updatedAt: {type: string, format: date-time, description: Last change.}
@@ -5140,7 +5140,7 @@ components:
         phase: {$ref: "#/components/schemas/ActionPhase"}
         config: {type: object, additionalProperties: true, description: Kind-specific configuration, validated against the kind's schema from GET /meta/schemas (actions). A secret field sent as "__unchanged__" or omitted keeps its stored value on update.}
         timeoutSeconds: {type: integer, minimum: 1, maximum: 3600, default: 60, description: Seconds before the step is stopped.}
-        optional: {type: boolean, default: false, description: Record a failure but do not fail the deploy.}
+        optional: {type: boolean, default: false, description: "Applies to server-run actions only (agent-run exec and restart reject true with 422): record a failure but do not fail the deploy."}
     ActionList:
       type: object
       description: An org's actions.

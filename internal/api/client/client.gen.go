@@ -547,7 +547,7 @@ type Action struct {
 	// Name Name
 	Name string `json:"name"`
 
-	// Optional A failure is recorded but never fails the deploy.
+	// Optional Server-run actions only: a failure is recorded but never fails the deploy.
 	Optional bool `json:"optional"`
 
 	// OrgId Owning org.
@@ -619,7 +619,7 @@ type ActionInput struct {
 	// Name Name
 	Name string `json:"name"`
 
-	// Optional Record a failure but do not fail the deploy.
+	// Optional Applies to server-run actions only (agent-run exec and restart reject true with 422): record a failure but do not fail the deploy.
 	Optional *bool `json:"optional,omitempty"`
 
 	// Phase pre_deploy runs before the certificate is written (a failure stops the deploy, unless the action is optional); post_deploy runs after.

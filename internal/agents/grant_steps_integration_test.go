@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/metril/certforge/internal/actions"
+	"github.com/metril/certforge/internal/db/dbtest"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 )
 
@@ -109,5 +110,27 @@ func TestAssignmentsHooksFollowStepOrderWithGroups(t *testing.T) {
 	}
 	if len(got) != 3 || got[0] != b || got[1] != d || got[2] != a {
 		t.Fatalf("hook order %v, want [%s %s %s]", got, b, d, a)
+	}
+}
+
+func TestGrantStepsCannotCrossOrgs(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+	cert := f.cert(t, "a")
+	tid := f.fileTarget(t, "file", t.TempDir(), nil)
+	c := f.client(t, "c1")
+	other := dbtest.Org(t, f.pool)
+	oa, err := f.q.CreateAction(ctx, sqlcgen.CreateActionParams{OrgID: other, Name: "x", Kind: "exec",
+		Phase: "post_deploy", Config: []byte(`{"argv":["/bin/true"]}`), TimeoutSeconds: 60})
+	if err != nil {
+		t.Fatal(err)
+	}
+	og, err := f.q.CreateActionGroup(ctx, sqlcgen.CreateActionGroupParams{OrgID: other, Name: "g", ActionIds: []uuid.UUID{oa.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, st := range []actions.Step{{Action: &oa.ID}, {Group: &og.ID}} {
+		_, err := f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: cert, Delivery: "pull", TargetID: &tid, Steps: []actions.Step{st}})
+		wantKind(t, err, KindInvalid, "steps[0]")
 	}
 }

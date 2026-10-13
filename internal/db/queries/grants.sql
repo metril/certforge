@@ -360,3 +360,10 @@ SELECT
 SELECT count(DISTINCT g.id)::bigint FROM client_cert_grants g
 JOIN actions a ON g.steps @> jsonb_build_array(jsonb_build_object('action', a.id))
 WHERE g.removed_at IS NULL AND g.client_id IS NULL AND a.config->>'targetId' = sqlc.arg(id)::text;
+
+-- name: LiveGrantSidesUsingActionGroup :many
+-- Distinct sides (true = server grant, false = client grant) of the live
+-- grants whose steps name the group.
+SELECT DISTINCT (deploy_target_id IS NOT NULL)::bool AS server FROM client_cert_grants
+WHERE steps @> jsonb_build_array(jsonb_build_object('group', sqlc.arg(group_id)::uuid))
+  AND removed_at IS NULL;

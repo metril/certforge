@@ -16,6 +16,7 @@ import (
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authz"
 	"github.com/metril/certforge/internal/db/sqlcgen"
+	"github.com/metril/certforge/internal/targets"
 )
 
 func actionGroupOut(g sqlcgen.ActionGroup, grants int) gen.ActionGroup {
@@ -168,6 +169,9 @@ func (s *Server) UpdateActionGroup(ctx context.Context, r gen.UpdateActionGroupR
 	if err != nil {
 		return nil, err
 	}
+	if err := groupFitsGrants(ctx, q, r.Id, ids); err != nil {
+		return nil, err
+	}
 	g, err := q.UpdateActionGroup(ctx, sqlcgen.UpdateActionGroupParams{Name: name, ActionIds: ids, ID: r.Id, OrgID: r.OrgId})
 	if pgCode(err) == pgUniqueViolation {
 		return nil, conflict("An action group named %q exists in this org.", name)
@@ -236,4 +240,36 @@ func (s *Server) DeleteActionGroup(ctx context.Context, r gen.DeleteActionGroupR
 	s.audit(ctx, audit.Event{Action: "action_group.delete", ResourceType: "action_group", ResourceID: r.Id.String(), OrgID: &r.OrgId,
 		Details: map[string]any{"name": cur.Name}})
 	return gen.DeleteActionGroup204Response{}, nil
+}
+
+// groupFitsGrants refuses a member list that a live grant using the group
+// could not run: an agent-only action in a server grant's group, or a
+// server-only one in a client grant's.
+func groupFitsGrants(ctx context.Context, q *sqlcgen.Queries, groupID uuid.UUID, ids []uuid.UUID) error {
+	sides, err := q.LiveGrantSidesUsingActionGroup(ctx, groupID)
+	if err != nil || len(sides) == 0 {
+		return err
+	}
+	rows, err := q.ActionsByIDs(ctx, ids)
+	if err != nil {
+		return err
+	}
+	refs := make([]actions.ActionRef, 0, len(rows))
+	for _, a := range rows {
+		ref := actions.ActionRef{ID: a.ID}
+		if k, ok := actions.Default.Get(a.Kind); ok {
+			ref.RunsOn = k.RunsOn()
+		}
+		refs = append(refs, ref)
+	}
+	for _, server := range sides {
+		mode, who := targets.Agent, "client"
+		if server {
+			mode, who = targets.Server, "server"
+		}
+		if actions.RunsOnMismatch(refs, mode) >= 0 {
+			return conflict("This group is used by %s grants, and an action in it cannot run there.", who)
+		}
+	}
+	return nil
 }

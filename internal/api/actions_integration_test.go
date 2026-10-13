@@ -476,3 +476,75 @@ func TestActionRunsShowNameAndKind(t *testing.T) {
 		t.Fatalf("target runs %+v", items)
 	}
 }
+
+func TestActionOptionalOnlyForServerKinds(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	yes := true
+	for _, in := range []*gen.ActionInput{
+		actionIn("e", "exec", map[string]interface{}{"argv": []interface{}{"/bin/true"}}),
+		actionIn("r", "restart", map[string]interface{}{"target": "docker:nginx"}),
+	} {
+		in.Optional = &yes
+		_, err := f.srv.CreateAction(op, gen.CreateActionRequestObject{OrgId: f.org, Body: in})
+		wantStatus(t, err, 422)
+		if got := problemTitle(err); got != "Invalid optional" {
+			t.Fatalf("title %q", got)
+		}
+	}
+	in := actionIn("h", "http", httpActionCfg("x"))
+	in.Optional = &yes
+	res, err := f.srv.CreateAction(op, gen.CreateActionRequestObject{OrgId: f.org, Body: in})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := gen.Action(res.(gen.CreateAction201JSONResponse))
+	e := f.execAction(t, "e2")
+	body := actionIn("e2", "exec", map[string]interface{}{"argv": []interface{}{"/bin/true"}})
+	body.Optional = &yes
+	_, err = f.srv.UpdateAction(op, gen.UpdateActionRequestObject{OrgId: f.org, Id: e.Id, Body: body})
+	wantStatus(t, err, 422)
+	_ = a
+}
+
+func TestActionGroupEditCannotBreakGrants(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	mkGroup := func(name string, ids ...uuid.UUID) gen.ActionGroup {
+		res, err := f.srv.CreateActionGroup(op, gen.CreateActionGroupRequestObject{OrgId: f.org, Body: &gen.ActionGroupInput{Name: name, ActionIds: ids}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return gen.ActionGroup(res.(gen.CreateActionGroup201JSONResponse))
+	}
+	edit := func(g gen.ActionGroup, ids ...uuid.UUID) error {
+		_, err := f.srv.UpdateActionGroup(op, gen.UpdateActionGroupRequestObject{OrgId: f.org, Id: g.Id, Body: &gen.ActionGroupInput{Name: g.Name, ActionIds: ids}})
+		return err
+	}
+	e, w := f.execAction(t, "e"), f.waitAction(t, "w")
+
+	// Client grant: a server-only action cannot join.
+	cg := mkGroup("agent-g", e.Id)
+	c := f.activeClient(t, "web-1")
+	certID, _ := f.currentCert(t, "web")
+	layout := f.layout(t, "pem", "/etc/ssl/web.pem")
+	if _, err := f.srv.CreateGrant(op, gen.CreateGrantRequestObject{OrgId: f.org, Id: c.ID,
+		Body: &gen.GrantInput{CertificateId: certID, Delivery: push(), LayoutId: &layout, Steps: &[]gen.GrantStep{groupStep(cg.Id)}}}); err != nil {
+		t.Fatal(err)
+	}
+	wantStatus(t, edit(cg, e.Id, w.Id), 409)
+
+	// Server grant: an agent-only action cannot join.
+	sg := mkGroup("server-g", w.Id)
+	targetID, _ := f.serverTarget(t, "vault-g", nil)
+	cert2, _ := f.currentCert(t, "web2")
+	steps := []gen.GrantStep{groupStep(sg.Id)}
+	if _, err := f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.ServerGrantInput{CertificateId: cert2, Steps: &steps}}); err != nil {
+		t.Fatal(err)
+	}
+	wantStatus(t, edit(sg, w.Id, e.Id), 409)
+	if err := edit(sg, w.Id); err != nil {
+		t.Fatal(err)
+	}
+}

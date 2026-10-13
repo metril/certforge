@@ -875,6 +875,34 @@ func (q *Queries) LiveGrantIDsUsingTarget(ctx context.Context, deployTargetID *u
 	return items, nil
 }
 
+const liveGrantSidesUsingActionGroup = `-- name: LiveGrantSidesUsingActionGroup :many
+SELECT DISTINCT (deploy_target_id IS NOT NULL)::bool AS server FROM client_cert_grants
+WHERE steps @> jsonb_build_array(jsonb_build_object('group', $1::uuid))
+  AND removed_at IS NULL
+`
+
+// Distinct sides (true = server grant, false = client grant) of the live
+// grants whose steps name the group.
+func (q *Queries) LiveGrantSidesUsingActionGroup(ctx context.Context, groupID uuid.UUID) ([]bool, error) {
+	rows, err := q.db.Query(ctx, liveGrantSidesUsingActionGroup, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []bool{}
+	for rows.Next() {
+		var server bool
+		if err := rows.Scan(&server); err != nil {
+			return nil, err
+		}
+		items = append(items, server)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockActionGroupsInOrg = `-- name: LockActionGroupsInOrg :many
 SELECT id, action_ids FROM action_groups WHERE id = ANY($1::uuid[]) AND org_id = $2 FOR SHARE
 `

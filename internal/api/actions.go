@@ -204,6 +204,9 @@ func (s *Server) validAction(ctx context.Context, q *sqlcgen.Queries, orgID uuid
 			return validatedAction{}, err
 		}
 	}
+	if err := actions.ValidateOptional(kind, in.Optional != nil && *in.Optional); err != nil {
+		return validatedAction{}, unprocessable("optional", "agent-run actions cannot be optional")
+	}
 	var sealed []byte
 	if len(parsed.Secrets) > 0 {
 		b, _ := json.Marshal(parsed.Secrets)
