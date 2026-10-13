@@ -98,15 +98,15 @@ func TestRewrittenGrantQueries00018(t *testing.T) {
 	lOther := layout(other, "lo", []uuid.UUID{b})
 	_ = lOther
 
-	h1 := mustID(`INSERT INTO hooks (org_id, name, phase, argv) VALUES ($1, 'h1', 'pre_deploy', '{x}') RETURNING id`, org)
-	h2 := mustID(`INSERT INTO hooks (org_id, name, phase, argv) VALUES ($1, 'h2', 'pre_deploy', '{x}') RETURNING id`, org)
-	h3 := mustID(`INSERT INTO hooks (org_id, name, phase, argv) VALUES ($1, 'h3', 'pre_deploy', '{x}') RETURNING id`, org)
+	h1 := mustID(`INSERT INTO actions (org_id, name, phase, kind, config) VALUES ($1, 'h1', 'pre_deploy', 'exec', '{"argv":["x"]}') RETURNING id`, org)
+	h2 := mustID(`INSERT INTO actions (org_id, name, phase, kind, config) VALUES ($1, 'h2', 'pre_deploy', 'exec', '{"argv":["x"]}') RETURNING id`, org)
+	h3 := mustID(`INSERT INTO actions (org_id, name, phase, kind, config) VALUES ($1, 'h3', 'pre_deploy', 'exec', '{"argv":["x"]}') RETURNING id`, org)
 	cl := func(n string) uuid.UUID {
 		return mustID(`INSERT INTO clients (org_id, name) VALUES ($1, $2) RETURNING id`, org, n)
 	}
 	grant := func(c uuid.UUID, certID, spec uuid.UUID, hooks []uuid.UUID, removed bool, version uuid.UUID, extras []uuid.UUID) uuid.UUID {
-		g := mustID(`INSERT INTO client_cert_grants (client_id, cert_id, output_spec_id, hook_ids, removed_at)
-			VALUES ($1, $2, $3, $4, CASE WHEN $5 THEN now() END) RETURNING id`, c, certID, spec, hooks, removed)
+		g := mustID(`INSERT INTO client_cert_grants (client_id, cert_id, output_spec_id, steps, removed_at)
+			VALUES ($1, $2, $3, (SELECT coalesce(jsonb_agg(jsonb_build_object('action', x)), '[]') FROM unnest($4::uuid[]) x), CASE WHEN $5 THEN now() END) RETURNING id`, c, certID, spec, hooks, removed)
 		if _, err := pool.Exec(ctx, `INSERT INTO deployments (grant_id, version_id, extra_version_ids) VALUES ($1, $2, $3)`, g, version, extras); err != nil {
 			t.Fatal(err)
 		}
@@ -149,15 +149,15 @@ func TestRewrittenGrantQueries00018(t *testing.T) {
 	}
 
 	for _, h := range []uuid.UUID{h1, h2, h3} {
-		got, err := q.LiveGrantIDsUsingHook(ctx, h)
+		got, err := q.LiveGrantIDsUsingAction(ctx, h)
 		if err != nil {
 			t.Fatal(err)
 		}
-		same(t, "LiveGrantIDsUsingHook", uuidStrings(got), queryStrings(t, pool,
-			`SELECT id::text FROM client_cert_grants WHERE $1::uuid = ANY(hook_ids) AND removed_at IS NULL AND client_id IS NOT NULL`, h))
+		same(t, "LiveGrantIDsUsingAction", uuidStrings(got), queryStrings(t, pool,
+			`SELECT id::text FROM client_cert_grants WHERE steps @> jsonb_build_array(jsonb_build_object('action', $1::uuid)) AND removed_at IS NULL AND client_id IS NOT NULL`, h))
 	}
 
-	counts, err := q.HookGrantCounts(ctx, []uuid.UUID{h1, h2, h3})
+	counts, err := q.ActionGrantCounts(ctx, []uuid.UUID{h1, h2, h3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,8 +166,8 @@ func TestRewrittenGrantQueries00018(t *testing.T) {
 		gotCounts = append(gotCounts, fmt.Sprintf("%s=%d", r.ID, r.Grants))
 	}
 	sort.Strings(gotCounts)
-	same(t, "HookGrantCounts", gotCounts, queryStrings(t, pool, `SELECT h.id::text || '=' || count(g.id)
-		FROM hooks h LEFT JOIN client_cert_grants g ON h.id = ANY(g.hook_ids) AND g.removed_at IS NULL
+	same(t, "ActionGrantCounts", gotCounts, queryStrings(t, pool, `SELECT h.id::text || '=' || count(g.id)
+		FROM actions h LEFT JOIN client_cert_grants g ON g.steps @> jsonb_build_array(jsonb_build_object('action', h.id)) AND g.removed_at IS NULL
 		WHERE h.id = ANY($1::uuid[]) GROUP BY h.id`, []uuid.UUID{h1, h2, h3}))
 
 	for _, o := range []uuid.UUID{org, other} {
@@ -180,18 +180,18 @@ func TestRewrittenGrantQueries00018(t *testing.T) {
 			`SELECT name FROM output_specs WHERE org_id = $1 AND $2::uuid = ANY(extra_cert_ids)`, o, b))
 	}
 
-	deps, err := q.HookDependents(ctx, sqlcgenHookDepsParams(h1, org))
+	deps, err := q.ActionDependents(ctx, sqlcgenHookDepsParams(h1, org))
 	if err != nil {
 		t.Fatal(err)
 	}
 	gotDeps := []string{}
 	for _, d := range deps {
-		gotDeps = append(gotDeps, fmt.Sprintf("%s/%s/%v", d.ClientName, d.CertificateName, d.Removing))
+		gotDeps = append(gotDeps, fmt.Sprintf("%s/%s/%v", d.OwnerName, d.CertificateName, d.Removing))
 	}
 	sort.Strings(gotDeps)
 	same(t, "HookDependents", gotDeps, queryStrings(t, pool, `SELECT c.name || '/' || ce.name || '/' || (g.removed_at IS NOT NULL)::bool
 		FROM client_cert_grants g JOIN clients c ON c.id = g.client_id JOIN certificates ce ON ce.id = g.cert_id
-		WHERE $1::uuid = ANY(g.hook_ids) AND EXISTS (SELECT 1 FROM hooks h WHERE h.id = $1::uuid AND h.org_id = $2)
+		WHERE g.steps @> jsonb_build_array(jsonb_build_object('action', $1::uuid)) AND EXISTS (SELECT 1 FROM actions h WHERE h.id = $1::uuid AND h.org_id = $2)
 		ORDER BY c.name, ce.name LIMIT 6`, h1, org))
 
 	stale, err := q.StaleDeploymentGrantIDs(ctx)
@@ -304,8 +304,8 @@ func sqlcgenLayoutsParams(org, cert uuid.UUID) sqlcgen.LayoutsListingExtraCertPa
 	return sqlcgen.LayoutsListingExtraCertParams{OrgID: org, CertID: cert}
 }
 
-func sqlcgenHookDepsParams(hook, org uuid.UUID) sqlcgen.HookDependentsParams {
-	return sqlcgen.HookDependentsParams{HookID: hook, OrgID: org}
+func sqlcgenHookDepsParams(hook, org uuid.UUID) sqlcgen.ActionDependentsParams {
+	return sqlcgen.ActionDependentsParams{ActionID: hook, OrgID: org}
 }
 
 func sqlcgenBindingsParams(org *uuid.UUID, st *string) sqlcgen.ListRoleBindingsWithLabelsParams {

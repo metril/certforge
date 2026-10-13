@@ -7,7 +7,7 @@
 -- Reload see any secret fields it has, not just traefik/vault-kv's own
 -- (neither has one today).
 SELECT g.id, g.cert_id, ce.name AS certificate_name, ce.common_name AS certificate_common_name,
-       ce.sans AS certificate_sans, g.delivery, g.hook_ids, g.removed_at, g.redeploy_seq,
+       ce.sans AS certificate_sans, g.delivery, g.steps, g.removed_at, g.redeploy_seq,
        d.version_id, d.expected, cv.sha256_fp AS fingerprint, t.type AS target_type, t.config AS target_config,
        t.secret_cfg AS target_secret_cfg, g.target_options, dc.kind AS credential_kind, dc.public AS credential_public, dc.secret_cfg AS credential_secret_cfg
 FROM client_cert_grants g
@@ -19,8 +19,8 @@ LEFT JOIN deploy_credentials dc ON dc.id = t.credential_id
 WHERE g.client_id = $1
 ORDER BY g.created_at, g.id;
 
--- name: HooksByIDs :many
-SELECT id, phase, kind, target, argv, timeout_seconds FROM hooks WHERE id = ANY(sqlc.arg(ids)::uuid[]);
+-- name: ActionsByIDs :many
+SELECT id, phase, kind, config, timeout_seconds, optional FROM actions WHERE id = ANY(sqlc.arg(ids)::uuid[]);
 
 -- name: GrantForBundle :one
 -- extra_version_ids (from the deployment, the last render) pairs with
@@ -66,13 +66,17 @@ WHERE grant_id = sqlc.arg(grant_id);
 
 -- name: InsertHookRun :exec
 -- hook_id is kept only when the agent-supplied id is one of the grant's own
--- hooks in the client's org; anything else is stored as NULL so a foreign
--- hook's name can never show up in this org's hook run history.
+-- actions in the client's org (named directly or through a group); anything
+-- else is stored as NULL so a foreign action's name can never show up in this
+-- org's run history.
 INSERT INTO hook_runs (client_id, grant_id, hook_id, phase, argv, exit_code, duration_ms, stdout, stderr)
 VALUES (sqlc.arg(client_id), sqlc.arg(grant_id)::uuid,
-        (SELECT h.id FROM hooks h
+        (SELECT h.id FROM actions h
          WHERE h.id = sqlc.arg(hook_id)::uuid AND h.org_id = sqlc.arg(org_id)
-           AND EXISTS (SELECT 1 FROM client_cert_grants g WHERE g.id = sqlc.arg(grant_id)::uuid AND h.id = ANY(g.hook_ids))),
+           AND EXISTS (SELECT 1 FROM client_cert_grants g WHERE g.id = sqlc.arg(grant_id)::uuid
+                       AND (g.steps @> jsonb_build_array(jsonb_build_object('action', h.id))
+                            OR EXISTS (SELECT 1 FROM action_groups ag WHERE ag.action_ids @> ARRAY[h.id]
+                                       AND g.steps @> jsonb_build_array(jsonb_build_object('group', ag.id)))))),
         sqlc.arg(phase), sqlc.arg(argv)::text[], sqlc.arg(exit_code), sqlc.arg(duration_ms), sqlc.arg(stdout), sqlc.arg(stderr));
 
 -- name: BumpRedeploySeqs :exec
@@ -94,8 +98,8 @@ UPDATE clients SET last_seen = now() WHERE id = $1;
 
 -- name: ListHookRuns :many
 SELECT r.id, r.client_id, r.grant_id, r.hook_id, r.phase, r.argv, r.exit_code, r.duration_ms, r.stdout, r.stderr, r.ran_at,
-       COALESCE(h.name, '')::text AS hook_name
-FROM hook_runs r LEFT JOIN hooks h ON h.id = r.hook_id
+       COALESCE(h.name, '')::text AS hook_name, COALESCE(h.kind, '')::text AS action_kind
+FROM hook_runs r LEFT JOIN actions h ON h.id = r.hook_id
 WHERE r.client_id = sqlc.arg(client_id)
   AND (NOT sqlc.arg(has_cursor)::bool OR (r.ran_at, r.id) < (sqlc.arg(before_ts)::timestamptz, sqlc.arg(before_id)::uuid))
 ORDER BY r.ran_at DESC, r.id DESC
@@ -111,13 +115,14 @@ DELETE FROM hook_runs WHERE id IN (
 -- name: InsertServerHookRun :exec
 -- A server-side run (the ssh target's own pre/post command, or a grant's
 -- post action): no client, tied to the grant and its deploy target.
-INSERT INTO hook_runs (client_id, grant_id, deploy_target_id, phase, argv, exit_code, duration_ms, stdout, stderr)
-VALUES (NULL, sqlc.narg(grant_id)::uuid, sqlc.arg(deploy_target_id), sqlc.arg(phase), sqlc.arg(argv)::text[],
+INSERT INTO hook_runs (client_id, grant_id, hook_id, deploy_target_id, phase, argv, exit_code, duration_ms, stdout, stderr)
+VALUES (NULL, sqlc.narg(grant_id)::uuid, sqlc.narg(hook_id)::uuid, sqlc.arg(deploy_target_id), sqlc.arg(phase), sqlc.arg(argv)::text[],
         sqlc.arg(exit_code), sqlc.arg(duration_ms), sqlc.arg(stdout), sqlc.arg(stderr));
 
 -- name: ListTargetHookRuns :many
-SELECT r.id, r.grant_id, r.phase, r.argv, r.exit_code, r.duration_ms, r.stdout, r.stderr, r.ran_at
-FROM hook_runs r
+SELECT r.id, r.grant_id, r.hook_id, r.phase, r.argv, r.exit_code, r.duration_ms, r.stdout, r.stderr, r.ran_at,
+       COALESCE(h.name, '')::text AS action_name, COALESCE(h.kind, '')::text AS action_kind
+FROM hook_runs r LEFT JOIN actions h ON h.id = r.hook_id
 WHERE r.deploy_target_id = sqlc.arg(deploy_target_id)
   AND (NOT sqlc.arg(has_cursor)::bool OR (r.ran_at, r.id) < (sqlc.arg(before_ts)::timestamptz, sqlc.arg(before_id)::uuid))
 ORDER BY r.ran_at DESC, r.id DESC

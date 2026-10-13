@@ -24,7 +24,7 @@ SELECT
   (SELECT count(*) FROM clients cl WHERE cl.org_id = $1) AS clients,
   (SELECT count(*) FROM output_specs o WHERE o.org_id = $1) AS layouts,
   (SELECT count(*) FROM deploy_targets dt WHERE dt.org_id = $1) AS deploy_targets,
-  (SELECT count(*) FROM hooks h WHERE h.org_id = $1) AS hooks,
+  (SELECT count(*) FROM actions h WHERE h.org_id = $1) AS hooks,
   (SELECT count(*) FROM notification_channels nc WHERE nc.org_id = $1) AS notification_channels,
   (SELECT count(*) FROM external_monitors em WHERE em.org_id = $1) AS monitors
 `

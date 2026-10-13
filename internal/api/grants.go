@@ -61,7 +61,7 @@ func grantOut(r sqlcgen.GrantViewsRow) (gen.Grant, error) {
 	}
 	clientName := r.ClientName
 	return gen.Grant{Id: r.ID, ClientId: r.ClientID, ClientName: &clientName, CertificateId: r.CertID, CertificateName: r.CertificateName,
-		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, TargetOptions: opts, HookIds: r.HookIds,
+		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, TargetOptions: opts, HookIds: agents.StepActionIDs(r.Steps),
 		AutoRemediate: r.AutoRemediate, Deployment: &d, RunsOn: gen.RunsOn("agent"), ServerDeployment: nil,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}, nil
 }
@@ -342,9 +342,9 @@ func serverGrantOut(r sqlcgen.ServerGrantViewsRow) gen.Grant {
 			LastError: lastError, DeployedAt: r.DeployedAt, UpdatedAt: updatedAt}
 	}
 	return gen.Grant{Id: r.ID, ClientId: nil, ClientName: nil, CertificateId: r.CertID, CertificateName: r.CertificateName,
-		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, TargetOptions: opts, HookIds: r.HookIds,
+		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, TargetOptions: opts, HookIds: nil,
 		AutoRemediate: r.AutoRemediate, Deployment: nil, RunsOn: gen.RunsOn("server"), ServerDeployment: sd,
-		PostAction: postActionOut(r.PostAction), Verify: verifyOut(r), MonitorId: r.MonitorID, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
+		Verify: verifyOut(r), MonitorId: r.MonitorID, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
 }
 
 // verifyOut maps the grant-owned monitor's endpoint columns; nil when none.
@@ -408,17 +408,6 @@ func postAuditOut(p *gen.PostAction) any {
 		kind = string(*p.Kind)
 	}
 	return map[string]any{"kind": kind, "targetId": p.TargetId, "command": p.Command}
-}
-
-// postActionOut maps a stored post_action; nil when none (or unreadable).
-func postActionOut(raw []byte) *gen.PostAction {
-	pa, err := deploy.ParsePostAction(raw)
-	if err != nil || pa == nil {
-		return nil
-	}
-	t := pa.TimeoutSeconds
-	kind := gen.PostActionKind(pa.Kind)
-	return &gen.PostAction{Kind: &kind, TargetId: pa.TargetID, Command: pa.Command, TimeoutSeconds: &t}
 }
 
 // postActionIn validates a request's post action in orgID and returns its
@@ -622,7 +611,7 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 			return nil, err
 		}
 	}
-	postAction, err := postActionIn(ctx, q, r.OrgId, r.Body.PostAction)
+	_, err = postActionIn(ctx, q, r.OrgId, r.Body.PostAction)
 	if err != nil {
 		return nil, err
 	}
@@ -648,7 +637,7 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 			return nil, err
 		}
 	}
-	g, err := q.CreateServerGrant(ctx, sqlcgen.CreateServerGrantParams{CertID: r.Body.CertificateId, OutputSpecID: r.Body.LayoutId, DeployTargetID: &r.Id, AutoRemediate: autoRemediate, PostAction: postAction, TargetOptions: targetOpts})
+	g, err := q.CreateServerGrant(ctx, sqlcgen.CreateServerGrantParams{CertID: r.Body.CertificateId, OutputSpecID: r.Body.LayoutId, DeployTargetID: &r.Id, AutoRemediate: autoRemediate, TargetOptions: targetOpts})
 	if pgCode(err) == pgUniqueViolation {
 		return nil, conflict("This target already has a grant for that certificate.")
 	}
@@ -797,12 +786,12 @@ func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequest
 	}
 	// Running commands on an ssh host is a delivery change: setting, changing
 	// or clearing a post action needs delivery:write on top of clients:write.
-	if pa, _ := deploy.ParsePostAction(g.PostAction); postIn != nil || pa != nil {
+	if postIn != nil {
 		if _, err := authorize(ctx, authz.ActionDeliveryWrite, &r.OrgId); err != nil {
 			return nil, err
 		}
 	}
-	postAction, err := postActionIn(ctx, q, r.OrgId, postIn)
+	_, err = postActionIn(ctx, q, r.OrgId, postIn)
 	if err != nil {
 		return nil, err
 	}
@@ -818,7 +807,7 @@ func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequest
 	if err != nil {
 		return nil, err
 	}
-	if _, err := q.UpdateServerGrant(ctx, sqlcgen.UpdateServerGrantParams{ID: r.Id, OutputSpecID: layoutID, AutoRemediate: r.Body.AutoRemediate, PostAction: postAction, TargetOptions: targetOpts}); err != nil {
+	if _, err := q.UpdateServerGrant(ctx, sqlcgen.UpdateServerGrantParams{ID: r.Id, OutputSpecID: layoutID, AutoRemediate: r.Body.AutoRemediate, Steps: g.Steps, TargetOptions: targetOpts}); err != nil {
 		return nil, err
 	}
 	var verifyIn *gen.GrantVerify

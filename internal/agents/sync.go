@@ -77,16 +77,24 @@ func (s *Service) Assignments(ctx context.Context, c sqlcgen.Client) (agentproto
 	}
 	var hookIDs []uuid.UUID
 	for _, r := range rows {
-		hookIDs = append(hookIDs, r.HookIds...)
+		hookIDs = append(hookIDs, StepActionIDs(r.Steps)...)
 	}
 	hooks := map[uuid.UUID]agentproto.HookSpec{}
 	if len(hookIDs) > 0 {
-		hs, err := s.Q.HooksByIDs(ctx, uniq(hookIDs))
+		hs, err := s.Q.ActionsByIDs(ctx, uniq(hookIDs))
 		if err != nil {
 			return agentproto.Assignments{}, err
 		}
 		for _, h := range hs {
-			hooks[h.ID] = agentproto.HookSpec{ID: h.ID, Phase: h.Phase, Argv: h.Argv, Kind: h.Kind, Target: h.Target, TimeoutSeconds: int(h.TimeoutSeconds)}
+			if h.Kind != "exec" && h.Kind != "restart" {
+				continue
+			}
+			var cfg struct {
+				Argv   []string `json:"argv"`
+				Target string   `json:"target"`
+			}
+			_ = json.Unmarshal(h.Config, &cfg)
+			hooks[h.ID] = agentproto.HookSpec{ID: h.ID, Phase: h.Phase, Argv: cfg.Argv, Kind: h.Kind, Target: cfg.Target, TimeoutSeconds: int(h.TimeoutSeconds)}
 		}
 	}
 	openSecrets := s.memoSecretOpener()
@@ -132,7 +140,7 @@ func (s *Service) Assignments(ctx context.Context, c sqlcgen.Client) (agentproto
 		if r.Fingerprint != nil {
 			a.Fingerprint = *r.Fingerprint
 		}
-		for _, id := range r.HookIds {
+		for _, id := range StepActionIDs(r.Steps) {
 			if h, ok := hooks[id]; ok {
 				a.Hooks = append(a.Hooks, h)
 			}

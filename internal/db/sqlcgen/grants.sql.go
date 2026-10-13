@@ -178,22 +178,22 @@ SELECT
   EXISTS (SELECT 1 FROM certificates WHERE certificates.id = $1 AND certificates.org_id = $2)::bool AS cert_ok,
   ($3::uuid IS NULL OR EXISTS (SELECT 1 FROM output_specs WHERE output_specs.id = $3::uuid AND output_specs.org_id = $2))::bool AS layout_ok,
   ($4::uuid IS NULL OR EXISTS (SELECT 1 FROM deploy_targets WHERE deploy_targets.id = $4::uuid AND deploy_targets.org_id = $2))::bool AS target_ok,
-  (SELECT count(*) FROM hooks WHERE hooks.id = ANY($5::uuid[]) AND hooks.org_id = $2)::bigint AS hooks_found
+  (SELECT count(*) FROM actions WHERE actions.id = ANY($5::uuid[]) AND actions.org_id = $2)::bigint AS actions_found
 `
 
 type CheckGrantRefsParams struct {
-	CertID   uuid.UUID   `json:"cert_id"`
-	OrgID    uuid.UUID   `json:"org_id"`
-	LayoutID *uuid.UUID  `json:"layout_id"`
-	TargetID *uuid.UUID  `json:"target_id"`
-	HookIds  []uuid.UUID `json:"hook_ids"`
+	CertID    uuid.UUID   `json:"cert_id"`
+	OrgID     uuid.UUID   `json:"org_id"`
+	LayoutID  *uuid.UUID  `json:"layout_id"`
+	TargetID  *uuid.UUID  `json:"target_id"`
+	ActionIds []uuid.UUID `json:"action_ids"`
 }
 
 type CheckGrantRefsRow struct {
-	CertOk     bool  `json:"cert_ok"`
-	LayoutOk   bool  `json:"layout_ok"`
-	TargetOk   bool  `json:"target_ok"`
-	HooksFound int64 `json:"hooks_found"`
+	CertOk       bool  `json:"cert_ok"`
+	LayoutOk     bool  `json:"layout_ok"`
+	TargetOk     bool  `json:"target_ok"`
+	ActionsFound int64 `json:"actions_found"`
 }
 
 func (q *Queries) CheckGrantRefs(ctx context.Context, arg CheckGrantRefsParams) (CheckGrantRefsRow, error) {
@@ -202,14 +202,14 @@ func (q *Queries) CheckGrantRefs(ctx context.Context, arg CheckGrantRefsParams) 
 		arg.OrgID,
 		arg.LayoutID,
 		arg.TargetID,
-		arg.HookIds,
+		arg.ActionIds,
 	)
 	var i CheckGrantRefsRow
 	err := row.Scan(
 		&i.CertOk,
 		&i.LayoutOk,
 		&i.TargetOk,
-		&i.HooksFound,
+		&i.ActionsFound,
 	)
 	return i, err
 }
@@ -333,12 +333,12 @@ func (q *Queries) CountLiveGrantsByCert(ctx context.Context, ids []uuid.UUID) ([
 }
 
 const countPostActionUsers = `-- name: CountPostActionUsers :one
-SELECT count(*)::bigint FROM client_cert_grants g
-WHERE g.removed_at IS NULL AND g.client_id IS NULL AND coalesce(g.post_action->>'targetId', g.post_action->>'sshTargetId') = $1::text
+SELECT count(DISTINCT g.id)::bigint FROM client_cert_grants g
+JOIN actions a ON g.steps @> jsonb_build_array(jsonb_build_object('action', a.id))
+WHERE g.removed_at IS NULL AND g.client_id IS NULL AND a.config->>'targetId' = $1::text
 `
 
-// Live server grants whose post action runs on this target (ssh or pfsense;
-// rows saved before kinds existed name it sshTargetId).
+// Live server grants with a step whose action runs on this target.
 func (q *Queries) CountPostActionUsers(ctx context.Context, id string) (int64, error) {
 	row := q.db.QueryRow(ctx, countPostActionUsers, id)
 	var column_1 int64
@@ -347,19 +347,19 @@ func (q *Queries) CountPostActionUsers(ctx context.Context, id string) (int64, e
 }
 
 const createGrant = `-- name: CreateGrant :one
-INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, target_options)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options, post_action
+INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, steps, auto_remediate, target_options)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options, steps
 `
 
 type CreateGrantParams struct {
-	ClientID       *uuid.UUID  `json:"client_id"`
-	CertID         uuid.UUID   `json:"cert_id"`
-	Delivery       string      `json:"delivery"`
-	OutputSpecID   *uuid.UUID  `json:"output_spec_id"`
-	DeployTargetID *uuid.UUID  `json:"deploy_target_id"`
-	HookIds        []uuid.UUID `json:"hook_ids"`
-	AutoRemediate  bool        `json:"auto_remediate"`
-	TargetOptions  []byte      `json:"target_options"`
+	ClientID       *uuid.UUID `json:"client_id"`
+	CertID         uuid.UUID  `json:"cert_id"`
+	Delivery       string     `json:"delivery"`
+	OutputSpecID   *uuid.UUID `json:"output_spec_id"`
+	DeployTargetID *uuid.UUID `json:"deploy_target_id"`
+	Steps          []byte     `json:"steps"`
+	AutoRemediate  bool       `json:"auto_remediate"`
+	TargetOptions  []byte     `json:"target_options"`
 }
 
 func (q *Queries) CreateGrant(ctx context.Context, arg CreateGrantParams) (ClientCertGrant, error) {
@@ -369,7 +369,7 @@ func (q *Queries) CreateGrant(ctx context.Context, arg CreateGrantParams) (Clien
 		arg.Delivery,
 		arg.OutputSpecID,
 		arg.DeployTargetID,
-		arg.HookIds,
+		arg.Steps,
 		arg.AutoRemediate,
 		arg.TargetOptions,
 	)
@@ -381,7 +381,6 @@ func (q *Queries) CreateGrant(ctx context.Context, arg CreateGrantParams) (Clien
 		&i.Delivery,
 		&i.OutputSpecID,
 		&i.DeployTargetID,
-		&i.HookIds,
 		&i.AutoRemediate,
 		&i.RemovedAt,
 		&i.CreatedAt,
@@ -389,34 +388,34 @@ func (q *Queries) CreateGrant(ctx context.Context, arg CreateGrantParams) (Clien
 		&i.RemovedRevision,
 		&i.RedeploySeq,
 		&i.TargetOptions,
-		&i.PostAction,
+		&i.Steps,
 	)
 	return i, err
 }
 
 const createServerGrant = `-- name: CreateServerGrant :one
-INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, post_action, target_options)
-VALUES (NULL, $1, 'push', $2, $3, '{}', $4, COALESCE($5::jsonb, '{}'), COALESCE($6::jsonb, '{}')) RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options, post_action
+INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, steps, auto_remediate, target_options)
+VALUES (NULL, $1, 'push', $2, $3, COALESCE($4::jsonb, '[]'), $5, COALESCE($6::jsonb, '{}')) RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options, steps
 `
 
 type CreateServerGrantParams struct {
 	CertID         uuid.UUID  `json:"cert_id"`
 	OutputSpecID   *uuid.UUID `json:"output_spec_id"`
 	DeployTargetID *uuid.UUID `json:"deploy_target_id"`
+	Steps          []byte     `json:"steps"`
 	AutoRemediate  bool       `json:"auto_remediate"`
-	PostAction     []byte     `json:"post_action"`
 	TargetOptions  []byte     `json:"target_options"`
 }
 
 // client_id is NULL, delivery is always 'push' (there is no agent pull
-// schedule for a server grant), hook_ids is empty (hooks are agent-side).
+// schedule for a server grant), steps carries its actions and groups.
 func (q *Queries) CreateServerGrant(ctx context.Context, arg CreateServerGrantParams) (ClientCertGrant, error) {
 	row := q.db.QueryRow(ctx, createServerGrant,
 		arg.CertID,
 		arg.OutputSpecID,
 		arg.DeployTargetID,
+		arg.Steps,
 		arg.AutoRemediate,
-		arg.PostAction,
 		arg.TargetOptions,
 	)
 	var i ClientCertGrant
@@ -427,7 +426,6 @@ func (q *Queries) CreateServerGrant(ctx context.Context, arg CreateServerGrantPa
 		&i.Delivery,
 		&i.OutputSpecID,
 		&i.DeployTargetID,
-		&i.HookIds,
 		&i.AutoRemediate,
 		&i.RemovedAt,
 		&i.CreatedAt,
@@ -435,7 +433,7 @@ func (q *Queries) CreateServerGrant(ctx context.Context, arg CreateServerGrantPa
 		&i.RemovedRevision,
 		&i.RedeploySeq,
 		&i.TargetOptions,
-		&i.PostAction,
+		&i.Steps,
 	)
 	return i, err
 }
@@ -595,7 +593,7 @@ func (q *Queries) GrantSources(ctx context.Context, ids []uuid.UUID) ([]GrantSou
 
 const grantViews = `-- name: GrantViews :many
 SELECT g.id, g.client_id, c.name AS client_name, g.cert_id, ce.name AS certificate_name, g.delivery,
-       g.output_spec_id, g.deploy_target_id, g.hook_ids, g.auto_remediate, g.target_options, g.created_at, g.updated_at,
+       g.output_spec_id, g.deploy_target_id, g.steps, g.auto_remediate, g.target_options, g.created_at, g.updated_at,
        d.state, d.version_id, d.expected, d.installed, d.error, d.reported_at, d.state_changed_at, d.updated_at AS deployment_updated_at
 FROM client_cert_grants g
 JOIN clients c ON c.id = g.client_id
@@ -614,27 +612,27 @@ type GrantViewsParams struct {
 }
 
 type GrantViewsRow struct {
-	ID                  uuid.UUID   `json:"id"`
-	ClientID            *uuid.UUID  `json:"client_id"`
-	ClientName          string      `json:"client_name"`
-	CertID              uuid.UUID   `json:"cert_id"`
-	CertificateName     string      `json:"certificate_name"`
-	Delivery            string      `json:"delivery"`
-	OutputSpecID        *uuid.UUID  `json:"output_spec_id"`
-	DeployTargetID      *uuid.UUID  `json:"deploy_target_id"`
-	HookIds             []uuid.UUID `json:"hook_ids"`
-	AutoRemediate       bool        `json:"auto_remediate"`
-	TargetOptions       []byte      `json:"target_options"`
-	CreatedAt           time.Time   `json:"created_at"`
-	UpdatedAt           time.Time   `json:"updated_at"`
-	State               string      `json:"state"`
-	VersionID           *uuid.UUID  `json:"version_id"`
-	Expected            []byte      `json:"expected"`
-	Installed           []byte      `json:"installed"`
-	Error               string      `json:"error"`
-	ReportedAt          *time.Time  `json:"reported_at"`
-	StateChangedAt      time.Time   `json:"state_changed_at"`
-	DeploymentUpdatedAt time.Time   `json:"deployment_updated_at"`
+	ID                  uuid.UUID  `json:"id"`
+	ClientID            *uuid.UUID `json:"client_id"`
+	ClientName          string     `json:"client_name"`
+	CertID              uuid.UUID  `json:"cert_id"`
+	CertificateName     string     `json:"certificate_name"`
+	Delivery            string     `json:"delivery"`
+	OutputSpecID        *uuid.UUID `json:"output_spec_id"`
+	DeployTargetID      *uuid.UUID `json:"deploy_target_id"`
+	Steps               []byte     `json:"steps"`
+	AutoRemediate       bool       `json:"auto_remediate"`
+	TargetOptions       []byte     `json:"target_options"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+	State               string     `json:"state"`
+	VersionID           *uuid.UUID `json:"version_id"`
+	Expected            []byte     `json:"expected"`
+	Installed           []byte     `json:"installed"`
+	Error               string     `json:"error"`
+	ReportedAt          *time.Time `json:"reported_at"`
+	StateChangedAt      time.Time  `json:"state_changed_at"`
+	DeploymentUpdatedAt time.Time  `json:"deployment_updated_at"`
 }
 
 func (q *Queries) GrantViews(ctx context.Context, arg GrantViewsParams) ([]GrantViewsRow, error) {
@@ -655,7 +653,7 @@ func (q *Queries) GrantViews(ctx context.Context, arg GrantViewsParams) ([]Grant
 			&i.Delivery,
 			&i.OutputSpecID,
 			&i.DeployTargetID,
-			&i.HookIds,
+			&i.Steps,
 			&i.AutoRemediate,
 			&i.TargetOptions,
 			&i.CreatedAt,
@@ -766,14 +764,20 @@ func (q *Queries) LiveGrantIDsForExtraCert(ctx context.Context, certID uuid.UUID
 	return items, nil
 }
 
-const liveGrantIDsUsingHook = `-- name: LiveGrantIDsUsingHook :many
-SELECT id FROM client_cert_grants WHERE hook_ids @> ARRAY[$1::uuid] AND removed_at IS NULL AND client_id IS NOT NULL
+const liveGrantIDsUsingAction = `-- name: LiveGrantIDsUsingAction :many
+SELECT id FROM client_cert_grants
+WHERE (steps @> jsonb_build_array(jsonb_build_object('action', $1::uuid))
+       OR EXISTS (SELECT 1 FROM action_groups ag
+                  WHERE ag.action_ids @> ARRAY[$1::uuid]
+                    AND steps @> jsonb_build_array(jsonb_build_object('group', ag.id))))
+  AND removed_at IS NULL AND client_id IS NOT NULL
 `
 
-// client_id IS NOT NULL: see LiveGrantIDsForCert (a server grant never has
-// hooks today, but this keeps the invariant explicit).
-func (q *Queries) LiveGrantIDsUsingHook(ctx context.Context, hookID uuid.UUID) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, liveGrantIDsUsingHook, hookID)
+// Live client grants whose steps name the action directly or through one of
+// the given group ids (the groups that contain it).
+// client_id IS NOT NULL: see LiveGrantIDsForCert.
+func (q *Queries) LiveGrantIDsUsingAction(ctx context.Context, actionID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, liveGrantIDsUsingAction, actionID)
 	if err != nil {
 		return nil, err
 	}
@@ -844,6 +848,77 @@ func (q *Queries) LiveGrantIDsUsingTarget(ctx context.Context, deployTargetID *u
 	return items, nil
 }
 
+const lockActionGroupsInOrg = `-- name: LockActionGroupsInOrg :many
+SELECT id, action_ids FROM action_groups WHERE id = ANY($1::uuid[]) AND org_id = $2 FOR SHARE
+`
+
+type LockActionGroupsInOrgParams struct {
+	Ids   []uuid.UUID `json:"ids"`
+	OrgID uuid.UUID   `json:"org_id"`
+}
+
+type LockActionGroupsInOrgRow struct {
+	ID        uuid.UUID   `json:"id"`
+	ActionIds []uuid.UUID `json:"action_ids"`
+}
+
+// Same as LockActionsInOrg, for the groups a grant's steps name.
+func (q *Queries) LockActionGroupsInOrg(ctx context.Context, arg LockActionGroupsInOrgParams) ([]LockActionGroupsInOrgRow, error) {
+	rows, err := q.db.Query(ctx, lockActionGroupsInOrg, arg.Ids, arg.OrgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LockActionGroupsInOrgRow{}
+	for rows.Next() {
+		var i LockActionGroupsInOrgRow
+		if err := rows.Scan(&i.ID, &i.ActionIds); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockActionsInOrg = `-- name: LockActionsInOrg :many
+SELECT id FROM actions WHERE id = ANY($1::uuid[]) AND org_id = $2 FOR SHARE
+`
+
+type LockActionsInOrgParams struct {
+	Ids   []uuid.UUID `json:"ids"`
+	OrgID uuid.UUID   `json:"org_id"`
+}
+
+// Locks the org's actions referenced by ids FOR SHARE, so a concurrent
+// DeleteAction (which locks the action row FOR UPDATE before deleting)
+// either blocks until this transaction commits and then sees the new grant
+// among its dependents, or has already committed the delete and this
+// transaction sees fewer rows than ids, and the caller rejects the grant.
+// steps has no FK (it is plain JSON), so this lock is what keeps an id from
+// going dangling.
+func (q *Queries) LockActionsInOrg(ctx context.Context, arg LockActionsInOrgParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, lockActionsInOrg, arg.Ids, arg.OrgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockCertificateForGrant = `-- name: LockCertificateForGrant :one
 SELECT id FROM certificates WHERE id = $1 AND org_id = $2 FOR KEY SHARE
 `
@@ -869,7 +944,7 @@ func (q *Queries) LockCertificateForGrant(ctx context.Context, arg LockCertifica
 }
 
 const lockGrant = `-- name: LockGrant :one
-SELECT client_cert_grants.id, client_cert_grants.client_id, client_cert_grants.cert_id, client_cert_grants.delivery, client_cert_grants.output_spec_id, client_cert_grants.deploy_target_id, client_cert_grants.hook_ids, client_cert_grants.auto_remediate, client_cert_grants.removed_at, client_cert_grants.created_at, client_cert_grants.updated_at, client_cert_grants.removed_revision, client_cert_grants.redeploy_seq, client_cert_grants.target_options, client_cert_grants.post_action FROM client_cert_grants
+SELECT client_cert_grants.id, client_cert_grants.client_id, client_cert_grants.cert_id, client_cert_grants.delivery, client_cert_grants.output_spec_id, client_cert_grants.deploy_target_id, client_cert_grants.auto_remediate, client_cert_grants.removed_at, client_cert_grants.created_at, client_cert_grants.updated_at, client_cert_grants.removed_revision, client_cert_grants.redeploy_seq, client_cert_grants.target_options, client_cert_grants.steps FROM client_cert_grants
 WHERE client_cert_grants.id = $1 AND removed_at IS NULL AND client_id IN (SELECT c.id FROM clients c WHERE c.org_id = $2)
 FOR UPDATE
 `
@@ -889,7 +964,6 @@ func (q *Queries) LockGrant(ctx context.Context, arg LockGrantParams) (ClientCer
 		&i.Delivery,
 		&i.OutputSpecID,
 		&i.DeployTargetID,
-		&i.HookIds,
 		&i.AutoRemediate,
 		&i.RemovedAt,
 		&i.CreatedAt,
@@ -897,13 +971,13 @@ func (q *Queries) LockGrant(ctx context.Context, arg LockGrantParams) (ClientCer
 		&i.RemovedRevision,
 		&i.RedeploySeq,
 		&i.TargetOptions,
-		&i.PostAction,
+		&i.Steps,
 	)
 	return i, err
 }
 
 const lockGrantAny = `-- name: LockGrantAny :one
-SELECT client_cert_grants.id, client_cert_grants.client_id, client_cert_grants.cert_id, client_cert_grants.delivery, client_cert_grants.output_spec_id, client_cert_grants.deploy_target_id, client_cert_grants.hook_ids, client_cert_grants.auto_remediate, client_cert_grants.removed_at, client_cert_grants.created_at, client_cert_grants.updated_at, client_cert_grants.removed_revision, client_cert_grants.redeploy_seq, client_cert_grants.target_options, client_cert_grants.post_action FROM client_cert_grants
+SELECT client_cert_grants.id, client_cert_grants.client_id, client_cert_grants.cert_id, client_cert_grants.delivery, client_cert_grants.output_spec_id, client_cert_grants.deploy_target_id, client_cert_grants.auto_remediate, client_cert_grants.removed_at, client_cert_grants.created_at, client_cert_grants.updated_at, client_cert_grants.removed_revision, client_cert_grants.redeploy_seq, client_cert_grants.target_options, client_cert_grants.steps FROM client_cert_grants
 WHERE client_cert_grants.id = $1 AND client_id IN (SELECT c.id FROM clients c WHERE c.org_id = $2)
 FOR UPDATE
 `
@@ -926,7 +1000,6 @@ func (q *Queries) LockGrantAny(ctx context.Context, arg LockGrantAnyParams) (Cli
 		&i.Delivery,
 		&i.OutputSpecID,
 		&i.DeployTargetID,
-		&i.HookIds,
 		&i.AutoRemediate,
 		&i.RemovedAt,
 		&i.CreatedAt,
@@ -934,45 +1007,9 @@ func (q *Queries) LockGrantAny(ctx context.Context, arg LockGrantAnyParams) (Cli
 		&i.RemovedRevision,
 		&i.RedeploySeq,
 		&i.TargetOptions,
-		&i.PostAction,
+		&i.Steps,
 	)
 	return i, err
-}
-
-const lockHooksInOrg = `-- name: LockHooksInOrg :many
-SELECT id FROM hooks WHERE id = ANY($1::uuid[]) AND org_id = $2 FOR SHARE
-`
-
-type LockHooksInOrgParams struct {
-	Ids   []uuid.UUID `json:"ids"`
-	OrgID uuid.UUID   `json:"org_id"`
-}
-
-// Locks the org's hooks referenced by ids FOR SHARE, so a concurrent
-// DeleteHook (which locks the hook row FOR UPDATE before deleting) either
-// blocks until this transaction commits and then sees the new grant among
-// its dependents, or has already committed the delete and this transaction
-// sees fewer rows than ids, and the caller rejects the grant. hook_ids has
-// no FK (it is a plain array), so this lock is what keeps a hook id from
-// going dangling.
-func (q *Queries) LockHooksInOrg(ctx context.Context, arg LockHooksInOrgParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, lockHooksInOrg, arg.Ids, arg.OrgID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []uuid.UUID{}
-	for rows.Next() {
-		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const lockLayoutForGrant = `-- name: LockLayoutForGrant :one
@@ -1010,7 +1047,7 @@ func (q *Queries) LockLayoutForGrant(ctx context.Context, arg LockLayoutForGrant
 }
 
 const lockServerGrant = `-- name: LockServerGrant :one
-SELECT g.id, g.client_id, g.cert_id, g.delivery, g.output_spec_id, g.deploy_target_id, g.hook_ids, g.auto_remediate, g.removed_at, g.created_at, g.updated_at, g.removed_revision, g.redeploy_seq, g.target_options, g.post_action FROM client_cert_grants g
+SELECT g.id, g.client_id, g.cert_id, g.delivery, g.output_spec_id, g.deploy_target_id, g.auto_remediate, g.removed_at, g.created_at, g.updated_at, g.removed_revision, g.redeploy_seq, g.target_options, g.steps FROM client_cert_grants g
 JOIN deploy_targets t ON t.id = g.deploy_target_id
 WHERE g.id = $1 AND g.client_id IS NULL AND g.removed_at IS NULL AND t.org_id = $2
 FOR UPDATE OF g
@@ -1034,7 +1071,6 @@ func (q *Queries) LockServerGrant(ctx context.Context, arg LockServerGrantParams
 		&i.Delivery,
 		&i.OutputSpecID,
 		&i.DeployTargetID,
-		&i.HookIds,
 		&i.AutoRemediate,
 		&i.RemovedAt,
 		&i.CreatedAt,
@@ -1042,7 +1078,7 @@ func (q *Queries) LockServerGrant(ctx context.Context, arg LockServerGrantParams
 		&i.RemovedRevision,
 		&i.RedeploySeq,
 		&i.TargetOptions,
-		&i.PostAction,
+		&i.Steps,
 	)
 	return i, err
 }
@@ -1129,7 +1165,7 @@ func (q *Queries) MarkGrantRemoved(ctx context.Context, arg MarkGrantRemovedPara
 }
 
 const removalPendingGrantsForClient = `-- name: RemovalPendingGrantsForClient :many
-SELECT id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options, post_action FROM client_cert_grants WHERE client_id = $1 AND removed_at IS NOT NULL FOR UPDATE
+SELECT id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options, steps FROM client_cert_grants WHERE client_id = $1 AND removed_at IS NOT NULL FOR UPDATE
 `
 
 // Revoking a client can never be confirmed by its agent again, so
@@ -1151,7 +1187,6 @@ func (q *Queries) RemovalPendingGrantsForClient(ctx context.Context, clientID *u
 			&i.Delivery,
 			&i.OutputSpecID,
 			&i.DeployTargetID,
-			&i.HookIds,
 			&i.AutoRemediate,
 			&i.RemovedAt,
 			&i.CreatedAt,
@@ -1159,7 +1194,7 @@ func (q *Queries) RemovalPendingGrantsForClient(ctx context.Context, clientID *u
 			&i.RemovedRevision,
 			&i.RedeploySeq,
 			&i.TargetOptions,
-			&i.PostAction,
+			&i.Steps,
 		); err != nil {
 			return nil, err
 		}
@@ -1173,7 +1208,7 @@ func (q *Queries) RemovalPendingGrantsForClient(ctx context.Context, clientID *u
 
 const serverGrantViews = `-- name: ServerGrantViews :many
 SELECT g.id, g.deploy_target_id, g.cert_id, ce.name AS certificate_name, g.delivery,
-       g.output_spec_id, g.hook_ids, g.auto_remediate, g.post_action, g.target_options, g.created_at, g.updated_at,
+       g.output_spec_id, g.steps, g.auto_remediate, g.target_options, g.created_at, g.updated_at,
        sd.status, sd.version_id, sd.last_error, sd.deployed_at, sd.updated_at AS deployment_updated_at,
        m.id AS monitor_id, m.host, m.port, m.sni, m.interval_seconds
 FROM client_cert_grants g
@@ -1194,28 +1229,27 @@ type ServerGrantViewsParams struct {
 }
 
 type ServerGrantViewsRow struct {
-	ID                  uuid.UUID   `json:"id"`
-	DeployTargetID      *uuid.UUID  `json:"deploy_target_id"`
-	CertID              uuid.UUID   `json:"cert_id"`
-	CertificateName     string      `json:"certificate_name"`
-	Delivery            string      `json:"delivery"`
-	OutputSpecID        *uuid.UUID  `json:"output_spec_id"`
-	HookIds             []uuid.UUID `json:"hook_ids"`
-	AutoRemediate       bool        `json:"auto_remediate"`
-	PostAction          []byte      `json:"post_action"`
-	TargetOptions       []byte      `json:"target_options"`
-	CreatedAt           time.Time   `json:"created_at"`
-	UpdatedAt           time.Time   `json:"updated_at"`
-	Status              *string     `json:"status"`
-	VersionID           *uuid.UUID  `json:"version_id"`
-	LastError           *string     `json:"last_error"`
-	DeployedAt          *time.Time  `json:"deployed_at"`
-	DeploymentUpdatedAt *time.Time  `json:"deployment_updated_at"`
-	MonitorID           *uuid.UUID  `json:"monitor_id"`
-	Host                *string     `json:"host"`
-	Port                *int32      `json:"port"`
-	Sni                 *string     `json:"sni"`
-	IntervalSeconds     *int32      `json:"interval_seconds"`
+	ID                  uuid.UUID  `json:"id"`
+	DeployTargetID      *uuid.UUID `json:"deploy_target_id"`
+	CertID              uuid.UUID  `json:"cert_id"`
+	CertificateName     string     `json:"certificate_name"`
+	Delivery            string     `json:"delivery"`
+	OutputSpecID        *uuid.UUID `json:"output_spec_id"`
+	Steps               []byte     `json:"steps"`
+	AutoRemediate       bool       `json:"auto_remediate"`
+	TargetOptions       []byte     `json:"target_options"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+	Status              *string    `json:"status"`
+	VersionID           *uuid.UUID `json:"version_id"`
+	LastError           *string    `json:"last_error"`
+	DeployedAt          *time.Time `json:"deployed_at"`
+	DeploymentUpdatedAt *time.Time `json:"deployment_updated_at"`
+	MonitorID           *uuid.UUID `json:"monitor_id"`
+	Host                *string    `json:"host"`
+	Port                *int32     `json:"port"`
+	Sni                 *string    `json:"sni"`
+	IntervalSeconds     *int32     `json:"interval_seconds"`
 }
 
 func (q *Queries) ServerGrantViews(ctx context.Context, arg ServerGrantViewsParams) ([]ServerGrantViewsRow, error) {
@@ -1234,9 +1268,8 @@ func (q *Queries) ServerGrantViews(ctx context.Context, arg ServerGrantViewsPara
 			&i.CertificateName,
 			&i.Delivery,
 			&i.OutputSpecID,
-			&i.HookIds,
+			&i.Steps,
 			&i.AutoRemediate,
-			&i.PostAction,
 			&i.TargetOptions,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -1379,19 +1412,19 @@ func (q *Queries) StaleDeploymentGrantIDs(ctx context.Context) ([]uuid.UUID, err
 
 const updateGrant = `-- name: UpdateGrant :one
 UPDATE client_cert_grants SET delivery = $1, output_spec_id = $2,
-       deploy_target_id = $3, hook_ids = $4,
+       deploy_target_id = $3, steps = $4,
        auto_remediate = $5, target_options = COALESCE($6, target_options), updated_at = now()
-WHERE id = $7 RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options, post_action
+WHERE id = $7 RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options, steps
 `
 
 type UpdateGrantParams struct {
-	Delivery       string      `json:"delivery"`
-	OutputSpecID   *uuid.UUID  `json:"output_spec_id"`
-	DeployTargetID *uuid.UUID  `json:"deploy_target_id"`
-	HookIds        []uuid.UUID `json:"hook_ids"`
-	AutoRemediate  bool        `json:"auto_remediate"`
-	TargetOptions  []byte      `json:"target_options"`
-	ID             uuid.UUID   `json:"id"`
+	Delivery       string     `json:"delivery"`
+	OutputSpecID   *uuid.UUID `json:"output_spec_id"`
+	DeployTargetID *uuid.UUID `json:"deploy_target_id"`
+	Steps          []byte     `json:"steps"`
+	AutoRemediate  bool       `json:"auto_remediate"`
+	TargetOptions  []byte     `json:"target_options"`
+	ID             uuid.UUID  `json:"id"`
 }
 
 func (q *Queries) UpdateGrant(ctx context.Context, arg UpdateGrantParams) (ClientCertGrant, error) {
@@ -1399,7 +1432,7 @@ func (q *Queries) UpdateGrant(ctx context.Context, arg UpdateGrantParams) (Clien
 		arg.Delivery,
 		arg.OutputSpecID,
 		arg.DeployTargetID,
-		arg.HookIds,
+		arg.Steps,
 		arg.AutoRemediate,
 		arg.TargetOptions,
 		arg.ID,
@@ -1412,7 +1445,6 @@ func (q *Queries) UpdateGrant(ctx context.Context, arg UpdateGrantParams) (Clien
 		&i.Delivery,
 		&i.OutputSpecID,
 		&i.DeployTargetID,
-		&i.HookIds,
 		&i.AutoRemediate,
 		&i.RemovedAt,
 		&i.CreatedAt,
@@ -1420,30 +1452,30 @@ func (q *Queries) UpdateGrant(ctx context.Context, arg UpdateGrantParams) (Clien
 		&i.RemovedRevision,
 		&i.RedeploySeq,
 		&i.TargetOptions,
-		&i.PostAction,
+		&i.Steps,
 	)
 	return i, err
 }
 
 const updateServerGrant = `-- name: UpdateServerGrant :one
-UPDATE client_cert_grants SET output_spec_id = $1, auto_remediate = $2, post_action = COALESCE($3::jsonb, '{}'), target_options = COALESCE($4::jsonb, '{}'), updated_at = now()
-WHERE id = $5 RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options, post_action
+UPDATE client_cert_grants SET output_spec_id = $1, auto_remediate = $2, steps = COALESCE($3::jsonb, '[]'), target_options = COALESCE($4::jsonb, '{}'), updated_at = now()
+WHERE id = $5 RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options, steps
 `
 
 type UpdateServerGrantParams struct {
 	OutputSpecID  *uuid.UUID `json:"output_spec_id"`
 	AutoRemediate bool       `json:"auto_remediate"`
-	PostAction    []byte     `json:"post_action"`
+	Steps         []byte     `json:"steps"`
 	TargetOptions []byte     `json:"target_options"`
 	ID            uuid.UUID  `json:"id"`
 }
 
-// A server grant's editable fields: its layout, auto-remediate flag, post action and target options.
+// A server grant's editable fields: its layout, auto-remediate flag, steps and target options.
 func (q *Queries) UpdateServerGrant(ctx context.Context, arg UpdateServerGrantParams) (ClientCertGrant, error) {
 	row := q.db.QueryRow(ctx, updateServerGrant,
 		arg.OutputSpecID,
 		arg.AutoRemediate,
-		arg.PostAction,
+		arg.Steps,
 		arg.TargetOptions,
 		arg.ID,
 	)
@@ -1455,7 +1487,6 @@ func (q *Queries) UpdateServerGrant(ctx context.Context, arg UpdateServerGrantPa
 		&i.Delivery,
 		&i.OutputSpecID,
 		&i.DeployTargetID,
-		&i.HookIds,
 		&i.AutoRemediate,
 		&i.RemovedAt,
 		&i.CreatedAt,
@@ -1463,7 +1494,7 @@ func (q *Queries) UpdateServerGrant(ctx context.Context, arg UpdateServerGrantPa
 		&i.RemovedRevision,
 		&i.RedeploySeq,
 		&i.TargetOptions,
-		&i.PostAction,
+		&i.Steps,
 	)
 	return i, err
 }

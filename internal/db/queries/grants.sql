@@ -1,5 +1,5 @@
 -- name: CreateGrant :one
-INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, target_options)
+INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, steps, auto_remediate, target_options)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *;
 
 -- name: LockGrant :one
@@ -17,7 +17,7 @@ FOR UPDATE;
 
 -- name: UpdateGrant :one
 UPDATE client_cert_grants SET delivery = sqlc.arg(delivery), output_spec_id = sqlc.narg(output_spec_id),
-       deploy_target_id = sqlc.narg(deploy_target_id), hook_ids = sqlc.arg(hook_ids),
+       deploy_target_id = sqlc.narg(deploy_target_id), steps = sqlc.arg(steps),
        auto_remediate = sqlc.arg(auto_remediate), target_options = COALESCE(sqlc.narg(target_options), target_options), updated_at = now()
 WHERE id = sqlc.arg(id) RETURNING *;
 
@@ -39,7 +39,7 @@ SELECT * FROM client_cert_grants WHERE client_id = $1 AND removed_at IS NOT NULL
 
 -- name: GrantViews :many
 SELECT g.id, g.client_id, c.name AS client_name, g.cert_id, ce.name AS certificate_name, g.delivery,
-       g.output_spec_id, g.deploy_target_id, g.hook_ids, g.auto_remediate, g.target_options, g.created_at, g.updated_at,
+       g.output_spec_id, g.deploy_target_id, g.steps, g.auto_remediate, g.target_options, g.created_at, g.updated_at,
        d.state, d.version_id, d.expected, d.installed, d.error, d.reported_at, d.state_changed_at, d.updated_at AS deployment_updated_at
 FROM client_cert_grants g
 JOIN clients c ON c.id = g.client_id
@@ -144,10 +144,16 @@ FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 WHERE g.deploy_target_id = sqlc.arg(target_id)::uuid AND g.removed_at IS NULL AND g.client_id IS NULL;
 
--- name: LiveGrantIDsUsingHook :many
--- client_id IS NOT NULL: see LiveGrantIDsForCert (a server grant never has
--- hooks today, but this keeps the invariant explicit).
-SELECT id FROM client_cert_grants WHERE hook_ids @> ARRAY[sqlc.arg(hook_id)::uuid] AND removed_at IS NULL AND client_id IS NOT NULL;
+-- name: LiveGrantIDsUsingAction :many
+-- Live client grants whose steps name the action directly or through one of
+-- the given group ids (the groups that contain it).
+-- client_id IS NOT NULL: see LiveGrantIDsForCert.
+SELECT id FROM client_cert_grants
+WHERE (steps @> jsonb_build_array(jsonb_build_object('action', sqlc.arg(action_id)::uuid))
+       OR EXISTS (SELECT 1 FROM action_groups ag
+                  WHERE ag.action_ids @> ARRAY[sqlc.arg(action_id)::uuid]
+                    AND steps @> jsonb_build_array(jsonb_build_object('group', ag.id))))
+  AND removed_at IS NULL AND client_id IS NOT NULL;
 
 -- name: CountLiveGrantsByCert :many
 SELECT cert_id, count(*)::bigint AS grants FROM client_cert_grants
@@ -256,15 +262,19 @@ WHERE g.removed_at IS NULL AND g.client_id IS NOT NULL AND ce.current_version_id
             ) ELSE '{}'::uuid[] END
           ));
 
--- name: LockHooksInOrg :many
--- Locks the org's hooks referenced by ids FOR SHARE, so a concurrent
--- DeleteHook (which locks the hook row FOR UPDATE before deleting) either
--- blocks until this transaction commits and then sees the new grant among
--- its dependents, or has already committed the delete and this transaction
--- sees fewer rows than ids, and the caller rejects the grant. hook_ids has
--- no FK (it is a plain array), so this lock is what keeps a hook id from
+-- name: LockActionsInOrg :many
+-- Locks the org's actions referenced by ids FOR SHARE, so a concurrent
+-- DeleteAction (which locks the action row FOR UPDATE before deleting)
+-- either blocks until this transaction commits and then sees the new grant
+-- among its dependents, or has already committed the delete and this
+-- transaction sees fewer rows than ids, and the caller rejects the grant.
+-- steps has no FK (it is plain JSON), so this lock is what keeps an id from
 -- going dangling.
-SELECT id FROM hooks WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND org_id = sqlc.arg(org_id) FOR SHARE;
+SELECT id FROM actions WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND org_id = sqlc.arg(org_id) FOR SHARE;
+
+-- name: LockActionGroupsInOrg :many
+-- Same as LockActionsInOrg, for the groups a grant's steps name.
+SELECT id, action_ids FROM action_groups WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND org_id = sqlc.arg(org_id) FOR SHARE;
 
 -- ---- server grants (Task 11: client-less grants on a server-run deploy
 -- target). Every query below scopes by deploy_targets.org_id through the
@@ -279,9 +289,9 @@ SELECT * FROM deploy_targets WHERE id = $1 AND org_id = $2 FOR SHARE;
 
 -- name: CreateServerGrant :one
 -- client_id is NULL, delivery is always 'push' (there is no agent pull
--- schedule for a server grant), hook_ids is empty (hooks are agent-side).
-INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, hook_ids, auto_remediate, post_action, target_options)
-VALUES (NULL, sqlc.arg(cert_id), 'push', sqlc.narg(output_spec_id), sqlc.narg(deploy_target_id), '{}', sqlc.arg(auto_remediate), COALESCE(sqlc.narg(post_action)::jsonb, '{}'), COALESCE(sqlc.narg(target_options)::jsonb, '{}')) RETURNING *;
+-- schedule for a server grant), steps carries its actions and groups.
+INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, steps, auto_remediate, target_options)
+VALUES (NULL, sqlc.arg(cert_id), 'push', sqlc.narg(output_spec_id), sqlc.narg(deploy_target_id), COALESCE(sqlc.narg(steps)::jsonb, '[]'), sqlc.arg(auto_remediate), COALESCE(sqlc.narg(target_options)::jsonb, '{}')) RETURNING *;
 
 -- name: LockServerGrant :one
 -- Org-scoped through deploy_targets.org_id (pre-flight ruling): locks only
@@ -293,8 +303,8 @@ WHERE g.id = $1 AND g.client_id IS NULL AND g.removed_at IS NULL AND t.org_id = 
 FOR UPDATE OF g;
 
 -- name: UpdateServerGrant :one
--- A server grant's editable fields: its layout, auto-remediate flag, post action and target options.
-UPDATE client_cert_grants SET output_spec_id = sqlc.narg(output_spec_id), auto_remediate = sqlc.arg(auto_remediate), post_action = COALESCE(sqlc.narg(post_action)::jsonb, '{}'), target_options = COALESCE(sqlc.narg(target_options)::jsonb, '{}'), updated_at = now()
+-- A server grant's editable fields: its layout, auto-remediate flag, steps and target options.
+UPDATE client_cert_grants SET output_spec_id = sqlc.narg(output_spec_id), auto_remediate = sqlc.arg(auto_remediate), steps = COALESCE(sqlc.narg(steps)::jsonb, '[]'), target_options = COALESCE(sqlc.narg(target_options)::jsonb, '{}'), updated_at = now()
 WHERE id = sqlc.arg(id) RETURNING *;
 
 -- name: GrantRunsOn :one
@@ -316,7 +326,7 @@ WHERE g.id = $1
 
 -- name: ServerGrantViews :many
 SELECT g.id, g.deploy_target_id, g.cert_id, ce.name AS certificate_name, g.delivery,
-       g.output_spec_id, g.hook_ids, g.auto_remediate, g.post_action, g.target_options, g.created_at, g.updated_at,
+       g.output_spec_id, g.steps, g.auto_remediate, g.target_options, g.created_at, g.updated_at,
        sd.status, sd.version_id, sd.last_error, sd.deployed_at, sd.updated_at AS deployment_updated_at,
        m.id AS monitor_id, m.host, m.port, m.sni, m.interval_seconds
 FROM client_cert_grants g
@@ -337,10 +347,10 @@ SELECT
   EXISTS (SELECT 1 FROM certificates WHERE certificates.id = sqlc.arg(cert_id) AND certificates.org_id = sqlc.arg(org_id))::bool AS cert_ok,
   (sqlc.narg(layout_id)::uuid IS NULL OR EXISTS (SELECT 1 FROM output_specs WHERE output_specs.id = sqlc.narg(layout_id)::uuid AND output_specs.org_id = sqlc.arg(org_id)))::bool AS layout_ok,
   (sqlc.narg(target_id)::uuid IS NULL OR EXISTS (SELECT 1 FROM deploy_targets WHERE deploy_targets.id = sqlc.narg(target_id)::uuid AND deploy_targets.org_id = sqlc.arg(org_id)))::bool AS target_ok,
-  (SELECT count(*) FROM hooks WHERE hooks.id = ANY(sqlc.arg(hook_ids)::uuid[]) AND hooks.org_id = sqlc.arg(org_id))::bigint AS hooks_found;
+  (SELECT count(*) FROM actions WHERE actions.id = ANY(sqlc.arg(action_ids)::uuid[]) AND actions.org_id = sqlc.arg(org_id))::bigint AS actions_found;
 
 -- name: CountPostActionUsers :one
--- Live server grants whose post action runs on this target (ssh or pfsense;
--- rows saved before kinds existed name it sshTargetId).
-SELECT count(*)::bigint FROM client_cert_grants g
-WHERE g.removed_at IS NULL AND g.client_id IS NULL AND coalesce(g.post_action->>'targetId', g.post_action->>'sshTargetId') = sqlc.arg(id)::text;
+-- Live server grants with a step whose action runs on this target.
+SELECT count(DISTINCT g.id)::bigint FROM client_cert_grants g
+JOIN actions a ON g.steps @> jsonb_build_array(jsonb_build_object('action', a.id))
+WHERE g.removed_at IS NULL AND g.client_id IS NULL AND a.config->>'targetId' = sqlc.arg(id)::text;

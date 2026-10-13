@@ -181,6 +181,8 @@ func (d *Dispatcher) PfSenseUsage(ctx context.Context, orgID, id uuid.UUID, cert
 
 // runPostAction runs pa over the referenced target and records it. The
 // returned error is already redacted of the target's secrets.
+//
+//nolint:unused // superseded by action steps in the dispatcher task
 func (d *Dispatcher) runPostAction(ctx context.Context, row sqlcgen.ServerDeployGrantRow, pa *PostAction, hf targets.HTTPFactory) error {
 	rt, err := d.loadTarget(ctx, row.OrgID, pa.TargetID, pa.TargetTypes(), pa.Kind)
 	if err != nil {

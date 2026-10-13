@@ -19,6 +19,16 @@ import (
 func TestMigration00028RestartHooks(t *testing.T) {
 	pool, _ := dbtest.New(t)
 	ctx := context.Background()
+	sqlDB := stdlib.OpenDBFromPool(pool)
+	defer sqlDB.Close()
+	p, err := goose.NewProvider(goose.DialectPostgres, sqlDB, os.DirFS("migrations"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// hooks became actions in 00033; test the 00028 shape.
+	if _, err := p.DownTo(ctx, 32); err != nil {
+		t.Fatalf("down to 00032: %v", err)
+	}
 	org := dbtest.Org(t, pool)
 	ins := func(name, kind, target string, argv []string) error {
 		_, err := pool.Exec(ctx, `INSERT INTO hooks (org_id, name, phase, argv, kind, target) VALUES ($1, $2, 'post_deploy', $3, $4, $5)`,
@@ -43,12 +53,6 @@ func TestMigration00028RestartHooks(t *testing.T) {
 		if err := ins(name, c.kind, c.target, c.argv); err == nil {
 			t.Errorf("%s accepted", name)
 		}
-	}
-	sqlDB := stdlib.OpenDBFromPool(pool)
-	defer sqlDB.Close()
-	p, err := goose.NewProvider(goose.DialectPostgres, sqlDB, os.DirFS("migrations"))
-	if err != nil {
-		t.Fatal(err)
 	}
 	if _, err := p.DownTo(ctx, 27); err != nil {
 		t.Fatalf("down to 00027: %v", err)

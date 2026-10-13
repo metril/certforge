@@ -90,7 +90,7 @@ func (in GrantInput) hooks() []uuid.UUID {
 
 func (s *Service) checkRefs(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, in GrantInput) error {
 	r, err := q.CheckGrantRefs(ctx, sqlcgen.CheckGrantRefsParams{CertID: in.CertID, OrgID: orgID,
-		LayoutID: in.LayoutID, TargetID: in.TargetID, HookIds: in.hooks()})
+		LayoutID: in.LayoutID, TargetID: in.TargetID, ActionIds: in.hooks()})
 	if err != nil {
 		return err
 	}
@@ -101,7 +101,7 @@ func (s *Service) checkRefs(ctx context.Context, q *sqlcgen.Queries, orgID uuid.
 		return invalid("layoutId", "layout %s is not in this org", *in.LayoutID)
 	case !r.TargetOk:
 		return invalid("deployTargetId", "deploy target %s is not in this org", *in.TargetID)
-	case r.HooksFound != int64(len(in.HookIDs)):
+	case r.ActionsFound != int64(len(in.HookIDs)):
 		return invalid("hookIds", "every hook must be in this org")
 	}
 	// hook_ids is a plain array with no FK, so a hook could otherwise be
@@ -120,7 +120,7 @@ func (s *Service) checkRefs(ctx context.Context, q *sqlcgen.Queries, orgID uuid.
 	// grant write locked the client first and hooks second, the two could
 	// deadlock (AB-BA).
 	if len(in.HookIDs) > 0 {
-		locked, err := q.LockHooksInOrg(ctx, sqlcgen.LockHooksInOrgParams{Ids: in.hooks(), OrgID: orgID})
+		locked, err := q.LockActionsInOrg(ctx, sqlcgen.LockActionsInOrgParams{Ids: in.hooks(), OrgID: orgID})
 		if err != nil {
 			return err
 		}
@@ -707,7 +707,7 @@ func (s *Service) render(ctx context.Context, q *sqlcgen.Queries, grantIDs []uui
 
 func grantDetails(g sqlcgen.ClientCertGrant) map[string]any {
 	return map[string]any{"clientId": g.ClientID, "certificateId": g.CertID, "delivery": g.Delivery,
-		"layoutId": g.OutputSpecID, "deployTargetId": g.DeployTargetID, "hookIds": g.HookIds, "autoRemediate": g.AutoRemediate}
+		"layoutId": g.OutputSpecID, "deployTargetId": g.DeployTargetID, "hookIds": StepActionIDs(g.Steps), "autoRemediate": g.AutoRemediate}
 }
 
 func (s *Service) lockGrant(ctx context.Context, q *sqlcgen.Queries, orgID, id uuid.UUID) (sqlcgen.ClientCertGrant, error) {
@@ -752,7 +752,7 @@ func (s *Service) CreateGrant(ctx context.Context, orgID, clientID uuid.UUID, in
 		return uuid.Nil, conflict("Revoked clients cannot receive grants.")
 	}
 	g, err := q.CreateGrant(ctx, sqlcgen.CreateGrantParams{ClientID: &clientID, CertID: in.CertID, Delivery: in.Delivery,
-		OutputSpecID: in.LayoutID, DeployTargetID: in.TargetID, HookIds: in.hooks(), AutoRemediate: in.AutoRemediate, TargetOptions: in.targetOptions()})
+		OutputSpecID: in.LayoutID, DeployTargetID: in.TargetID, Steps: stepsOfActions(in.hooks()), AutoRemediate: in.AutoRemediate, TargetOptions: in.targetOptions()})
 	if pgCode(err) == pgUniqueViolation {
 		return uuid.Nil, conflict("This client already has a grant for that certificate.")
 	}
@@ -810,7 +810,7 @@ func (s *Service) UpdateGrant(ctx context.Context, orgID, grantID uuid.UUID, in 
 		return err
 	}
 	g, err := q.UpdateGrant(ctx, sqlcgen.UpdateGrantParams{Delivery: in.Delivery, OutputSpecID: in.LayoutID,
-		DeployTargetID: in.TargetID, HookIds: in.hooks(), AutoRemediate: in.AutoRemediate, TargetOptions: in.targetOptions(), ID: grantID})
+		DeployTargetID: in.TargetID, Steps: stepsOfActions(in.hooks()), AutoRemediate: in.AutoRemediate, TargetOptions: in.targetOptions(), ID: grantID})
 	if err != nil {
 		return err
 	}
@@ -1036,7 +1036,7 @@ func (s *Service) Resync(ctx context.Context, q *sqlcgen.Queries, ref RefKind, i
 	case RefTarget:
 		ids, err = q.LiveGrantIDsUsingTarget(ctx, &id)
 	case RefHook:
-		ids, err = q.LiveGrantIDsUsingHook(ctx, id)
+		ids, err = q.LiveGrantIDsUsingAction(ctx, id)
 	case RefCredential:
 		ids, err = q.LiveGrantIDsUsingCredential(ctx, &id)
 	}

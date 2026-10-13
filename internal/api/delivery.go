@@ -1190,21 +1190,26 @@ func (s *Server) DeleteDeployTarget(ctx context.Context, r gen.DeleteDeployTarge
 
 // ---- hooks ----
 
-func hookOut(h sqlcgen.Hook, grants int) gen.Hook {
-	return gen.Hook{Id: h.ID, OrgId: h.OrgID, Name: h.Name, Phase: gen.HookPhase(h.Phase), Kind: gen.HookKind(h.Kind), Target: h.Target, Argv: h.Argv,
+func hookOut(h sqlcgen.Action, grants int) gen.Hook {
+	var cfg struct {
+		Argv   []string `json:"argv"`
+		Target string   `json:"target"`
+	}
+	_ = json.Unmarshal(h.Config, &cfg)
+	return gen.Hook{Id: h.ID, OrgId: h.OrgID, Name: h.Name, Phase: gen.HookPhase(h.Phase), Kind: gen.HookKind(h.Kind), Target: cfg.Target, Argv: cfg.Argv,
 		TimeoutSeconds: int(h.TimeoutSeconds), GrantCount: grants, CreatedAt: h.CreatedAt, UpdatedAt: h.UpdatedAt}
 }
 
-func (s *Server) hooksOut(ctx context.Context, rows []sqlcgen.Hook) ([]gen.Hook, error) {
+func (s *Server) hooksOut(ctx context.Context, rows []sqlcgen.Action) ([]gen.Hook, error) {
 	ids := make([]uuid.UUID, len(rows))
 	for i, r := range rows {
 		ids[i] = r.ID
 	}
-	counts, err := s.queries().HookGrantCounts(ctx, ids)
+	counts, err := s.queries().ActionGrantCounts(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
-	cm := countMap(counts, func(r sqlcgen.HookGrantCountsRow) (uuid.UUID, int64) { return r.ID, r.Grants })
+	cm := countMap(counts, func(r sqlcgen.ActionGrantCountsRow) (uuid.UUID, int64) { return r.ID, r.Grants })
 	out := make([]gen.Hook, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, hookOut(r, cm[r.ID]))
@@ -1217,6 +1222,16 @@ type hookFields struct {
 	name, kind, target string
 	argv               []string
 	timeout            int32
+}
+
+// config is the action config JSON for a hook's kind.
+func (h hookFields) config() []byte {
+	var v any = map[string]any{"argv": h.argv}
+	if h.kind == "restart" {
+		v = map[string]any{"target": h.target}
+	}
+	b, _ := json.Marshal(v)
+	return b
 }
 
 func validHook(in *gen.HookInput) (hookFields, error) {
@@ -1254,9 +1269,15 @@ func (s *Server) ListHooks(ctx context.Context, r gen.ListHooksRequestObject) (g
 	if _, err := authorize(ctx, authz.ActionDeliveryRead, &r.OrgId); err != nil {
 		return nil, err
 	}
-	rows, err := s.queries().ListHooks(ctx, r.OrgId)
+	all, err := s.queries().ListActions(ctx, r.OrgId)
 	if err != nil {
 		return nil, err
+	}
+	rows := make([]sqlcgen.Action, 0, len(all))
+	for _, a := range all {
+		if a.Kind == "exec" || a.Kind == "restart" {
+			rows = append(rows, a)
+		}
 	}
 	items, err := s.hooksOut(ctx, rows)
 	if err != nil {
@@ -1270,14 +1291,14 @@ func (s *Server) GetHook(ctx context.Context, r gen.GetHookRequestObject) (gen.G
 	if _, err := authorize(ctx, authz.ActionDeliveryRead, &r.OrgId); err != nil {
 		return nil, err
 	}
-	h, err := s.queries().GetHook(ctx, sqlcgen.GetHookParams{ID: r.Id, OrgID: r.OrgId})
+	h, err := s.queries().GetAction(ctx, sqlcgen.GetActionParams{ID: r.Id, OrgID: r.OrgId})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, notFound("hook %s", r.Id)
 	}
 	if err != nil {
 		return nil, err
 	}
-	out, err := s.hooksOut(ctx, []sqlcgen.Hook{h})
+	out, err := s.hooksOut(ctx, []sqlcgen.Action{h})
 	if err != nil {
 		return nil, err
 	}
@@ -1294,7 +1315,7 @@ func (s *Server) CreateHook(ctx context.Context, r gen.CreateHookRequestObject) 
 		return nil, err
 	}
 	name := hf.name
-	h, err := s.queries().CreateHook(ctx, sqlcgen.CreateHookParams{OrgID: r.OrgId, Name: name, Phase: string(r.Body.Phase), Argv: hf.argv, Kind: hf.kind, Target: hf.target, TimeoutSeconds: hf.timeout})
+	h, err := s.queries().CreateAction(ctx, sqlcgen.CreateActionParams{OrgID: r.OrgId, Name: name, Phase: string(r.Body.Phase), Config: hf.config(), Kind: hf.kind, TimeoutSeconds: hf.timeout})
 	switch pgCode(err) {
 	case pgUniqueViolation:
 		return nil, conflict("A hook named %q exists in this org.", name)
@@ -1305,7 +1326,7 @@ func (s *Server) CreateHook(ctx context.Context, r gen.CreateHookRequestObject) 
 		return nil, err
 	}
 	s.audit(ctx, audit.Event{Action: "hook.create", ResourceType: "hook", ResourceID: h.ID.String(), OrgID: &h.OrgID,
-		Details: map[string]any{"name": h.Name, "phase": h.Phase, "kind": h.Kind, "target": h.Target, "argv": h.Argv, "timeoutSeconds": h.TimeoutSeconds}})
+		Details: map[string]any{"name": h.Name, "phase": h.Phase, "kind": h.Kind, "config": json.RawMessage(h.Config), "timeoutSeconds": h.TimeoutSeconds}})
 	return gen.CreateHook201JSONResponse(hookOut(h, 0)), nil
 }
 
@@ -1325,14 +1346,14 @@ func (s *Server) UpdateHook(ctx context.Context, r gen.UpdateHookRequestObject) 
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.d.Queries.WithTx(tx)
-	cur, err := q.GetHook(ctx, sqlcgen.GetHookParams{ID: r.Id, OrgID: r.OrgId})
+	cur, err := q.GetAction(ctx, sqlcgen.GetActionParams{ID: r.Id, OrgID: r.OrgId})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, notFound("hook %s", r.Id)
 	}
 	if err != nil {
 		return nil, err
 	}
-	h, err := q.UpdateHook(ctx, sqlcgen.UpdateHookParams{Name: name, Phase: string(r.Body.Phase), Argv: hf.argv, Kind: hf.kind, Target: hf.target, TimeoutSeconds: hf.timeout, ID: r.Id, OrgID: r.OrgId})
+	h, err := q.UpdateAction(ctx, sqlcgen.UpdateActionParams{Name: name, Phase: string(r.Body.Phase), Config: hf.config(), SecretCfg: cur.SecretCfg, Kind: hf.kind, TimeoutSeconds: hf.timeout, Optional: cur.Optional, ID: r.Id, OrgID: r.OrgId})
 	if pgCode(err) == pgUniqueViolation {
 		return nil, conflict("A hook named %q exists in this org.", name)
 	}
@@ -1349,9 +1370,9 @@ func (s *Server) UpdateHook(ctx context.Context, r gen.UpdateHookRequestObject) 
 	nudge()
 	s.audit(ctx, audit.Event{Action: "hook.update", ResourceType: "hook", ResourceID: h.ID.String(), OrgID: &h.OrgID,
 		Details: map[string]any{
-			"before": map[string]any{"name": cur.Name, "phase": cur.Phase, "kind": cur.Kind, "target": cur.Target, "argv": cur.Argv, "timeoutSeconds": cur.TimeoutSeconds},
-			"after":  map[string]any{"name": h.Name, "phase": h.Phase, "kind": h.Kind, "target": h.Target, "argv": h.Argv, "timeoutSeconds": h.TimeoutSeconds}}})
-	out, err := s.hooksOut(ctx, []sqlcgen.Hook{h})
+			"before": map[string]any{"name": cur.Name, "phase": cur.Phase, "kind": cur.Kind, "config": json.RawMessage(cur.Config), "timeoutSeconds": cur.TimeoutSeconds},
+			"after":  map[string]any{"name": h.Name, "phase": h.Phase, "kind": h.Kind, "config": json.RawMessage(h.Config), "timeoutSeconds": h.TimeoutSeconds}}})
+	out, err := s.hooksOut(ctx, []sqlcgen.Action{h})
 	if err != nil {
 		return nil, err
 	}
@@ -1374,25 +1395,25 @@ func (s *Server) DeleteHook(ctx context.Context, r gen.DeleteHookRequestObject) 
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.d.Queries.WithTx(tx)
-	cur, err := q.LockHook(ctx, sqlcgen.LockHookParams{ID: r.Id, OrgID: r.OrgId})
+	cur, err := q.LockAction(ctx, sqlcgen.LockActionParams{ID: r.Id, OrgID: r.OrgId})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, notFound("hook %s", r.Id)
 	}
 	if err != nil {
 		return nil, err
 	}
-	deps, err := q.HookDependents(ctx, sqlcgen.HookDependentsParams{HookID: r.Id, OrgID: r.OrgId})
+	deps, err := q.ActionDependents(ctx, sqlcgen.ActionDependentsParams{ActionID: r.Id, OrgID: r.OrgId})
 	if err != nil {
 		return nil, err
 	}
 	if len(deps) > 0 {
 		d := make([]dependent, len(deps))
 		for i, x := range deps {
-			d[i] = dependent{x.ClientName, x.CertificateName, x.Removing}
+			d[i] = dependent{x.OwnerName, x.CertificateName, x.Removing}
 		}
 		return nil, dependentsConflict("hook", d)
 	}
-	n, err := q.DeleteHook(ctx, sqlcgen.DeleteHookParams{ID: r.Id, OrgID: r.OrgId})
+	n, err := q.DeleteAction(ctx, sqlcgen.DeleteActionParams{ID: r.Id, OrgID: r.OrgId})
 	if err != nil {
 		return nil, err
 	}

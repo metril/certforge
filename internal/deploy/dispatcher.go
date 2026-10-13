@@ -479,15 +479,6 @@ func (d *Dispatcher) deploy(ctx context.Context, grantID, versionID uuid.UUID, w
 	if _, err := target.Deploy(ctx, req); err != nil {
 		return d.fail(ctx, row, versionID, seq, redact, err)
 	}
-	pa, err := ParsePostAction(row.PostAction)
-	if err != nil {
-		return d.fail(ctx, row, versionID, seq, redact, fmt.Errorf("deployed, but the post action is invalid: %w", err))
-	}
-	if pa != nil && row.DeployTargetID != nil {
-		if err := d.runPostAction(ctx, row, pa, req.HTTP); err != nil {
-			return d.fail(ctx, row, versionID, seq, redact, fmt.Errorf("deployed, but %w", err))
-		}
-	}
 	if err := d.Q.MarkServerDeploymentDeployed(ctx, sqlcgen.MarkServerDeploymentDeployedParams{GrantID: grantID, VersionID: &versionID, DeploySeq: seq}); err != nil {
 		return err
 	}
