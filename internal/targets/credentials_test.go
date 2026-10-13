@@ -37,7 +37,7 @@ func TestKindSchemas(t *testing.T) {
 		ok        bool
 		secrets   []string
 	}{
-		{"ssh", `{"username":"u","password":"p"}`, true, []string{"password", "privateKey"}},
+		{"ssh", `{"username":"u","password":"p"}`, true, []string{"password", "privateKey", "privateKeyPassphrase"}},
 		{"ssh", `{"username":"u","privateKey":"k"}`, true, nil},
 		{"ssh", `{"username":"u"}`, false, nil},
 		{"ssh", `{"password":"p"}`, false, nil},

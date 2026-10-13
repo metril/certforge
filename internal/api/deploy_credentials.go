@@ -16,6 +16,7 @@ import (
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authz"
 	"github.com/metril/certforge/internal/db/sqlcgen"
+	"github.com/metril/certforge/internal/delivery"
 	"github.com/metril/certforge/internal/targets"
 )
 
@@ -122,6 +123,10 @@ func validCredentialConfig(kind string, cfg map[string]interface{}) (json.RawMes
 		return nil, nil, badRequest("config is not a JSON object")
 	}
 	if err := targets.ValidateCredential(kind, raw); err != nil {
+		var fe *delivery.FieldError
+		if errors.As(err, &fe) {
+			return nil, nil, unprocessable(fe.Field, fe.Msg)
+		}
 		return nil, nil, unprocessable("config", err.Error())
 	}
 	pub, sec, err := targets.SplitCredential(kind, raw)

@@ -3,12 +3,15 @@ package deploy
 import (
 	"context"
 	"encoding/json"
+	"encoding/pem"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
 
 	"golang.org/x/crypto/ssh"
 
+	"github.com/metril/certforge/internal/delivery"
 	"github.com/metril/certforge/internal/render"
 	"github.com/metril/certforge/internal/targets"
 	"github.com/metril/certforge/internal/targets/sshx/sshxtest"
@@ -287,5 +290,77 @@ func TestSSHNeedsKeyFromFiles(t *testing.T) {
 		if err != nil || got != want {
 			t.Errorf("NeedsKey(%s) = %v, %v; want %v", public, got, err, want)
 		}
+	}
+}
+
+func encKey(t *testing.T, pass string) (ssh.Signer, string) {
+	t.Helper()
+	cs, priv := sshxtest.NewSigner(t)
+	var blk *pem.Block
+	var err error
+	if pass == "" {
+		blk, err = ssh.MarshalPrivateKey(priv, "")
+	} else {
+		blk, err = ssh.MarshalPrivateKeyWithPassphrase(priv, "", []byte(pass))
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cs, string(pem.EncodeToMemory(blk))
+}
+
+func TestSSHParseKeyChecks(t *testing.T) {
+	s := sshxtest.Start(t, nil)
+	_, enc := encKey(t, "pw")
+	cases := map[string]struct {
+		key, pass, field string
+	}{
+		"junk":             {"junk", "", "config.privateKey"},
+		"no passphrase":    {enc, "", "config.privateKey"},
+		"wrong":            {enc, "bad", "config.privateKey"},
+		"pass without key": {"", "pw", "config.privateKeyPassphrase"},
+	}
+	for name, tc := range cases {
+		_, err := SSH{}.Parse(sshCfg(t, s, func(c map[string]any) {
+			if tc.key != "" {
+				c["privateKey"] = tc.key
+			}
+			if tc.pass != "" {
+				c["privateKeyPassphrase"] = tc.pass
+			}
+		}))
+		var fe *delivery.FieldError
+		if !errors.As(err, &fe) || fe.Field != tc.field {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	c, err := SSH{}.Parse(sshCfg(t, s, func(c map[string]any) {
+		delete(c, "password")
+		c["privateKey"], c["privateKeyPassphrase"] = enc, "pw"
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := c.Secrets["privateKeyPassphrase"]; !ok {
+		t.Fatalf("passphrase not split: %+v", c.Secrets)
+	}
+}
+
+func TestSSHDeployEncryptedKey(t *testing.T) {
+	cs, enc := encKey(t, "hunter2-pass")
+	s := sshxtest.Start(t, cs.PublicKey())
+	m, _ := akMaterial(t)
+	cfg := func(pass string) json.RawMessage {
+		return sshCfg(t, s, func(c map[string]any) {
+			delete(c, "password")
+			c["privateKey"], c["privateKeyPassphrase"] = enc, pass
+		})
+	}
+	if _, err := (SSH{}).Deploy(context.Background(), sshReq(cfg("hunter2-pass"), m)); err != nil {
+		t.Fatal(err)
+	}
+	_, err := (SSH{}).Deploy(context.Background(), sshReq(cfg("wrong-pass"), m))
+	if err == nil || strings.Contains(err.Error(), "wrong-pass") || strings.Contains(err.Error(), "hunter2-pass") {
+		t.Fatalf("err = %v", err)
 	}
 }

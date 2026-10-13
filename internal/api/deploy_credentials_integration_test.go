@@ -4,7 +4,11 @@ package api
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
+	"encoding/pem"
+	"errors"
 	"strings"
 	"testing"
 
@@ -307,9 +311,14 @@ func TestDeployCredentialSSHHostKeyGateAndOwnSecrets(t *testing.T) {
 		}
 		return m
 	}
+	_, ownPriv, _ := ed25519.GenerateKey(rand.Reader)
+	ownBlk, err := ssh.MarshalPrivateKey(ownPriv, "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	runsOn := gen.RunsOn("server")
 	res, err := f.srv.CreateDeployTarget(admin, gen.CreateDeployTargetRequestObject{OrgId: f.org,
-		Body: &gen.DeployTargetInput{Name: "ssh1", Type: "ssh", RunsOn: &runsOn, Config: cfg(hk1, map[string]interface{}{"privateKey": "own-key"}), CredentialId: &cred.Id}})
+		Body: &gen.DeployTargetInput{Name: "ssh1", Type: "ssh", RunsOn: &runsOn, Config: cfg(hk1, map[string]interface{}{"privateKey": string(pem.EncodeToMemory(ownBlk))}), CredentialId: &cred.Id}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,5 +339,31 @@ func TestDeployCredentialSSHHostKeyGateAndOwnSecrets(t *testing.T) {
 	wantStatus(t, upd(op, cfg(hk2, map[string]interface{}{"privateKey": "__unchanged__"})), 403)
 	if err := upd(admin, cfg(hk2, map[string]interface{}{"privateKey": "__unchanged__"})); err != nil {
 		t.Fatalf("org-admin host key change: %v", err)
+	}
+}
+
+func TestDeployCredentialSSHKeyCheck(t *testing.T) {
+	f := newAgentFixture(t)
+	admin := f.as("org-admin")
+	_, priv, _ := ed25519.GenerateKey(rand.Reader)
+	blk, err := ssh.MarshalPrivateKeyWithPassphrase(priv, "", []byte("pw"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	enc := string(pem.EncodeToMemory(blk))
+	create := func(name string, cfg map[string]interface{}) error {
+		_, err := f.srv.CreateDeployCredential(admin, gen.CreateDeployCredentialRequestObject{OrgId: f.org,
+			Body: &gen.DeployCredentialInput{Name: name, Kind: "ssh", Config: cfg}})
+		return err
+	}
+	err = create("junk", map[string]interface{}{"username": "root", "privateKey": "junk"})
+	wantStatus(t, err, 422)
+	var he *HTTPError
+	if !errors.As(err, &he) || !strings.Contains(he.Title, "config.privateKey") {
+		t.Fatalf("err = %v", err)
+	}
+	wantStatus(t, create("nopass", map[string]interface{}{"username": "root", "privateKey": enc}), 422)
+	if err := create("ok", map[string]interface{}{"username": "root", "privateKey": enc, "privateKeyPassphrase": "pw"}); err != nil {
+		t.Fatal(err)
 	}
 }

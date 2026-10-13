@@ -234,7 +234,7 @@ func (d *Dispatcher) runPostAction(ctx context.Context, row sqlcgen.ServerDeploy
 	}
 	run.Argv = []string{"ssh", cfg.Host, pa.Command}
 	cl, err := sshx.Dial(ctx, sshx.Opts{Host: cfg.Host, Port: cfg.Port, User: cfg.Username, Password: cfg.Password,
-		PrivateKeyPEM: cfg.PrivateKey, HostKey: cfg.HostKey, AllowLoopback: hf.AllowLoopback, Timeout: timeout})
+		PrivateKeyPEM: cfg.PrivateKey, PrivateKeyPassphrase: cfg.PrivateKeyPassphrase, HostKey: cfg.HostKey, AllowLoopback: hf.AllowLoopback, Timeout: timeout})
 	if err != nil {
 		return fail(err)
 	}
