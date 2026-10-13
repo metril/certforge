@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Restart RouterOS services",
+  "description": "Restarts the RouterOS services that use the certificate. Runs on the server.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["targetId"],
+  "properties": {
+    "targetId": {"type": "string", "format": "uuid", "title": "Target", "description": "The RouterOS deploy target."}
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Restart service (agent)",
+  "description": "Restarts a Docker container or systemd unit on the agent host.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["target"],
+  "properties": {
+    "target": {"type": "string", "pattern": "^(docker|systemd):[A-Za-z0-9][A-Za-z0-9_.@-]{0,127}$", "title": "Target", "description": "docker:<container> or systemd:<unit>."}
+  }
+}

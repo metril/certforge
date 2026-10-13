@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Restart pfSense services",
+  "description": "Restarts the services that use the certificate on pfSense. Runs on the server.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["targetId"],
+  "properties": {
+    "targetId": {"type": "string", "format": "uuid", "title": "Target", "description": "The pfSense deploy target."},
+    "mode": {"type": "string", "enum": ["all", "selected", "none"], "default": "all", "title": "Restart", "description": "All services using the certificate, only the selected ones, or none."},
+    "services": {"type": "array", "maxItems": 64, "title": "Services", "description": "Services to restart when Restart is selected.", "items": {"type": "string", "minLength": 1, "maxLength": 64}}
+  }
+}

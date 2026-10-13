@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Run command (agent)",
+  "description": "Runs a program on the agent host. Never runs through a shell: argv[0] is the absolute path of the executable.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["argv"],
+  "properties": {
+    "argv": {"type": "array", "minItems": 1, "maxItems": 64, "title": "Command", "description": "Executable and arguments. The first entry must be an absolute path.", "items": {"type": "string", "maxLength": 4096}}
+  }
+}

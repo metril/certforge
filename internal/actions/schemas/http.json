@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HTTP request",
+  "description": "Sends an HTTP request, for example to a webhook. Runs on the server.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["method", "url"],
+  "properties": {
+    "method": {"type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"], "title": "Method"},
+    "url": {"type": "string", "format": "uri", "pattern": "^https?://", "maxLength": 2048, "title": "URL", "description": "An http or https URL."},
+    "headers": {"type": "object", "additionalProperties": {"type": "string", "maxLength": 2048}, "title": "Headers", "description": "Request headers."},
+    "secretHeaders": {"type": "object", "secret": true, "additionalProperties": {"type": "string", "maxLength": 2048}, "title": "Secret headers", "description": "Headers whose values are stored encrypted, for example Authorization."},
+    "body": {"type": "string", "maxLength": 8192, "title": "Body", "description": "Request body. {{cert.name}}, {{cert.fingerprint}}, {{cert.notAfter}} and {{grant.id}} are replaced."},
+    "expectedStatus": {"type": "object", "additionalProperties": false, "title": "Expected status", "description": "Inclusive range of status codes that count as success.", "default": {"min": 200, "max": 299}, "properties": {"min": {"type": "integer", "minimum": 100, "maximum": 599}, "max": {"type": "integer", "minimum": 100, "maximum": 599}}}
+  }
+}
