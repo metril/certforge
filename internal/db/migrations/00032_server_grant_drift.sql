@@ -7,7 +7,7 @@ ALTER TABLE server_deployments ADD CONSTRAINT server_deployments_status_check
     CHECK (status IN ('pending', 'deployed', 'failed', 'drift'));
 ALTER TABLE server_deployments ADD COLUMN remediations int NOT NULL DEFAULT 0, ADD COLUMN remediated_fp text;
 
-ALTER TABLE external_monitors ADD COLUMN grant_id uuid UNIQUE REFERENCES client_cert_grants (id) ON DELETE CASCADE;
+ALTER TABLE external_monitors ADD COLUMN grant_id uuid UNIQUE REFERENCES client_cert_grants (id) ON DELETE CASCADE DEFERRABLE INITIALLY IMMEDIATE;
 
 -- +goose Down
 ALTER TABLE external_monitors DROP COLUMN grant_id;

@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -30,14 +31,14 @@ func (d *Dispatcher) OnCheck(ctx context.Context, tx pgx.Tx, monitorID uuid.UUID
 	q := d.Q.WithTx(tx)
 	var grantID *uuid.UUID
 	if err := tx.QueryRow(ctx, `SELECT grant_id FROM external_monitors WHERE id = $1`, monitorID).Scan(&grantID); err != nil || grantID == nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			err = nil
 		}
 		return nil, err
 	}
 	row, err := q.ServerGrantForMonitor(ctx, *grantID)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
