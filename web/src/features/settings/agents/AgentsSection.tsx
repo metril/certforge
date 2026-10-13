@@ -10,12 +10,13 @@ import { AgentCaPanel } from './AgentCaPanel';
 const agentsUiSchema = (value: Record<string, unknown>) => ({
   agentUrl: { 'ui:description': help['agents.agentUrl'].text },
   requireApproval: { 'ui:description': help['agents.requireApproval'].text },
+  serverRemediationAttempts: { 'ui:description': help['settings.serverRemediationAttempts'].text },
   // Greyed out while approval is off: no request is ever pending then.
   pendingTtlHours: { 'ui:description': help['agents.pendingTtlHours'].text, 'ui:disabled': value.requireApproval === false },
   // The server's schema has no property order guarantee; Agent URL leads
   // (the field most likely to need editing), then the identity fields
   // callers set once, then the tuning fields.
-  'ui:order': ['agentUrl', 'listenerNames', 'tokenTtlHours', 'requireApproval', 'pendingTtlHours', 'agentCertDays', 'heartbeatSeconds', 'offlineAfterSeconds', '*'],
+  'ui:order': ['agentUrl', 'listenerNames', 'tokenTtlHours', 'requireApproval', 'pendingTtlHours', 'agentCertDays', 'heartbeatSeconds', 'offlineAfterSeconds', 'serverRemediationAttempts', '*'],
 });
 
 export function AgentsSection() {

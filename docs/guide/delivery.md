@@ -321,7 +321,7 @@ Per grant, three icon buttons sit on the row:
 
 A server grant can check the TLS endpoint a device serves and redeploy when it serves a different certificate. This catches a deploy that reported success but did not take effect, or a certificate someone replaced by hand.
 
-**Set up.** In the grant form, open **Verify**, switch on **Verify the endpoint** and enter **Host** and **Port** (and **SNI** if the server name differs). For pfSense, TrueNAS, RouterOS and Authentik targets the host and port start from the target URL. For other targets, such as SSH, enter them yourself: for example the SSH target's host with port `443` for a PiKVM, whose web UI is not the SSH port. Switch on **Auto-remediate** to redeploy on drift. Vault KV grants have no endpoint to verify.
+**Set up.** In the grant form, open **Verify**, switch on **Verify the endpoint** and enter **Host** and **Port** (and **SNI** if the server name differs). **Check every** sets how often the endpoint is checked (5 minutes to 24 hours, default 1 hour), so how quickly drift is noticed. For pfSense, TrueNAS, RouterOS and Authentik targets the host and port start from the target URL. For other targets, such as SSH, enter them yourself: for example the SSH target's host with port `443` for a PiKVM, whose web UI is not the SSH port. Switch on **Auto-remediate** to redeploy on drift. Vault KV grants have no endpoint to verify.
 
 **How it works.** The grant owns an external monitor whose expected certificate is the grant's certificate (see [Alerts](alerts.md#external-monitors)). Drift is found when the monitor sees a different leaf, so detection runs at the monitor's check interval. A successful deploy triggers an immediate check. Mismatches are ignored while a newer version is still pending.
 
@@ -331,7 +331,7 @@ A server grant can check the TLS endpoint a device serves and redeploy when it s
 | **Drift** | The endpoint serves a different certificate. One `deployment.drift` audit event is recorded per episode. |
 | **Failed** | A deploy failed, or auto-remediation gave up. |
 
-With **Auto-remediate**, CertForge re-queues the deploy on drift, but not while one is pending. If the endpoint still serves the wrong certificate after 3 attempts on the same fingerprint, the grant fails with `auto-remediation did not take effect after 3 attempts`, and retries stop until the served certificate changes. Choose **Redeploy** to try again by hand.
+With **Auto-remediate**, CertForge re-queues the deploy on drift, but not while one is pending. If the endpoint still serves the wrong certificate after the attempt cap on the same fingerprint (**Settings → Agents → Auto-remediation attempts**, 1 to 10, default 3), the grant fails with `auto-remediation did not take effect after 3 attempts`, and retries stop until the served certificate changes. Choose **Redeploy** to try again by hand.
 
 **Permissions.** Adding, moving or removing the verify endpoint also needs `alerts:write`; other grant edits do not. The grant's monitor is read-only on the **Monitors** page (it shows a **Grant** badge) but can be deleted there. Removing the grant deletes the monitor.
 
