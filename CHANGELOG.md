@@ -2,6 +2,19 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.36.0](https://github.com/metril/certforge/compare/v0.35.0...v0.36.0) (2026-10-13)
+
+
+### Features
+
+* **deploy:** restarts are explicit actions; pikvm_restart kind; migration adds restart steps ([785b64f](https://github.com/metril/certforge/commit/785b64f3d614bfb00dfbd4a825ad70f8765a1b67))
+* **web:** pikvm_restart kind and a missing-restart hint on grants ([e34a788](https://github.com/metril/certforge/commit/e34a78881b0eb9130af3e49ab0616bfc368b7eca))
+
+
+### Bug Fixes
+
+* **db:** 00034 Down also drops migrated pfSense restart actions from groups ([c6f76d9](https://github.com/metril/certforge/commit/c6f76d96e8f3865ccb720372235e358b28de042a))
+
 ## [0.35.0](https://github.com/metril/certforge/compare/v0.34.0...v0.35.0) (2026-10-13)
 
 
