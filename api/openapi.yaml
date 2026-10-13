@@ -2157,7 +2157,7 @@ paths:
       operationId: createDeployCredential
       tags: [delivery]
       summary: Add a deploy credential
-      description: Needs deploycreds:write (org-admin or admin). config is validated against the kind's schema from GET /meta/schemas (deployCredentials); fields with secret true are stored encrypted. Any target of a matching kind can then reference it by credentialId.
+      description: Needs deploycreds:write (org-admin or admin). config is validated against the kind's schema from GET /meta/schemas (deployCredentials); fields with secret true are stored encrypted. Any target of a matching kind can then reference it by credentialId. An ssh credential may carry privateKeyPassphrase (secret) for a protected key; the key is parsed on save, and an unreadable key, a wrong passphrase or an encrypted PKCS#8 key is 422 on config.privateKey or config.privateKeyPassphrase.
       requestBody:
         required: true
         content:
@@ -2201,7 +2201,7 @@ paths:
       summary: Replace a deploy credential
       description: >-
         Needs deploycreds:write. config is replaced as a whole; a secret field set to __unchanged__
-        keeps its stored value and a secret field left out is removed. The kind cannot change.
+        keeps its stored value and a secret field left out is removed. The kind cannot change. An ssh credential's key is checked as on create (422 on config.privateKey or config.privateKeyPassphrase).
         Nothing is redeployed: server deploys use the new value next time, and the agent targets
         that use the credential are re-synced in the same transaction.
       requestBody:
@@ -2293,7 +2293,7 @@ paths:
         (deployTargets). runsOn is required (422 "choose where this target run") for a type
         whose own runsOn is either (422 "choose where this target runs" without it), optional and
         must match the type's forced runsOn otherwise (422 naming it). Every URL in config is
-        checked against the URL policy (422 "address not allowed").
+        checked against the URL policy (422 "address not allowed"). An ssh or pikvm target's privateKey is parsed on save with privateKeyPassphrase: an unreadable key, a wrong or missing passphrase or an encrypted PKCS#8 key is 422 on config.privateKey or config.privateKeyPassphrase.
       requestBody:
         required: true
         content:
@@ -4885,7 +4885,7 @@ components:
     DeployCredentialKind:
       type: string
       enum: [ssh, password, apiKey, token]
-      description: Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema.
+      description: Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema. The ssh kind holds username, password and/or privateKey, plus privateKeyPassphrase for a protected key; ssh and pikvm targets accept it.
     DeployCredential:
       type: object
       description: A reusable deploy credential. Secret values are never returned.
@@ -4930,8 +4930,8 @@ components:
         value: {type: string, description: The stored plaintext value.}
     DeployTargetType:
       type: string
-      enum: [traefik, vault-kv, authentik, pfsense, truenas, routeros, ssh]
-      description: Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today.
+      enum: [traefik, vault-kv, authentik, pfsense, truenas, routeros, ssh, pikvm]
+      description: Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh and pikvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key and restarts kvmd-nginx.
     RunsOn:
       type: string
       enum: [agent, server]
@@ -5169,10 +5169,10 @@ components:
         intervalSeconds: {type: integer, minimum: 300, maximum: 86400, default: 3600, description: Seconds between scheduled checks. Default 3600. On update, omitted keeps the monitor's current interval.}
     PostAction:
       type: object
-      description: One command run after a server grant deploys. Kind ssh runs it over SSH using an existing ssh deploy target's host, credentials and host key. Kind pfsense runs it as a shell command on a firewall through an existing pfsense deploy target.
+      description: One command run after a server grant deploys. Kind ssh runs it over SSH using an existing ssh or pikvm deploy target's host, credentials and host key. Kind pfsense runs it as a shell command on a firewall through an existing pfsense deploy target.
       required: [targetId, command]
       properties:
-        kind: {type: string, enum: [ssh, pfsense], default: ssh, description: What runs the command. Rows saved before kinds existed read as ssh.}
+        kind: {type: string, enum: [ssh, pfsense], default: ssh, description: "What runs the command. Kind ssh takes an ssh or pikvm target. Rows saved before kinds existed read as ssh."}
         targetId: {type: string, format: uuid, description: A deploy target in the same org whose type matches the kind. Rows saved before kinds existed used the name sshTargetId; the server still reads that.}
         command: {type: string, minLength: 1, maxLength: 512, description: Command to run on that host.}
         timeoutSeconds: {type: integer, minimum: 5, maximum: 300, default: 60, description: Time allowed for connecting and running.}

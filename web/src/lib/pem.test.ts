@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, it } from 'vitest';
-import { appendPem, cnOfDn, derToPem, fileBytesToPem, parseCert, privateKeyProblem, summarizeBundle } from './pem';
+import { appendPem, cnOfDn, derToPem, fileBytesToPem, parseCert, privateKeyNote, privateKeyProblem, summarizeBundle } from './pem';
 
 const fixtures = path.resolve(import.meta.dirname, '../../e2e/fixtures');
 const PEM = readFileSync(path.join(fixtures, 'ca.pem'), 'utf8');
@@ -47,7 +47,21 @@ it('privateKeyProblem accepts unencrypted PEM private keys', () => {
 it('privateKeyProblem rejects certificates, junk, encrypted keys and oversize input', () => {
   expect(privateKeyProblem(PEM)).not.toBeNull();
   expect(privateKeyProblem('junk')).not.toBeNull();
-  expect(privateKeyProblem('-----BEGIN ENCRYPTED PRIVATE KEY-----\nx\n')).toBe('Passphrase-protected keys are not supported.');
-  expect(privateKeyProblem('-----BEGIN RSA PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\nx\n')).toBe('Passphrase-protected keys are not supported.');
+  expect(privateKeyProblem('-----BEGIN ENCRYPTED PRIVATE KEY-----\nx\n')).toBe('Encrypted PKCS#8 keys are not supported; convert with ssh-keygen -p.');
+  expect(privateKeyProblem('-----BEGIN RSA PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\nx\n')).toBeNull();
   expect(privateKeyProblem(`-----BEGIN PRIVATE KEY-----\n${'a'.repeat(8200)}`)).not.toBeNull();
+});
+
+function opensshKey(cipher: string): string {
+  const str = (x: string) => [0, 0, 0, x.length, ...[...x].map((c) => c.charCodeAt(0))];
+  const bytes = [...[...'openssh-key-v1'].map((c) => c.charCodeAt(0)), 0, ...str(cipher), ...str('none'), ...str(''), 0, 0, 0, 1];
+  return `-----BEGIN OPENSSH PRIVATE KEY-----\n${btoa(String.fromCharCode(...bytes))}\n-----END OPENSSH PRIVATE KEY-----\n`;
+}
+
+it('privateKeyNote flags passphrase-protected PEM and OpenSSH keys', () => {
+  const note = 'This key is passphrase-protected; enter its passphrase below.';
+  expect(privateKeyNote('-----BEGIN RSA PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\nx\n')).toBe(note);
+  expect(privateKeyNote(opensshKey('aes256-ctr'))).toBe(note);
+  expect(privateKeyNote(opensshKey('none'))).toBeNull();
+  expect(privateKeyNote('-----BEGIN RSA PRIVATE KEY-----\nabc\n-----END RSA PRIVATE KEY-----\n')).toBeNull();
 });

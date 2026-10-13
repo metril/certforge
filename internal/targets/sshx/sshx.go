@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
@@ -29,9 +30,10 @@ type Opts struct {
 	// User is the login name.
 	User string
 	// Password and PrivateKeyPEM are the auth methods; at least one is
-	// required. The key must not be passphrase-protected.
-	Password      string
-	PrivateKeyPEM string
+	// required. PrivateKeyPassphrase decrypts a passphrase-protected key.
+	Password             string
+	PrivateKeyPEM        string
+	PrivateKeyPassphrase string
 	// HostKey is the pinned server key: a known_hosts-style line or a bare
 	// "<type> <base64>" public key. It is required.
 	HostKey string
@@ -44,6 +46,41 @@ type Opts struct {
 // Client is an established SSH connection.
 type Client struct {
 	c *ssh.Client
+}
+
+// Private key errors from ParseSigner.
+var (
+	ErrInvalidKey         = errors.New("not a valid PEM private key")
+	ErrPassphraseRequired = errors.New("private key is passphrase-protected; set the passphrase")
+	ErrWrongPassphrase    = errors.New("wrong passphrase for the private key")
+)
+
+// ParseSigner parses a PEM private key (OpenSSH, PKCS#1 or PKCS#8),
+// decrypting it with passphrase when it is protected. CRLF line endings and
+// surrounding whitespace are tolerated. Errors wrap ErrInvalidKey,
+// ErrPassphraseRequired or ErrWrongPassphrase.
+func ParseSigner(pem, passphrase string) (ssh.Signer, error) {
+	b := []byte(strings.TrimSpace(strings.ReplaceAll(pem, "\r\n", "\n")) + "\n")
+	signer, err := ssh.ParsePrivateKey(b)
+	if err == nil {
+		return signer, nil
+	}
+	var pm *ssh.PassphraseMissingError
+	if !errors.As(err, &pm) {
+		return nil, ErrInvalidKey
+	}
+	if passphrase == "" {
+		return nil, ErrPassphraseRequired
+	}
+	signer, err = ssh.ParsePrivateKeyWithPassphrase(b, []byte(passphrase))
+	switch {
+	case err == nil:
+		return signer, nil
+	case errors.Is(err, x509.IncorrectPasswordError):
+		return nil, ErrWrongPassphrase
+	default:
+		return nil, ErrInvalidKey
+	}
 }
 
 // ParseHostKey accepts a known_hosts line or a bare "<type> <base64>" key.
@@ -81,7 +118,7 @@ func Dial(ctx context.Context, o Opts) (*Client, error) {
 	}
 	var auth []ssh.AuthMethod
 	if o.PrivateKeyPEM != "" {
-		signer, err := ssh.ParsePrivateKey([]byte(o.PrivateKeyPEM))
+		signer, err := ParseSigner(o.PrivateKeyPEM, o.PrivateKeyPassphrase)
 		if err != nil {
 			return nil, fmt.Errorf("sshx: parse private key: %w", err)
 		}

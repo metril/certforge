@@ -179,7 +179,27 @@ export function cnOfDn(dn: string): string {
 /** Advisory client check for an SSH private key; the server stays the authority. */
 export function privateKeyProblem(text: string): string | null {
   if (text.length > 8192) return 'Private key is longer than 8192 characters.';
-  if (/ENCRYPTED PRIVATE KEY/.test(text) || /Proc-Type:\s*4,ENCRYPTED/.test(text)) return 'Passphrase-protected keys are not supported.';
+  if (/ENCRYPTED PRIVATE KEY/.test(text)) return 'Encrypted PKCS#8 keys are not supported; convert with ssh-keygen -p.';
   if (!/-----BEGIN ([A-Z0-9]+ )*PRIVATE KEY-----/.test(text)) return 'Not a PEM private key.';
   return null;
+}
+
+/** The OpenSSH cipher name (e.g. "none", "aes256-ctr"), or null when `text` isn't an OpenSSH key. */
+function opensshCipher(text: string): string | null {
+  const m = /-----BEGIN OPENSSH PRIVATE KEY-----([\s\S]*?)-----END OPENSSH PRIVATE KEY-----/.exec(text);
+  if (!m) return null;
+  const bytes = b64ToBytes(m[1]!.replace(/\s+/g, '').slice(0, 96));
+  const magic = 'openssh-key-v1\0';
+  if (!bytes || bytes.length < magic.length + 4) return null;
+  for (let i = 0; i < magic.length; i++) if (bytes[i] !== magic.charCodeAt(i)) return null;
+  const o = magic.length;
+  const len = ((bytes[o]! << 24) | (bytes[o + 1]! << 16) | (bytes[o + 2]! << 8) | bytes[o + 3]!) >>> 0;
+  if (o + 4 + len > bytes.length) return null;
+  return new TextDecoder().decode(bytes.subarray(o + 4, o + 4 + len));
+}
+
+/** A non-blocking note when the key is passphrase-protected. */
+export function privateKeyNote(text: string): string | null {
+  const enc = /Proc-Type:\s*4,ENCRYPTED/.test(text) || (opensshCipher(text) ?? 'none') !== 'none';
+  return enc ? 'This key is passphrase-protected; enter its passphrase below.' : null;
 }

@@ -184,7 +184,8 @@ test('saved credential: attach to two targets, rotate, delete blocked, detach, d
   const credTable = page.getByRole('table', { name: 'Deploy credentials' });
   await expect(credTable.getByRole('row', { name: new RegExp(cred) })).toBeVisible();
 
-  // Attach it to two pfSense targets; the login fields disappear.
+  // Attach it to two pfSense targets; the login fields it supplies show
+  // disabled with the credential's values.
   for (const [i, name] of targets.entries()) {
     await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
     await page.getByRole('button', { name: 'Add target' }).first().click();
@@ -194,8 +195,11 @@ test('saved credential: attach to two targets, rotate, delete blocked, detach, d
     await sheet.getByLabel('API URL').fill(`https://fw${i}.example.net/api/v2`);
     await sheet.getByRole('combobox', { name: 'Credential' }).click();
     await page.getByRole('option', { name: new RegExp(cred) }).click();
-    await expect(sheet.getByLabel('Username', { exact: true })).toHaveCount(0);
+    const username = sheet.getByLabel('Username', { exact: true });
+    await expect(username).toBeDisabled();
+    await expect(username).toHaveValue('certforge');
     await expect(sheet.getByLabel('Password', { exact: true })).toHaveCount(0);
+    await expect(sheet.getByText('Stored', { exact: true })).toBeVisible();
     if (i === 0) await snap(page, 'target-sheet-credential');
     await sheet.getByRole('button', { name: 'Save' }).click();
     await expect(sheet).toBeHidden();

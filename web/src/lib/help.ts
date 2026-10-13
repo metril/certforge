@@ -356,6 +356,7 @@ export const help = {
   'target.vaultKv': { text: 'CertForge writes the files to Vault KV itself. No client is involved.', learnMore: 'guide/delivery.md#vault-kv' },
   'target.authentik': { text: 'CertForge pushes the certificate and key into Authentik’s keypair store itself. No client is involved.', learnMore: 'guide/delivery.md#authentik' },
   'target.ssh': { text: 'CertForge connects over SSH, writes the files and runs your commands itself. The host key is pinned; get it with ssh-keyscan.', learnMore: 'guide/delivery.md#ssh' },
+  'target.pikvm': { text: "CertForge logs in over SSH, writes kvmd's nginx certificate and key, and restarts kvmd-nginx; rw/ro is handled.", learnMore: 'guide/delivery.md#pikvm' },
   'target.pfsense': { text: 'CertForge logs in to the pfSense Plus REST API and updates the named certificate in place, so WebGUI and VPN references keep working.', learnMore: 'guide/delivery.md#pfsense-plus' },
   'target.truenas': { text: 'CertForge imports the certificate into TrueNAS SCALE 25.10+ over its API and can make it the web UI certificate. Older CertForge certificates are removed.', learnMore: 'guide/delivery.md#truenas-scale' },
   'target.routeros': { text: 'CertForge uploads the certificate over SCP, imports it through the REST API and binds it to the chosen services. The SSH host key is pinned.', learnMore: 'guide/delivery.md#mikrotik-routeros' },

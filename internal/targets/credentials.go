@@ -10,6 +10,9 @@ import (
 	"sync"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
+
+	"github.com/metril/certforge/internal/delivery"
+	"github.com/metril/certforge/internal/targets/sshx"
 )
 
 // Credential kinds. Field names match the target fields a credential supplies.
@@ -34,7 +37,8 @@ var credentialKindSchemas = map[string]json.RawMessage{
   "properties": {
     "username": {"type": "string", "minLength": 1, "title": "Username"},
     "password": {"type": "string", "secret": true, "title": "Password"},
-    "privateKey": {"type": "string", "format": "private-key", "secret": true, "maxLength": 8192, "title": "Private key", "description": "PEM private key (not passphrase-protected)."}
+    "privateKey": {"type": "string", "format": "private-key", "secret": true, "maxLength": 8192, "title": "Private key", "description": "PEM private key (OpenSSH, PKCS#1 or PKCS#8)."},
+    "privateKeyPassphrase": {"type": "string", "secret": true, "maxLength": 1024, "title": "Key passphrase"}
   }
 }`),
 	CredKindPassword: json.RawMessage(`{
@@ -269,6 +273,22 @@ func ValidateCredential(kind string, config json.RawMessage) error {
 	}
 	if err := sc.Validate(inst); err != nil {
 		return fmt.Errorf("targets: %w", err)
+	}
+	if kind == CredKindSSH {
+		var c struct {
+			PrivateKey string `json:"privateKey"`
+			Passphrase string `json:"privateKeyPassphrase"`
+		}
+		if err := json.Unmarshal(config, &c); err != nil {
+			return fmt.Errorf("targets: %w", err)
+		}
+		if c.PrivateKey != "" {
+			if _, err := sshx.ParseSigner(c.PrivateKey, c.Passphrase); err != nil {
+				return &delivery.FieldError{Field: "config.privateKey", Msg: err.Error()}
+			}
+		} else if c.Passphrase != "" {
+			return &delivery.FieldError{Field: "config.privateKeyPassphrase", Msg: "set a private key to use a passphrase"}
+		}
 	}
 	return nil
 }

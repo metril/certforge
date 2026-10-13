@@ -338,7 +338,7 @@ it('post action needs a target and command', async () => {
   await user.click(await screen.findByRole('option', { name: /^api/ }));
   await user.click(within(dialog).getByRole('switch', { name: 'Post action' }));
   await user.click(within(dialog).getByRole('button', { name: 'Grant' }));
-  expect(await within(dialog).findByText('Pick an SSH target and enter a command.')).toBeInTheDocument();
+  expect(await within(dialog).findByText('Pick an SSH or PiKVM target and enter a command.')).toBeInTheDocument();
   expect(posted).toBeUndefined();
 });
 

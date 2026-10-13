@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/pem"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -170,5 +171,53 @@ func TestWriteFileSCPRemoteError(t *testing.T) {
 		if err := c.WriteFileSCP(context.Background(), n, nil, 0o644); err == nil {
 			t.Fatalf("want bad name error for %q", n)
 		}
+	}
+}
+
+func keyPEM(t *testing.T, priv ed25519.PrivateKey, pass string) string {
+	t.Helper()
+	var blk *pem.Block
+	var err error
+	if pass == "" {
+		blk, err = ssh.MarshalPrivateKey(priv, "")
+	} else {
+		blk, err = ssh.MarshalPrivateKeyWithPassphrase(priv, "", []byte(pass))
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(pem.EncodeToMemory(blk))
+}
+
+func TestParseSigner(t *testing.T) {
+	_, priv := newSigner(t)
+	enc := keyPEM(t, priv, "pw")
+	if _, err := ParseSigner(enc, "pw"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseSigner(enc, ""); !errors.Is(err, ErrPassphraseRequired) {
+		t.Fatal(err)
+	}
+	if _, err := ParseSigner(enc, "bad"); !errors.Is(err, ErrWrongPassphrase) {
+		t.Fatal(err)
+	}
+	plain := keyPEM(t, priv, "")
+	if _, err := ParseSigner(strings.ReplaceAll(plain, "\n", "\r\n"), ""); err != nil {
+		t.Fatalf("CRLF: %v", err)
+	}
+	if _, err := ParseSigner("  "+strings.TrimSpace(plain)+"  ", ""); err != nil {
+		t.Fatalf("untrimmed: %v", err)
+	}
+	if _, err := ParseSigner("junk", ""); !errors.Is(err, ErrInvalidKey) {
+		t.Fatal(err)
+	}
+}
+
+func TestKeyAuthEncrypted(t *testing.T) {
+	cs, priv := newSigner(t)
+	s := startServer(t, cs.PublicKey())
+	c := dial(t, s, Opts{PrivateKeyPEM: keyPEM(t, priv, "pw"), PrivateKeyPassphrase: "pw"})
+	if _, _, code, err := c.Run(context.Background(), "true"); err != nil || code != 0 {
+		t.Fatal(code, err)
 	}
 }

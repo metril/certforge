@@ -8,6 +8,10 @@ const FROM_URL = new Set(['pfsense', 'truenas', 'routeros', 'authentik']);
 export function verifyDefault(target: Pick<DeployTarget, 'type' | 'config'> | undefined): VerifyDefault | null {
   if (!target || target.type === 'vault-kv') return null;
   const empty = { host: '', port: '443' };
+  if (target.type === 'pikvm') {
+    const h = (target.config as Record<string, unknown> | undefined)?.host;
+    return { host: typeof h === 'string' ? h : '', port: '443' };
+  }
   if (!FROM_URL.has(target.type)) return empty;
   const raw = (target.config as Record<string, unknown> | undefined)?.url;
   if (typeof raw !== 'string') return empty;

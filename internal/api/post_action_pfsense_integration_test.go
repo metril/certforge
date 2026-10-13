@@ -139,3 +139,20 @@ func TestGrantPfSenseUsage(t *testing.T) {
 		t.Fatalf("unknown grant: %v", err)
 	}
 }
+
+func TestServerGrantPiKVMPostAction(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	targetID, _ := f.serverTarget(t, "vault", nil)
+	certID, _ := f.currentCert(t, "web")
+	pk := f.sshTargetIn(t, f.org, "pikvm")
+	if _, err := f.pool.Exec(context.Background(), `UPDATE deploy_targets SET type = 'pikvm' WHERE id = $1`, pk); err != nil {
+		t.Fatal(err)
+	}
+	res, err := f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.ServerGrantInput{CertificateId: certID, PostAction: &gen.PostAction{TargetId: pk, Command: "true"}}})
+	if err != nil {
+		t.Fatalf("ssh post action on a pikvm target: %v", err)
+	}
+	_ = res.(gen.CreateServerGrant201JSONResponse)
+}

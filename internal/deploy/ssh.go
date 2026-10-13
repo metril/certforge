@@ -41,18 +41,20 @@ type SSHFile struct {
 	Mode    string `json:"mode,omitempty"`
 }
 
-// SSHConfig is an ssh target's config; Password and PrivateKey are secret.
+// SSHConfig is an ssh target's config; Password, PrivateKey and
+// PrivateKeyPassphrase are secret.
 type SSHConfig struct {
-	Host           string    `json:"host"`
-	Port           int       `json:"port,omitempty"`
-	Username       string    `json:"username"`
-	Password       string    `json:"password,omitempty"`
-	PrivateKey     string    `json:"privateKey,omitempty"`
-	HostKey        string    `json:"hostKey"`
-	Files          []SSHFile `json:"files"`
-	PreCommand     string    `json:"preCommand,omitempty"`
-	PostCommand    string    `json:"postCommand,omitempty"`
-	TimeoutSeconds int       `json:"timeoutSeconds,omitempty"`
+	Host                 string    `json:"host"`
+	Port                 int       `json:"port,omitempty"`
+	Username             string    `json:"username"`
+	Password             string    `json:"password,omitempty"`
+	PrivateKey           string    `json:"privateKey,omitempty"`
+	PrivateKeyPassphrase string    `json:"privateKeyPassphrase,omitempty"`
+	HostKey              string    `json:"hostKey"`
+	Files                []SSHFile `json:"files"`
+	PreCommand           string    `json:"preCommand,omitempty"`
+	PostCommand          string    `json:"postCommand,omitempty"`
+	TimeoutSeconds       int       `json:"timeoutSeconds,omitempty"`
 }
 
 const sshSchema = `{
@@ -68,7 +70,8 @@ const sshSchema = `{
     "port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 22, "title": "Port"},
     "username": {"type": "string", "title": "Username"},
     "password": {"type": "string", "secret": true, "title": "Password", "description": "Password login. Provide a password, a private key, or both."},
-    "privateKey": {"type": "string", "format": "private-key", "secret": true, "maxLength": 8192, "title": "Private key", "description": "PEM private key (not passphrase-protected)."},
+    "privateKey": {"type": "string", "format": "private-key", "secret": true, "maxLength": 8192, "title": "Private key", "description": "PEM private key (OpenSSH, PKCS#1 or PKCS#8)."},
+    "privateKeyPassphrase": {"type": "string", "secret": true, "maxLength": 1024, "title": "Key passphrase", "description": "Passphrase of the private key, when it is protected."},
     "hostKey": {"type": "string", "format": "ssh-host-key", "maxLength": 2048, "title": "Host key", "description": "Pinned server key: a known_hosts line or '<type> <base64>'. Fetch it from the host below, or run ssh-keyscan -t ed25519 <host>."},
     "files": {
       "type": "array", "minItems": 1, "maxItems": 16, "title": "Files",
@@ -134,6 +137,9 @@ func (t SSH) Parse(raw json.RawMessage) (targets.Config, error) {
 	if c.Password == "" && c.PrivateKey == "" {
 		return bad("password", "a password or a private key is required")
 	}
+	if fe := checkSSHKey(c.PrivateKey, c.PrivateKeyPassphrase); fe != nil {
+		return targets.Config{}, fe
+	}
 	if _, err := sshx.ParseHostKey(c.HostKey); err != nil {
 		return bad("hostKey", "must be a known_hosts line or '<type> <base64>' public key")
 	}
@@ -175,6 +181,28 @@ func (t SSH) Parse(raw json.RawMessage) (targets.Config, error) {
 	}
 	u := "ssh://" + net.JoinHostPort(c.Host, strconv.Itoa(c.Port))
 	return targets.Config{Public: pub, Secrets: secrets, NeedsKey: needsKey, URLs: []string{u}}, nil
+}
+
+// checkSSHKey validates a private key and its passphrase; nil when no key is
+// set and no passphrase was given.
+func checkSSHKey(key, pass string) *delivery.FieldError {
+	if key == "" {
+		if pass != "" {
+			return &delivery.FieldError{Field: "config.privateKeyPassphrase", Msg: "set a private key to use a passphrase"}
+		}
+		return nil
+	}
+	_, err := sshx.ParseSigner(key, pass)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, sshx.ErrPassphraseRequired):
+		return &delivery.FieldError{Field: "config.privateKey", Msg: "passphrase-protected: set privateKeyPassphrase"}
+	case errors.Is(err, sshx.ErrWrongPassphrase):
+		return &delivery.FieldError{Field: "config.privateKey", Msg: "wrong passphrase"}
+	default:
+		return &delivery.FieldError{Field: "config.privateKey", Msg: "not a valid PEM private key"}
+	}
 }
 
 // sshContent resolves one file's bytes from the material or layout files.
@@ -236,9 +264,14 @@ func (SSH) Deploy(ctx context.Context, req targets.Request) (targets.Result, err
 	if err := json.Unmarshal(req.Config, &cfg); err != nil {
 		return targets.Result{}, err
 	}
-	secrets := map[string]string{"password": cfg.Password, "privateKey": cfg.PrivateKey}
+	return sshDeploy(ctx, req, cfg, "ssh")
+}
+
+// sshDeploy runs cfg against the host; label names the target type in errors.
+func sshDeploy(ctx context.Context, req targets.Request, cfg SSHConfig, label string) (targets.Result, error) {
+	secrets := map[string]string{"password": cfg.Password, "privateKey": cfg.PrivateKey, "privateKeyPassphrase": cfg.PrivateKeyPassphrase}
 	fail := func(err error) (targets.Result, error) {
-		return targets.Result{}, errors.New("deploy: ssh: " + targets.Redact(err, secrets, 500))
+		return targets.Result{}, errors.New("deploy: " + label + ": " + targets.Redact(err, secrets, 500))
 	}
 	// Resolve every file before connecting, so a bad name runs nothing.
 	data := make([][]byte, len(cfg.Files))
@@ -256,7 +289,7 @@ func (SSH) Deploy(ctx context.Context, req targets.Request) (targets.Result, err
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cl, err := sshx.Dial(ctx, sshx.Opts{Host: cfg.Host, Port: cfg.Port, User: cfg.Username, Password: cfg.Password,
-		PrivateKeyPEM: cfg.PrivateKey, HostKey: cfg.HostKey, AllowLoopback: req.HTTP.AllowLoopback, Timeout: timeout})
+		PrivateKeyPEM: cfg.PrivateKey, PrivateKeyPassphrase: cfg.PrivateKeyPassphrase, HostKey: cfg.HostKey, AllowLoopback: req.HTTP.AllowLoopback, Timeout: timeout})
 	if err != nil {
 		return fail(err)
 	}
@@ -274,15 +307,15 @@ func (SSH) Deploy(ctx context.Context, req targets.Request) (targets.Result, err
 		}
 		req.Recorder.RecordHook(ctx, r)
 	}
-	run := func(label, cmd string) error {
+	run := func(what, cmd string) error {
 		start := time.Now()
 		stdout, stderr, code, err := cl.Run(ctx, cmd)
 		record(ctx, "pre_deploy", cmd, start, stdout, stderr, code, err)
 		if err != nil {
-			return fmt.Errorf("%s: %w", label, err)
+			return fmt.Errorf("%s: %w", what, err)
 		}
 		if code != 0 {
-			return fmt.Errorf("%s: exit %d: %s", label, code, sshSnippet(stderr))
+			return fmt.Errorf("%s: exit %d: %s", what, code, sshSnippet(stderr))
 		}
 		return nil
 	}

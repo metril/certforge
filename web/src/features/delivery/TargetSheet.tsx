@@ -8,7 +8,7 @@ import { ApiError, errorMessage } from '@/api/errors';
 import { createDeployTarget, layoutsQuery, updateDeployTarget } from '@/api/queries/delivery';
 import { invalidateGrants } from '@/api/queries/grants';
 import { CREDENTIAL_KIND_LABEL, deployCredentialsQuery, suppliedFields } from '@/api/queries/deployCredentials';
-import type { DeployTarget, ProviderSchema } from '@/api/types';
+import { UNCHANGED, type DeployTarget, type ProviderSchema } from '@/api/types';
 import { Combobox } from '@/components/Combobox';
 import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
@@ -25,7 +25,7 @@ import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { caBundleScope, can } from '@/lib/permissions';
 import { stripSecretDefaults, storedSecretsFor, settledConfig } from '@/lib/secretForm';
-import { PRESET_HIDDEN_KEYS, RUNS_ON_META, SSH_PRESETS, credentialKindsOf, defaultRunsOn, forcedRunsOn, keyGateBlocks, locationChanged, omitFields, presetFor, toTargetInput, typeHelpKey, typeMeta } from '@/lib/targets';
+import { RUNS_ON_META, credentialKindsOf, defaultRunsOn, forcedRunsOn, keyGateBlocks, locationChanged, toTargetInput, typeHelpKey, typeMeta, unrequireFields } from '@/lib/targets';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 
 function omitKeys(o: Record<string, unknown>, keys: string[]): Record<string, unknown> {
@@ -45,7 +45,6 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
   const initialMeta = typeMeta(types, target?.type ?? types[0]!.code) ?? types[0]!;
   const [runsOn, setRunsOn] = useState<'server' | 'agent'>(target?.runsOn ?? defaultRunsOn(initialMeta));
   const [config, setConfig] = useState<Record<string, unknown>>((target?.config as Record<string, unknown> | undefined) ?? {});
-  const [preset, setPreset] = useState(() => (target?.type === 'ssh' ? presetFor((target.config as Record<string, unknown> | undefined) ?? {}) : 'custom'));
   const [nameError, setNameError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [extra, setExtra] = useState<ErrorSchema | null>(null);
@@ -62,12 +61,23 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
   const credential = credentialId ? credentials.find((c) => c.id === credentialId) : undefined;
   // Wait for the list before showing the form, so a credential's fields never flash in.
   const credPending = !!credentialId && credsQ.isPending;
-  const supplied = useMemo(() => (credential ? suppliedFields(credential) : []), [credential]);
-  const schema = useMemo(() => omitFields(fullSchema, supplied), [fullSchema, supplied]);
   // Attaching a credential clears the target's own stored secrets, so none are kept.
-  const storedSecrets = credentialId !== initialCredId ? [] : storedSecretsFor(target, type);
+  const storedSecrets = useMemo(() => (credentialId !== initialCredId ? [] : storedSecretsFor(target, type)), [credentialId, initialCredId, target, type]);
+  // Fields the credential supplies stay on the form, read-only and filled from it.
+  const supplied = useMemo(() => {
+    const props = (fullSchema.properties ?? {}) as Record<string, unknown>;
+    return credential ? suppliedFields(credential).filter((k) => k in props) : [];
+  }, [credential, fullSchema]);
+  const schema = useMemo(() => unrequireFields(fullSchema, supplied), [fullSchema, supplied]);
+  const formValue = useMemo(() => {
+    if (!credential) return config;
+    const out = { ...config, ...credential.config };
+    for (const k of credential.storedSecrets ?? []) if (supplied.includes(k)) out[k] = UNCHANGED;
+    return out;
+  }, [config, credential, supplied]);
+  const formStored = useMemo(() => [...new Set([...storedSecrets, ...(credential?.storedSecrets ?? []).filter((k) => supplied.includes(k))])], [storedSecrets, credential, supplied]);
   // Settled so the form's mount-time onChange (defaults, secret sentinels) is not an edit.
-  const dirty = useDirty({ name, type, runsOn, credentialId, config: settledConfig(schema, config, storedSecrets) });
+  const dirty = useDirty({ name, type, runsOn, credentialId, config: omitKeys(settledConfig(schema, omitKeys(config, supplied), storedSecrets), supplied) });
   const canExportKeys = can(me, 'keys:export', orgId);
   const layoutsQ = useQuery({ ...layoutsQuery(orgId), enabled: type === 'ssh' });
   // The SSH files editor suggests layout file names: the dispatcher resolves
@@ -112,7 +122,6 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
     setType(v);
     setConfig({});
     setCredentialId(null);
-    setPreset('custom');
     setRunsOn(defaultRunsOn(newMeta));
     setExtra(null);
     setFormError(null);
@@ -123,9 +132,8 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
       ? { includeKey: { 'ui:description': help['target.includeKey'].text, 'ui:options': { permission: 'keys:export', allowed: runsOn !== 'server' || canExportKeys } } }
       : undefined;
 
-  const presetHidden =
-    type === 'ssh' && preset === 'kvm' && !readOnly ? Object.fromEntries(PRESET_HIDDEN_KEYS.map((k) => [k, { 'ui:widget': 'hidden' }])) : undefined;
-  const uiOverrides = includeKeyOverride || presetHidden ? { ...includeKeyOverride, ...presetHidden } : undefined;
+  const suppliedUi = supplied.length > 0 ? Object.fromEntries(supplied.map((k) => [k, { 'ui:disabled': true, 'ui:description': 'From the credential' }])) : undefined;
+  const uiOverrides = includeKeyOverride || suppliedUi ? { ...includeKeyOverride, ...suppliedUi } : undefined;
 
   const blocked = keyGateBlocks(me, orgId, runsOn, meta.keyPolicy, config);
   // Attaching a credential, or moving a credential-backed target to another
@@ -138,9 +146,6 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
   const pickCredential = (v: string | undefined) => {
     const id = !v || v === 'manual' ? null : v;
     setCredentialId(id);
-    const c = id ? credentials.find((x) => x.id === id) : undefined;
-    // Drop what the credential now supplies; the reduced schema rejects extra keys.
-    if (c) setConfig((prev) => omitKeys(prev, suppliedFields(c)));
     setExtra(null);
     setFormError(null);
   };
@@ -240,24 +245,6 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
               ]}
             />
           </Field>
-          {type === 'ssh' && !readOnly && (
-            <Field id="target-preset" label="Preset">
-              <SegmentedControl<string>
-                id="target-preset"
-                aria-label="Preset"
-                value={preset}
-                onChange={(v) => {
-                  setPreset(v);
-                  // Keep what is already typed (host, credentials); a preset only sets files and commands.
-                  const p = SSH_PRESETS.find((x) => x.id === v);
-                  if (p && v !== 'custom') setConfig((c) => ({ ...c, files: undefined, preCommand: undefined, postCommand: undefined, ...p.config }));
-                  setExtra(null);
-                }}
-                options={SSH_PRESETS.map((p) => ({ value: p.id, label: p.label }))}
-              />
-              {SSH_PRESETS.find((p) => p.id === preset)?.summary && <p className="mt-1 text-xs text-ink-muted">{SSH_PRESETS.find((p) => p.id === preset)?.summary}</p>}
-            </Field>
-          )}
           {credKinds.length > 0 && (
             <Field id="target-credential" label="Credential" help="target.credential">
               {(() => {
@@ -302,12 +289,12 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
               key={credentialId ?? 'manual'}
               ref={formRef}
               schema={schema}
-              value={config}
+              value={formValue}
               onChange={(v) => {
-                setConfig(v);
+                setConfig(omitKeys(v, supplied));
                 setExtra(null);
               }}
-              storedSecrets={storedSecrets}
+              storedSecrets={formStored}
               readonly={readOnly}
               extraErrors={extra ?? undefined}
               uiSchemaOverrides={uiOverrides}

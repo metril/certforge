@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, deployCredentialKinds, makeDeployCredential, makeTarget, meWith, org, sshSchema, targetTestSecret, targetVaultKv, testSecretSchema, traefikSchema, url, vaultKvSchema } from '@/test/fixtures';
+import { authHandlers, deployCredentialKinds, makeDeployCredential, makeTarget, meWith, org, pikvmSchema, sshSchema, targetTestSecret, targetVaultKv, testSecretSchema, traefikSchema, url, vaultKvSchema } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let posted: unknown;
@@ -226,21 +226,16 @@ it('target secrets not cached', async () => {
   expect(cached).not.toContain('s3cr3t-token');
 });
 
-it('ssh kvm preset hides files and commands; custom reveals them', async () => {
-  server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, sshSchema], notifiers: [], signers: [] })));
+it('pikvm form shows host, host key and key passphrase but no files', async () => {
+  server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, pikvmSchema], notifiers: [], signers: [] })));
   const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
   const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
-  expect(within(sheet).queryByRole('radio', { name: 'PiKVM / GL.iNet Comet' })).not.toBeInTheDocument();
-  await user.click(within(sheet).getByRole('radio', { name: /^SSH/ }));
-  await user.click(within(sheet).getByRole('radio', { name: 'PiKVM / GL.iNet Comet' }));
-  expect(await within(sheet).findByText(/restarts kvmd-nginx and runs ro after/)).toBeInTheDocument();
-  expect(within(sheet).queryByDisplayValue('/etc/kvmd/nginx/ssl/server.crt')).not.toBeInTheDocument();
-  expect(within(sheet).queryByDisplayValue('rw')).not.toBeInTheDocument();
-  expect(within(sheet).queryByRole('radio', { name: 'PiKVM (legacy paths)' })).not.toBeInTheDocument();
-  await user.click(within(sheet).getByRole('radio', { name: 'Custom' }));
-  expect(await within(sheet).findByDisplayValue('/etc/kvmd/nginx/ssl/server.crt')).toBeInTheDocument();
-  expect(within(sheet).getByDisplayValue('rw')).toBeInTheDocument();
-  expect(within(sheet).queryByText(/restarts kvmd-nginx and runs ro after/)).not.toBeInTheDocument();
+  await user.click(within(sheet).getByRole('radio', { name: /^PiKVM/ }));
+  expect(await within(sheet).findByLabelText('Host')).toBeInTheDocument();
+  expect(within(sheet).getByLabelText('Host key')).toBeInTheDocument();
+  expect(within(sheet).getByLabelText('Key passphrase')).toBeInTheDocument();
+  expect(within(sheet).queryByLabelText('Files')).not.toBeInTheDocument();
+  expect(within(sheet).queryByRole('radio', { name: 'Custom' })).not.toBeInTheDocument();
 });
 
 it('type field is radios with few types and a combobox with many', async () => {
@@ -261,9 +256,9 @@ it('type field is radios with few types and a combobox with many', async () => {
 
 describe('saved credentials', () => {
   const sshTarget = makeTarget({ id: 't-ssh', name: 'kvm', type: 'ssh', runsOn: 'server', credentialId: 'dc-1', config: { host: 'kvm.lan', port: 22, hostKey: 'ssh-ed25519 AAAA', files: [{ path: '/x.crt', content: 'fullchain', mode: '0644' }] } });
-  const useSsh = (targets = [makeTarget()]) =>
+  const useSsh = (targets = [makeTarget()], schema: typeof sshSchema | typeof pikvmSchema = sshSchema) =>
     server.use(
-      http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, sshSchema], deployCredentials: deployCredentialKinds, notifiers: [], signers: [] })),
+      http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, schema], deployCredentials: deployCredentialKinds, notifiers: [], signers: [] })),
       http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: targets })),
       http.get(url('/orgs/org-1/deploy-credentials'), () =>
         HttpResponse.json([makeDeployCredential(), makeDeployCredential({ id: 'dc-2', name: 'cloudflare', kind: 'token', config: {}, storedSecrets: ['token'] })]),
@@ -271,12 +266,11 @@ describe('saved credentials', () => {
     );
 
   it('picking a credential hides its fields and posts credentialId without them', async () => {
-    useSsh();
+    useSsh(undefined, pikvmSchema);
     const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
     const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
     expect(within(sheet).queryByRole('combobox', { name: 'Credential' })).not.toBeInTheDocument();
-    await user.click(within(sheet).getByRole('radio', { name: /^SSH/ }));
-    await user.click(within(sheet).getByRole('radio', { name: 'PiKVM / GL.iNet Comet' }));
+    await user.click(within(sheet).getByRole('radio', { name: /^PiKVM/ }));
     await user.type(within(sheet).getByLabelText('Name'), 'kvm');
     await user.type(within(sheet).getByLabelText('Host'), 'kvm.lan');
     await user.type(within(sheet).getByLabelText('Username'), 'typed');
@@ -285,11 +279,14 @@ describe('saved credentials', () => {
     // Only kinds the type accepts are offered.
     expect(screen.queryByRole('option', { name: /cloudflare/ })).not.toBeInTheDocument();
     await user.click(await screen.findByRole('option', { name: /lab ssh/ }));
-    expect(within(sheet).queryByLabelText('Username')).not.toBeInTheDocument();
+    const username = within(sheet).getByLabelText('Username');
+    expect(username).toBeDisabled();
+    expect(username).toHaveValue('root');
     expect(within(sheet).queryByLabelText('Private key')).not.toBeInTheDocument();
+    expect(within(sheet).getByText('Stored')).toBeInTheDocument();
     expect(within(sheet).getByText('Password')).toBeInTheDocument();
     await user.click(within(sheet).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(posted).toMatchObject({ type: 'ssh', credentialId: 'dc-1', config: { host: 'kvm.lan' } }));
+    await waitFor(() => expect(posted).toMatchObject({ type: 'pikvm', credentialId: 'dc-1', config: { host: 'kvm.lan' } }));
     expect((posted as { config: object }).config).not.toHaveProperty('username');
     expect((posted as { config: object }).config).not.toHaveProperty('privateKey');
   });
@@ -304,7 +301,7 @@ describe('saved credentials', () => {
     expect(select).toHaveTextContent('lab ssh');
     await user.hover(select.parentElement!.parentElement!);
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Needs the deploycreds:write permission');
-    expect(within(sheet).queryByLabelText('Username')).not.toBeInTheDocument();
+    expect(within(sheet).getByLabelText('Username')).toBeDisabled();
     expect(within(sheet).getByRole('button', { name: 'Save' })).toBeEnabled();
     await user.clear(within(sheet).getByLabelText('Host'));
     await user.type(within(sheet).getByLabelText('Host'), 'evil.lan');
@@ -329,6 +326,22 @@ describe('saved credentials', () => {
     await user.type(within(sheet).getByLabelText('Username'), 'root');
     await user.click(within(sheet).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(patched).toMatchObject({ credentialId: null, config: { username: 'root' } }));
+  });
+
+  it('prefill from the credential is not an edit and Enter manually frees the fields', async () => {
+    useSsh([sshTarget]);
+    const { user } = renderRoute('/o/acme/delivery/targets?edit=t-ssh');
+    const sheet = await screen.findByRole('dialog', { name: 'Edit kvm' });
+    expect(await within(sheet).findByLabelText('Username')).toHaveValue('root');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit kvm' })).not.toBeInTheDocument());
+    renderRoute('/o/acme/delivery/targets?edit=t-ssh');
+    const again = await screen.findByRole('dialog', { name: 'Edit kvm' });
+    await user.click(await within(again).findByRole('combobox', { name: 'Credential' }));
+    await user.click(await screen.findByRole('option', { name: 'Enter manually' }));
+    const u = within(again).getByLabelText('Username');
+    expect(u).toBeEnabled();
+    expect(u).toHaveValue('');
   });
 
   it('the detail sheet links to the credential', async () => {

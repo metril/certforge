@@ -101,42 +101,6 @@ export function toTargetInput(d: TargetDraft, schema: RJSFSchema, storedSecrets:
   return input;
 }
 
-export type SshPreset = { id: string; label: string; summary?: string; config: Record<string, unknown> };
-
-/** Starting configs for the ssh target type (PiKVM and GL.iNet Comet keep a read-only root filesystem; kvmd's nginx reads /etc/kvmd/nginx/ssl). */
-export const SSH_PRESETS: SshPreset[] = [
-  {
-    id: 'kvm',
-    label: 'PiKVM / GL.iNet Comet',
-    summary: 'Writes /etc/kvmd/nginx/ssl/server.crt and server.key; runs rw before, then restarts kvmd-nginx and runs ro after.',
-    config: {
-      files: [
-        { path: '/etc/kvmd/nginx/ssl/server.crt', content: 'fullchain', mode: '0644' },
-        { path: '/etc/kvmd/nginx/ssl/server.key', content: 'key', mode: '0600' },
-      ],
-      preCommand: 'rw',
-      postCommand: 'systemctl restart kvmd-nginx; rc=$?; ro; exit $rc',
-    },
-  },
-  { id: 'custom', label: 'Custom', config: {} },
-];
-
-/** The fields a preset owns; the form hides them while the preset is selected. */
-export const PRESET_HIDDEN_KEYS = ['files', 'preCommand', 'postCommand'];
-
-const presetKey = (c: Record<string, unknown>) =>
-  JSON.stringify([
-    ((c.files as { path?: unknown; content?: unknown; mode?: string }[] | undefined) ?? []).map((f) => [f.path, f.content, f.mode ?? '0644']),
-    c.preCommand ?? '',
-    c.postCommand ?? '',
-  ]);
-
-/** The preset an ssh config matches ('kvm'), else 'custom'. */
-export function presetFor(config: Record<string, unknown>): string {
-  const kvm = SSH_PRESETS.find((p) => p.id === 'kvm')!;
-  return presetKey(config ?? {}) === presetKey(kvm.config) ? 'kvm' : 'custom';
-}
-
 /** The deploy credential kinds a target type accepts (its schema's credentialKinds). */
 export function credentialKindsOf(schema: unknown): string[] {
   const k = (schema as { credentialKinds?: unknown } | null)?.credentialKinds;
@@ -150,6 +114,13 @@ export function omitFields(schema: RJSFSchema, fields: string[]): RJSFSchema {
   const properties = Object.fromEntries(Object.entries(schema.properties).filter(([k]) => !fields.includes(k)));
   const required = schema.required?.filter((k) => !fields.includes(k));
   return { ...schema, properties, required };
+}
+
+/** Drops fields from `required` but keeps them in the schema (shown read-only,
+ * filled from a credential). */
+export function unrequireFields(schema: RJSFSchema, fields: string[]): RJSFSchema {
+  if (fields.length === 0 || !schema.required) return schema;
+  return { ...schema, required: schema.required.filter((k) => !fields.includes(k)) };
 }
 
 // Mirrors the server's requireCredentialWrite: where a saved credential's
