@@ -14,6 +14,7 @@ import { SavedViews } from "@/components/SavedViews";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { IconButton } from "@/components/IconButton";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -30,6 +31,58 @@ import { fmtDateTime } from "@/lib/time";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 
 const col = columnHelper<UserDetail>();
+
+function GroupsCell({ groups }: { groups: string[] }) {
+  const [filter, setFilter] = useState("");
+  const n = groups.length;
+  const q = filter.trim().toLowerCase();
+  const shown = q ? groups.filter((g) => g.toLowerCase().includes(q)) : groups;
+  return (
+    <span className="flex flex-wrap gap-1">
+      {groups.slice(0, 3).map((x) => (
+        <Badge key={x} variant="secondary" className="font-mono">
+          {x}
+        </Badge>
+      ))}
+      {n > 3 && (
+        <Popover onOpenChange={(o) => !o && setFilter("")}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              aria-label={`Show all ${n} groups`}
+              className="inline-flex rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Badge variant="secondary">+{n - 3}</Badge>
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-72 p-2">
+            <p className="mb-1 text-xs text-ink-muted">All {n} groups</p>
+            {n > 8 && (
+              <Input
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Filter groups"
+                aria-label="Filter groups"
+                className="mb-1"
+              />
+            )}
+            {shown.length === 0 ? (
+              <p className="py-0.5 text-xs text-ink-muted">No matching groups</p>
+            ) : (
+              <ul className="max-h-64 overflow-y-auto">
+                {shown.map((g) => (
+                  <li key={g} className="font-mono text-xs py-0.5 truncate" title={g}>
+                    {g}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </PopoverContent>
+        </Popover>
+      )}
+    </span>
+  );
+}
 
 function issuerHost(u: UserDetail): string {
   if (u.localAdmin || !u.oidcIssuer) return "Local";
@@ -246,36 +299,7 @@ export function UsersTab() {
             col.accessor("groups", {
               header: "Groups",
               meta: { help: "user.groups" },
-              cell: (c) => {
-                const g = c.getValue();
-                return (
-                  <span className="flex flex-wrap gap-1">
-                    {g.slice(0, 3).map((x) => (
-                      <Badge key={x} variant="secondary" className="font-mono">
-                        {x}
-                      </Badge>
-                    ))}
-                    {g.length > 3 && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span
-                            tabIndex={0}
-                            aria-label={`${g.length - 3} more groups`}
-                            className="inline-flex rounded-md"
-                          >
-                            <Badge variant="secondary">+{g.length - 3}</Badge>
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="font-mono text-xs leading-snug">
-                          {g.slice(3).map((x) => (
-                            <div key={x}>{x}</div>
-                          ))}
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                  </span>
-                );
-              },
+              cell: (c) => <GroupsCell groups={c.getValue()} />,
             }),
             col.accessor("lastLogin", {
               header: "Last sign-in",

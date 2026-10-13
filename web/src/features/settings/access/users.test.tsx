@@ -256,7 +256,7 @@ it('shows a delete 409 inline and keeps the row', async () => {
   expect(within(table).getByText('Ann')).toBeInTheDocument();
 });
 
-it('shows the remaining groups in a tooltip on the +N badge', async () => {
+it('opens a popover listing all groups from the +N badge', async () => {
   const many = { ...annUser, groups: ['g1', 'g2', 'g3', 'g4-extra', 'g5-extra'] };
   server.use(...authHandlers({ authed: true }), http.get(url('/users'), () => HttpResponse.json({ items: [adminUser, many] })));
   const { user } = renderRoute('/settings/access');
@@ -264,7 +264,21 @@ it('shows the remaining groups in a tooltip on the +N badge', async () => {
   for (const g of ['g1', 'g2', 'g3']) expect(within(table).getByText(g)).toBeInTheDocument();
   expect(within(table).queryByText('g4-extra')).toBeNull();
   expect(within(table).getByText('+2')).toBeInTheDocument();
-  await user.hover(within(table).getByLabelText('2 more groups'));
-  expect((await screen.findAllByText('g4-extra')).length).toBeGreaterThan(0);
-  expect((await screen.findAllByText('g5-extra')).length).toBeGreaterThan(0);
+  await user.click(within(table).getByRole('button', { name: 'Show all 5 groups' }));
+  const dlg = await screen.findByRole('dialog');
+  for (const g of ['g1', 'g2', 'g3', 'g4-extra', 'g5-extra']) expect(within(dlg).getByText(g)).toBeInTheDocument();
+});
+
+it('filters the groups popover when there are many groups', async () => {
+  const groups = Array.from({ length: 10 }, (_, i) => `grp-${i}`);
+  const many = { ...annUser, groups };
+  server.use(...authHandlers({ authed: true }), http.get(url('/users'), () => HttpResponse.json({ items: [adminUser, many] })));
+  const { user } = renderRoute('/settings/access');
+  const table = await screen.findByRole('table', { name: 'Users' });
+  await user.click(within(table).getByRole('button', { name: 'Show all 10 groups' }));
+  const dlg = await screen.findByRole('dialog');
+  await user.type(within(dlg).getByLabelText('Filter groups'), 'GRP-7');
+  expect(within(dlg).getAllByRole('listitem')).toHaveLength(1);
+  expect(within(dlg).getByText('grp-7')).toBeInTheDocument();
+  expect(within(dlg).queryByText('grp-8')).toBeNull();
 });
