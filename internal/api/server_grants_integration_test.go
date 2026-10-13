@@ -20,6 +20,7 @@ import (
 
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/authn"
+	"github.com/metril/certforge/internal/authz"
 	"github.com/metril/certforge/internal/db/dbtest"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
@@ -1141,4 +1142,38 @@ func TestServerGrantVerifyOverCapAndInvalid(t *testing.T) {
 	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM client_cert_grants WHERE client_id IS NULL`).Scan(&n); err != nil || n != 0 {
 		t.Fatalf("grants after over-cap create = %d err %v (tx must roll back)", n, err)
 	}
+}
+
+// TestServerGrantUnchangedVerifyNeedsNoAlertsWrite: alerts:write guards
+// adding, moving or removing the grant's monitor, not every edit of a grant
+// that happens to have one — a clients:write caller can still change its
+// layout when the endpoint stays the same, and is refused when it moves.
+func TestServerGrantUnchangedVerifyNeedsNoAlertsWrite(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	targetID, _ := f.serverTarget(t, "vault", nil)
+	certID, _ := f.currentCert(t, "web")
+	res, err := f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+		Body: &gen.ServerGrantInput{CertificateId: certID, Verify: &gen.GrantVerify{Host: "kvm.example.test", Port: 443}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := res.(gen.CreateServerGrant201JSONResponse)
+
+	clientsOnly := authn.WithPrincipal(context.Background(), authn.Principal{
+		Kind: authn.KindAPIKey, UserID: uuid.New(), OrgIDs: []uuid.UUID{f.org},
+		Bindings: []authn.Binding{{Role: authz.RoleAdmin}},
+		APIKey:   &authn.APIKeyInfo{ID: uuid.New(), Scopes: []string{"clients:write"}, OrgID: &f.org},
+	})
+	same := &gen.GrantVerify{Host: "kvm.example.test", Port: 443}
+	if _, err := f.srv.UpdateGrant(clientsOnly, gen.UpdateGrantRequestObject{OrgId: f.org, Id: g.Id,
+		Body: &gen.GrantUpdate{Delivery: gen.GrantDelivery("push"), Verify: same}}); err != nil {
+		t.Fatalf("unchanged verify with clients:write only: %v", err)
+	}
+	_, err = f.srv.UpdateGrant(clientsOnly, gen.UpdateGrantRequestObject{OrgId: f.org, Id: g.Id,
+		Body: &gen.GrantUpdate{Delivery: gen.GrantDelivery("push"), Verify: &gen.GrantVerify{Host: "kvm.example.test", Port: 8443}}})
+	wantStatus(t, err, 403)
+	_, err = f.srv.UpdateGrant(clientsOnly, gen.UpdateGrantRequestObject{OrgId: f.org, Id: g.Id,
+		Body: &gen.GrantUpdate{Delivery: gen.GrantDelivery("push"), Verify: nil}})
+	wantStatus(t, err, 403)
 }

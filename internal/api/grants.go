@@ -823,7 +823,10 @@ func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequest
 		return nil, monErr
 	}
 	hasMon := monErr == nil
-	if verifyIn != nil || hasMon {
+	// A monitor is alert-side state, so adding, moving or removing one needs
+	// alerts:write; an unchanged endpoint lets a clients:write caller edit the
+	// rest of the grant.
+	if verifyChanged(verifyIn, hasMon, curMon) {
 		if _, err := authorize(ctx, authz.ActionAlertsWrite, &r.OrgId); err != nil {
 			return nil, err
 		}
@@ -1001,4 +1004,23 @@ func (s *Server) GetGrantPfSenseUsage(ctx context.Context, r gen.GetGrantPfSense
 		out.Refid = &refid
 	}
 	return gen.GetGrantPfSenseUsage200JSONResponse(out), nil
+}
+
+// verifyChanged reports whether in differs from the grant's current monitor:
+// one is set and the other is not, or the host, port or SNI moved.
+func verifyChanged(in *gen.GrantVerify, hasMon bool, cur sqlcgen.ExternalMonitor) bool {
+	if (in != nil) != hasMon {
+		return true
+	}
+	if in == nil {
+		return false
+	}
+	sni, curSni := "", ""
+	if in.Sni != nil {
+		sni = *in.Sni
+	}
+	if cur.Sni != nil {
+		curSni = *cur.Sni
+	}
+	return in.Host != cur.Host || in.Port != int(cur.Port) || sni != curSni
 }
