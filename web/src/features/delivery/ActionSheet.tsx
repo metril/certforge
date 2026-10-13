@@ -76,6 +76,7 @@ export function ActionSheet({ orgId, action, kinds, readOnly, onOpenChange }: Pr
     setExtra(null);
     setFormError(null);
     setShow(false);
+    if (m?.runsOn === 'agent') setOptional(false);
     if (m?.phaseHint) setPhase(m.phaseHint as ActionPhase);
   };
 
@@ -249,7 +250,7 @@ export function ActionSheet({ orgId, action, kinds, readOnly, onOpenChange }: Pr
                 <span className="text-sm text-ink-muted">seconds</span>
               </div>
             </Field>
-            <SwitchField id="action-optional" label="Optional" help="action.optional" checked={optional} onCheckedChange={setOptional} onText="Failure does not fail the deploy" offText="Failure fails the deploy" disabled={readOnly} />
+            {meta.runsOn !== 'agent' && <SwitchField id="action-optional" label="Optional" help="action.optional" checked={optional} onCheckedChange={setOptional} onText="Failure does not fail the deploy" offText="Failure fails the deploy" disabled={readOnly} />}
           </FormSection>
           {formError && (
             <p role="alert" className="text-sm">

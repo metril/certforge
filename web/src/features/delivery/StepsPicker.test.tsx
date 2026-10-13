@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
 import { authHandlers, makeAction, makeActionGroup, url } from '@/test/fixtures';
@@ -73,4 +73,35 @@ it('adds, orders and removes steps with badges', async () => {
   await user.click(screen.getByRole('button', { name: 'Remove web reload' }));
   expect(spy).toHaveBeenLastCalledWith([{ action: 'a-2' }, { action: 'a-1' }]);
   expect(screen.getByRole('link', { name: 'New action' })).toHaveAttribute('href', '/o/acme/delivery/actions?edit=new');
+});
+
+it('offers a group only when every member fits the side', async () => {
+  server.use(
+    ...authHandlers({ authed: true }),
+    http.get(url('/orgs/org-1/actions'), () => HttpResponse.json({ items: [makeAction(), makeAction({ id: 'a-3', name: 'ssh reload', kind: 'ssh', runsOn: 'server' })] })),
+    http.get(url('/orgs/org-1/action-groups'), () =>
+      HttpResponse.json({ items: [makeActionGroup({ id: 'g-mixed', name: 'mixed', actionIds: ['a-1', 'a-3'] }), makeActionGroup({ id: 'g-ok', name: 'agent only', actionIds: ['a-1'] }), makeActionGroup({ id: 'g-empty', name: 'empty', actionIds: [] })] }),
+    ),
+  );
+  const { user } = renderUI(<Harness runsOn="agent" />);
+  await user.click(await screen.findByRole('combobox', { name: 'Add from library' }));
+  expect(await screen.findByRole('option', { name: /agent only/ })).toBeInTheDocument();
+  expect(screen.getByRole('option', { name: /empty/ })).toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: /mixed/ })).not.toBeInTheDocument();
+});
+
+it('warns on restart steps outside the allowed targets, directly or via a group', async () => {
+  server.use(
+    ...authHandlers({ authed: true }),
+    http.get(url('/orgs/org-1/actions'), () =>
+      HttpResponse.json({ items: [makeAction({ id: 'r-1', name: 'bad restart', kind: 'restart', config: { target: 'docker:x' } }), makeAction({ id: 'r-2', name: 'good restart', kind: 'restart', config: { target: 'docker:y' } })] }),
+    ),
+    http.get(url('/orgs/org-1/action-groups'), () => HttpResponse.json({ items: [makeActionGroup({ actionIds: ['r-1'] })] })),
+  );
+  renderUI(<StepsPicker orgId="org-1" runsOn="agent" value={[{ action: 'r-1' }, { action: 'r-2' }, { group: 'ag-1' }]} onChange={() => {}} restartTargets={[{ target: 'docker:y', allowed: true }]} />);
+  await screen.findByText('bad restart');
+  const rows = within(screen.getByRole('list', { name: 'Step run order' })).getAllByRole('listitem');
+  await waitFor(() => expect(within(rows[0]!).getByText('Not allowed on this agent')).toBeInTheDocument());
+  expect(within(rows[1]!).queryByText('Not allowed on this agent')).not.toBeInTheDocument();
+  expect(within(rows[2]!).getByText('Not allowed on this agent')).toBeInTheDocument();
 });

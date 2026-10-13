@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, CircleAlert, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, CircleAlert, TriangleAlert, X } from 'lucide-react';
 import { actionGroupsQuery, actionsQuery } from '@/api/queries/delivery';
-import type { Action as StepAction, ActionGroup as StepGroup, GrantStep } from '@/api/types';
+import type { Action as StepAction, ActionGroup as StepGroup, Client, GrantStep } from '@/api/types';
 import { Combobox } from '@/components/Combobox';
 import { HelpTip } from '@/components/HelpTip';
 import { IconButton } from '@/components/IconButton';
@@ -33,19 +33,27 @@ type Props = {
   onChange: (v: GrantStep[]) => void;
   /** Where "New action" goes (the Actions page); opens in a new tab so the form keeps its state. */
   newActionHref?: string;
+  /** The agent's restart allow-list; restart steps outside it get a warning. Empty or absent means unknown. */
+  restartTargets?: Client['restartTargets'];
 };
 
 /** An ordered list of grant steps (library actions and groups) with a library picker. */
-export function StepsPicker({ orgId, runsOn, value, onChange, newActionHref }: Props) {
+export function StepsPicker({ orgId, runsOn, value, onChange, newActionHref, restartTargets = [] }: Props) {
   const actionsQ = useQuery(actionsQuery(orgId));
   const groupsQ = useQuery(actionGroupsQuery(orgId));
   const actions = actionsQ.data ?? [];
   const groups = groupsQ.data ?? [];
   const fits = (a: StepAction) => a.runsOn === runsOn;
+  const memberActions = (g: StepGroup) => g.actionIds.map((id) => actions.find((x) => x.id === id)).filter((a): a is StepAction => !!a);
+  const groupFits = (g: StepGroup) => memberActions(g).every(fits);
+  const disallowed = (a: StepAction) => {
+    const t = (a.config as { target?: string } | undefined)?.target;
+    return a.kind === 'restart' && restartTargets.length > 0 && !restartTargets.some((r) => r.allowed && r.target === t);
+  };
   const used = new Set(value.map(stepKey));
   const options = [
     ...actions.filter(fits).filter((a) => !used.has(`a:${a.id}`)).map((a) => ({ value: `a:${a.id}`, label: a.name, hint: `${KIND_LABEL[a.kind]} · ${PHASE[a.phase]}` })),
-    ...groups.filter((g) => !used.has(`g:${g.id}`)).map((g) => ({ value: `g:${g.id}`, label: g.name, hint: `Group · ${plural(g.actionIds.length, 'action')}` })),
+    ...groups.filter(groupFits).filter((g) => !used.has(`g:${g.id}`)).map((g) => ({ value: `g:${g.id}`, label: g.name, hint: `Group · ${plural(g.actionIds.length, 'action')}` })),
   ];
   const move = (i: number, d: -1 | 1) => {
     const next = [...value];
@@ -56,13 +64,13 @@ export function StepsPicker({ orgId, runsOn, value, onChange, newActionHref }: P
     if (!v) return;
     onChange([...value, v.startsWith('a:') ? { action: v.slice(2) } : { group: v.slice(2) }]);
   };
-  const row = (s: GrantStep): { name: string; kind?: string; badge: string; missing: boolean } => {
+  const row = (s: GrantStep): { name: string; kind?: string; badge: string; missing: boolean; warn?: string } => {
     if ('action' in s) {
       const a = actions.find((x) => x.id === s.action);
-      return a ? { name: a.name, kind: KIND_LABEL[a.kind], badge: PHASE[a.phase], missing: false } : { name: s.action, badge: 'Missing', missing: true };
+      return a ? { name: a.name, kind: KIND_LABEL[a.kind], badge: PHASE[a.phase], missing: false, warn: disallowed(a) ? String((a.config as { target?: string }).target) : undefined } : { name: s.action, badge: 'Missing', missing: true };
     }
     const g: StepGroup | undefined = groups.find((x) => x.id === s.group);
-    return g ? { name: g.name, badge: `Group · ${plural(g.actionIds.length, 'action')}`, missing: false } : { name: s.group, badge: 'Missing', missing: true };
+    return g ? { name: g.name, badge: `Group · ${plural(g.actionIds.length, 'action')}`, missing: false, warn: memberActions(g).find(disallowed) && String((memberActions(g).find(disallowed)!.config as { target?: string }).target) } : { name: s.group, badge: 'Missing', missing: true };
   };
   return (
     <div className="grid gap-2">
@@ -80,6 +88,7 @@ export function StepsPicker({ orgId, runsOn, value, onChange, newActionHref }: P
                 <span className="min-w-0 flex-1 truncate">{r.name}</span>
                 {r.kind && <span className="text-xs text-ink-muted">{r.kind}</span>}
                 {r.missing ? <ToneChip tone="failed" icon={CircleAlert} label={r.badge} /> : <span className="rounded-md bg-subtle px-1.5 py-0.5 text-xs">{r.badge}</span>}
+                {r.warn && <ToneChip tone="expiring" icon={TriangleAlert} label="Not allowed on this agent" title={`${r.warn} is not in the agent's CF_RESTART_ALLOW`} />}
                 <IconButton variant="ghost" size="icon-sm" className="size-7" label={`Move ${r.name} up`} disabled={i === 0} onClick={() => move(i, -1)}>
                   <ArrowUp className="size-3.5" aria-hidden />
                 </IconButton>

@@ -255,3 +255,18 @@ it('validates a restart target and picks a notification channel', async () => {
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(posted).toMatchObject({ kind: 'notify', config: { channelId: '66666666-6666-4666-8666-666666666666' } }));
 });
+
+it('hides Optional for agent-run kinds and resets it when switching to one', async () => {
+  const { user } = renderRoute('/o/acme/delivery/actions?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'New action' });
+  await user.type(within(sheet).getByLabelText('Name'), 'x');
+  await user.click(within(sheet).getByRole('combobox', { name: 'Kind' }));
+  await user.click(await screen.findByRole('option', { name: /HTTP request/ }));
+  await user.click(within(sheet).getByRole('switch', { name: 'Optional' }));
+  await user.click(within(sheet).getByRole('combobox', { name: 'Kind' }));
+  await user.click(await screen.findByRole('option', { name: /Run command \(agent\)/ }));
+  expect(within(sheet).queryByRole('switch', { name: 'Optional' })).not.toBeInTheDocument();
+  await user.type(within(sheet).getByLabelText('Executable'), '/bin/true');
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(posted).toMatchObject({ kind: 'exec', optional: false }));
+});

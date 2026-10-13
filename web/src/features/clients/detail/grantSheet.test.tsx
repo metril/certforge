@@ -368,3 +368,15 @@ it('opening a traefik grant edit and closing unchanged does not prompt to discar
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(screen.queryByRole('button', { name: 'Discard' })).not.toBeInTheDocument();
 });
+
+it('warns on a restart step not in the agent allow-list', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/clients/cl-1'), () => HttpResponse.json(makeClient({ restartTargets: [{ target: 'docker:y', allowed: true }] }))),
+    http.get(url('/orgs/org-1/actions'), () => HttpResponse.json({ items: [makeAction({ id: 'r-1', name: 'bad restart', kind: 'restart', config: { target: 'docker:x' } })] })),
+    http.get(url('/orgs/org-1/clients/cl-1/grants'), () => HttpResponse.json({ items: [makeGrant({ id: 'g-1', certificateId: 'c-1', certificateName: 'www', steps: [{ action: 'r-1' }] })] })),
+  );
+  const { user } = renderRoute('/o/acme/clients/cl-1/certificates?grant=g-1');
+  const sheet = await screen.findByRole('dialog', { name: 'Edit www' });
+  await user.click(await within(sheet).findByRole('button', { name: /^Advanced/ }));
+  expect(await within(sheet).findByText('Not allowed on this agent')).toBeInTheDocument();
+});

@@ -261,7 +261,7 @@ export function GrantSheet({ orgId, client, grants, editing, removed = false, on
             </div>
           )}
           <FormSection title="Advanced" collapsible count={(steps.length > 0 ? 1 : 0) + (autoRemediate ? 1 : 0)}>
-            <StepsPicker orgId={orgId} runsOn="agent" value={steps} onChange={setSteps} newActionHref={`/o/${orgSlug}/delivery/actions?edit=new`} />
+            <StepsPicker orgId={orgId} runsOn="agent" value={steps} onChange={setSteps} restartTargets={client.restartTargets} newActionHref={`/o/${orgSlug}/delivery/actions?edit=new`} />
             <SwitchField
               id="grant-auto"
               label="Auto-remediate"
