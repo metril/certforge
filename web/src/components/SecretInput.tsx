@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { help } from '@/lib/help';
-import { privateKeyProblem } from '@/lib/pem';
+import { privateKeyNote, privateKeyProblem } from '@/lib/pem';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { IconButton } from '@/components/IconButton';
@@ -276,6 +276,7 @@ export function SecretInput({ id, label, value, onChange: onChangeProp, stored, 
   };
   const typedProblem = multiline && shownValue !== '' ? privateKeyProblem(shownValue) : null;
   const problem = multiline ? (fileError ?? typedProblem) : null;
+  const note = multiline && !problem && shownValue !== '' ? privateKeyNote(shownValue) : null;
   return (
     <div className={multiline ? 'flex flex-col gap-1.5' : undefined}>
     <div
@@ -372,6 +373,7 @@ export function SecretInput({ id, label, value, onChange: onChangeProp, stored, 
           }}
         />
         {problem && <p className="text-xs text-failed">{problem}</p>}
+        {note && <p className="text-xs text-ink-muted">{note}</p>}
       </div>
     )}
     </div>

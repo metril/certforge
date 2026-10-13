@@ -17,3 +17,7 @@ it('returns empty for a bad url and for ssh', () => {
 it('is null for vault-kv', () => {
   expect(verifyDefault(t('vault-kv'))).toBeNull();
 });
+
+it('uses the host of a pikvm target, port 443', () => {
+  expect(verifyDefault(t('pikvm', { host: 'kvm.lan' }))).toEqual({ host: 'kvm.lan', port: '443' });
+});

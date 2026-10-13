@@ -450,13 +450,21 @@ it('secret multiline: renders a textarea and uploading a key emits its text', as
   await waitFor(() => expect(screen.getByTestId('value').textContent).toBe(KEY + '\n'));
 });
 
-it('secret multiline: a non-key or encrypted file shows the error and emits nothing', async () => {
+it('secret multiline: a non-key or encrypted PKCS#8 file shows the error and emits nothing', async () => {
   const { user } = renderUI(<KeyHarness />);
   await user.upload(screen.getByLabelText('Upload Private key'), new File(['hello'], 'x.pem'));
   expect(await screen.findByText('Not a PEM private key.')).toBeInTheDocument();
   await user.upload(screen.getByLabelText('Upload Private key'), new File(['-----BEGIN ENCRYPTED PRIVATE KEY-----\nx'], 'y.pem'));
-  expect(await screen.findByText('Passphrase-protected keys are not supported.')).toBeInTheDocument();
+  expect(await screen.findByText('Encrypted PKCS#8 keys are not supported; convert with ssh-keygen -p.')).toBeInTheDocument();
   expect(screen.getByTestId('value')).toHaveTextContent('undefined');
+});
+
+it('secret multiline: a passphrase-protected key is accepted with a note', async () => {
+  const { user } = renderUI(<KeyHarness />);
+  const enc = '-----BEGIN RSA PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\nabc\n-----END RSA PRIVATE KEY-----';
+  await user.upload(screen.getByLabelText('Upload Private key'), new File([enc], 'e.pem'));
+  expect(await screen.findByText('This key is passphrase-protected; enter its passphrase below.')).toBeInTheDocument();
+  expect(screen.getByTestId('value').textContent).toBe(enc + '\n');
 });
 
 it('secret multiline: dropping a key file emits it', async () => {

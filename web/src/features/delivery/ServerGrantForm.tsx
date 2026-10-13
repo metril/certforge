@@ -99,7 +99,7 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
     }),
   ];
 
-  const postTargetOptions = (targetsQ.data ?? []).filter((t) => t.type === kind).map((t) => ({ value: t.id, label: t.name }));
+  const postTargetOptions = (targetsQ.data ?? []).filter((t) => t.type === kind || (kind === 'ssh' && t.type === 'pikvm')).map((t) => ({ value: t.id, label: t.name }));
 
   const changeKind = (next: PostKind) => {
     if (next === kind) return;
@@ -154,7 +154,7 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
     if (postOn) {
       const secs = Number(timeout);
       if (!postTargetId || !command.trim()) {
-        setPostError(`Pick a${kind === 'ssh' ? 'n SSH' : ' pfSense'} target and enter a command.`);
+        setPostError(`Pick ${kind === 'ssh' ? 'an SSH or PiKVM' : 'a pfSense'} target and enter a command.`);
         return;
       }
       if (!Number.isInteger(secs) || secs < 5 || secs > 300) {
@@ -277,7 +277,7 @@ export function ServerGrantForm({ orgId, targetId, editing, onBack, onDone }: Pr
                   setPostError(null);
                 }}
                 options={postTargetOptions}
-                placeholder={`Pick a${kind === 'ssh' ? 'n SSH' : ' pfSense'} target`}
+                placeholder={`Pick ${kind === 'ssh' ? 'an SSH or PiKVM' : 'a pfSense'} target`}
                 emptyText={`No ${KIND_LABEL[kind]} targets yet.`}
               />
             </Field>
