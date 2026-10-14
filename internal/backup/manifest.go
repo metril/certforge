@@ -48,6 +48,9 @@ var Manifest = []string{
 
 	// 00033_actions.sql renamed hooks to actions (listed above) and added action_groups.
 	"action_groups",
+
+	// 00036_grant_check_tokens.sql
+	"grant_check_tokens",
 }
 
 // TableSum is one table's row count and content hash, as recorded in the

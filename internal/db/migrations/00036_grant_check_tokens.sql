@@ -2,7 +2,7 @@
 -- One check-now webhook token per server grant. Kept apart from the grant row
 -- so secrets never ride along on grant reads; deleting the row revokes it.
 CREATE TABLE grant_check_tokens (
-    grant_id    uuid PRIMARY KEY REFERENCES client_cert_grants (id) ON DELETE CASCADE,
+    grant_id    uuid PRIMARY KEY REFERENCES client_cert_grants (id) ON DELETE CASCADE DEFERRABLE INITIALLY IMMEDIATE,
     prefix      text NOT NULL UNIQUE,
     secret_hash bytea NOT NULL,
     created_at  timestamptz NOT NULL DEFAULT now(),

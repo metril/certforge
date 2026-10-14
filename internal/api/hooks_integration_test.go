@@ -4,6 +4,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -146,7 +147,8 @@ func TestCheckHookNoMonitorConflict(t *testing.T) {
 	e := newHookEnv(t)
 	g := e.grant(t, "bare", false)
 	_, err := e.f.srv.CreateGrantCheckToken(e.op, gen.CreateGrantCheckTokenRequestObject{OrgId: e.f.org, Id: g})
-	if he, ok := err.(*HTTPError); !ok || he.Status != http.StatusConflict {
+	var he *HTTPError
+	if !errors.As(err, &he) || he.Status != http.StatusConflict {
 		t.Fatalf("err = %v", err)
 	}
 }
