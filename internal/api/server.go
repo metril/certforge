@@ -49,17 +49,19 @@ type Deps struct {
 	Meta     *meta.Registry
 	// HostResolver resolves hostnames in DNS credential URL fields at save
 	// time; nil uses the system resolver. Tests inject a stub.
-	HostResolver  challenge.HostResolver
-	Sessions      *authn.Sessions
-	Auditor       *audit.Auditor
-	AuthSettings  *authn.SettingsSource // authentication section; nil falls back to RemoteAddr
-	LoginLimiter  *authn.Limiter        // nil: authn.DefaultLoginPerMinute/DefaultLoginBurst
-	EnrollLimiter *authn.Limiter        // per-IP limit on POST /agent/v1/enroll; nil: login defaults
-	OIDC          *authn.OIDC           // single sign-on client (Task 6)
-	Setup         *setup.Service
-	Issuance      *issuance.Service // Store, certstore and the river job queue (Tasks 12-14)
-	Certs         *certstore.Store  // certificate versions (Task 14)
-	Box           crypto.Box        // seals a layout's export password (Phase 4A Task 5)
+	HostResolver     challenge.HostResolver
+	Sessions         *authn.Sessions
+	Auditor          *audit.Auditor
+	AuthSettings     *authn.SettingsSource // authentication section; nil falls back to RemoteAddr
+	LoginLimiter     *authn.Limiter        // nil: authn.DefaultLoginPerMinute/DefaultLoginBurst
+	EnrollLimiter    *authn.Limiter        // per-IP limit on POST /agent/v1/enroll; nil: login defaults
+	HookIPLimiter    *authn.Limiter        // per-IP limit on POST /hooks/v1/grants/{id}/check; nil: 30/min, burst 10
+	HookGrantLimiter *authn.Limiter        // per-grant limit on the same route, after auth; nil: 6/min, burst 6
+	OIDC             *authn.OIDC           // single sign-on client (Task 6)
+	Setup            *setup.Service
+	Issuance         *issuance.Service // Store, certstore and the river job queue (Tasks 12-14)
+	Certs            *certstore.Store  // certificate versions (Task 14)
+	Box              crypto.Box        // seals a layout's export password (Phase 4A Task 5)
 	// HTTPTokens backs the public GET /.well-known/acme-challenge/{token}
 	// route (Phase 4A Task 6); nil answers 404 for every token. Shared with
 	// issuance.IssueWorker.HTTPTokens; see cmd/certforge/serve.go.

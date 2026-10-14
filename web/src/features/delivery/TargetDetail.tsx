@@ -30,6 +30,7 @@ import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import { TargetForm } from './TargetForm';
 import type { TargetTab } from './tabs';
+import { GrantCheckHook } from './GrantCheckHook';
 import { PfSenseUsage } from './PfSenseUsage';
 import { ServerGrantForm } from './ServerGrantForm';
 import { failedWithoutData } from '@/lib/queryState';
@@ -105,6 +106,7 @@ export function TargetDetail({ orgId, orgSlug, target, types, tab, open }: Props
 
   const actions = (g: Grant) => (
     <span className="inline-flex">
+      <GrantCheckHook orgId={orgId} grant={g} canWrite={canWrite} />
       <IconButton tip={canWrite ? undefined : `Needs the clients:write permission`}
           variant="ghost"
           size="icon-sm"
@@ -171,7 +173,7 @@ export function TargetDetail({ orgId, orgSlug, target, types, tab, open }: Props
             <TableHead className="w-44">Certificate</TableHead>
             <TableHead>Layout</TableHead>
             <TableHead className="w-56">Status</TableHead>
-            <TableHead className="w-28">
+            <TableHead className="w-36">
               <span className="sr-only">Actions</span>
             </TableHead>
           </TableRow>

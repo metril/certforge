@@ -331,6 +331,7 @@ export const help = {
   'grant.defaultCert': { text: 'Serves when no SNI matches.' },
   'grant.autoRemediate': { text: 'On drift, reinstall the files automatically instead of only reporting it.', learnMore: 'guide/agents.md#drift' },
   'grant.verifyInterval': { text: 'How often CertForge checks the endpoint, so how fast drift is noticed.', learnMore: 'guide/delivery.md#drift-and-auto-remediation' },
+  'grant.checkHook': { text: 'A device can POST to this URL with the token to have the endpoint checked right away, instead of at the next interval. It cannot read or change anything.', learnMore: 'guide/delivery.md#drift-and-auto-remediation' },
   'grant.verifyDelay': { text: 'How long to wait after a deploy before checking the endpoint. Raise it for a service that is slow to reload; too early a check reports drift.', learnMore: 'guide/delivery.md#drift-and-auto-remediation' },
   'grant.verify': { text: 'CertForge checks on the chosen interval that this TLS endpoint serves the deployed certificate.', learnMore: 'guide/delivery.md#drift-and-auto-remediation' },
   'grant.autoRemediateServer': { text: 'When the endpoint serves a different certificate, redeploy automatically; stops after the attempt cap in Settings → Agents.', learnMore: 'guide/delivery.md#drift-and-auto-remediation' },

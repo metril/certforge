@@ -1657,6 +1657,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orgs/{orgId}/grants/{id}/check-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate or rotate a grant's check-now webhook token
+         * @description Needs clients:write. Server grants with a verify endpoint only (409 otherwise). The token is returned once; calling again rotates it and the old one stops working. Recorded as grant.check_token_set.
+         */
+        post: operations["createGrantCheckToken"];
+        /**
+         * Revoke a grant's check-now webhook token
+         * @description Needs clients:write. Recorded as grant.check_token_revoke.
+         */
+        delete: operations["deleteGrantCheckToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orgs/{orgId}/grants/{id}/pfsense-usage": {
         parameters: {
             query?: never;
@@ -5034,6 +5063,8 @@ export interface components {
             layoutName?: string | null;
             /** @description Name of the deploy target; null when deployTargetId is null. */
             deployTargetName?: string | null;
+            /** @description Whether a check-now webhook token exists for the grant. Server grants only. */
+            checkTokenSet?: boolean;
             /**
              * Format: date-time
              * @description Creation time.
@@ -5044,6 +5075,13 @@ export interface components {
              * @description Last change.
              */
             updatedAt: string;
+        };
+        /** @description A check-now webhook token, shown once. */
+        GrantCheckToken: {
+            /** @description The bearer token. Not retrievable again. */
+            token: string;
+            /** @description The webhook URL to POST to with the token as a bearer token. */
+            url: string;
         };
         /** @description A new grant; a layout or a deploy target is required. */
         GrantInput: {
@@ -8734,6 +8772,63 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Grant"];
                 };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createGrantCheckToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The token and webhook URL. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrantCheckToken"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteGrantCheckToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];

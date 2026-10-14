@@ -438,6 +438,18 @@ func (q *Queries) CreateServerGrant(ctx context.Context, arg CreateServerGrantPa
 	return i, err
 }
 
+const deleteGrantCheckToken = `-- name: DeleteGrantCheckToken :execrows
+DELETE FROM grant_check_tokens WHERE grant_id = $1
+`
+
+func (q *Queries) DeleteGrantCheckToken(ctx context.Context, grantID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteGrantCheckToken, grantID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteGrantRow = `-- name: DeleteGrantRow :exec
 DELETE FROM client_cert_grants WHERE id = $1
 `
@@ -445,6 +457,28 @@ DELETE FROM client_cert_grants WHERE id = $1
 func (q *Queries) DeleteGrantRow(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteGrantRow, id)
 	return err
+}
+
+const getGrantCheckTokenByPrefix = `-- name: GetGrantCheckTokenByPrefix :one
+SELECT ct.grant_id, ct.secret_hash, t.org_id
+FROM grant_check_tokens ct
+JOIN client_cert_grants g ON g.id = ct.grant_id AND g.removed_at IS NULL AND g.client_id IS NULL
+JOIN deploy_targets t ON t.id = g.deploy_target_id
+WHERE ct.prefix = $1
+`
+
+type GetGrantCheckTokenByPrefixRow struct {
+	GrantID    uuid.UUID `json:"grant_id"`
+	SecretHash []byte    `json:"secret_hash"`
+	OrgID      uuid.UUID `json:"org_id"`
+}
+
+// Live (not soft-removed) server grants only; org_id comes from the target.
+func (q *Queries) GetGrantCheckTokenByPrefix(ctx context.Context, prefix string) (GetGrantCheckTokenByPrefixRow, error) {
+	row := q.db.QueryRow(ctx, getGrantCheckTokenByPrefix, prefix)
+	var i GetGrantCheckTokenByPrefixRow
+	err := row.Scan(&i.GrantID, &i.SecretHash, &i.OrgID)
+	return i, err
 }
 
 const grantClientIDs = `-- name: GrantClientIDs :many
@@ -1299,7 +1333,8 @@ SELECT g.id, g.deploy_target_id, g.cert_id, ce.name AS certificate_name, g.deliv
        g.output_spec_id, g.steps, g.auto_remediate, g.target_options, g.created_at, g.updated_at,
        o.name AS layout_name, t.name AS deploy_target_name,
        sd.status, sd.version_id, sd.last_error, sd.deployed_at, sd.updated_at AS deployment_updated_at,
-       m.id AS monitor_id, m.host, m.port, m.sni, m.interval_seconds, m.post_deploy_delay_seconds
+       m.id AS monitor_id, m.host, m.port, m.sni, m.interval_seconds, m.post_deploy_delay_seconds,
+       EXISTS (SELECT 1 FROM grant_check_tokens ct WHERE ct.grant_id = g.id)::bool AS check_token_set
 FROM client_cert_grants g
 JOIN deploy_targets t ON t.id = g.deploy_target_id
 JOIN certificates ce ON ce.id = g.cert_id
@@ -1356,6 +1391,7 @@ type ServerGrantViewsRow struct {
 	Sni                    *string    `json:"sni"`
 	IntervalSeconds        *int32     `json:"interval_seconds"`
 	PostDeployDelaySeconds *int32     `json:"post_deploy_delay_seconds"`
+	CheckTokenSet          bool       `json:"check_token_set"`
 }
 
 // Same optional filters as GrantViews (minus client).
@@ -1401,6 +1437,7 @@ func (q *Queries) ServerGrantViews(ctx context.Context, arg ServerGrantViewsPara
 			&i.Sni,
 			&i.IntervalSeconds,
 			&i.PostDeployDelaySeconds,
+			&i.CheckTokenSet,
 		); err != nil {
 			return nil, err
 		}
@@ -1528,6 +1565,15 @@ func (q *Queries) StaleDeploymentGrantIDs(ctx context.Context) ([]uuid.UUID, err
 	return items, nil
 }
 
+const touchGrantCheckToken = `-- name: TouchGrantCheckToken :exec
+UPDATE grant_check_tokens SET last_used_at = now() WHERE grant_id = $1
+`
+
+func (q *Queries) TouchGrantCheckToken(ctx context.Context, grantID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, touchGrantCheckToken, grantID)
+	return err
+}
+
 const updateGrant = `-- name: UpdateGrant :one
 UPDATE client_cert_grants SET delivery = $1, output_spec_id = $2,
        deploy_target_id = $3, steps = $4,
@@ -1637,6 +1683,32 @@ func (q *Queries) UpsertDeployment(ctx context.Context, arg UpsertDeploymentPara
 		arg.VersionID,
 		arg.Expected,
 		arg.ExtraVersionIds,
+	)
+	return err
+}
+
+const upsertGrantCheckToken = `-- name: UpsertGrantCheckToken :exec
+INSERT INTO grant_check_tokens (grant_id, prefix, secret_hash, created_by)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (grant_id) DO UPDATE
+SET prefix = EXCLUDED.prefix, secret_hash = EXCLUDED.secret_hash, created_by = EXCLUDED.created_by,
+    created_at = now(), last_used_at = NULL
+`
+
+type UpsertGrantCheckTokenParams struct {
+	GrantID    uuid.UUID  `json:"grant_id"`
+	Prefix     string     `json:"prefix"`
+	SecretHash []byte     `json:"secret_hash"`
+	CreatedBy  *uuid.UUID `json:"created_by"`
+}
+
+// Generate or rotate: replaces any earlier token for the grant.
+func (q *Queries) UpsertGrantCheckToken(ctx context.Context, arg UpsertGrantCheckTokenParams) error {
+	_, err := q.db.Exec(ctx, upsertGrantCheckToken,
+		arg.GrantID,
+		arg.Prefix,
+		arg.SecretHash,
+		arg.CreatedBy,
 	)
 	return err
 }

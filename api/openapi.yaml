@@ -2044,6 +2044,35 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/grants/{id}/check-token:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    post:
+      operationId: createGrantCheckToken
+      tags: [clients]
+      summary: Generate or rotate a grant's check-now webhook token
+      description: Needs clients:write. Server grants with a verify endpoint only (409 otherwise). The token is returned once; calling again rotates it and the old one stops working. Recorded as grant.check_token_set.
+      responses:
+        "201":
+          description: The token and webhook URL.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GrantCheckToken"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    delete:
+      operationId: deleteGrantCheckToken
+      tags: [clients]
+      summary: Revoke a grant's check-now webhook token
+      description: Needs clients:write. Recorded as grant.check_token_revoke.
+      responses:
+        "204": {description: Revoked.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/grants/{id}/pfsense-usage:
     parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
     get:
@@ -5277,8 +5306,16 @@ components:
         monitorId: {type: string, format: uuid, nullable: true, description: The grant-owned monitor behind verify; null when none. Server grants only.}
         layoutName: {type: string, nullable: true, description: Name of the output layout; null when layoutId is null.}
         deployTargetName: {type: string, nullable: true, description: Name of the deploy target; null when deployTargetId is null.}
+        checkTokenSet: {type: boolean, description: Whether a check-now webhook token exists for the grant. Server grants only.}
         createdAt: {type: string, format: date-time, description: Creation time.}
         updatedAt: {type: string, format: date-time, description: Last change.}
+    GrantCheckToken:
+      type: object
+      description: A check-now webhook token, shown once.
+      required: [token, url]
+      properties:
+        token: {type: string, description: The bearer token. Not retrievable again.}
+        url: {type: string, description: The webhook URL to POST to with the token as a bearer token.}
     GrantInput:
       type: object
       description: A new grant; a layout or a deploy target is required.

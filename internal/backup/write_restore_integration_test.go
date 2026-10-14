@@ -167,6 +167,7 @@ func seedAllTables(t *testing.T, ctx context.Context, pool *pgxpool.Pool) { //no
 	exec(`INSERT INTO rate_ledger (ca_id, kind) VALUES ($1, 'new_order')`, ca)
 
 	serverGrant := scanID(`INSERT INTO client_cert_grants (deploy_target_id, cert_id) VALUES ($1, $2) RETURNING id`, target, cert)
+	exec(`INSERT INTO grant_check_tokens (grant_id, prefix, secret_hash) VALUES ($1, 'abcdef012345', E'\\x00')`, serverGrant)
 	exec(`INSERT INTO server_deployments (grant_id) VALUES ($1)`, serverGrant)
 
 	channel := scanID(`INSERT INTO notification_channels (org_id, name, type) VALUES ($1, 'chan1', 'webhook') RETURNING id`, org)

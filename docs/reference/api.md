@@ -84,6 +84,7 @@ These are not under `/api/v1` and not in the OpenAPI document.
 | `GET /.well-known/acme-challenge/{token}` | none | Serves the http-01 key authorization for a token this server is currently waiting on, as `text/plain`; 404 otherwise. See [Challenges](../guide/challenges.md#http-01). |
 | `GET /crl/{caId}.crl` | none | A private CA's current CRL, DER, `Cache-Control: max-age=600`. |
 | `GET /crl/{caId}/{issuerSerial}.crl` | none | The CRL of any issuer the CA has held (lower-case hex serial). 404 for an unknown CA or issuer, a CA that is not a private CA, or `crl: false`. See [Issuers](../guide/issuers.md#crl). |
+| `POST /hooks/v1/grants/{grantId}/check` | bearer token | Check-now webhook for a server grant with a verify endpoint: queues an immediate check of the endpoint. Send the grant's check token as `Authorization: Bearer <token>` (never in the query string; the body is ignored). 202 `{"queued":true}` on success; 404 for anything else wrong (unknown grant, wrong or revoked token), so nothing is revealed; 429 with `Retry-After` over the limits (30 requests a minute per client address, 6 a minute per grant). Generate, rotate or revoke the token on the target's **Grants** tab. Recorded as `grant.check_hook`. See [Delivery](../guide/delivery.md#drift-and-auto-remediation). |
 | `/agent/v1/*` | signed and sealed | The agent protocol. |
 
 ### Agent routes
