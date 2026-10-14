@@ -11,10 +11,14 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
+// testDebounce is the debounce the watcher tests run with; a test that
+// writes a burst raises it so a slow runner cannot split the burst.
+var testDebounce = 60 * time.Millisecond
+
 func shortDebounce(t *testing.T) {
 	t.Helper()
 	old := watchDebounce
-	watchDebounce = 60 * time.Millisecond
+	watchDebounce = testDebounce
 	t.Cleanup(func() { watchDebounce = old })
 }
 
@@ -85,6 +89,10 @@ func TestWatcherIgnoresUnrelatedFilesAndCoalescesBursts(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "a.pem")
 	_ = os.WriteFile(p, []byte("x"), 0o644)
+	// A stall longer than the debounce mid-burst would split it in two on a
+	// slow runner, so the debounce is long next to the burst.
+	testDebounce = 400 * time.Millisecond
+	defer func() { testDebounce = 60 * time.Millisecond }()
 	_, ch := startWatcher(t, p)
 
 	_ = os.WriteFile(filepath.Join(dir, "other.txt"), []byte("y"), 0o644)
