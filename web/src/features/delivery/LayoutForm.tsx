@@ -187,16 +187,16 @@ export function LayoutForm({ orgId, orgSlug, layout, readOnly = false }: Props) 
   const formats = [...new Set(files.map((f) => f.format))];
   const rail = (
     <dl className="grid gap-3 text-sm">
-      <div className="grid gap-1">
+      <div className="grid min-w-0 gap-1">
         <dt className="text-xs text-ink-muted">Files</dt>
         <dd>{extant}</dd>
       </div>
-      <div className="grid gap-1">
+      <div className="grid min-w-0 gap-1">
         <dt className="text-xs text-ink-muted">Formats</dt>
-        <dd>{formats.map((f) => f.toUpperCase()).join(', ')}</dd>
+        <dd className="min-w-0 break-words">{formats.map((f) => f.toUpperCase()).join(', ')}</dd>
       </div>
       {layout && (
-        <div className="grid gap-1">
+        <div className="grid min-w-0 gap-1">
           <dt className="text-xs text-ink-muted">Used by</dt>
           <dd>{plural(layout.grantCount, 'grant')}</dd>
         </div>

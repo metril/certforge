@@ -85,6 +85,9 @@ function targetChanged(monitor: Monitor, d: Draft): boolean {
   return monitor.host !== d.host || monitor.port !== Number(d.port) || (monitor.sni ?? '') !== d.sni || monitor.expectedCertificateId !== d.expectedCertificateId;
 }
 
+/** Ids just deleted from this page: the refetch drops them before the page navigates, which must not read as "not found". */
+export const deletedMonitors = new Set<string>();
+
 type Props = { orgId: string; orgSlug: string; monitor?: Monitor };
 
 /** Create / edit page for an external TLS monitor; saving or deleting returns to the list. */
@@ -169,21 +172,21 @@ export function MonitorForm({ orgId, orgSlug, monitor }: Props) {
       </div>
       {monitor.lastCheckedAt ? (
       <div className="grid grid-cols-1 gap-2">
-        <div className="grid gap-1.5 text-sm">
+        <div className="grid min-w-0 gap-1.5 text-sm">
           <span className="flex items-center gap-1.5">
             <MonitorStateChip state={monitor.state} enabled={monitor.enabled} lastError={monitor.lastError} notAfter={monitor.lastNotAfter} />
             <span className="text-xs text-ink-muted">{relTime(monitor.lastCheckedAt)}</span>
           </span>
           {monitor.lastFingerprint && (
-            <span className="flex items-center gap-1.5">
+            <span className="flex min-w-0 items-center gap-1.5">
               <span className="text-xs text-ink-muted">Fingerprint</span>
-              <CopyField value={monitor.lastFingerprint} label="fingerprint" />
+              <CopyField value={monitor.lastFingerprint} label="fingerprint" wrap />
             </span>
           )}
           {monitor.lastIssuer && (
-            <span className="flex items-start gap-1.5">
+            <span className="flex min-w-0 items-start gap-1.5">
               <span className="shrink-0 text-xs text-ink-muted">Issuer</span>
-              <span className="break-words font-mono text-xs">{monitor.lastIssuer}</span>
+              <span className="min-w-0 break-words font-mono text-xs">{monitor.lastIssuer}</span>
             </span>
           )}
           {monitor.lastNotAfter && (
@@ -203,9 +206,7 @@ export function MonitorForm({ orgId, orgSlug, monitor }: Props) {
         <p className="text-sm text-ink-muted">Not checked yet.</p>
       )}
     </div>
-  ) : (
-    <p className="text-sm text-ink-muted">The first check runs right after you save.</p>
-  );
+  ) : null;
 
   return (
     <FormPage
@@ -321,8 +322,15 @@ export function MonitorForm({ orgId, orgSlug, monitor }: Props) {
           actionLabel="Delete monitor"
           onConfirm={async () => {
             // useDeleteMonitor's own onSuccess already invalidates ['monitors', orgId].
-            await del.mutateAsync(monitor.id);
             bypass.current = true;
+            deletedMonitors.add(monitor.id);
+            try {
+              await del.mutateAsync(monitor.id);
+            } catch (e) {
+              bypass.current = false;
+              deletedMonitors.delete(monitor.id);
+              throw e;
+            }
             void toList();
           }}
         />

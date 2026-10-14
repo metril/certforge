@@ -323,7 +323,7 @@ export function TargetForm({ orgId, orgSlug, target, types, readOnly = false }: 
   const credName = credential?.name;
   const rail = (
     <dl className="grid gap-3 text-sm">
-      <div className="grid gap-1">
+      <div className="grid min-w-0 gap-1">
         <dt className="text-xs text-ink-muted">Type</dt>
         <dd className="flex flex-wrap items-center gap-2">
           {meta.name}
@@ -331,13 +331,13 @@ export function TargetForm({ orgId, orgSlug, target, types, readOnly = false }: 
         </dd>
       </div>
       {credKinds.length > 0 && (
-        <div className="grid gap-1">
+        <div className="grid min-w-0 gap-1">
           <dt className="text-xs text-ink-muted">Credential</dt>
-          <dd className="truncate">{credName ?? 'Entered manually'}</dd>
+          <dd className="min-w-0 break-words">{credName ?? 'Entered manually'}</dd>
         </div>
       )}
       {target && (
-        <div className="grid gap-1">
+        <div className="grid min-w-0 gap-1">
           <dt className="text-xs text-ink-muted">Used by</dt>
           <dd>{plural(target.grantCount, 'grant')}</dd>
         </div>

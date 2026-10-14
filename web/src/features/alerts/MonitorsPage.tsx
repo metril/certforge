@@ -28,7 +28,7 @@ import { MonitorStateChip } from './MonitorStateChip';
 import { IconButton } from '@/components/IconButton';
 
 const col = columnHelper<Monitor>();
-const MONITOR_LIMIT = 500;
+export const MONITOR_LIMIT = 500;
 
 function CheckNowButton({ monitor, orgId }: { monitor: Monitor; orgId: string }) {
   const me = useMe();
