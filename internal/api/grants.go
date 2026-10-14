@@ -361,6 +361,10 @@ func verifyOut(r sqlcgen.ServerGrantViewsRow) *gen.GrantVerify {
 		iv := int(*r.IntervalSeconds)
 		v.IntervalSeconds = &iv
 	}
+	if r.PostDeployDelaySeconds != nil {
+		d := int(*r.PostDeployDelaySeconds)
+		v.PostDeployDelaySeconds = &d
+	}
 	return v
 }
 
@@ -369,7 +373,8 @@ func verifyAuditOut(v *gen.GrantVerify) any {
 	if v == nil {
 		return nil
 	}
-	return map[string]any{"host": v.Host, "port": v.Port, "sni": v.Sni, "intervalSeconds": v.IntervalSeconds}
+	return map[string]any{"host": v.Host, "port": v.Port, "sni": v.Sni, "intervalSeconds": v.IntervalSeconds,
+		"postDeployDelaySeconds": v.PostDeployDelaySeconds}
 }
 
 // grantMonitorName is a grant-owned monitor's name, "<target> · <cert>"
@@ -391,7 +396,7 @@ func (s *Server) grantMonitorInput(ctx context.Context, name string, interval in
 		return monitor.Input{}, err
 	}
 	in, err := monitor.ValidateInput(monitor.Input{Name: name, Host: v.Host, Port: v.Port, SNI: v.Sni,
-		IntervalSeconds: interval, ExpectedCertID: &certID, Enabled: enabled}, allowLoopback)
+		IntervalSeconds: interval, ExpectedCertID: &certID, Enabled: enabled, PostDeployDelaySeconds: v.PostDeployDelaySeconds}, allowLoopback)
 	if err != nil {
 		var ve *monitor.ValidationError
 		if errors.As(err, &ve) && ve.Field != "name" {
@@ -1015,7 +1020,7 @@ func (s *Server) GetGrantPfSenseUsage(ctx context.Context, r gen.GetGrantPfSense
 }
 
 // verifyChanged reports whether in differs from the grant's current monitor:
-// one is set and the other is not, or the host, port or SNI moved.
+// one is set and the other is not, or the host, port, SNI, interval or delay moved.
 func verifyChanged(in *gen.GrantVerify, hasMon bool, cur sqlcgen.ExternalMonitor) bool {
 	if (in != nil) != hasMon {
 		return true
@@ -1031,7 +1036,8 @@ func verifyChanged(in *gen.GrantVerify, hasMon bool, cur sqlcgen.ExternalMonitor
 		curSni = *cur.Sni
 	}
 	return in.Host != cur.Host || in.Port != int(cur.Port) || sni != curSni ||
-		(in.IntervalSeconds != nil && *in.IntervalSeconds != int(cur.IntervalSeconds))
+		(in.IntervalSeconds != nil && *in.IntervalSeconds != int(cur.IntervalSeconds)) ||
+		(in.PostDeployDelaySeconds != nil && *in.PostDeployDelaySeconds != int(cur.PostDeployDelaySeconds))
 }
 
 // verifyInterval is v's check interval, def when v leaves it unset.

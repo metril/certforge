@@ -1237,6 +1237,57 @@ func TestServerGrantVerifyInterval(t *testing.T) {
 	}
 }
 
+// TestServerGrantVerifyPostDeployDelay: default 15, set on create, omitted
+// on update keeps it, an update changes it, out of range is 422.
+func TestServerGrantVerifyPostDeployDelay(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	targetID, _ := f.serverTarget(t, "vault", nil)
+	certID, _ := f.currentCert(t, "web")
+	create := func(c uuid.UUID, d *int) gen.CreateServerGrant201JSONResponse {
+		t.Helper()
+		res, err := f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+			Body: &gen.ServerGrantInput{CertificateId: c, Verify: &gen.GrantVerify{Host: "kvm.example.test", Port: 443, PostDeployDelaySeconds: d}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.(gen.CreateServerGrant201JSONResponse)
+	}
+	delay := func(v *gen.GrantVerify) int {
+		t.Helper()
+		if v == nil || v.PostDeployDelaySeconds == nil {
+			t.Fatalf("verify = %+v", v)
+		}
+		return *v.PostDeployDelaySeconds
+	}
+	g := create(certID, nil)
+	if got := delay(g.Verify); got != 15 {
+		t.Fatalf("default = %d, want 15", got)
+	}
+	update := func(d *int) (gen.UpdateGrantResponseObject, error) {
+		return f.srv.UpdateGrant(op, gen.UpdateGrantRequestObject{OrgId: f.org, Id: g.Id,
+			Body: &gen.GrantUpdate{Delivery: gen.GrantDelivery("push"), Verify: &gen.GrantVerify{Host: "kvm.example.test", Port: 443, PostDeployDelaySeconds: d}}})
+	}
+	d60 := 60
+	if _, err := update(&d60); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := update(nil); err != nil {
+		t.Fatal(err)
+	}
+	var got int
+	if err := f.pool.QueryRow(context.Background(), `SELECT post_deploy_delay_seconds FROM external_monitors WHERE grant_id = $1`, g.Id).Scan(&got); err != nil || got != 60 {
+		t.Fatalf("delay = %d (%v), want 60 kept on omit", got, err)
+	}
+	bad := 601
+	_, err := update(&bad)
+	wantStatus(t, err, 422)
+	certID2, _ := f.currentCert(t, "web2")
+	if got := delay(create(certID2, new(int)).Verify); got != 0 {
+		t.Fatalf("explicit 0 = %d", got)
+	}
+}
+
 func TestServerGrantStepsCannotCrossOrgs(t *testing.T) {
 	f := newAgentFixture(t)
 	op := f.as("operator")

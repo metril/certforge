@@ -1,6 +1,6 @@
 -- name: CreateMonitor :one
-INSERT INTO external_monitors (org_id, name, host, port, sni, interval_seconds, expected_cert_id, enabled)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO external_monitors (org_id, name, host, port, sni, interval_seconds, expected_cert_id, enabled, post_deploy_delay_seconds)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE(sqlc.narg(post_deploy_delay_seconds)::int, 15))
 RETURNING *;
 
 -- name: ListMonitors :many
@@ -56,6 +56,7 @@ WHERE c.id = $1;
 -- value carried in from outside the statement.
 UPDATE external_monitors
 SET name = $3, host = $4, port = $5, sni = $6, interval_seconds = $7, expected_cert_id = $8, enabled = $9,
+    post_deploy_delay_seconds = COALESCE(sqlc.narg(post_deploy_delay_seconds)::int, post_deploy_delay_seconds),
     state = CASE WHEN sqlc.arg(reset_state)::bool THEN 'unknown' ELSE state END,
     state_changed_at = CASE WHEN sqlc.arg(reset_state)::bool THEN now() ELSE state_changed_at END,
     next_check_at = CASE WHEN sqlc.arg(reset_state)::bool THEN now() ELSE next_check_at END,

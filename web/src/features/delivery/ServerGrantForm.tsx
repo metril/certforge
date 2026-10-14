@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
-import { INTERVALS, fmtInterval } from '@/lib/monitors';
+import { DELAYS, INTERVALS, fmtDelay, fmtInterval } from '@/lib/monitors';
 import { StepsPicker } from './StepsPicker';
 import { verifyDefault } from './verifyDefault';
 
@@ -59,6 +59,8 @@ export function ServerGrantForm({ orgId, orgSlug, targetId, editing, onBack, onD
   const vPort = portEdit ?? String(editing?.verify?.port ?? vDef?.port ?? '443');
   const [intervalEdit, setIntervalEdit] = useState<number | undefined>(undefined);
   const vInterval = intervalEdit ?? editing?.verify?.intervalSeconds ?? 3600;
+  const [delayEdit, setDelayEdit] = useState<number | undefined>(undefined);
+  const vDelay = delayEdit ?? editing?.verify?.postDeployDelaySeconds ?? 15;
   const vSni = sniEdit ?? editing?.verify?.sni ?? '';
   const vOn = vDef ? (verifyOn ?? vHost !== '') : false;
   const busy = create.isPending || update.isPending;
@@ -79,14 +81,14 @@ export function ServerGrantForm({ orgId, orgSlug, targetId, editing, onBack, onD
     setLayoutError(null);
     setFormError(null);
     setVerifyError(null);
-    let verify: { host: string; port: number; sni?: string; intervalSeconds: number } | null = null;
+    let verify: { host: string; port: number; sni?: string; intervalSeconds: number; postDeployDelaySeconds: number } | null = null;
     if (vOn) {
       const port = Number(vPort);
       if (!vHost.trim() || !Number.isInteger(port) || port < 1 || port > 65535) {
         setVerifyError('Enter a host and a port from 1 to 65535.');
         return;
       }
-      verify = { host: vHost.trim(), port, intervalSeconds: vInterval, ...(vSni.trim() && { sni: vSni.trim() }) };
+      verify = { host: vHost.trim(), port, intervalSeconds: vInterval, postDeployDelaySeconds: vDelay, ...(vSni.trim() && { sni: vSni.trim() }) };
     }
     if (!editing && !certificateId) {
       setCertError('Pick a certificate.');
@@ -179,6 +181,18 @@ export function ServerGrantForm({ orgId, orgSlug, targetId, editing, onBack, onD
                     options={INTERVALS.map((i) => ({ value: String(i.value), label: i.label }))}
                   />
                   {!INTERVALS.some((i) => i.value === vInterval) && <span className="text-xs text-ink-muted">Currently {fmtInterval(vInterval)}</span>}
+                </div>
+              </Field>
+              <Field id="server-grant-verify-delay" label="Check after deploy" help="grant.verifyDelay">
+                <div className="grid gap-1">
+                  <SegmentedControl
+                    id="server-grant-verify-delay"
+                    aria-label="Check after deploy"
+                    value={DELAYS.some((d) => d.value === vDelay) ? String(vDelay) : ''}
+                    onChange={(v) => setDelayEdit(Number(v))}
+                    options={DELAYS.map((d) => ({ value: String(d.value), label: d.label }))}
+                  />
+                  {!DELAYS.some((d) => d.value === vDelay) && <span className="text-xs text-ink-muted">Currently {fmtDelay(vDelay)}</span>}
                 </div>
               </Field>
               <SwitchField id="server-grant-auto" label="Auto-remediate" help="grant.autoRemediateServer" checked={autoRemediate} onCheckedChange={setAutoRemediate} onText="Redeploy on drift" offText="Report only" />

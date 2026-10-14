@@ -2527,6 +2527,9 @@ type GrantVerify struct {
 	// Port TCP port to connect to.
 	Port int `json:"port"`
 
+	// PostDeployDelaySeconds Seconds to wait after a deploy before the verify check runs, so the service can finish reloading. Default 15. On update, omitted keeps the current delay.
+	PostDeployDelaySeconds *int `json:"postDeployDelaySeconds,omitempty"`
+
 	// Sni TLS server name to send; omitted or null uses host.
 	Sni *string `json:"sni"`
 }

@@ -5309,6 +5309,7 @@ components:
         port: {type: integer, minimum: 1, maximum: 65535, description: TCP port to connect to.}
         sni: {type: string, nullable: true, maxLength: 253, description: TLS server name to send; omitted or null uses host.}
         intervalSeconds: {type: integer, minimum: 300, maximum: 86400, default: 3600, description: Seconds between scheduled checks. Default 3600. On update, omitted keeps the monitor's current interval.}
+        postDeployDelaySeconds: {type: integer, minimum: 0, maximum: 600, default: 15, description: "Seconds to wait after a deploy before the verify check runs, so the service can finish reloading. Default 15. On update, omitted keeps the current delay."}
     PfSenseUsage:
       type: object
       description: The pfSense services that use a server grant's certificate.

@@ -27,7 +27,7 @@ func fromRow(r sqlcgen.ExternalMonitor) Monitor {
 		IntervalSeconds: int(r.IntervalSeconds), ExpectedCertID: r.ExpectedCertID, Enabled: r.Enabled,
 		State: r.State, StateChangedAt: r.StateChangedAt, LastCheckedAt: r.LastCheckedAt, NextCheckAt: r.NextCheckAt,
 		LastFingerprint: r.LastFingerprint, LastNotAfter: r.LastNotAfter, LastIssuer: r.LastIssuer, LastError: r.LastError,
-		ConsecutiveFailures: int(r.ConsecutiveFailures), GrantID: r.GrantID, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		ConsecutiveFailures: int(r.ConsecutiveFailures), PostDeployDelaySeconds: int(r.PostDeployDelaySeconds), GrantID: r.GrantID, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
 }
 
@@ -37,7 +37,7 @@ func fromGetRow(r sqlcgen.GetMonitorRow) Monitor {
 		IntervalSeconds: r.IntervalSeconds, ExpectedCertID: r.ExpectedCertID, Enabled: r.Enabled,
 		State: r.State, StateChangedAt: r.StateChangedAt, LastCheckedAt: r.LastCheckedAt, NextCheckAt: r.NextCheckAt,
 		LastFingerprint: r.LastFingerprint, LastNotAfter: r.LastNotAfter, LastIssuer: r.LastIssuer, LastError: r.LastError,
-		ConsecutiveFailures: r.ConsecutiveFailures, GrantID: r.GrantID, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		ConsecutiveFailures: r.ConsecutiveFailures, PostDeployDelaySeconds: r.PostDeployDelaySeconds, GrantID: r.GrantID, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	})
 	m.ExpectedCertificateName = r.ExpectedCertificateName
 	return m
@@ -45,6 +45,14 @@ func fromGetRow(r sqlcgen.GetMonitorRow) Monitor {
 
 func fromListRow(r sqlcgen.ListMonitorsRow) Monitor {
 	return fromGetRow(sqlcgen.GetMonitorRow(r))
+}
+
+func delayArg(p *int) *int32 {
+	if p == nil {
+		return nil
+	}
+	v := int32(*p)
+	return &v
 }
 
 // notFoundErr maps pgx.ErrNoRows to ErrNotFound.
@@ -191,7 +199,7 @@ func (s *Store) CreateTx(ctx context.Context, tx pgx.Tx, orgID uuid.UUID, in Inp
 func (s *Store) create(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, in Input) (Monitor, error) {
 	r, err := q.CreateMonitor(ctx, sqlcgen.CreateMonitorParams{
 		OrgID: orgID, Name: in.Name, Host: in.Host, Port: int32(in.Port), Sni: in.SNI,
-		IntervalSeconds: int32(in.IntervalSeconds), ExpectedCertID: in.ExpectedCertID, Enabled: in.Enabled,
+		IntervalSeconds: int32(in.IntervalSeconds), ExpectedCertID: in.ExpectedCertID, Enabled: in.Enabled, PostDeployDelaySeconds: delayArg(in.PostDeployDelaySeconds),
 	})
 	if err != nil {
 		return Monitor{}, err
@@ -226,7 +234,7 @@ func (s *Store) update(ctx context.Context, q *sqlcgen.Queries, orgID, id uuid.U
 	r, err := q.UpdateMonitor(ctx, sqlcgen.UpdateMonitorParams{
 		ID: id, OrgID: orgID, Name: in.Name, Host: in.Host, Port: int32(in.Port), Sni: in.SNI,
 		IntervalSeconds: int32(in.IntervalSeconds), ExpectedCertID: in.ExpectedCertID, Enabled: in.Enabled,
-		ResetState: resetState,
+		PostDeployDelaySeconds: delayArg(in.PostDeployDelaySeconds), ResetState: resetState,
 	})
 	if err != nil {
 		return Monitor{}, notFoundErr(err)
