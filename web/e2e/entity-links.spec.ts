@@ -14,7 +14,9 @@ test('entity links: certificate to CA, target to credential, credential back to 
   await page.getByRole('table', { name: 'Certificates' }).getByRole('link', { name: E2E.certName, exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: E2E.certName })).toBeVisible();
   await page.getByRole('main').locator('a[href*="/issuers/cas/"]').first().click();
-  await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/issuers/cas/[^/]+/overview`));
+  // A private CA has a detail page; any other kind opens its sheet on the list.
+  await expect(page).toHaveURL(new RegExp(`/o/${E2E.orgSlug}/issuers/cas(/[^/?]+/overview|\\?edit=)`));
+  await expect(page.getByRole('dialog').or(page.getByRole('heading', { level: 1 }))).toBeVisible();
 
   // A target that uses a saved credential.
   const suffix = Math.random().toString(36).slice(2, 8);

@@ -4,7 +4,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import type { CA } from '@/api/types';
 import { help } from '@/lib/help';
 import { server } from '@/test/server';
-import { authHandlers, ca, caLocal, caLocalImported, caAdcs, caLocalNeverRotated, caVaultPki, meWith, url } from '@/test/fixtures';
+import { authHandlers, ca, caLocal, caLocalImported, caAdcs, caLocalNeverRotated, caVaultPki, meWith, presets, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let cas: CA[];
@@ -214,4 +214,12 @@ it('adcs test needs cas:write', async () => {
   await screen.findByRole('heading', { name: 'Corp AD CS' });
   const sheet = document.body;
   expect(within(sheet).getByRole('button', { name: 'Test' })).toBeDisabled();
+});
+
+it('sends a non-private CA to its sheet on the list', async () => {
+  cas = [ca];
+  server.use(http.get(url('/meta/ca-presets'), () => HttpResponse.json(presets)));
+  const { router } = renderRoute('/o/acme/issuers/cas/ca-1/overview');
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/issuers/cas'));
+  expect(router.state.location.search).toEqual({ edit: 'ca-1', kind: 'acme' });
 });
