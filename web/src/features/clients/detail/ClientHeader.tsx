@@ -45,6 +45,14 @@ export function ClientHeader({ client, siteName, actions }: { client: Client; si
         <Fact label="Agent" help="client.agentVersion">
           {client.agentVersion ? <span className="font-mono text-xs">{`${client.agentVersion} · ${client.os}/${client.arch}`}</span> : '–'}
         </Fact>
+        {client.fileWatch && (
+          <Fact label="File watch" help="client.fileWatch">
+            <span className="inline-flex items-center gap-1.5">
+              {client.fileWatch.active ? 'Watching files' : 'File watch off'}
+              {client.fileWatch.reason && <HelpTip text={client.fileWatch.reason} label="file watch reason" />}
+            </span>
+          </Fact>
+        )}
         <Fact label="Agent certificate" help="client.agentCert">
           {!client.agentCertNotAfter ? (
             '–'
