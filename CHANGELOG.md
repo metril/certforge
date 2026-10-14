@@ -2,6 +2,16 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.41.0](https://github.com/metril/certforge/compare/v0.40.0...v0.41.0) (2026-10-14)
+
+
+### Features
+
+* **deploy:** send deploy.drift when a server grant first drifts ([4d7d40f](https://github.com/metril/certforge/commit/4d7d40f1e4bb6f1165fe64872f60b462e1ecbf17))
+* **metrics:** count deployment transitions and report inactive file watchers ([14c18e4](https://github.com/metril/certforge/commit/14c18e47fa07ed8876bcac8d98779bdb111218ef))
+* **notify:** send agent drift and failed alerts when the state changes ([c03668e](https://github.com/metril/certforge/commit/c03668e6c7313d935c90de4f7cebc60a7cc5d462))
+* prompt drift and failure alerts, transition and file-watch metrics ([9a7e176](https://github.com/metril/certforge/commit/9a7e1762b9a9f027345ce5f2a53eeaa6d6fc1556))
+
 ## [0.40.0](https://github.com/metril/certforge/compare/v0.39.0...v0.40.0) (2026-10-14)
 
 
