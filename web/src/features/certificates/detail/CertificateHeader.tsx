@@ -5,17 +5,23 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { CircleAlert, CopyPlus, Download, ExternalLink, MoreHorizontal, RotateCw, Trash2, Upload } from 'lucide-react';
 import { accountsQuery } from '@/api/queries/accounts';
 import { casQuery } from '@/api/queries/cas';
-import { certificateQuery, useDeleteCertificates, useRenewCertificates } from '@/api/queries/certificates';
+import { layoutsQuery } from '@/api/queries/delivery';
+import { monitorsQuery } from '@/api/queries/monitors';
+import { certificateQuery, plural, useDeleteCertificates, useRenewCertificates } from '@/api/queries/certificates';
 import type { Certificate, EffectiveMap } from '@/api/types';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { EntityLink } from '@/components/EntityLink';
 import { PermissionTip } from '@/components/PermissionTip';
 import { StatusChip, ToneChip } from '@/components/StatusChip';
+import { UsagePopover } from '@/components/UsagePopover';
 import { CertValidity } from '@/components/ValidityBar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { GrantsPopover } from '@/features/delivery/GrantsPopover';
 import { help } from '@/lib/help';
+import { useMe } from '@/lib/org';
+import { can } from '@/lib/permissions';
 import { renewToastHandlers } from '@/lib/renewToast';
 import { relDays } from '@/lib/time';
 import { IconButton } from '@/components/IconButton';
@@ -47,6 +53,12 @@ export function CertificateHeader({ cert, orgId, orgSlug, canRenew, canDelete, c
   const [confirm, setConfirm] = useState(false);
   const { data: cas = [] } = useQuery(casQuery(orgId));
   const { data: accounts = [] } = useQuery(accountsQuery(orgId));
+  const me = useMe();
+  const { data: layouts = [] } = useQuery({ ...layoutsQuery(orgId), enabled: can(me, 'delivery:read', orgId) });
+  const { data: monitors = [] } = useQuery({ ...monitorsQuery(orgId), enabled: can(me, 'alerts:read', orgId) });
+  const usedByLayouts = layouts.filter((l) => l.extraCertificateIds.includes(cert.id));
+  const usedByMonitors = monitors.filter((m) => m.expectedCertificateId === cert.id);
+  const grantCount = cert.grantCount ?? 0;
   const eff = cert.effective as EffectiveMap | undefined;
   const caName = cas.find((c) => c.id === eff?.caId?.value)?.name;
   const account = accounts.find((a) => a.id === eff?.accountId?.value)?.email;
@@ -175,6 +187,32 @@ export function CertificateHeader({ cert, orgId, orgSlug, canRenew, canDelete, c
           <dt className="text-ink-muted">Next renewal</dt>
           <dd>{cert.managed ? (cert.nextRenewAt ? relDays(cert.nextRenewAt) : '–') : 'Not renewed here'}</dd>
         </div>
+        {(grantCount > 0 || usedByLayouts.length > 0 || usedByMonitors.length > 0) && (
+          <div className="flex flex-wrap gap-2">
+            <dt className="text-ink-muted">Used by</dt>
+            <dd className="flex flex-wrap gap-x-3">
+              {grantCount > 0 && <GrantsPopover count={grantCount} filter={{ certificateId: cert.id }} />}
+              {usedByLayouts.length > 0 && (
+                <UsagePopover
+                  label={plural(usedByLayouts.length, 'layout')}
+                  count={usedByLayouts.length}
+                  allowed
+                  queryKey={['cert-layouts', orgId, cert.id, usedByLayouts.map((l) => l.id).join()]}
+                  load={async () => ({ items: usedByLayouts.map((l) => ({ id: l.id, name: l.name, kind: 'layout' as const })) })}
+                />
+              )}
+              {usedByMonitors.length > 0 && (
+                <UsagePopover
+                  label={plural(usedByMonitors.length, 'monitor')}
+                  count={usedByMonitors.length}
+                  allowed
+                  queryKey={['cert-monitors', orgId, cert.id, usedByMonitors.map((m) => m.id).join()]}
+                  load={async () => ({ items: usedByMonitors.map((m) => ({ id: m.id, name: m.name, kind: 'monitor' as const })) })}
+                />
+              )}
+            </dd>
+          </div>
+        )}
         {cert.failureCount > 0 && (
           <div className="flex min-w-0 gap-2">
             <dt className="text-ink-muted">Failures</dt>
