@@ -16,7 +16,7 @@ import (
 )
 
 // TestRestoreOlderArchiveWithoutLaterTables: an archive written by a build
-// whose Manifest lacked the newest table (action_groups) must still restore; the
+// whose Manifest lacked the newest table (grant_check_tokens) must still restore; the
 // missing table simply stays empty.
 func TestRestoreOlderArchiveWithoutLaterTables(t *testing.T) {
 	ctx := context.Background()
@@ -39,8 +39,8 @@ func TestRestoreOlderArchiveWithoutLaterTables(t *testing.T) {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if backup.Manifest[len(backup.Manifest)-1] != "action_groups" {
-		t.Fatal("test assumes action_groups is the last Manifest table")
+	if backup.Manifest[len(backup.Manifest)-1] != "grant_check_tokens" {
+		t.Fatal("test assumes grant_check_tokens is the last Manifest table")
 	}
 	older := backup.Manifest[:len(backup.Manifest)-1]
 	var archive bytes.Buffer
@@ -52,9 +52,9 @@ func TestRestoreOlderArchiveWithoutLaterTables(t *testing.T) {
 	if _, err := backup.Restore(ctx, dstPool, bytes.NewReader(archive.Bytes()), be.restoreOpts()); err != nil {
 		t.Fatalf("restore older archive: %v", err)
 	}
-	counts := tableCounts(t, ctx, dstPool, []string{"action_groups", "orgs"})
-	if counts["action_groups"] != 0 {
-		t.Errorf("action_groups rows = %d, want 0", counts["action_groups"])
+	counts := tableCounts(t, ctx, dstPool, []string{"grant_check_tokens", "orgs"})
+	if counts["grant_check_tokens"] != 0 {
+		t.Errorf("grant_check_tokens rows = %d, want 0", counts["grant_check_tokens"])
 	}
 	if counts["orgs"] == 0 {
 		t.Error("orgs not restored")

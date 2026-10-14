@@ -35,17 +35,29 @@ const minMigrationVersion = 31
 // added action_groups.
 const actionsMigration = 33
 
+// checkTokensMigration is 00036_grant_check_tokens.sql, which added
+// grant_check_tokens.
+const checkTokensMigration = 36
+
 // manifestFor returns the table list of the schema at migration version v.
 func manifestFor(v int64) []string {
-	if v >= actionsMigration {
+	if v >= checkTokensMigration {
 		return Manifest
 	}
 	out := make([]string, 0, len(Manifest))
 	for _, t := range Manifest {
 		switch t {
+		case "grant_check_tokens":
 		case "action_groups":
+			if v >= actionsMigration {
+				out = append(out, t)
+			}
 		case "actions":
-			out = append(out, "hooks")
+			if v >= actionsMigration {
+				out = append(out, t)
+			} else {
+				out = append(out, "hooks")
+			}
 		default:
 			out = append(out, t)
 		}
