@@ -149,3 +149,23 @@ export function useRedeployGrant(orgId: string, quiet = false) {
     onSuccess: () => invalidateGrants(qc, orgId),
   });
 }
+
+// Generate or rotate a server grant's check-now webhook token; the response
+// carries the only copy of the token.
+export function useCreateGrantCheckToken(orgId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => call(api.POST('/orgs/{orgId}/grants/{id}/check-token', { params: { path: { orgId, id } } })),
+    meta: { silent: true },
+    onSuccess: () => invalidateGrants(qc, orgId),
+  });
+}
+
+export function useDeleteGrantCheckToken(orgId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => call(api.DELETE('/orgs/{orgId}/grants/{id}/check-token', { params: { path: { orgId, id } } })),
+    meta: { silent: true, success: 'Check hook revoked' },
+    onSuccess: () => invalidateGrants(qc, orgId),
+  });
+}
