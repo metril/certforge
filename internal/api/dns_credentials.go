@@ -138,7 +138,7 @@ func (s *Server) GetDNSCredentialUsage(ctx context.Context, r gen.GetDNSCredenti
 	}
 	out := gen.GetDNSCredentialUsage200JSONResponse{Defaults: int(defaults)}
 	out.Certificates = make([]struct {
-		Id   openapi_types.UUID `json:"id"`
+		Id   openapi_types.UUID `json:"id"` //nolint:revive // field name fixed by the generated response type
 		Name string             `json:"name"`
 	}, len(rows))
 	for i, c := range rows {
