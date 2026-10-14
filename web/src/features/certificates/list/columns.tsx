@@ -1,6 +1,7 @@
 import { columnHelper } from '@/components/DataTable';
 import { plural } from '@/api/queries/certificates';
 import type { Certificate } from '@/api/types';
+import { GrantsPopover } from '@/features/delivery/GrantsPopover';
 import { PrimaryCell } from '@/components/PrimaryCell';
 import { StatusChip } from '@/components/StatusChip';
 import { CertValidity } from '@/components/ValidityBar';
@@ -14,9 +15,9 @@ const stickyCol = 'sticky left-0 z-10 bg-panel';
 
 /** Muted second line of the Name cell: common name, CA, grants, then every
  * other name (the PrimaryCell tooltip shows the whole line). */
-export function certMeta(c: Certificate, ca: string | undefined): string[] {
+export function certMeta(c: Certificate, ca: string | undefined, withGrants = true): string[] {
   const names = c.sans.filter((n) => n !== c.commonName).join(', ');
-  return [c.commonName, ca, c.grantCount ? plural(c.grantCount, 'grant') : '', names].filter(Boolean) as string[];
+  return [c.commonName, ca, withGrants && c.grantCount ? plural(c.grantCount, 'grant') : '', names].filter(Boolean) as string[];
 }
 
 export function certColumns(
@@ -33,7 +34,8 @@ export function certColumns(
         <PrimaryCell
           primary={row.original.name}
           link={{ to: '/o/$org/certificates/$id/$tab', params: { org: slugOf(row.original), id: row.original.id, tab: 'overview' } }}
-          meta={certMeta(row.original, caName(row.original.effective?.caId?.value ?? undefined))}
+          meta={certMeta(row.original, caName(row.original.effective?.caId?.value ?? undefined), false)}
+          lead={row.original.grantCount ? <GrantsPopover count={row.original.grantCount} filter={{ certificateId: row.original.id }} /> : undefined}
         />
       ),
     }),
