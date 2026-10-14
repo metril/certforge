@@ -985,3 +985,77 @@ func TestHeartbeatStoresFileWatch(t *testing.T) {
 		t.Fatalf("on: %v %q", a, r)
 	}
 }
+
+type fakeDeploymentEvents struct{ got []DeploymentTransition }
+
+func (f *fakeDeploymentEvents) DeploymentChanged(_ context.Context, t DeploymentTransition) error {
+	f.got = append(f.got, t)
+	return nil
+}
+
+// TestDeploymentAlertsOncePerTransition: a drift or failed state change calls
+// Events once, after commit; a repeated state, an ok state and a version-less
+// deployment call nothing.
+func TestDeploymentAlertsOncePerTransition(t *testing.T) {
+	f := newSyncFixture(t)
+	ev := &fakeDeploymentEvents{}
+	f.svc.Events = ev
+	ctx := context.Background()
+
+	certID := f.cert(t, "web")
+	vid := f.version(t, certID, 1, true)
+	f.setCurrent(t, certID, vid)
+	targetID := f.target(t, "traefik", delivery.TraefikConfig{Dir: "/etc/traefik/dynamic", AcmeServiceURL: "http://agent:8080"})
+	c := f.client(t, "web-alerts")
+	gid, err := f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: certID, Delivery: "pull", TargetID: &targetID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl, err := f.q.GetClientByID(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asg, err := f.svc.Assignments(ctx, cl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var good, bad []agentproto.InstalledFile
+	var installed []agentproto.FileDigest
+	for _, file := range asg.Grants[0].Files {
+		good = append(good, agentproto.InstalledFile{GrantID: gid, Path: file.Path, SHA256: file.SHA256})
+		bad = append(bad, agentproto.InstalledFile{GrantID: gid, Path: file.Path, SHA256: "0000"})
+		installed = append(installed, agentproto.FileDigest{Path: file.Path, SHA256: file.SHA256})
+	}
+	report := func(r agentproto.GrantResult) {
+		t.Helper()
+		r.GrantID, r.VersionID = gid, vid
+		if err := f.svc.Report(ctx, cl, agentproto.Report{Revision: asg.Revision, Results: []agentproto.GrantResult{r}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	report(agentproto.GrantResult{State: agentproto.StateOK, Installed: installed})
+	if len(ev.got) != 0 {
+		t.Fatalf("ok sent %d alerts, want 0", len(ev.got))
+	}
+	if err := f.svc.Heartbeat(ctx, cl, agentproto.Heartbeat{Installed: bad}); err != nil {
+		t.Fatal(err)
+	}
+	if len(ev.got) != 1 || ev.got[0].State != "drift" || ev.got[0].VersionID != vid || ev.got[0].CertName != "web" || ev.got[0].Target != "web-alerts" {
+		t.Fatalf("after drift heartbeat: %+v", ev.got)
+	}
+	if err := f.svc.Heartbeat(ctx, cl, agentproto.Heartbeat{Installed: bad}); err != nil {
+		t.Fatal(err)
+	}
+	if len(ev.got) != 1 {
+		t.Fatalf("a repeated drift sent %d alerts, want 1", len(ev.got))
+	}
+	report(agentproto.GrantResult{State: agentproto.StateFailed, Error: "disk full"})
+	if len(ev.got) != 2 || ev.got[1].State != "failed" || ev.got[1].Error != "disk full" {
+		t.Fatalf("after failed report: %+v", ev.got)
+	}
+	report(agentproto.GrantResult{State: agentproto.StateFailed, Error: "disk full"})
+	if len(ev.got) != 2 {
+		t.Fatalf("a repeated failed sent %d alerts, want 2 total", len(ev.got))
+	}
+}

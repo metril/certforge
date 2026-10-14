@@ -41,8 +41,9 @@ LEFT JOIN deploy_targets t ON t.id = g.deploy_target_id
 WHERE g.id = sqlc.arg(id) AND g.client_id = sqlc.arg(client_id) AND g.removed_at IS NULL;
 
 -- name: ClientDeployments :many
-SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, g.removed_revision, d.state, d.version_id, d.expected
+SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, g.removed_revision, d.state, d.version_id, d.expected, ce.name AS certificate_name
 FROM client_cert_grants g JOIN deployments d ON d.grant_id = g.id
+JOIN certificates ce ON ce.id = g.cert_id
 WHERE g.client_id = $1
 ORDER BY g.id
 FOR UPDATE OF d;
@@ -50,8 +51,9 @@ FOR UPDATE OF d;
 -- name: ClientDeploymentsNoLock :many
 -- ClientDeployments without the row locks: Heartbeat reads with this first
 -- and takes the locked path only when a state would change.
-SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, g.removed_revision, d.state, d.version_id, d.expected
+SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, g.removed_revision, d.state, d.version_id, d.expected, ce.name AS certificate_name
 FROM client_cert_grants g JOIN deployments d ON d.grant_id = g.id
+JOIN certificates ce ON ce.id = g.cert_id
 WHERE g.client_id = $1
 ORDER BY g.id;
 
