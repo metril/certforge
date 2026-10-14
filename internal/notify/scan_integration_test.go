@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/db/dbtest"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/notify"
@@ -448,5 +449,37 @@ func TestEventsPruned(t *testing.T) {
 	}
 	if got := countRows(t, pool, "notification_events", "dedupe_key = $1", "test:recent"); got != 1 {
 		t.Fatalf("recent event rows = %d, want 1 (kept)", got)
+	}
+}
+
+// TestImmediateDeploymentAlertDedupesWithScan: the agents' after-commit alert
+// and the hourly scan share a dedupe key, so together they emit one event.
+func TestImmediateDeploymentAlertDedupesWithScan(t *testing.T) {
+	ctx := context.Background()
+	pool, _ := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	insertChannel(t, pool, testChannel{orgID: org, name: "all-events"})
+
+	client := insertClient(t, pool, org, "client-1", clientOpts{})
+	target := insertDeployTarget(t, pool, org, "agent-target", "agent")
+	cert := insertCert(t, pool, org, "drift-cert", "drift.example.test", nil)
+	version := insertVersion(t, pool, cert, time.Now().Add(90*24*time.Hour), uuid.Nil)
+	grant := insertAgentGrant(t, pool, client, cert, target, "drift", version, "")
+
+	s := newSources(pool, &fakeInserter{})
+	de := notify.DeployEvents{E: s.Emitter}
+	tr := agents.DeploymentTransition{OrgID: org, ClientID: client, GrantID: grant, VersionID: version,
+		CertName: "drift-cert", Target: "client-1", State: "drift"}
+	if err := de.DeploymentChanged(ctx, tr); err != nil {
+		t.Fatal(err)
+	}
+	if got := eventCount(t, pool, "deploy.drift"); got != 1 {
+		t.Fatalf("deploy.drift events after the immediate alert = %d, want 1", got)
+	}
+	if err := s.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := eventCount(t, pool, "deploy.drift"); got != 1 {
+		t.Fatalf("deploy.drift events after the scan = %d, want still 1", got)
 	}
 }

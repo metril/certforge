@@ -10,6 +10,7 @@ import (
 
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/db/sqlcgen"
+	"github.com/metril/certforge/internal/metrics"
 )
 
 // maxRemediations is how many times in a row auto-remediation may redeploy
@@ -55,7 +56,13 @@ func (d *Dispatcher) OnCheck(ctx context.Context, tx pgx.Tx, monitorID uuid.UUID
 	}
 	switch newState {
 	case "ok":
-		return nil, q.ResetServerDrift(ctx, sqlcgen.ResetServerDriftParams{CurrentVersionID: row.CurrentVersionID, GrantID: row.GrantID})
+		if err := q.ResetServerDrift(ctx, sqlcgen.ResetServerDriftParams{CurrentVersionID: row.CurrentVersionID, GrantID: row.GrantID}); err != nil {
+			return nil, err
+		}
+		if row.Status != "drift" {
+			return nil, nil
+		}
+		return func() { metrics.DeploymentTransitions.WithLabelValues("server", "ok").Inc() }, nil
 	case "mismatch":
 		if row.Status != "deployed" && row.Status != "drift" {
 			return nil, nil
@@ -94,7 +101,7 @@ func (d *Dispatcher) OnCheck(ctx context.Context, tx pgx.Tx, monitorID uuid.UUID
 				}
 			}
 		}
-		if !firstSeen || d.Auditor == nil {
+		if !firstSeen {
 			return nil, nil
 		}
 		ev := audit.Event{
@@ -104,9 +111,21 @@ func (d *Dispatcher) OnCheck(ctx context.Context, tx pgx.Tx, monitorID uuid.UUID
 				"observedFingerprint": observedFP, "expectedFingerprint": expectedFP,
 			},
 		}
+		// row.VersionID equals CurrentVersionID here (both non-nil, checked above).
+		notice := DeployDrift{OrgID: row.OrgID, GrantID: row.GrantID, VersionID: *row.VersionID,
+			CertName: row.CertificateName, TargetName: row.TargetName}
 		return func() {
-			if err := d.Auditor.Record(context.WithoutCancel(ctx), ev); err != nil {
-				d.log().Error("audit record failed", "action", ev.Action, "err", err)
+			metrics.DeploymentTransitions.WithLabelValues("server", "drift").Inc()
+			bg := context.WithoutCancel(ctx)
+			if d.Auditor != nil {
+				if err := d.Auditor.Record(bg, ev); err != nil {
+					d.log().Error("audit record failed", "action", ev.Action, "err", err)
+				}
+			}
+			if d.Events != nil {
+				if err := d.Events.DeployDrift(bg, notice); err != nil {
+					d.log().Error("deploy.drift emit failed", "grant", notice.GrantID, "err", err)
+				}
 			}
 		}, nil
 	}

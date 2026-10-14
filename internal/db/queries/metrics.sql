@@ -42,6 +42,17 @@ FROM clients c
 JOIN orgs o ON o.id = c.org_id
 GROUP BY 1, 2;
 
+-- Active clients whose agent reports its file watcher is not running (an
+-- agent that never reported one, NULL, is not counted). Orgs with clients
+-- always get a row so an alert on > 0 can also see it clear.
+-- name: MetricsClientsFileWatchInactive :many
+SELECT o.slug AS org,
+       count(*) FILTER (WHERE c.file_watch_active IS FALSE) AS count
+FROM clients c
+JOIN orgs o ON o.id = c.org_id
+WHERE c.status = 'active'
+GROUP BY o.slug;
+
 -- Agent-run grants (deployments.state is already pending/ok/failed/drift)
 -- unioned with server-run grants (server_deployments.status also has drift;
 -- deployed maps to ok, matching the agent side's own terminal

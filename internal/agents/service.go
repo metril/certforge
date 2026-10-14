@@ -31,6 +31,26 @@ type Reloader interface {
 	Reload(ctx context.Context) error
 }
 
+// DeploymentTransition is one agent deployment's state change, handed to
+// DeploymentEvents after the transaction that recorded it commits.
+type DeploymentTransition struct {
+	OrgID     uuid.UUID
+	ClientID  uuid.UUID
+	GrantID   uuid.UUID
+	VersionID uuid.UUID
+	CertName  string
+	Target    string // the client's name
+	State     string // "drift" or "failed"
+	Error     string
+}
+
+// DeploymentEvents is told about drift and failed transitions so an alert
+// goes out at once instead of at the next hourly scan. notify.DeployEvents
+// implements it; the interface lives here to avoid an import cycle.
+type DeploymentEvents interface {
+	DeploymentChanged(ctx context.Context, t DeploymentTransition) error
+}
+
 // Service is the agents domain service. Hub and Listener may be nil.
 type Service struct {
 	Pool     *pgxpool.Pool
@@ -42,6 +62,7 @@ type Service struct {
 	Settings *SettingsSource
 	Hub      Hub
 	Listener Reloader
+	Events   DeploymentEvents // nil skips the immediate drift/failed alerts
 	Log      *slog.Logger
 	Now      func() time.Time
 

@@ -13,7 +13,7 @@ Each kind has a fixed severity and resource type. Events are listed by `GET /api
 | `cert.expiring` | warning | certificate | The current version expires within the **Expiry warning (days)** window. |
 | `cert.expired` | critical | certificate | The current version has expired. |
 | `deploy.failed` | warning | grant | A live grant's deployment is in state failed. |
-| `deploy.drift` | warning | grant | An agent grant's installed files no longer match. Server grants have no drift. |
+| `deploy.drift` | warning | grant | A grant's deployed certificate no longer matches: an agent grant's installed files, or the endpoint a server grant's monitor checks. |
 | `client.offline` | warning | client | An active client with a live grant was last seen longer ago than **Offline after (seconds)**. |
 | `agent.cert_expiring` | warning | client | An active client's agent certificate expires within 14 days. |
 | `client.pending_approval` | warning | client | An agent redeemed its token and waits for approval. |

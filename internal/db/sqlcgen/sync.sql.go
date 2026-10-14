@@ -181,8 +181,9 @@ func (q *Queries) ClientAssignments(ctx context.Context, clientID *uuid.UUID) ([
 }
 
 const clientDeployments = `-- name: ClientDeployments :many
-SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, g.removed_revision, d.state, d.version_id, d.expected
+SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, g.removed_revision, d.state, d.version_id, d.expected, ce.name AS certificate_name
 FROM client_cert_grants g JOIN deployments d ON d.grant_id = g.id
+JOIN certificates ce ON ce.id = g.cert_id
 WHERE g.client_id = $1
 ORDER BY g.id
 FOR UPDATE OF d
@@ -198,6 +199,7 @@ type ClientDeploymentsRow struct {
 	State           string     `json:"state"`
 	VersionID       *uuid.UUID `json:"version_id"`
 	Expected        []byte     `json:"expected"`
+	CertificateName string     `json:"certificate_name"`
 }
 
 func (q *Queries) ClientDeployments(ctx context.Context, clientID *uuid.UUID) ([]ClientDeploymentsRow, error) {
@@ -219,6 +221,7 @@ func (q *Queries) ClientDeployments(ctx context.Context, clientID *uuid.UUID) ([
 			&i.State,
 			&i.VersionID,
 			&i.Expected,
+			&i.CertificateName,
 		); err != nil {
 			return nil, err
 		}
@@ -231,8 +234,9 @@ func (q *Queries) ClientDeployments(ctx context.Context, clientID *uuid.UUID) ([
 }
 
 const clientDeploymentsNoLock = `-- name: ClientDeploymentsNoLock :many
-SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, g.removed_revision, d.state, d.version_id, d.expected
+SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, g.removed_revision, d.state, d.version_id, d.expected, ce.name AS certificate_name
 FROM client_cert_grants g JOIN deployments d ON d.grant_id = g.id
+JOIN certificates ce ON ce.id = g.cert_id
 WHERE g.client_id = $1
 ORDER BY g.id
 `
@@ -247,6 +251,7 @@ type ClientDeploymentsNoLockRow struct {
 	State           string     `json:"state"`
 	VersionID       *uuid.UUID `json:"version_id"`
 	Expected        []byte     `json:"expected"`
+	CertificateName string     `json:"certificate_name"`
 }
 
 // ClientDeployments without the row locks: Heartbeat reads with this first
@@ -270,6 +275,7 @@ func (q *Queries) ClientDeploymentsNoLock(ctx context.Context, clientID *uuid.UU
 			&i.State,
 			&i.VersionID,
 			&i.Expected,
+			&i.CertificateName,
 		); err != nil {
 			return nil, err
 		}

@@ -49,6 +49,15 @@ var (
 		Help: "External monitor checks by resulting state.",
 	}, []string{"result"})
 
+	// DeploymentTransitions is certforge_deployment_transitions_total{kind,to}:
+	// kind is agent|server, to the new state. Counted after the transition's
+	// transaction commits, in internal/agents (every agent state change) and
+	// internal/deploy (a server grant's first drift and its return to ok).
+	DeploymentTransitions = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "certforge_deployment_transitions_total",
+		Help: "Deployment state changes by grant kind and new state.",
+	}, []string{"kind", "to"})
+
 	// AuditHeadID is certforge_audit_head_id: the id of the newest audit
 	// event this process has seen written or verified. Prometheus keeps its
 	// history outside the database, so a drop (see docs/operations/monitoring.md) shows the
@@ -78,7 +87,7 @@ func init() {
 	Registry.MustRegister(
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
-		IssuanceAttempts, IssuanceDuration, NotificationsTotal, MonitorChecks, AuditHeadID,
+		IssuanceAttempts, IssuanceDuration, NotificationsTotal, MonitorChecks, DeploymentTransitions, AuditHeadID,
 		httpRequestsTotal, httpRequestDuration,
 	)
 }

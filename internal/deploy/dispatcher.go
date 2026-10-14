@@ -76,6 +76,15 @@ type Inserter interface {
 // existing test fixture, unless a test sets it) makes fail skip the emit.
 type Events interface {
 	DeployFailed(ctx context.Context, f DeployFailure) error
+	// DeployDrift reports a server-run grant whose endpoint serves a different
+	// certificate, once per drift episode (OnCheck's firstSeen).
+	DeployDrift(ctx context.Context, d DeployDrift) error
+}
+
+// DeployDrift is one server-run grant's first drift observation.
+type DeployDrift struct {
+	OrgID, GrantID, VersionID uuid.UUID
+	CertName, TargetName      string
 }
 
 // DeployFailure is one failed server-run deploy attempt, ready for

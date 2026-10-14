@@ -15,6 +15,7 @@ import (
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
+	"github.com/metril/certforge/internal/metrics"
 	"github.com/metril/certforge/internal/render"
 )
 
@@ -206,6 +207,29 @@ func deploymentEvent(c sqlcgen.Client, d sqlcgen.ClientDeploymentsRow, state, er
 			"previousState": d.State, "error": errText, "missing": missing, "mismatched": mismatched}}
 }
 
+// transitionOf returns the immediate-alert payload for a state change, or
+// false when the new state is not alertable or the deployment has no version.
+func transitionOf(c sqlcgen.Client, d sqlcgen.ClientDeploymentsRow, next, errText string) (DeploymentTransition, bool) {
+	if (next != stateDrift && next != stateFailed) || d.VersionID == nil {
+		return DeploymentTransition{}, false
+	}
+	return DeploymentTransition{OrgID: c.OrgID, ClientID: c.ID, GrantID: d.GrantID, VersionID: *d.VersionID,
+		CertName: d.CertificateName, Target: c.Name, State: next, Error: errText}, true
+}
+
+// notifyTransitions sends the after-commit alerts; a failed send is logged,
+// never returned, so it cannot undo an agent's report.
+func (s *Service) notifyTransitions(ctx context.Context, ts []DeploymentTransition) {
+	if s.Events == nil {
+		return
+	}
+	for _, t := range ts {
+		if err := s.Events.DeploymentChanged(ctx, t); err != nil {
+			s.log().Warn("agents: deployment alert not sent", "client", t.ClientID, "grant", t.GrantID, "err", err)
+		}
+	}
+}
+
 func nonNilDigests(in []agentproto.FileDigest) []agentproto.FileDigest {
 	if in == nil {
 		return []agentproto.FileDigest{}
@@ -235,6 +259,8 @@ func (s *Service) Report(ctx context.Context, c sqlcgen.Client, rep agentproto.R
 		byGrant[r.GrantID] = r
 	}
 	var events []audit.Event
+	var transitions []DeploymentTransition
+	var changedTo []string
 	var remediateGrants []uuid.UUID
 	pushRemediate := false
 	for _, res := range rep.Results {
@@ -274,6 +300,10 @@ func (s *Service) Report(ctx context.Context, c sqlcgen.Client, rep agentproto.R
 			}
 			if next != d.State {
 				events = append(events, deploymentEvent(c, d, next, errText, missing, mismatched))
+				changedTo = append(changedTo, next)
+				if t, ok := transitionOf(c, d, next, errText); ok {
+					transitions = append(transitions, t)
+				}
 				if next == stateDrift && d.AutoRemediate {
 					remediateGrants = append(remediateGrants, d.GrantID)
 					pushRemediate = pushRemediate || d.Delivery == "push"
@@ -317,6 +347,10 @@ func (s *Service) Report(ctx context.Context, c sqlcgen.Client, rep agentproto.R
 	for _, e := range events {
 		s.audit(ctx, e)
 	}
+	for _, to := range changedTo {
+		metrics.DeploymentTransitions.WithLabelValues("agent", to).Inc()
+	}
+	s.notifyTransitions(ctx, transitions)
 	s.nudge(revs, map[uuid.UUID]bool{c.ID: pushRemediate})
 	return nil
 }
@@ -370,6 +404,8 @@ func (s *Service) Heartbeat(ctx context.Context, c sqlcgen.Client, hb agentproto
 		return err
 	}
 	var events []audit.Event
+	var transitions []DeploymentTransition
+	var changedTo []string
 	var remediateGrants []uuid.UUID
 	pushRemediate := false
 	for _, d := range rows {
@@ -393,6 +429,10 @@ func (s *Service) Heartbeat(ctx context.Context, c sqlcgen.Client, hb agentproto
 			return err
 		}
 		events = append(events, deploymentEvent(c, d, next, "", missing, mismatched))
+		changedTo = append(changedTo, next)
+		if t, ok := transitionOf(c, d, next, ""); ok {
+			transitions = append(transitions, t)
+		}
 		if next == stateDrift && d.AutoRemediate {
 			remediateGrants = append(remediateGrants, d.GrantID)
 			pushRemediate = pushRemediate || d.Delivery == "push"
@@ -413,6 +453,10 @@ func (s *Service) Heartbeat(ctx context.Context, c sqlcgen.Client, hb agentproto
 	for _, e := range events {
 		s.audit(ctx, e)
 	}
+	for _, to := range changedTo {
+		metrics.DeploymentTransitions.WithLabelValues("agent", to).Inc()
+	}
+	s.notifyTransitions(ctx, transitions)
 	s.nudge(revs, map[uuid.UUID]bool{c.ID: pushRemediate})
 	s.touch(ctx, c.ID)
 	return nil

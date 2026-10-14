@@ -130,10 +130,12 @@ FOR UPDATE OF ce;
 -- certificate's current version and the deployment's drift/flap state. Locks
 -- the deployment row so concurrent checks and deploys serialize.
 SELECT g.id AS grant_id, ce.org_id, g.cert_id, g.auto_remediate,
-       sd.status, sd.version_id, ce.current_version_id, sd.remediations, sd.remediated_fp
+       sd.status, sd.version_id, ce.current_version_id, sd.remediations, sd.remediated_fp,
+       ce.name AS certificate_name, t.name AS target_name
 FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 JOIN server_deployments sd ON sd.grant_id = g.id
+JOIN deploy_targets t ON t.id = g.deploy_target_id
 WHERE g.id = sqlc.arg(grant_id) AND g.client_id IS NULL AND g.removed_at IS NULL
 FOR UPDATE OF sd;
 
