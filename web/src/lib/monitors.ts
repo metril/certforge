@@ -15,6 +15,23 @@ export function fmtInterval(seconds: number): string {
   return `${Math.round(seconds / 60)} m`;
 }
 
+/** Preset waits between a deploy and its verify check. */
+export const DELAYS: { value: number; label: string }[] = [
+  { value: 0, label: '0 s' },
+  { value: 15, label: '15 s' },
+  { value: 30, label: '30 s' },
+  { value: 60, label: '1 m' },
+  { value: 120, label: '2 m' },
+  { value: 300, label: '5 m' },
+];
+
+/** A preset's own label, else whole minutes or seconds (e.g. "45 s"). */
+export function fmtDelay(seconds: number): string {
+  const preset = DELAYS.find((d) => d.value === seconds);
+  if (preset) return preset.label;
+  return seconds % 60 === 0 ? `${seconds / 60} m` : `${seconds} s`;
+}
+
 /** First 16 hex characters of a fingerprint plus an ellipsis; the full value
  * belongs in a CopyField (UI conventions "Formats"). */
 export function shortFp(fp: string): string {

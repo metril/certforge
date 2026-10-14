@@ -422,6 +422,24 @@ it('edit shows the saved check interval and posts a changed one', async () => {
   await waitFor(() => expect(patched).toMatchObject({ verify: { host: 'fw.lan', port: 8443, intervalSeconds: 300 } }));
 });
 
+it('edit shows the saved post-deploy delay and posts a changed one', async () => {
+  const pf = makeTarget({ id: 't-pf', name: 'fw', type: 'pfsense', runsOn: 'server', config: { url: 'https://fw.lan:8443' } });
+  const g = makeGrant({ id: 'g-v', runsOn: 'server', deployTargetId: 't-pf', clientId: null, clientName: null, deployment: null, serverDeployment: grantServer.serverDeployment, verify: { host: 'fw.lan', port: 8443, intervalSeconds: 3600, postDeployDelaySeconds: 45 } } as never);
+  server.use(
+    http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [pf] })),
+    http.patch(url('/grants/g-v'), async ({ request }) => {
+      patched = await request.json();
+      return HttpResponse.json(g);
+    }),
+  );
+  const { user } = renderUI(<ServerGrantForm orgId="org-1" targetId="t-pf" editing={g} onBack={() => {}} onDone={() => {}} />);
+  const group = await screen.findByRole('radiogroup', { name: 'Check after deploy' });
+  expect(screen.getByText('Currently 45 s')).toBeInTheDocument();
+  await user.click(within(group).getByRole('radio', { name: '1 m' }));
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(patched).toMatchObject({ verify: { postDeployDelaySeconds: 60 } }));
+});
+
 const HINT = /No restart step/;
 const hintCase = (type: string, kind: string) => async (steps: unknown[], actions: unknown[], groups: unknown[] = []) => {
   const t = makeTarget({ id: 't-r', name: 'dev', type: type as never, runsOn: 'server', config: {} });
