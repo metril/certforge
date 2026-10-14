@@ -12,6 +12,7 @@ import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { fmtDateTime, relTime } from '@/lib/time';
 import { failedWithoutData } from '@/lib/queryState';
+import { ActorName, ResourceId } from '@/features/audit/ResourceRef';
 
 /** Audit events whose resource, details or actor carry this client's id. */
 export function ActivityTab({ orgId, orgSlug, clientId }: { orgId: string; orgSlug: string; clientId: string }) {
@@ -52,9 +53,11 @@ export function ActivityTab({ orgId, orgSlug, clientId }: { orgId: string; orgSl
               <Link to="/o/$org/audit" params={{ org: orgSlug }} search={{ event: e.id }} className="w-fit hover:underline">
                 <ToneChip tone={tone} icon={icon} label={e.action} />
               </Link>
-              <span className="truncate text-xs">{e.actorName || e.actorType}</span>
+              <span className="truncate text-xs">
+                <ActorName event={e}>{e.actorName || e.actorType}</ActorName>
+              </span>
               <span className="truncate text-xs text-ink-muted">
-                {e.resourceType} <span className="font-mono">{e.resourceId}</span>
+                {e.resourceType} <ResourceId event={e} className="font-mono" />
               </span>
             </li>
           );
