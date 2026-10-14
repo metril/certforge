@@ -38,16 +38,9 @@ const connectionKind = (d: CertificateDeployment): Connection => (d.clientStatus
 /** A layout or target name linking to its Delivery sheet; "–" when the grant has none. */
 function DeliveryRef({ orgSlug, kind, id, name }: { orgSlug: string; kind: 'layouts' | 'targets'; id: string | null; name: string | null }) {
   if (!id) return <span className="text-ink-muted">–</span>;
-  return (
-    <Link
-      to={kind === 'layouts' ? '/o/$org/delivery/layouts' : '/o/$org/delivery/targets'}
-      params={{ org: orgSlug }}
-      search={{ edit: id }}
-      className="truncate hover:underline"
-    >
-      {name ?? id}
-    </Link>
-  );
+  const cls = 'truncate hover:underline';
+  if (kind === 'targets') return <Link to="/o/$org/delivery/targets/$id/$tab" params={{ org: orgSlug, id, tab: 'overview' }} className={cls}>{name ?? id}</Link>;
+  return <Link to="/o/$org/delivery/layouts" params={{ org: orgSlug }} search={{ edit: id }} className={cls}>{name ?? id}</Link>;
 }
 
 export function DeploymentsTab({ cert, orgId, orgSlug }: { cert: Certificate; orgId: string; orgSlug: string }) {

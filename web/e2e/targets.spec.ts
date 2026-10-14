@@ -23,7 +23,7 @@ test('vault-kv sheet runs on server', async ({ page }) => {
 
   await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
   await page.getByRole('button', { name: 'Add target' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Add deploy target' });
+  const sheet = page.getByRole('main');
   await expect(sheet).toBeVisible();
 
   await pickTargetType(sheet, /^Vault KV/);
@@ -63,7 +63,7 @@ test('traefik target runs on agent', async ({ page }) => {
 
   await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
   await page.getByRole('button', { name: 'Add target' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Add deploy target' });
+  const sheet = page.getByRole('main');
   await expect(sheet).toBeVisible();
 
   await pickTargetType(sheet, /^Traefik/);
@@ -75,7 +75,7 @@ test('traefik target runs on agent', async ({ page }) => {
   await sheet.getByLabel('Name', { exact: true }).fill(name);
   await sheet.getByLabel('Directory on the agent').fill('/etc/traefik/dynamic');
   await sheet.getByRole('button', { name: 'Save' }).click();
-  await expect(sheet).toBeHidden();
+  await expect(sheet.getByRole('button', { name: 'Save' })).toBeHidden();
 
   const table = page.getByRole('table', { name: 'Deploy targets' });
   const row = table.getByRole('row', { name: new RegExp(`^${name}`) });
@@ -86,7 +86,7 @@ test('traefik target runs on agent', async ({ page }) => {
   await snap(page, 'targets');
 
   await row.getByRole('button', { name: `Edit ${name}` }).click();
-  const edit = page.getByRole('dialog', { name: `Edit ${name}` });
+  const edit = page.getByRole('main');
   await expect(edit).toBeVisible();
   // exact: true — the (still-rendered, locked) Traefik type segment's own
   // name ("Traefik Agent") otherwise substring-matches the bare runs-on
@@ -122,12 +122,12 @@ test('targets at 375 px', async ({ page }) => {
   const name = `pw-mobile-${Math.random().toString(36).slice(2, 8)}`;
   await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
   await page.getByRole('button', { name: 'Add target' }).click();
-  const addSheet = page.getByRole('dialog', { name: 'Add deploy target' });
+  const addSheet = page.getByRole('main');
   await pickTargetType(addSheet, /^Traefik/);
   await addSheet.getByLabel('Name', { exact: true }).fill(name);
   await addSheet.getByLabel('Directory on the agent').fill('/etc/traefik/dynamic');
   await addSheet.getByRole('button', { name: 'Save' }).click();
-  await expect(addSheet).toBeHidden();
+  await expect(addSheet.getByRole('button', { name: 'Save' })).toBeHidden();
 
   await page.setViewportSize({ width: 375, height: 800 });
   await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
@@ -136,7 +136,7 @@ test('targets at 375 px', async ({ page }) => {
   expect(await page.evaluate(() => document.scrollingElement!.scrollWidth)).toBeLessThanOrEqual(375);
 
   await page.getByRole('button', { name: 'Add target' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Add deploy target' });
+  const sheet = page.getByRole('main');
   await expect(sheet).toBeVisible();
 
   // With 7 types the Type field is a combobox (no per-segment chip); pick
@@ -189,7 +189,7 @@ test('saved credential: attach to two targets, rotate, delete blocked, detach, d
   for (const [i, name] of targets.entries()) {
     await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
     await page.getByRole('button', { name: 'Add target' }).first().click();
-    const sheet = page.getByRole('dialog', { name: 'Add deploy target' });
+    const sheet = page.getByRole('main');
     await pickTargetType(sheet, /^pfSense Plus/);
     await sheet.getByLabel('Name', { exact: true }).fill(name);
     await sheet.getByLabel('API URL').fill(`https://fw${i}.example.net/api/v2`);
@@ -202,18 +202,17 @@ test('saved credential: attach to two targets, rotate, delete blocked, detach, d
     await expect(sheet.getByText('Stored', { exact: true })).toBeVisible();
     if (i === 0) await snap(page, 'target-sheet-credential');
     await sheet.getByRole('button', { name: 'Save' }).click();
-    await expect(sheet).toBeHidden();
+    await expect(sheet.getByRole('button', { name: 'Save' })).toBeHidden();
     await expect(page.getByRole('table', { name: 'Deploy targets' }).getByRole('row', { name: new RegExp(`^${name}`) })).toContainText(`uses ${cred}`);
   }
 
   // The detail sheet links to the credential.
   const targetsTable = page.getByRole('table', { name: 'Deploy targets' });
   await targetsTable.getByRole('button', { name: `Grants ${targets[0]}` }).click();
-  const detail = page.getByRole('dialog', { name: new RegExp(targets[0]!) });
+  await expect(page.getByRole('heading', { name: targets[0]! })).toBeVisible();
+  const detail = page.getByRole('main');
   await expect(detail.getByRole('link', { name: cred })).toBeVisible();
   await snap(page, 'target-detail-credential');
-  await page.keyboard.press('Escape');
-  await expect(detail).toBeHidden();
 
   // Rotate: replace the stored password.
   await page.goto(`/o/${E2E.orgSlug}/delivery/credentials`);
@@ -237,13 +236,13 @@ test('saved credential: attach to two targets, rotate, delete blocked, detach, d
   for (const name of targets) {
     await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
     await targetsTable.getByRole('button', { name: `Edit ${name}` }).click();
-    const sheet = page.getByRole('dialog', { name: `Edit ${name}` });
+    const sheet = page.getByRole('main');
     await sheet.getByRole('combobox', { name: 'Credential' }).click();
     await page.getByRole('option', { name: 'Enter manually' }).click();
     await sheet.getByLabel('Username', { exact: true }).fill('admin');
     await sheet.getByLabel('Password', { exact: true }).fill('own-secret');
     await sheet.getByRole('button', { name: 'Save' }).click();
-    await expect(sheet).toBeHidden();
+    await expect(sheet.getByRole('button', { name: 'Save' })).toBeHidden();
   }
   await page.goto(`/o/${E2E.orgSlug}/delivery/credentials`);
   await expect(credRow.getByText('2 targets')).toHaveCount(0);
@@ -289,7 +288,7 @@ test('pfSense CA certificate: upload a DER file and fetch from the server', asyn
   await page.setViewportSize({ width: 375, height: 800 });
   await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
   await page.getByRole('button', { name: 'Add target' }).first().click();
-  const sheet = page.getByRole('dialog', { name: 'Add deploy target' });
+  const sheet = page.getByRole('main');
   await pickTargetType(sheet, /^pfSense Plus/);
   await sheet.getByLabel('Name', { exact: true }).fill(name);
   await sheet.getByLabel('API URL').fill('https://fw.example.net/api/v2');
@@ -320,11 +319,11 @@ test('pfSense CA certificate: upload a DER file and fetch from the server', asyn
   await page.setViewportSize({ width: 1280, height: 800 });
 
   await sheet.getByRole('button', { name: 'Save' }).click();
-  await expect(sheet).toBeHidden();
+  await expect(sheet.getByRole('button', { name: 'Save' })).toBeHidden();
 
   const table = page.getByRole('table', { name: 'Deploy targets' });
   await table.getByRole('button', { name: `Edit ${name}` }).click();
-  const edit = page.getByRole('dialog', { name: `Edit ${name}` });
+  const edit = page.getByRole('main');
   await expect(edit.getByRole('textbox', { name: /CA certificate/ })).toHaveValue(CA_PEM.trimEnd());
   await cancelSheet(edit);
 

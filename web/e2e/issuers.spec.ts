@@ -235,20 +235,20 @@ test('server grant', async ({ page }) => {
 
   await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
   await page.getByRole('button', { name: 'Add target' }).click();
-  const targetSheet = page.getByRole('dialog', { name: 'Add deploy target' });
+  const targetSheet = page.getByRole('main');
   await targetSheet.getByLabel('Name', { exact: true }).fill('e2e-vault-kv');
   // The segment's accessible name is the type name plus its RunsOnChip
   // label ("Vault KV" + "Server"), not the old parenthetical text.
   await pickTargetType(targetSheet, /^Vault KV/);
   await targetSheet.getByRole('button', { name: 'Save' }).click();
-  await expect(targetSheet).toBeHidden();
+  await expect(targetSheet.getByRole('button', { name: 'Save' })).toBeHidden();
 
   const targetsTable = page.getByRole('table', { name: 'Deploy targets' });
   const targetRow = targetsTable.getByRole('row', { name: /^e2e-vault-kv/ });
   await expect(targetRow).toBeVisible();
   await targetRow.getByRole('button', { name: 'Grants e2e-vault-kv' }).click();
 
-  const targetDetail = page.getByRole('dialog', { name: 'e2e-vault-kv' });
+  const targetDetail = page.getByRole('main');
   await expect(targetDetail).toBeVisible();
   await targetDetail.getByRole('button', { name: 'New server grant' }).click();
   await targetDetail.getByRole('combobox', { name: 'Certificate' }).click();
@@ -298,7 +298,7 @@ test('server grant with verify creates a grant-owned monitor', async ({ page }) 
 
   await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
   await page.getByRole('table', { name: 'Deploy targets' }).getByRole('button', { name: 'Grants e2e-drift-truenas' }).click();
-  const targetDetail = page.getByRole('dialog', { name: 'e2e-drift-truenas' });
+  const targetDetail = page.getByRole('main');
   await expect(targetDetail).toBeVisible();
   await targetDetail.getByRole('button', { name: 'New server grant' }).click();
   await targetDetail.getByRole('combobox', { name: 'Certificate' }).click();
@@ -309,7 +309,6 @@ test('server grant with verify creates a grant-owned monitor', async ({ page }) 
   await targetDetail.getByRole('button', { name: 'Grant' }).click();
   await expect(targetDetail.getByRole('table', { name: 'Grants' }).getByRole('row', { name: /e2e-drift-cert/ })).toBeVisible({ timeout: 60_000 });
 
-  await page.keyboard.press('Escape');
   await page.goto(`/o/${E2E.orgSlug}/alerts/monitors`);
   const monitorRow = page.getByRole('row').filter({ hasText: 'drift-nas.e2e.test' });
   await expect(monitorRow).toBeVisible();
@@ -359,9 +358,8 @@ test('issuers, delivery and vault settings screens do not scroll sideways at 375
   // Below md the list stacks as cards inside `<ul aria-label="Deploy targets">`;
   // a listitem has no accessible name, so target the unique Grants button.
   await page.getByRole('list', { name: 'Deploy targets' }).getByRole('button', { name: 'Grants e2e-vault-kv-375' }).click();
-  await expect(page.getByRole('dialog', { name: 'e2e-vault-kv-375' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'e2e-vault-kv-375' })).toBeVisible();
   await noScroll();
-  await page.keyboard.press('Escape');
 
   for (const path of ['/issuers/accounts', '/issuers/dns']) {
     await page.goto(`/o/${E2E.orgSlug}${path}`);

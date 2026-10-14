@@ -63,11 +63,12 @@ beforeEach(() => {
   );
 });
 
-const openDetail = () => renderRoute('/o/acme/delivery/targets?view=t-vault-1');
+const openDetail = () => renderRoute('/o/acme/delivery/targets/t-vault-1/grants');
 
 it('lists server grants with status', async () => {
   openDetail();
-  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  await screen.findByRole('heading', { name: 'Vault KV' });
+  const dialog = document.body;
   expect(within(dialog).getByText('Server')).toBeInTheDocument();
   const table = await within(dialog).findByRole('table', { name: 'Grants' });
   const row = within(table).getByText('www').closest('tr')!;
@@ -77,7 +78,8 @@ it('lists server grants with status', async () => {
 
 it('create posts certificate and layout', async () => {
   const { user } = openDetail();
-  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  await screen.findByRole('heading', { name: 'Vault KV' });
+  const dialog = document.body;
   await user.click(await within(dialog).findByRole('button', { name: 'New server grant' }));
   await user.click(within(dialog).getByRole('combobox', { name: 'Certificate' }));
   await user.click(await screen.findByRole('option', { name: /^api/ }));
@@ -101,7 +103,8 @@ it('creating and deleting a server grant refetches the targets list', async () =
     }),
   );
   const { user } = openDetail();
-  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  await screen.findByRole('heading', { name: 'Vault KV' });
+  const dialog = document.body;
   await within(dialog).findByRole('table', { name: 'Grants' });
   const afterOpen = targetGets;
 
@@ -114,7 +117,8 @@ it('creating and deleting a server grant refetches the targets list', async () =
   const afterCreate = targetGets;
 
   await user.click(within(dialog).getByRole('button', { name: 'Remove www' }));
-  const confirm = await screen.findByRole('dialog', { name: 'Remove grant?' });
+  await screen.findByRole('heading', { name: 'Remove grant?' });
+  const confirm = document.body;
   await user.type(within(confirm).getByRole('textbox'), 'www');
   await user.click(within(confirm).getByRole('button', { name: 'Remove' }));
   await waitFor(() => expect(deleted).toEqual([grantServer.id]));
@@ -128,7 +132,8 @@ it('non-PEM layouts disabled', async () => {
     ),
   );
   const { user } = openDetail();
-  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  await screen.findByRole('heading', { name: 'Vault KV' });
+  const dialog = document.body;
   await user.click(await within(dialog).findByRole('button', { name: 'New server grant' }));
   await user.click(within(dialog).getByRole('combobox', { name: 'Layout' }));
   const opt = await screen.findByRole('option', { name: /^p12 bundle/ });
@@ -139,7 +144,8 @@ it('non-PEM layouts disabled', async () => {
 
 it('edit sends layout only', async () => {
   const { user } = openDetail();
-  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  await screen.findByRole('heading', { name: 'Vault KV' });
+  const dialog = document.body;
   await within(dialog).findByRole('table', { name: 'Grants' });
   await user.click(within(dialog).getByRole('button', { name: 'Edit layout for www' }));
   const certBox = await within(dialog).findByRole('combobox', { name: 'Certificate' });
@@ -152,7 +158,8 @@ it('edit sends layout only', async () => {
 
 it('redeploy toasts queued', async () => {
   const { user } = openDetail();
-  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  await screen.findByRole('heading', { name: 'Vault KV' });
+  const dialog = document.body;
   await within(dialog).findByRole('table', { name: 'Grants' });
   await user.click(within(dialog).getByRole('button', { name: 'Redeploy www' }));
   await waitFor(() => expect(redeployed).toEqual([grantServer.id]));
@@ -161,10 +168,12 @@ it('redeploy toasts queued', async () => {
 
 it('delete confirms', async () => {
   const { user } = openDetail();
-  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  await screen.findByRole('heading', { name: 'Vault KV' });
+  const dialog = document.body;
   await within(dialog).findByRole('table', { name: 'Grants' });
   await user.click(within(dialog).getByRole('button', { name: 'Remove www' }));
-  const confirm = await screen.findByRole('dialog', { name: 'Remove grant?' });
+  await screen.findByRole('heading', { name: 'Remove grant?' });
+  const confirm = document.body;
   expect(confirm).toHaveTextContent('what is already there stays');
   await user.type(within(confirm).getByRole('textbox'), 'www');
   await user.click(within(confirm).getByRole('button', { name: 'Remove' }));
@@ -180,7 +189,8 @@ it('includeKey needs keys:export', async () => {
     ),
   );
   const { user } = openDetail();
-  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  await screen.findByRole('heading', { name: 'Vault KV' });
+  const dialog = document.body;
   const button = await within(dialog).findByRole('button', { name: 'New server grant' });
   expect(button).toBeDisabled();
   await user.hover(button);
@@ -199,7 +209,8 @@ it('edit layout needs keys:export on an includeKey target', async () => {
     ),
   );
   const { user } = openDetail();
-  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  await screen.findByRole('heading', { name: 'Vault KV' });
+  const dialog = document.body;
   const table = await within(dialog).findByRole('table', { name: 'Grants' });
   const editBtn = within(table).getByRole('button', { name: 'Edit layout for www' });
   expect(editBtn).toHaveAttribute('aria-disabled', 'true');
@@ -217,8 +228,9 @@ it('new server grant needs keys:export for always', async () => {
     http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [targetTestSecret] })),
     http.get(url('/orgs/org-1/deploy-targets/t-test-secret-1/grants'), () => HttpResponse.json([])),
   );
-  const { user } = renderRoute('/o/acme/delivery/targets?view=t-test-secret-1');
-  const dialog = await screen.findByRole('dialog', { name: 'test sink' });
+  const { user } = renderRoute('/o/acme/delivery/targets/t-test-secret-1/grants');
+  await screen.findByRole('heading', { name: 'test sink' });
+  const dialog = document.body;
   const button = await within(dialog).findByRole('button', { name: 'New server grant' });
   expect(button).toBeDisabled();
   await user.hover(button);
@@ -228,7 +240,8 @@ it('new server grant needs keys:export for always', async () => {
 it('never or unset key policy needs only clients:write', async () => {
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'operator', orgId: org.id }]))));
   openDetail();
-  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  await screen.findByRole('heading', { name: 'Vault KV' });
+  const dialog = document.body;
   const button = await within(dialog).findByRole('button', { name: 'New server grant' });
   expect(button).toBeEnabled();
 });
@@ -239,8 +252,9 @@ it('header shows runs-on, key and secrets chips', async () => {
     http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [targetTestSecret] })),
     http.get(url('/orgs/org-1/deploy-targets/t-test-secret-1/grants'), () => HttpResponse.json([])),
   );
-  const { user } = renderRoute('/o/acme/delivery/targets?view=t-test-secret-1');
-  const dialog = await screen.findByRole('dialog', { name: 'test sink' });
+  const { user } = renderRoute('/o/acme/delivery/targets/t-test-secret-1/grants');
+  await screen.findByRole('heading', { name: 'test sink' });
+  const dialog = document.body;
   expect(within(dialog).getByText('Test secret')).toBeInTheDocument();
   expect(within(dialog).getByText('Server')).toBeInTheDocument();
   expect(within(dialog).getByText('Includes key')).toBeInTheDocument();
@@ -252,7 +266,8 @@ it('header shows runs-on, key and secrets chips', async () => {
 it('needs clients:write', async () => {
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))));
   const { user } = openDetail();
-  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  await screen.findByRole('heading', { name: 'Vault KV' });
+  const dialog = document.body;
   const table = await within(dialog).findByRole('table', { name: 'Grants' });
   const row = within(table).getByText('www').closest('tr')!;
   const redeployBtn = within(row).getByRole('button', { name: 'Redeploy www' });
@@ -261,17 +276,17 @@ it('needs clients:write', async () => {
   expect(await screen.findByRole('tooltip')).toHaveTextContent('Needs the clients:write permission');
 });
 
-it('agent target id shows not found', async () => {
-  renderRoute('/o/acme/delivery/targets?view=t-1');
-  await screen.findByRole('table', { name: 'Deploy targets' });
-  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-  expect(await screen.findByText('Deploy target not found.')).toBeInTheDocument();
+it('an agent target has no grants tab and falls back to its overview', async () => {
+  const { router } = renderRoute('/o/acme/delivery/targets/t-1/grants');
+  await screen.findByRole('heading', { name: 'edge traefik' });
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/delivery/targets/t-1/overview'));
+  expect(screen.queryByRole('link', { name: 'Grants' })).not.toBeInTheDocument();
 });
 
-it('a not-found ?view= replaces the history entry instead of pushing one', async () => {
-  const { router } = renderRoute('/o/acme/delivery/targets?view=t-1');
+it('an unknown target id goes back to the list with a toast', async () => {
+  const { router } = renderRoute('/o/acme/delivery/targets/nope/grants');
   await screen.findByText('Deploy target not found.');
-  expect(router.history.length).toBe(1);
+  expect(router.state.location.pathname).toBe('/o/acme/delivery/targets');
 });
 
 it('stops polling when settled', async () => {
@@ -292,7 +307,7 @@ it('stops polling when settled', async () => {
     act(async () => {
       await vi.advanceTimersByTimeAsync(ms);
     });
-  renderRoute('/o/acme/delivery/targets?view=t-vault-1');
+  renderRoute('/o/acme/delivery/targets/t-vault-1/grants');
   for (let i = 0; i < 20 && !screen.queryByText('Pending'); i++) await tick(50);
   expect(screen.getByText('Pending')).toBeInTheDocument();
   const beforeSettle = getCalls;
@@ -312,7 +327,8 @@ it('create posts the picked steps in order', async () => {
     http.get(url('/orgs/org-1/action-groups'), () => HttpResponse.json({ items: [makeActionGroup({ id: 'ag-s', actionIds: ['a-s'] })] })),
   );
   const { user } = openDetail();
-  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  await screen.findByRole('heading', { name: 'Vault KV' });
+  const dialog = document.body;
   await user.click(await within(dialog).findByRole('button', { name: 'New server grant' }));
   await user.click(within(dialog).getByRole('combobox', { name: 'Certificate' }));
   await user.click(await screen.findByRole('option', { name: /^api/ }));
@@ -333,9 +349,9 @@ it('action runs tab lists the target runs', async () => {
       HttpResponse.json({ items: [makeActionRun({ id: 'ar-s', actionId: 'a-s', actionName: 'SSH command', actionKind: 'ssh', argv: ['ssh', 'bastion', 'systemctl reload nginx'], exitCode: 3, stderr: 'boom' })], nextCursor: null }),
     ),
   );
-  const { user } = openDetail();
-  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
-  await user.click(within(dialog).getByRole('tab', { name: 'Action runs' }));
+  renderRoute('/o/acme/delivery/targets/t-vault-1/runs');
+  await screen.findByRole('heading', { name: 'Vault KV' });
+  const dialog = document.body;
   const list = await within(dialog).findByRole('list', { name: 'Action runs' });
   expect(within(list).getByText('SSH command')).toBeInTheDocument();
   expect(within(list).getByText('ssh bastion systemctl reload nginx')).toBeInTheDocument();
@@ -362,7 +378,8 @@ it('Save stays disabled until the targets have loaded', async () => {
 
 it('vault-kv hides the Verify section', async () => {
   const { user } = openDetail();
-  const dialog = await screen.findByRole('dialog', { name: 'Vault KV' });
+  await screen.findByRole('heading', { name: 'Vault KV' });
+  const dialog = document.body;
   await user.click(await within(dialog).findByRole('button', { name: 'New server grant' }));
   await within(dialog).findByRole('combobox', { name: 'Certificate' });
   expect(within(dialog).queryByText('Verify')).not.toBeInTheDocument();

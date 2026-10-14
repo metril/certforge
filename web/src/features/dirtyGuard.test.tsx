@@ -5,8 +5,7 @@ import { beforeEach, it, expect, vi } from 'vitest';
 import type { DnsCredential } from '@/api/types';
 import { server } from '@/test/server';
 import { authHandlers, me, presets, caLocalImported, cloudflare, makeChannel, makeLayout, makeMonitor, makeTarget, metaNotifiers, org, targetTestSecret, testSecretSchema, traefikSchema, url } from '@/test/fixtures';
-import { renderUI } from '@/test/render';
-import { TargetSheet } from '@/features/delivery/TargetSheet';
+import { renderRoute, renderUI } from '@/test/render';
 import { LayoutSheet } from '@/features/delivery/LayoutSheet';
 import { CaSheet } from '@/features/issuers/CaSheet';
 import { CredentialSheet } from '@/features/issuers/CredentialSheet';
@@ -44,19 +43,20 @@ async function expectCleanEscape(ui: ReactElement, ready: RegExp | string) {
   await waitFor(() => expect(screen.getByText('closed')).toBeInTheDocument());
 }
 
-it('TargetSheet with stored secrets closes clean', async () => {
-  await expectCleanEscape(
-    <Host>{(_o, set) => <TargetSheet orgId={org.id} target={targetTestSecret} types={[testSecretSchema as never]} readOnly={false} onOpenChange={set} />}</Host>,
-    'Edit test sink',
-  );
-});
+// The target edit page opens clean: leaving it raises no discard prompt.
+async function expectCleanLeave(id: string, heading: string) {
+  server.use(http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [targetTestSecret, makeTarget()] })));
+  const { router } = renderRoute(`/o/acme/delivery/targets/${id}/edit`);
+  await screen.findByRole('heading', { name: heading });
+  await new Promise((r) => setTimeout(r, 100));
+  await router.navigate({ to: '/o/$org/delivery/targets', params: { org: 'acme' } });
+  expect(screen.queryByText('Discard changes?')).not.toBeInTheDocument();
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/delivery/targets'));
+}
 
-it('TargetSheet plain closes clean', async () => {
-  await expectCleanEscape(
-    <Host>{(_o, set) => <TargetSheet orgId={org.id} target={makeTarget()} types={[traefikSchema as never]} readOnly={false} onOpenChange={set} />}</Host>,
-    'Edit edge traefik',
-  );
-});
+it('target edit page with stored secrets leaves clean', () => expectCleanLeave(targetTestSecret.id, 'Edit test sink'));
+
+it('target edit page plain leaves clean', () => expectCleanLeave('t-1', 'Edit edge traefik'));
 
 it('LayoutSheet with stored password closes clean', async () => {
   const files = [{ path: '/a.p12', format: 'p12', parts: ['fullchain', 'key'], owner: 'root', group: 'root', mode: '0640' }] as never;

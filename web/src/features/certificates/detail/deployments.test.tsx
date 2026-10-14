@@ -52,7 +52,7 @@ it('shows the layout and deploy target of each grant, linking to Delivery', asyn
   expect(within(web).getByRole('link', { name: 'nginx' })).toHaveAttribute('href', '/o/acme/delivery/layouts?edit=l-1');
   expect(within(web).queryByRole('link', { name: 'edge traefik' })).not.toBeInTheDocument();
   const db = within(list).getByRole('link', { name: 'db-1' }).closest('li')!;
-  expect(within(db).getByRole('link', { name: 'edge traefik' })).toHaveAttribute('href', '/o/acme/delivery/targets?edit=t-1');
+  expect(within(db).getByRole('link', { name: 'edge traefik' })).toHaveAttribute('href', '/o/acme/delivery/targets/t-1/overview');
   expect(within(db).queryByRole('link', { name: 'nginx' })).not.toBeInTheDocument();
 });
 

@@ -30,5 +30,5 @@ export async function cancelSheet(sheet: Locator): Promise<void> {
   await sheet.getByRole('button', { name: 'Cancel' }).click();
   const discard = sheet.page().getByRole('dialog', { name: 'Discard changes?' });
   if (await discard.isVisible()) await discard.getByRole('button', { name: 'Discard' }).click();
-  await expect(sheet).toBeHidden();
+  await expect(sheet.getByRole('button', { name: 'Save' })).toBeHidden();
 }

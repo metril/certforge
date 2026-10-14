@@ -34,8 +34,9 @@ beforeEach(() => {
 });
 
 async function open() {
-  const r = renderRoute('/o/acme/delivery/targets?edit=t-ssh');
-  const sheet = await screen.findByRole('dialog', { name: 'Edit box' });
+  const r = renderRoute('/o/acme/delivery/targets/t-ssh/edit');
+  await screen.findByRole('heading', { name: 'Edit box' });
+  const sheet = document.body;
   await within(sheet).findByLabelText('File 1 remote path');
   return { ...r, sheet };
 }
