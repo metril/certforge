@@ -1,64 +1,37 @@
-import { useEffect, useState } from "react";
-import { CircleAlert } from "lucide-react";
-import { errorMessage } from "@/api/errors";
-import { useSaveOrg } from "@/api/queries/orgs";
-import type { Org } from "@/api/types";
-import { Field } from "@/components/Field";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Sheet,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-  useSheetGuard,
-  SheetBody,
-} from "@/components/ui/sheet";
-import { SLUG_RE, toSlug } from "@/features/setup/slug";
+import { useEffect, useState } from 'react';
+import { CircleAlert } from 'lucide-react';
+import { errorMessage } from '@/api/errors';
+import { useSaveOrg } from '@/api/queries/orgs';
+import type { Org } from '@/api/types';
+import { Field } from '@/components/Field';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, useSheetGuard, SheetBody } from '@/components/ui/sheet';
+import { SLUG_RE, toSlug } from '@/features/setup/slug';
 
-export function OrgSheet({
-  org,
-  onClose,
-  onSaved,
-}: {
-  org: Org | "new" | null;
-  onClose: () => void;
-  onSaved: () => Promise<void>;
-}) {
+export function OrgSheet({ org, onClose, onSaved }: { org: Org | 'new' | null; onClose: () => void; onSaved: () => Promise<void> }) {
   const guard = useSheetGuard((o) => !o && onClose());
   const save = useSaveOrg();
-  const editing = org !== null && org !== "new" ? org : null;
-  const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
+  const editing = org !== null && org !== 'new' ? org : null;
+  const [name, setName] = useState('');
+  const [slug, setSlug] = useState('');
   const [slugTouched, setSlugTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const dirty =
-    name !== (editing?.name ?? "") || slug !== (editing?.slug ?? "");
+  const dirty = name !== (editing?.name ?? '') || slug !== (editing?.slug ?? '');
 
   useEffect(() => {
-    setName(editing?.name ?? "");
-    setSlug(editing?.slug ?? "");
+    setName(editing?.name ?? '');
+    setSlug(editing?.slug ?? '');
     setSlugTouched(false);
     setError(null);
   }, [org, editing?.name, editing?.slug]);
 
-  const slugError =
-    editing || !slug
-      ? null
-      : slug === "all"
-        ? '"all" is reserved.'
-        : SLUG_RE.test(slug)
-          ? null
-          : "Use lowercase letters, digits and hyphens.";
+  const slugError = editing || !slug ? null : slug === 'all' ? '"all" is reserved.' : SLUG_RE.test(slug) ? null : 'Use lowercase letters, digits and hyphens.';
 
   async function submit() {
     setError(null);
     try {
-      await save.mutateAsync({
-        id: editing?.id,
-        body: { slug, name: name.trim() },
-      });
+      await save.mutateAsync({ id: editing?.id, body: { slug, name: name.trim() } });
       await onSaved();
       guard.close();
     } catch (e) {
@@ -67,18 +40,10 @@ export function OrgSheet({
   }
 
   return (
-    <Sheet
-      guard={guard}
-      open={org !== null}
-      form
-      dirty={dirty}
-      onOpenChange={(o) => !o && onClose()}
-    >
+    <Sheet guard={guard} open={org !== null} form dirty={dirty} onOpenChange={(o) => !o && onClose()}>
       <SheetContent size="md">
         <SheetHeader>
-          <SheetTitle>
-            {editing ? `Rename ${editing.name}` : "New organization"}
-          </SheetTitle>
+          <SheetTitle>{editing ? `Rename ${editing.name}` : 'New organization'}</SheetTitle>
         </SheetHeader>
         <SheetBody>
           <Field id="org-name" label="Name">
@@ -93,12 +58,7 @@ export function OrgSheet({
               }}
             />
           </Field>
-          <Field
-            id="org-slug"
-            label="Slug"
-            help={editing ? "org.slugPermanent" : "setup.orgSlug"}
-            error={slugError}
-          >
+          <Field id="org-slug" label="Slug" help={editing ? 'org.slugPermanent' : 'setup.orgSlug'} error={slugError}>
             <Input
               id="org-slug"
               className="font-mono"
@@ -119,11 +79,8 @@ export function OrgSheet({
           )}
         </SheetBody>
         <SheetFooter>
-          <Button
-            disabled={!name.trim() || !slug || !!slugError || save.isPending}
-            onClick={() => void submit()}
-          >
-            {editing ? "Save" : "Create"}
+          <Button disabled={!name.trim() || !slug || !!slugError || save.isPending} onClick={() => void submit()}>
+            {editing ? 'Save' : 'Create'}
           </Button>
         </SheetFooter>
       </SheetContent>

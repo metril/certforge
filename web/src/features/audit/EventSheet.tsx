@@ -1,13 +1,7 @@
-import type { AuditEvent } from "@/api/types";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetBody,
-} from "@/components/ui/sheet";
-import { fmtDateTime } from "@/lib/time";
-import { DetailsDiff } from "./DetailsDiff";
+import type { AuditEvent } from '@/api/types';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetBody } from '@/components/ui/sheet';
+import { fmtDateTime } from '@/lib/time';
+import { DetailsDiff } from './DetailsDiff';
 
 export function EventSheet({
   event,
@@ -34,20 +28,19 @@ export function EventSheet({
                 <dd>{fmtDateTime(event.ts)}</dd>
                 <dt className="text-ink-muted">Actor</dt>
                 <dd className="truncate">
-                  {event.actorName || "–"}{" "}
+                  {event.actorName || '–'}{' '}
                   <span className="font-mono text-xs text-ink-muted">
                     {event.actorType} {event.actorId}
                   </span>
                 </dd>
                 <dt className="text-ink-muted">Resource</dt>
                 <dd className="truncate">
-                  {event.resourceType}{" "}
-                  <span className="font-mono text-xs">{event.resourceId}</span>
+                  {event.resourceType} <span className="font-mono text-xs">{event.resourceId}</span>
                 </dd>
                 <dt className="text-ink-muted">Org</dt>
                 <dd>{orgName(event.orgId)}</dd>
                 <dt className="text-ink-muted">IP</dt>
-                <dd className="font-mono">{event.ip || "–"}</dd>
+                <dd className="font-mono">{event.ip || '–'}</dd>
               </dl>
               <DetailsDiff details={event.details} />
             </SheetBody>

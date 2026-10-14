@@ -1,100 +1,56 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import {
-  Check,
-  Copy,
-  Eye,
-  EyeOff,
-  Lock,
-  RefreshCw,
-  TriangleAlert,
-} from "lucide-react";
-import { toast } from "sonner";
-import { ApiError, errorMessage, fieldOfTitle } from "@/api/errors";
-import {
-  downloadVersion,
-  exportVersion,
-  versionsQuery,
-  type Part,
-} from "@/api/queries/certificates";
-import type {
-  Certificate,
-  ExportFormat,
-  ExportRequest,
-  P12Encoding,
-} from "@/api/types";
-import { ChipSet } from "@/components/ChipSet";
-import { Combobox } from "@/components/Combobox";
-import { Field } from "@/components/Field";
-import { HelpTip } from "@/components/HelpTip";
-import { SegmentedControl } from "@/components/SegmentedControl";
-import { SwitchField } from "@/components/SwitchField";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetBody,
-} from "@/components/ui/sheet";
-import { help } from "@/lib/help";
-import { generatePassword } from "@/lib/password";
-import { fmtDate } from "@/lib/time";
-import { useCopy } from "@/lib/useCopy";
-import { IconButton } from "@/components/IconButton";
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Check, Copy, Eye, EyeOff, Lock, RefreshCw, TriangleAlert } from 'lucide-react';
+import { toast } from 'sonner';
+import { ApiError, errorMessage, fieldOfTitle } from '@/api/errors';
+import { downloadVersion, exportVersion, versionsQuery, type Part } from '@/api/queries/certificates';
+import type { Certificate, ExportFormat, ExportRequest, P12Encoding } from '@/api/types';
+import { ChipSet } from '@/components/ChipSet';
+import { Combobox } from '@/components/Combobox';
+import { Field } from '@/components/Field';
+import { HelpTip } from '@/components/HelpTip';
+import { SegmentedControl } from '@/components/SegmentedControl';
+import { SwitchField } from '@/components/SwitchField';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetBody } from '@/components/ui/sheet';
+import { help } from '@/lib/help';
+import { generatePassword } from '@/lib/password';
+import { fmtDate } from '@/lib/time';
+import { useCopy } from '@/lib/useCopy';
+import { IconButton } from '@/components/IconButton';
 
-type Format = "pem" | "der" | ExportFormat;
-type Props = {
-  orgId: string;
-  cert: Certificate;
-  initialVersionId?: string;
-  canExportKey: boolean;
-  onOpenChange: (open: boolean) => void;
-};
+type Format = 'pem' | 'der' | ExportFormat;
+type Props = { orgId: string; cert: Certificate; initialVersionId?: string; canExportKey: boolean; onOpenChange: (open: boolean) => void };
 
-const NEEDS_EXPORT = "Needs the keys:export permission";
+const NEEDS_EXPORT = 'Needs the keys:export permission';
 
 // [...pw].length counts Unicode characters (code points), matching the
 // server's utf8.RuneCountInString — pw.length counts UTF-16 units and
 // over-counts any astral (surrogate-pair) character.
 function passwordError(format: Format, pw: string): string {
-  if (pw === "") return "Enter a password.";
-  if ([...pw].length > 128) return "At most 128 characters.";
-  if (format === "jks") {
+  if (pw === '') return 'Enter a password.';
+  if ([...pw].length > 128) return 'At most 128 characters.';
+  if (format === 'jks') {
     // Mirrors internal/render/jks.go's CheckJKSPassword (ASCII, then length).
-    if (!/^[\x20-\x7e]*$/.test(pw)) return "ASCII characters only.";
-    if ([...pw].length < 6) return "At least 6 characters.";
+    if (!/^[\x20-\x7e]*$/.test(pw)) return 'ASCII characters only.';
+    if ([...pw].length < 6) return 'At least 6 characters.';
   }
-  return "";
+  return '';
 }
 
-export function DownloadSheet({
-  orgId,
-  cert,
-  initialVersionId,
-  canExportKey,
-  onOpenChange,
-}: Props) {
-  const { data: versions = [], isLoading } = useQuery(
-    versionsQuery(orgId, cert.id),
-  );
-  const [versionId, setVersionId] = useState(
-    initialVersionId ?? cert.currentVersion?.id,
-  );
-  const [format, setFormat] = useState<Format>("pem");
-  const [parts, setParts] = useState<Part[]>(["fullchain"]);
+export function DownloadSheet({ orgId, cert, initialVersionId, canExportKey, onOpenChange }: Props) {
+  const { data: versions = [], isLoading } = useQuery(versionsQuery(orgId, cert.id));
+  const [versionId, setVersionId] = useState(initialVersionId ?? cert.currentVersion?.id);
+  const [format, setFormat] = useState<Format>('pem');
+  const [parts, setParts] = useState<Part[]>(['fullchain']);
   const [password, setPassword] = useState(() => generatePassword());
   const [own, setOwn] = useState(false);
-  const [ownPassword, setOwnPassword] = useState("");
+  const [ownPassword, setOwnPassword] = useState('');
   const [reveal, setReveal] = useState(false);
-  const [encoding, setEncoding] = useState<P12Encoding>("modern");
-  const [alias, setAlias] = useState("");
-  const [serverError, setServerError] = useState<{
-    field: string;
-    message: string;
-  } | null>(null);
+  const [encoding, setEncoding] = useState<P12Encoding>('modern');
+  const [alias, setAlias] = useState('');
+  const [serverError, setServerError] = useState<{ field: string; message: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const { status: copyStatus, copy } = useCopy(password);
@@ -104,61 +60,44 @@ export function DownloadSheet({
   const selectedVersion = versions.find((v) => v.id === versionId);
   const hasKey = selectedVersion?.hasKey ?? true;
   const canKey = canExportKey && hasKey;
-  const keyHint = !canExportKey
-    ? NEEDS_EXPORT
-    : hasKey
-      ? undefined
-      : help["download.noKey"].text;
+  const keyHint = !canExportKey ? NEEDS_EXPORT : hasKey ? undefined : help['download.noKey'].text;
 
   function changeFormat(f: Format) {
     setFormat(f);
     setDone(false);
     setServerError(null);
-    if (f === "pem") setParts(["fullchain"]);
-    else if (f === "der") setParts(["cert"]);
+    if (f === 'pem') setParts(['fullchain']);
+    else if (f === 'der') setParts(['cert']);
   }
 
-  const isKeyBundle = format === "p12" || format === "jks";
+  const isKeyBundle = format === 'p12' || format === 'jks';
   const effectivePassword = own ? ownPassword : password;
-  const pwError = isKeyBundle ? passwordError(format, effectivePassword) : "";
-  const keyBearing =
-    isKeyBundle || parts.includes("key") || parts.includes("combined");
-  const passwordFieldError =
-    serverError?.field === "password"
-      ? serverError.message
-      : own && pwError
-        ? pwError
-        : undefined;
-  const aliasFieldError =
-    serverError?.field === "alias" ? serverError.message : undefined;
+  const pwError = isKeyBundle ? passwordError(format, effectivePassword) : '';
+  const keyBearing = isKeyBundle || parts.includes('key') || parts.includes('combined');
+  const passwordFieldError = serverError?.field === 'password' ? serverError.message : own && pwError ? pwError : undefined;
+  const aliasFieldError = serverError?.field === 'alias' ? serverError.message : undefined;
 
   async function run() {
     if (!versionId) return;
     setBusy(true);
     setServerError(null);
     try {
-      if (format === "pem" || format === "der") {
-        await downloadVersion(
-          orgId,
-          cert.id,
-          versionId,
-          { format, parts },
-          cert.name,
-        );
+      if (format === 'pem' || format === 'der') {
+        await downloadVersion(orgId, cert.id, versionId, { format, parts }, cert.name);
       } else {
         const body: ExportRequest = { format, password: effectivePassword };
-        if (format === "p12") body.encoding = encoding;
-        if (format === "jks" && alias) body.alias = alias;
+        if (format === 'p12') body.encoding = encoding;
+        if (format === 'jks' && alias) body.alias = alias;
         await exportVersion(orgId, cert.id, versionId, body, cert.name);
       }
       // A generated password lives only in this sheet's state: keep the sheet
       // open (password still copyable) and close on user action.
-      if ((format === "p12" || format === "jks") && !own) setDone(true);
+      if ((format === 'p12' || format === 'jks') && !own) setDone(true);
       else onOpenChange(false);
     } catch (e) {
       if (e instanceof ApiError && e.status === 422) {
         const field = fieldOfTitle(e.problem.title);
-        if (field === "password" || field === "alias") {
+        if (field === 'password' || field === 'alias') {
           setServerError({ field, message: e.problem.detail ?? e.message });
           return;
         }
@@ -175,29 +114,24 @@ export function DownloadSheet({
   // so Download must stay disabled rather than submit a part/format the
   // permission or the version no longer allows.
   const disabled =
-    !versionId ||
-    busy ||
-    (!canKey && keyBearing) ||
-    (format === "pem" || format === "der" ? parts.length === 0 : !!pwError);
+    !versionId || busy || (!canKey && keyBearing) || (format === 'pem' || format === 'der' ? parts.length === 0 : !!pwError);
   const label =
-    format === "p12"
-      ? "Download PKCS#12"
-      : format === "jks"
-        ? "Download JKS"
+    format === 'p12'
+      ? 'Download PKCS#12'
+      : format === 'jks'
+        ? 'Download JKS'
         : parts.length > 1
-          ? "Download ZIP"
-          : format === "der"
-            ? "Download DER"
-            : "Download PEM";
+          ? 'Download ZIP'
+          : format === 'der'
+            ? 'Download DER'
+            : 'Download PEM';
 
   return (
     <Sheet open onOpenChange={onOpenChange}>
       <SheetContent side="right" size="md">
         <SheetHeader>
           <SheetTitle>Download</SheetTitle>
-          <SheetDescription className="sr-only">
-            Choose version, format, and parts
-          </SheetDescription>
+          <SheetDescription className="sr-only">Choose version, format, and parts</SheetDescription>
         </SheetHeader>
         <SheetBody>
           <div className="grid gap-5">
@@ -208,11 +142,7 @@ export function DownloadSheet({
                 disabled={isLoading}
                 value={versionId}
                 onChange={setVersionId}
-                options={versions.map((v) => ({
-                  value: v.id,
-                  label: `${v.serial}${v.id === cert.currentVersion?.id ? " (current)" : ""}`,
-                  hint: `expires ${fmtDate(v.notAfter)}`,
-                }))}
+                options={versions.map((v) => ({ value: v.id, label: `${v.serial}${v.id === cert.currentVersion?.id ? ' (current)' : ''}`, hint: `expires ${fmtDate(v.notAfter)}` }))}
                 placeholder="Choose version"
                 emptyText="No versions"
               />
@@ -225,62 +155,33 @@ export function DownloadSheet({
                 value={format}
                 onChange={changeFormat}
                 options={[
-                  { value: "pem", label: "PEM" },
-                  { value: "der", label: "DER" },
-                  {
-                    value: "p12",
-                    label: "PKCS#12",
-                    disabled: !canKey,
-                    hint: canKey ? undefined : keyHint,
-                  },
-                  {
-                    value: "jks",
-                    label: "JKS",
-                    disabled: !canKey,
-                    hint: canKey ? undefined : keyHint,
-                  },
+                  { value: 'pem', label: 'PEM' },
+                  { value: 'der', label: 'DER' },
+                  { value: 'p12', label: 'PKCS#12', disabled: !canKey, hint: canKey ? undefined : keyHint },
+                  { value: 'jks', label: 'JKS', disabled: !canKey, hint: canKey ? undefined : keyHint },
                 ]}
               />
             </Field>
-            {(format === "pem" || format === "der") && (
-              <Field
-                id="dl-parts"
-                label="Parts"
-                help={format === "pem" ? "download.parts" : "download.derParts"}
-              >
+            {(format === 'pem' || format === 'der') && (
+              <Field id="dl-parts" label="Parts" help={format === 'pem' ? 'download.parts' : 'download.derParts'}>
                 <ChipSet<Part>
                   id="dl-parts"
                   aria-label="Parts"
                   value={parts}
                   onChange={setParts}
                   options={
-                    format === "pem"
+                    format === 'pem'
                       ? [
-                          { value: "cert", label: "cert" },
-                          { value: "chain", label: "chain" },
-                          { value: "fullchain", label: "fullchain" },
-                          {
-                            value: "key",
-                            label: "key",
-                            disabled: !canKey,
-                            hint: canKey ? undefined : keyHint,
-                          },
-                          {
-                            value: "combined",
-                            label: "combined",
-                            disabled: !canKey,
-                            hint: canKey ? undefined : keyHint,
-                          },
+                          { value: 'cert', label: 'cert' },
+                          { value: 'chain', label: 'chain' },
+                          { value: 'fullchain', label: 'fullchain' },
+                          { value: 'key', label: 'key', disabled: !canKey, hint: canKey ? undefined : keyHint },
+                          { value: 'combined', label: 'combined', disabled: !canKey, hint: canKey ? undefined : keyHint },
                         ]
                       : [
-                          { value: "cert", label: "cert" },
-                          { value: "chain", label: "chain" },
-                          {
-                            value: "key",
-                            label: "key",
-                            disabled: !canKey,
-                            hint: canKey ? undefined : keyHint,
-                          },
+                          { value: 'cert', label: 'cert' },
+                          { value: 'chain', label: 'chain' },
+                          { value: 'key', label: 'key', disabled: !canKey, hint: canKey ? undefined : keyHint },
                         ]
                   }
                 />
@@ -288,17 +189,12 @@ export function DownloadSheet({
             )}
             {isKeyBundle && (
               <>
-                <Field
-                  id="dl-password"
-                  label="Password"
-                  help="download.password"
-                  error={passwordFieldError}
-                >
+                <Field id="dl-password" label="Password" help="download.password" error={passwordFieldError}>
                   {own ? (
                     <div className="flex items-center gap-2">
                       <Input
                         id="dl-password"
-                        type={reveal ? "text" : "password"}
+                        type={reveal ? 'text' : 'password'}
                         className="font-mono text-xs"
                         autoComplete="new-password"
                         value={ownPassword}
@@ -307,49 +203,17 @@ export function DownloadSheet({
                           setServerError(null);
                         }}
                       />
-                      <IconButton
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        label={reveal ? "Hide password" : "Show password"}
-                        onClick={() => setReveal((r) => !r)}
-                      >
-                        {reveal ? (
-                          <EyeOff className="size-4" aria-hidden />
-                        ) : (
-                          <Eye className="size-4" aria-hidden />
-                        )}
+                      <IconButton type="button" variant="ghost" size="icon" label={reveal ? 'Hide password' : 'Show password'} onClick={() => setReveal((r) => !r)}>
+                        {reveal ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
                       </IconButton>
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">
-                      <Input
-                        id="dl-password"
-                        type="text"
-                        readOnly
-                        aria-label="Generated password"
-                        className="font-mono text-xs"
-                        value={password}
-                      />
-                      <IconButton
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        label="Copy password"
-                        onClick={() => void copy()}
-                      >
-                        {copyStatus === "copied" && (
-                          <Check className="size-4 text-valid" aria-hidden />
-                        )}
-                        {copyStatus === "failed" && (
-                          <TriangleAlert
-                            className="size-4 text-failed"
-                            aria-hidden
-                          />
-                        )}
-                        {copyStatus === "idle" && (
-                          <Copy className="size-4" aria-hidden />
-                        )}
+                      <Input id="dl-password" type="text" readOnly aria-label="Generated password" className="font-mono text-xs" value={password} />
+                      <IconButton type="button" variant="ghost" size="icon" label="Copy password" onClick={() => void copy()}>
+                        {copyStatus === 'copied' && <Check className="size-4 text-valid" aria-hidden />}
+                        {copyStatus === 'failed' && <TriangleAlert className="size-4 text-failed" aria-hidden />}
+                        {copyStatus === 'idle' && <Copy className="size-4" aria-hidden />}
                       </IconButton>
                       <IconButton
                         type="button"
@@ -379,32 +243,22 @@ export function DownloadSheet({
                   onText="Own"
                   offText="Generated"
                 />
-                {format === "p12" && (
-                  <Field
-                    id="dl-encoding"
-                    label="Encoding"
-                    help="download.encoding"
-                  >
+                {format === 'p12' && (
+                  <Field id="dl-encoding" label="Encoding" help="download.encoding">
                     <SegmentedControl<P12Encoding>
                       id="dl-encoding"
                       aria-label="Encoding"
                       value={encoding}
                       onChange={setEncoding}
                       options={[
-                        { value: "modern", label: "Modern" },
-                        { value: "legacy", label: "Legacy" },
+                        { value: 'modern', label: 'Modern' },
+                        { value: 'legacy', label: 'Legacy' },
                       ]}
                     />
                   </Field>
                 )}
-                {format === "jks" && (
-                  <Field
-                    id="dl-alias"
-                    label="Alias"
-                    help="download.alias"
-                    optional
-                    error={aliasFieldError}
-                  >
+                {format === 'jks' && (
+                  <Field id="dl-alias" label="Alias" help="download.alias" optional error={aliasFieldError}>
                     <Input
                       id="dl-alias"
                       placeholder="tomcat"
@@ -427,8 +281,7 @@ export function DownloadSheet({
             )}
             {done && (
               <p role="status" className="text-sm text-valid">
-                Downloaded. Copy the password now; it is not shown again once
-                this sheet closes.
+                Downloaded. Copy the password now; it is not shown again once this sheet closes.
               </p>
             )}
             <Button disabled={disabled} onClick={() => void run()}>

@@ -1,42 +1,26 @@
-import type { ErrorSchema, RJSFSchema, UiSchema } from "@rjsf/utils";
-import { UNCHANGED } from "@/api/types";
+import type { ErrorSchema, RJSFSchema, UiSchema } from '@rjsf/utils';
+import { UNCHANGED } from '@/api/types';
 
 // Provider JSON Schemas (internal/challenge/schemas/*.json) add two
 // non-standard keywords Ajv ignores (strict: false, see SchemaForm.tsx):
 // `secret` marks a write-only credential field, `serverPath` marks a field
 // the server derives itself and 422s if the client sends it (preflight A10).
-type Prop = RJSFSchema & {
-  secret?: boolean;
-  serverPath?: boolean;
-  format?: string;
-};
+type Prop = RJSFSchema & { secret?: boolean; serverPath?: boolean; format?: string };
 
 // An array of plain strings (no `items.enum`) maps to the ListInput chip
 // widget (theme/fields.tsx's `listArray` field) instead of RJSF's default
 // per-item add/remove rows.
 function isPlainStringArray(p: Prop): boolean {
   const items = p.items;
-  return (
-    p.type === "array" &&
-    typeof items === "object" &&
-    !Array.isArray(items) &&
-    items.type === "string" &&
-    items.enum === undefined
-  );
+  return p.type === 'array' && typeof items === 'object' && !Array.isArray(items) && items.type === 'string' && items.enum === undefined;
 }
 
 // The SSH target's `files`: an array of {path, content, mode} objects maps to
 // the structured SshFilesField instead of RJSF's default per-item rows.
 function isSshFileList(p: Prop): boolean {
   const items = p.items;
-  if (
-    p.type !== "array" ||
-    typeof items !== "object" ||
-    Array.isArray(items) ||
-    typeof items.properties !== "object"
-  )
-    return false;
-  return ["path", "content", "mode"].every((k) => k in items.properties!);
+  if (p.type !== 'array' || typeof items !== 'object' || Array.isArray(items) || typeof items.properties !== 'object') return false;
+  return ['path', 'content', 'mode'].every((k) => k in items.properties!);
 }
 
 // An object field keyed by an arbitrary name (`patternProperties`/
@@ -45,31 +29,21 @@ function isSshFileList(p: Prop): boolean {
 // HeadersField (name/value rows) instead of RJSF's default per-property
 // ObjectField, which has no way to add or name a property at all.
 function isHeaderMap(p: Prop): boolean {
-  return (
-    p.type === "object" &&
-    !p.properties &&
-    (typeof p.patternProperties === "object" ||
-      typeof p.additionalProperties === "object")
-  );
+  return p.type === 'object' && !p.properties && (typeof p.patternProperties === 'object' || typeof p.additionalProperties === 'object');
 }
 
 // The field a CA bundle's Fetch prefills its server from: the provider's own
 // address field (targets' url, AD CS's cepUrl, Vault's address, ntfy's
 // server, Home Assistant's baseUrl), else the first `format: uri` field.
-const URL_KEYS = ["url", "cepUrl", "address", "server", "baseUrl"];
+const URL_KEYS = ['url', 'cepUrl', 'address', 'server', 'baseUrl'];
 
 function urlKeyOf(schema: RJSFSchema): string | undefined {
   const ps = props(schema);
-  return (
-    URL_KEYS.find((k) => ps.some(([key]) => key === k)) ??
-    ps.find(([, p]) => p.type === "string" && p.format === "uri")?.[0]
-  );
+  return URL_KEYS.find((k) => ps.some(([key]) => key === k)) ?? ps.find(([, p]) => p.type === 'string' && p.format === 'uri')?.[0];
 }
 
 function props(schema: RJSFSchema): [string, Prop][] {
-  return Object.entries(schema.properties ?? {}).filter(
-    (e): e is [string, Prop] => typeof e[1] === "object",
-  );
+  return Object.entries(schema.properties ?? {}).filter((e): e is [string, Prop] => typeof e[1] === 'object');
 }
 
 export function secretKeys(schema: RJSFSchema): string[] {
@@ -90,18 +64,14 @@ export function serverPathKeys(schema: RJSFSchema): string[] {
 // read naturally. Only used as a fallback when the schema has no title.
 function humanize(key: string): string {
   const spaced = key
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/[_-]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
     .trim();
   return spaced
     .split(/\s+/)
     .filter(Boolean)
-    .map((w) =>
-      w.length <= 3
-        ? w.toUpperCase()
-        : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(),
-    )
-    .join(" ");
+    .map((w) => (w.length <= 3 ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()))
+    .join(' ');
 }
 
 // UI conventions (7B): a machine value (path, URL, mount) reads better in
@@ -111,7 +81,7 @@ function humanize(key: string): string {
 const MONO_KEY = /^(dir|path|pathPrefix|mount|url|acmeServiceUrl)$|Pem$/;
 
 function isMonoKey(key: string, p: Prop): boolean {
-  return p.type === "string" && (p.format === "uri" || MONO_KEY.test(key));
+  return p.type === 'string' && (p.format === 'uri' || MONO_KEY.test(key));
 }
 
 /**
@@ -126,94 +96,54 @@ function isMonoKey(key: string, p: Prop): boolean {
  * falls back to a humanized label / an example or string default as a
  * placeholder when the schema doesn't supply a title / examples.
  */
-export function buildUiSchema(
-  schema: RJSFSchema,
-  opts: { storedSecrets?: string[] } = {},
-): UiSchema {
+export function buildUiSchema(schema: RJSFSchema, opts: { storedSecrets?: string[] } = {}): UiSchema {
   const stored = new Set(opts.storedSecrets ?? []);
-  const ui: UiSchema = { "ui:submitButtonOptions": { norender: true } };
+  const ui: UiSchema = { 'ui:submitButtonOptions': { norender: true } };
   // The API sends `properties` alphabetized (Go map) plus `x-order` with the
   // author's order; RJSF rejects names absent from the schema (e.g. fields a
   // saved credential hides), so keep only present ones and let '*' catch the rest.
-  const order = (schema as { "x-order"?: unknown })["x-order"];
+  const order = (schema as { 'x-order'?: unknown })['x-order'];
   if (Array.isArray(order)) {
     const present = new Set(Object.keys(schema.properties ?? {}));
-    const keys = order.filter(
-      (k): k is string => typeof k === "string" && present.has(k),
-    );
-    if (keys.length > 0) ui["ui:order"] = [...keys, "*"];
+    const keys = order.filter((k): k is string => typeof k === 'string' && present.has(k));
+    if (keys.length > 0) ui['ui:order'] = [...keys, '*'];
   }
   for (const [key, p] of props(schema)) {
     if (p.serverPath === true) {
-      ui[key] = { "ui:widget": "hidden" };
+      ui[key] = { 'ui:widget': 'hidden' };
       continue;
     }
     const base: Record<string, unknown> = {};
-    if (typeof p.title !== "string" || p.title === "")
-      base["ui:title"] = humanize(key);
-    const example =
-      Array.isArray(p.examples) && typeof p.examples[0] === "string"
-        ? p.examples[0]
-        : undefined;
-    if (example) base["ui:placeholder"] = example;
-    else if (typeof p.default === "string" && p.default !== "")
-      base["ui:placeholder"] = p.default;
+    if (typeof p.title !== 'string' || p.title === '') base['ui:title'] = humanize(key);
+    const example = Array.isArray(p.examples) && typeof p.examples[0] === 'string' ? p.examples[0] : undefined;
+    if (example) base['ui:placeholder'] = example;
+    else if (typeof p.default === 'string' && p.default !== '') base['ui:placeholder'] = p.default;
 
     if (p.secret === true) {
-      ui[key] = {
-        ...base,
-        "ui:widget": "secret",
-        "ui:options": {
-          stored: stored.has(key),
-          ...(p.format === "private-key" ? { multiline: true } : {}),
-        },
-      };
-    } else if (p.type === "string" && p.format === "pem-bundle") {
+      ui[key] = { ...base, 'ui:widget': 'secret', 'ui:options': { stored: stored.has(key), ...(p.format === 'private-key' ? { multiline: true } : {}) } };
+    } else if (p.type === 'string' && p.format === 'pem-bundle') {
       const urlKey = urlKeyOf(schema);
-      ui[key] = {
-        ...base,
-        "ui:widget": "caBundle",
-        ...(urlKey ? { "ui:options": { urlKey } } : {}),
-      };
-    } else if (p.type === "string" && p.format === "ssh-host-key") {
-      const has = (k: string) =>
-        key !== k && props(schema).some(([n]) => n === k);
-      const hostKey = ["host", "url"].find(has);
-      const portKey = ["port", "sshPort"].find(has);
-      ui[key] = {
-        ...base,
-        "ui:widget": "sshHostKey",
-        "ui:options": {
-          ...(hostKey ? { hostKey } : {}),
-          ...(portKey ? { portKey } : {}),
-        },
-      };
-    } else if (
-      p.type === "string" &&
-      (p.format === "textarea" || (p.maxLength ?? 0) > 200)
-    ) {
-      ui[key] = { ...base, "ui:widget": "textarea" };
+      ui[key] = { ...base, 'ui:widget': 'caBundle', ...(urlKey ? { 'ui:options': { urlKey } } : {}) };
+    } else if (p.type === 'string' && p.format === 'ssh-host-key') {
+      const has = (k: string) => key !== k && props(schema).some(([n]) => n === k);
+      const hostKey = ['host', 'url'].find(has);
+      const portKey = ['port', 'sshPort'].find(has);
+      ui[key] = { ...base, 'ui:widget': 'sshHostKey', 'ui:options': { ...(hostKey ? { hostKey } : {}), ...(portKey ? { portKey } : {}) } };
+    } else if (p.type === 'string' && (p.format === 'textarea' || (p.maxLength ?? 0) > 200)) {
+      ui[key] = { ...base, 'ui:widget': 'textarea' };
     } else if (isSshFileList(p)) {
-      ui[key] = { ...base, "ui:field": "sshFiles", "ui:hideError": true };
+      ui[key] = { ...base, 'ui:field': 'sshFiles', 'ui:hideError': true };
     } else if (isPlainStringArray(p)) {
-      ui[key] = { ...base, "ui:field": "listArray" };
+      ui[key] = { ...base, 'ui:field': 'listArray' };
     } else if (isHeaderMap(p)) {
-      ui[key] = { ...base, "ui:field": "headers" };
+      ui[key] = { ...base, 'ui:field': 'headers' };
     } else if (isMonoKey(key, p)) {
-      ui[key] = { ...base, "ui:options": { mono: true } };
-    } else if (
-      key === "keys" &&
-      p.type === "object" &&
-      typeof p.properties === "object"
-    ) {
+      ui[key] = { ...base, 'ui:options': { mono: true } };
+    } else if (key === 'keys' && p.type === 'object' && typeof p.properties === 'object') {
       const nested: UiSchema = { ...base };
       for (const [subKey, subRaw] of Object.entries(p.properties)) {
-        if (
-          typeof subRaw === "object" &&
-          subRaw !== null &&
-          (subRaw as Prop).type === "string"
-        ) {
-          nested[subKey] = { "ui:options": { mono: true } };
+        if (typeof subRaw === 'object' && subRaw !== null && (subRaw as Prop).type === 'string') {
+          nested[subKey] = { 'ui:options': { mono: true } };
         }
       }
       ui[key] = nested;
@@ -230,19 +160,11 @@ export function buildUiSchema(
  * submit. Secrets not listed in `storedSecrets` are new and stay write-only
  * (left absent until the caller types a value).
  */
-export function withSecretSentinels(
-  schema: RJSFSchema,
-  value: Record<string, unknown>,
-  storedSecrets: string[] = [],
-): Record<string, unknown> {
+export function withSecretSentinels(schema: RJSFSchema, value: Record<string, unknown>, storedSecrets: string[] = []): Record<string, unknown> {
   const secrets = new Set(secretKeys(schema));
   const out = { ...value };
   for (const k of storedSecrets) {
-    if (
-      secrets.has(k) &&
-      (out[k] === undefined || out[k] === null || out[k] === "")
-    )
-      out[k] = UNCHANGED;
+    if (secrets.has(k) && (out[k] === undefined || out[k] === null || out[k] === '')) out[k] = UNCHANGED;
   }
   return out;
 }
@@ -262,13 +184,8 @@ export function withSecretSentinels(
  * appears, so the caller falls back to a toast alone — the message still
  * names the field, just not next to it.
  */
-export function fieldErrorFromMessage(
-  schema: RJSFSchema,
-  message: string,
-): ErrorSchema | null {
-  const keys = Object.keys(schema.properties ?? {}).sort(
-    (a, b) => b.length - a.length,
-  );
+export function fieldErrorFromMessage(schema: RJSFSchema, message: string): ErrorSchema | null {
+  const keys = Object.keys(schema.properties ?? {}).sort((a, b) => b.length - a.length);
   for (const key of keys) {
     // `ErrorSchema`'s mapped type (`[key in keyof T]?: ErrorSchema<T[key]>`
     // for the default `T = any`) makes TS see every string key, including
@@ -276,31 +193,22 @@ export function fieldErrorFromMessage(
     // recursive shape too — an RJSF typing quirk unrelated to the actual
     // runtime shape (`{ [field]: { __errors: string[] } }`), which is
     // exactly what Form's own `extraErrors` prop expects.
-    if (new RegExp(`\\b${key}\\b`).test(message))
-      return { [key]: { __errors: [message] } } as ErrorSchema;
+    if (new RegExp(`\\b${key}\\b`).test(message)) return { [key]: { __errors: [message] } } as ErrorSchema;
   }
   return null;
 }
 
 // Fields that read better across both columns of a two-column form.
-const WIDE_KEY =
-  /^(path\w*|\w+Path|url|endpoint|argv|command|hosts|bundle|caBundle|description|notes)$/;
+const WIDE_KEY = /^(path\w*|\w+Path|url|endpoint|argv|command|hosts|bundle|caBundle|description|notes)$/;
 
 /** Whether a property spans both columns of a `columns={2}` SchemaForm. */
-export function isWideField(
-  key: string,
-  p: RJSFSchema,
-  ui: UiSchema | undefined,
-): boolean {
-  const opts = (ui?.["ui:options"] ?? {}) as {
-    wide?: boolean;
-    multiline?: boolean;
-  };
+export function isWideField(key: string, p: RJSFSchema, ui: UiSchema | undefined): boolean {
+  const opts = (ui?.['ui:options'] ?? {}) as { wide?: boolean; multiline?: boolean };
   if (opts.wide === true || opts.multiline === true) return true;
-  if (p.type === "array" || p.type === "object") return true;
-  const widget = ui?.["ui:widget"];
-  if (widget === "textarea" || widget === "caBundle" || widget === "sshHostKey")
-    return true;
-  if (ui?.["ui:field"]) return true;
-  return p.type === "string" && WIDE_KEY.test(key);
+  if (p.type === 'array' || p.type === 'object') return true;
+  const widget = ui?.['ui:widget'];
+  if (widget === 'textarea' || widget === 'caBundle' || widget === 'sshHostKey') return true;
+  if (ui?.['ui:field']) return true;
+  if (p.type === 'string' && p.format === 'uri') return true;
+  return p.type === 'string' && (WIDE_KEY.test(key) || URL_KEYS.includes(key));
 }
