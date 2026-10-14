@@ -990,6 +990,15 @@ func (s *Server) ListDeployTargets(ctx context.Context, r gen.ListDeployTargetsR
 	if err != nil {
 		return nil, err
 	}
+	if cid := r.Params.CredentialId; cid != nil {
+		kept := rows[:0]
+		for _, t := range rows {
+			if t.CredentialID != nil && *t.CredentialID == *cid {
+				kept = append(kept, t)
+			}
+		}
+		rows = kept
+	}
 	items, err := s.targetsOut(ctx, rows)
 	if err != nil {
 		return nil, err

@@ -1,13 +1,19 @@
 import { columnHelper } from '@/components/DataTable';
 import type { AuditEvent } from '@/api/types';
 import { fmtDateTime } from '@/lib/time';
+import { ActorName, ResourceId } from './ResourceRef';
 
 const col = columnHelper<AuditEvent>();
 
 export function auditColumns(orgName?: (id: string | null) => string) {
   return [
     col.accessor('ts', { header: 'Time', meta: { className: 'w-52 pr-4' }, cell: (c) => <span className="font-mono text-xs">{fmtDateTime(c.getValue())}</span> }),
-    col.accessor('actorName', { header: 'Actor', meta: { help: 'audit.actor', className: 'w-40' }, cell: ({ row }) => <span className="truncate">{row.original.actorName || row.original.actorType}</span> }),
+    col.accessor('actorName', { header: 'Actor', meta: { help: 'audit.actor', className: 'w-40' }, cell: ({ row }) => (
+        <span className="truncate">
+          <ActorName event={row.original}>{row.original.actorName || row.original.actorType}</ActorName>
+        </span>
+      ),
+    }),
     col.accessor('action', { header: 'Action', meta: { className: 'w-56' }, cell: (c) => <span className="font-mono text-xs">{c.getValue()}</span> }),
     col.display({
       id: 'resource',
@@ -18,8 +24,8 @@ export function auditColumns(orgName?: (id: string | null) => string) {
       cell: ({ row }) => (
         <span className="flex min-w-0 items-baseline gap-1.5">
           <span className="shrink-0 text-ink-muted">{row.original.resourceType}</span>
-          <span className="truncate font-mono text-xs" title={row.original.resourceId}>
-            {row.original.resourceId}
+          <span className="min-w-0 truncate font-mono text-xs" title={row.original.resourceId}>
+            <ResourceId event={row.original} />
           </span>
         </span>
       ),

@@ -221,7 +221,7 @@ it('puts a name-conflict 409 under Name and any other error in the page alert', 
 it('lists groups and builds an ordered group', async () => {
   const { user } = renderRoute('/o/acme/delivery/actions?tab=groups');
   const table = await screen.findByRole('table', { name: 'Action groups' });
-  expect(within(table).getByText('reload nginx → verify site')).toBeInTheDocument();
+  expect(within(table).getByText((_, el) => el?.tagName === 'TD' && el.textContent === 'reload nginx → verify site')).toBeInTheDocument();
   expect(within(table).getByText('2 grants')).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'New group' }));
   const sheet = await screen.findByRole('dialog', { name: 'New action group' });

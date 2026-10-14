@@ -443,3 +443,38 @@ it('keeps a revealed secret out of the mutation cache, even before Hide', async 
   const held = queryClient.getMutationCache().getAll().filter((m) => JSON.stringify([m.state.data, m.state.variables]).includes('cf-token-plain'));
   expect(held).toEqual([]);
 });
+
+it('?edit=<id> opens that credential sheet and drops the param', async () => {
+  creds = [cred];
+  const { router } = renderRoute('/o/acme/issuers/dns?edit=d-1');
+  expect(await screen.findByRole('dialog', { name: 'Edit Cloudflare prod' })).toBeInTheDocument();
+  await waitFor(() => expect(router.state.location.search).toEqual({}));
+});
+
+it('?edit=<unknown id> drops the param instead of opening a sheet', async () => {
+  creds = [cred];
+  const { router } = renderRoute('/o/acme/issuers/dns?edit=nope');
+  await screen.findByText('Cloudflare prod');
+  await waitFor(() => expect(router.state.location.search).toEqual({}));
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+it('the used-by count opens a popover of certificates and default sets', async () => {
+  creds = [cred];
+  server.use(
+    http.get(url('/orgs/org-1/dns-credentials/d-1/usage'), () => HttpResponse.json({ certificates: [{ id: 'c-7', name: 'www' }], defaults: 1 })),
+  );
+  const { user } = renderRoute('/o/acme/issuers/dns');
+  await user.click(await screen.findByRole('button', { name: 'Used by 2' }));
+  expect(await screen.findByRole('link', { name: 'www' })).toHaveAttribute('href', '/o/acme/certificates/c-7/overview');
+  expect(screen.getByText('1 default set in Settings')).toBeInTheDocument();
+});
+
+it('?edit=<id> opens no editable sheet for a viewer, and still drops the param', async () => {
+  creds = [cred];
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-1' }]))));
+  const { router } = renderRoute('/o/acme/issuers/dns?edit=d-1');
+  await screen.findByText('Cloudflare prod');
+  await waitFor(() => expect(router.state.location.search).toEqual({}));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});

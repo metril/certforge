@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Eye, Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { errorMessage } from '@/api/errors';
 import { plural } from '@/api/queries/certificates';
 import { CREDENTIAL_KIND_LABEL, deployCredentialsQuery, useDeleteDeployCredential } from '@/api/queries/deployCredentials';
+import { credentialTargetsQuery } from '@/api/queries/delivery';
 import { metaSchemasQuery } from '@/api/queries/dns';
 import type { DeployCredential } from '@/api/types';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
@@ -16,6 +17,7 @@ import { IconButton } from '@/components/IconButton';
 import { PermissionTip } from '@/components/PermissionTip';
 import { PrimaryCell } from '@/components/PrimaryCell';
 import { Button } from '@/components/ui/button';
+import { UsagePopover } from '@/components/UsagePopover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
@@ -25,6 +27,7 @@ import { CredentialSheet } from './CredentialSheet';
 export function CredentialsPage() {
   const org = useOrg();
   const me = useMe();
+  const qc = useQueryClient();
   const canWrite = can(me, 'deploycreds:write', org.id);
   const { edit } = useSearch({ from: '/_app/o/$org/delivery/credentials' });
   const navigate = useNavigate({ from: '/o/$org/delivery/credentials' });
@@ -91,7 +94,17 @@ export function CredentialsPage() {
                       <PrimaryCell primary={c.name} meta={metaLine(c)} />
                     </TableCell>
                     <TableCell className="py-1">
-                      {usedBy > 0 ? <span className="whitespace-nowrap">{plural(usedBy, 'target')}</span> : <span className="text-ink-muted">–</span>}
+                      {usedBy > 0 ? (
+                        <UsagePopover
+                          label={plural(usedBy, 'target')}
+                          count={usedBy}
+                          allowed={can(me, 'delivery:read', org.id)}
+                          queryKey={['deploy-credential', org.id, c.id]}
+                          load={async () => ({ items: (await qc.fetchQuery(credentialTargetsQuery(org.id, c.id))).map((t) => ({ id: t.id, name: t.name, kind: 'target' as const })) })}
+                        />
+                      ) : (
+                        <span className="text-ink-muted">–</span>
+                      )}
                     </TableCell>
                     <TableCell className="py-1 text-right whitespace-nowrap">
                       <IconButton variant="ghost" size="icon-sm" className="size-7" label={canWrite ? `Edit ${c.name}` : `View ${c.name}`} onClick={() => openSheet(c.id)}>

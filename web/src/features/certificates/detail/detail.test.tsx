@@ -3,7 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { Me } from '@/api/types';
 import { server } from '@/test/server';
-import { authHandlers, ca, iso, makeAttempt, makeCert, me, meWith, org, problem, providers, url } from '@/test/fixtures';
+import { authHandlers, ca, iso, makeAttempt, makeCert, makeLayout, makeMonitor, me, meWith, org, problem, providers, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 const cert = makeCert();
@@ -267,3 +267,19 @@ it(
   },
   10_000,
 );
+
+it('shows where the certificate is used, each popover linking to its layout or monitor', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(min-width: 768px)', media: query, addEventListener: () => {}, removeEventListener: () => {} }));
+  server.use(
+    ...base(),
+    http.get(url('/orgs/org-1/layouts'), () => HttpResponse.json({ items: [makeLayout({ id: 'l-1', name: 'nginx bundle', extraCertificateIds: ['c-1'] }), makeLayout({ id: 'l-2', name: 'other', extraCertificateIds: [] })] })),
+    http.get(url('/orgs/org-1/monitors'), () => HttpResponse.json([makeMonitor({ id: 'm-1', name: 'front door', expectedCertificateId: 'c-1' })])),
+  );
+  const { user } = renderRoute('/o/acme/certificates/c-1/overview');
+  await user.click(await screen.findByRole('button', { name: '1 layout' }));
+  expect(await screen.findByRole('link', { name: 'nginx bundle' })).toHaveAttribute('href', '/o/acme/delivery/layouts/l-1/edit');
+  expect(screen.queryByRole('link', { name: 'other' })).not.toBeInTheDocument();
+  await user.keyboard('{Escape}');
+  await user.click(screen.getByRole('button', { name: '1 monitor' }));
+  expect(await screen.findByRole('link', { name: 'front door' })).toHaveAttribute('href', '/o/acme/alerts/monitors/m-1/edit');
+});

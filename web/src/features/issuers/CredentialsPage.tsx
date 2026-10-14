@@ -1,8 +1,11 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate, useSearch } from '@tanstack/react-router';
+import { toast } from 'sonner';
 import { FlaskConical, Pencil, Plus, Trash2 } from 'lucide-react';
-import { dnsCredentialsQuery, metaSchemasQuery, useDeleteCredential } from '@/api/queries/dns';
+import { dnsCredentialUsageQuery, dnsCredentialsQuery, metaSchemasQuery, useDeleteCredential } from '@/api/queries/dns';
 import { errorMessage } from '@/api/errors';
+import { plural } from '@/api/queries/certificates';
 import type { DnsCredential, ProviderSchema } from '@/api/types';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { EmptyState } from '@/components/EmptyState';
@@ -11,6 +14,7 @@ import { HintLabel } from '@/components/HintLabel';
 import { PrimaryCell } from '@/components/PrimaryCell';
 import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
+import { UsagePopover } from '@/components/UsagePopover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ProviderPicker } from '@/forms/ProviderPicker';
 import { useMe, useOrg } from '@/lib/org';
@@ -41,6 +45,7 @@ function Header() {
 export function CredentialsPage() {
   const org = useOrg();
   const me = useMe();
+  const qc = useQueryClient();
   const canWrite = can(me, 'dnscreds:write', org.id);
   const { data: creds = [], isPending, isError, error, refetch } = useQuery(dnsCredentialsQuery(org.id));
   const { data: meta, isPending: metaPending } = useQuery(metaSchemasQuery);
@@ -51,6 +56,21 @@ export function CredentialsPage() {
   const [deleting, setDeleting] = useState<DnsCredential | null>(null);
   const providers = meta?.dnsProviders ?? [];
   const providerOf = (code: string) => providers.find((p) => p.code === code);
+  const { edit } = useSearch({ from: '/_app/o/$org/issuers/dns' });
+  const navigate = useNavigate({ from: '/o/$org/issuers/dns' });
+  // `?edit=<id>` (an entity link) opens that credential's sheet once, then leaves the URL clean;
+  // an id that no longer resolves says so instead of doing nothing.
+  useEffect(() => {
+    if (!edit || isPending || metaPending) return;
+    const credential = creds.find((c) => c.id === edit);
+    const provider = credential && meta?.dnsProviders.find((p) => p.code === credential.providerCode);
+    // The sheet only edits, so a reader without dnscreds:write gets the list and nothing opens.
+    if (credential && provider) {
+      if (canWrite) setSheet({ provider, credential });
+    } else toast.error('Credential not found.');
+    void navigate({ search: {}, replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edit, isPending, metaPending]);
 
   const showList = !isPending && !isError && creds.length > 0;
   return (
@@ -111,7 +131,21 @@ export function CredentialsPage() {
                       <TableCell className="py-1.5">
                         <PrimaryCell primary={c.name} meta={[provider?.name ?? c.providerCode]} />
                       </TableCell>
-                      <TableCell className="py-1">{`Used by ${usedBy}`}</TableCell>
+                      <TableCell className="py-1">
+                        <UsagePopover
+                          label={`Used by ${usedBy}`}
+                          count={usedBy}
+                          allowed={can(me, 'dnscreds:read', org.id) && can(me, 'certs:read', org.id)}
+                          queryKey={['dns-credential', org.id, c.id]}
+                          load={async () => {
+                            const u = await qc.fetchQuery(dnsCredentialUsageQuery(org.id, c.id));
+                            return {
+                              items: u.certificates.map((x) => ({ id: x.id, name: x.name, kind: 'certificate' as const })),
+                              note: u.defaults > 0 ? `${plural(u.defaults, 'default set')} in Settings` : undefined,
+                            };
+                          }}
+                        />
+                      </TableCell>
                       <TableCell className="py-1 text-right whitespace-nowrap">
                         <IconButton tip={canWrite ? undefined : `Needs the dnscreds:write permission`}
                             variant="ghost"

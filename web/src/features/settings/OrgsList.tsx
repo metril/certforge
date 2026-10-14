@@ -1,7 +1,7 @@
 import { Card, CardBody, CardHeader } from '@/components/Card';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useParams } from '@tanstack/react-router';
+import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { errorMessage } from '@/api/errors';
@@ -29,6 +29,22 @@ export function OrgsList() {
   const [deleting, setDeleting] = useState<Org | null>(null);
   const [sitesOf, setSitesOf] = useState<Org | null>(null);
   const canWrite = can(me, 'orgs:write');
+  // ?org=<slug>&site=<id> (an EntityLink to a site) opens that org's Sites sheet on the site.
+  const { org: siteOrg, site } = useSearch({ strict: false }) as { org?: string; site?: string };
+  const [focusSite, setFocusSite] = useState<string | undefined>();
+  const dropSite = () => void navigate({ to: '.', search: (prev: Record<string, unknown>) => ({ ...prev, org: undefined, site: undefined }), replace: true });
+  useEffect(() => {
+    if (!site || !q.data) return;
+    const o = q.data.find((x) => x.slug === siteOrg);
+    if (o && can(me, 'sites:read', o.id)) {
+      setSitesOf(o);
+      setFocusSite(site);
+    } else {
+      toast.error('Site not found.');
+      dropSite();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [site, siteOrg, q.data]);
   return (
     <Card role="region" aria-labelledby="orgs-title" className="mt-8 max-w-[720px]">
       <CardHeader
@@ -84,7 +100,22 @@ export function OrgsList() {
       </ul>
       </CardBody>
       <OrgSheet org={editing} onClose={() => setEditing(null)} onSaved={refreshMe} />
-      <SitesSheet org={sitesOf} onClose={() => setSitesOf(null)} />
+      <SitesSheet
+        org={sitesOf}
+        focusSite={focusSite}
+        onMissing={() => {
+          toast.error('Site not found.');
+          setFocusSite(undefined);
+          dropSite();
+        }}
+        onClose={() => {
+          setSitesOf(null);
+          if (focusSite) {
+            setFocusSite(undefined);
+            dropSite();
+          }
+        }}
+      />
       <ConfirmDestructive
         open={deleting !== null}
         onOpenChange={(o) => !o && setDeleting(null)}

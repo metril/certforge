@@ -7,6 +7,7 @@ import { casQuery } from '@/api/queries/cas';
 import { allClientsQuery } from '@/api/queries/clients';
 import { dnsCredentialsQuery } from '@/api/queries/dns';
 import type { AcmeAccount, CA, Client, DnsCredential, EffectiveMap, EffectiveValue, IssuanceDefaults, KeyType, Source, VerificationRule } from '@/api/types';
+import { EntityLink } from '@/components/EntityLink';
 import { Button } from '@/components/ui/button';
 import { FormSection } from '@/components/FormSection';
 import { Combobox } from '@/components/Combobox';
@@ -27,7 +28,7 @@ import { ruleTarget } from '@/lib/rules';
 // plus agentModes: false (review fix round 1, Important) — otherwise
 // tls-alpn-01/http-01-via-agent stay pickable there with no client that
 // could ever satisfy them, and Save 422s.
-export type FieldCtx = { cas: CA[]; accounts: AcmeAccount[]; credentials: DnsCredential[]; clients: Client[]; agentModes?: boolean;
+export type FieldCtx = { /** Org the lists belong to; lets a value link to its page from Settings. */ orgId?: string; cas: CA[]; accounts: AcmeAccount[]; credentials: DnsCredential[]; clients: Client[]; agentModes?: boolean;
   /** Set when the effective CA is an AD CS CA whose template accepts only some key types. */
   keyTypeLimit?: { allowed: KeyType[]; template: string };
 };
@@ -136,7 +137,11 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
     label: 'Certificate authority',
     help: 'defaults.caId',
     initial: (c) => c.cas[0]?.id ?? '',
-    display: (v, c) => c.cas.find((x) => x.id === v)?.name ?? <span className="font-mono text-xs">{v}</span>,
+    display: (v, c) => (
+      <EntityLink kind="ca" id={v} orgId={c.orgId}>
+        {c.cas.find((x) => x.id === v)?.name ?? <span className="font-mono text-xs">{v}</span>}
+      </EntityLink>
+    ),
     // Combobox's own clear button calls onChange(undefined); mapped to
     // null (review fix round 1, #4) so it resets to inherited instead of
     // setting an empty string the API always 422s.
@@ -162,7 +167,11 @@ export const ISSUANCE_FIELDS: IssuanceField[] = [
     label: 'ACME account',
     help: 'defaults.accountId',
     initial: (c) => c.accounts[0]?.id ?? '',
-    display: (v, c) => <span className="font-mono text-xs">{c.accounts.find((a) => a.id === v)?.email ?? v}</span>,
+    display: (v, c) => (
+      <EntityLink kind="acmeAccount" id={v} orgId={c.orgId}>
+        <span className="font-mono text-xs">{c.accounts.find((a) => a.id === v)?.email ?? v}</span>
+      </EntityLink>
+    ),
     editor: (v, set, c, id) => (
       <div className="w-full max-w-96">
         <Combobox
@@ -304,7 +313,7 @@ export function useFieldCtx(orgId: string): FieldCtx {
   const accounts = useQuery({ ...accountsQuery(orgId), enabled: !!orgId }).data ?? [];
   const credentials = useQuery({ ...dnsCredentialsQuery(orgId), enabled: !!orgId }).data ?? [];
   const clients = useQuery({ ...allClientsQuery(orgId), enabled: !!orgId }).data?.items ?? [];
-  return { cas, accounts, credentials, clients };
+  return { orgId: orgId || undefined, cas, accounts, credentials, clients };
 }
 
 export const fromDefault = (): EffectiveValue => ({ value: null, source: 'default' });

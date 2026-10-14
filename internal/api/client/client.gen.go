@@ -1842,6 +1842,21 @@ type DNSCredentialUpdate struct {
 	Name string `json:"name"`
 }
 
+// DNSCredentialUsage What references a DNS credential.
+type DNSCredentialUsage struct {
+	// Certificates Certificates referencing it, by name.
+	Certificates []struct {
+		// Id Certificate id.
+		Id openapi_types.UUID `json:"id"`
+
+		// Name Certificate name.
+		Name string `json:"name"`
+	} `json:"certificates"`
+
+	// Defaults Number of org default sets referencing it.
+	Defaults int `json:"defaults"`
+}
+
 // DeliveryResult Outcome of one inline delivery, from testChannel or testSmtpSettings.
 type DeliveryResult struct {
 	// DurationMs Wall time the attempt took
@@ -4049,6 +4064,12 @@ type ListClientHookRunsParams struct {
 	Cursor *ListCursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
+// ListDeployTargetsParams defines parameters for ListDeployTargets.
+type ListDeployTargetsParams struct {
+	// CredentialId Only targets using this deploy credential.
+	CredentialId *openapi_types.UUID `form:"credentialId,omitempty" json:"credentialId,omitempty"`
+}
+
 // ListTargetHookRunsParams defines parameters for ListTargetHookRuns.
 type ListTargetHookRunsParams struct {
 	// Limit Page size, 1 to 500.
@@ -4738,7 +4759,7 @@ type ClientInterface interface {
 	RevealDeployCredentialSecret(ctx context.Context, orgId OrgId, id Id, body RevealDeployCredentialSecretJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListDeployTargets request
-	ListDeployTargets(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ListDeployTargets(ctx context.Context, orgId OrgId, params *ListDeployTargetsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateDeployTargetWithBody request with any body
 	CreateDeployTargetWithBody(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4795,6 +4816,9 @@ type ClientInterface interface {
 	TestDNSCredentialWithBody(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	TestDNSCredential(ctx context.Context, orgId OrgId, id Id, body TestDNSCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetDNSCredentialUsage request
+	GetDNSCredentialUsage(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListEnrollmentRequests request
 	ListEnrollmentRequests(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6388,8 +6412,8 @@ func (c *APIClient) RevealDeployCredentialSecret(ctx context.Context, orgId OrgI
 	return c.Client.Do(req)
 }
 
-func (c *APIClient) ListDeployTargets(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewListDeployTargetsRequest(c.Server, orgId)
+func (c *APIClient) ListDeployTargets(ctx context.Context, orgId OrgId, params *ListDeployTargetsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListDeployTargetsRequest(c.Server, orgId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -6642,6 +6666,18 @@ func (c *APIClient) TestDNSCredentialWithBody(ctx context.Context, orgId OrgId, 
 
 func (c *APIClient) TestDNSCredential(ctx context.Context, orgId OrgId, id Id, body TestDNSCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewTestDNSCredentialRequest(c.Server, orgId, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) GetDNSCredentialUsage(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDNSCredentialUsageRequest(c.Server, orgId, id)
 	if err != nil {
 		return nil, err
 	}
@@ -11920,7 +11956,7 @@ func NewRevealDeployCredentialSecretRequestWithBody(server string, orgId OrgId, 
 }
 
 // NewListDeployTargetsRequest generates requests for ListDeployTargets
-func NewListDeployTargetsRequest(server string, orgId OrgId) (*http.Request, error) {
+func NewListDeployTargetsRequest(server string, orgId OrgId, params *ListDeployTargetsParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -11943,6 +11979,28 @@ func NewListDeployTargetsRequest(server string, orgId OrgId) (*http.Request, err
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.CredentialId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "credentialId", runtime.ParamLocationQuery, *params.CredentialId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
@@ -12631,6 +12689,47 @@ func NewTestDNSCredentialRequestWithBody(server string, orgId OrgId, id Id, cont
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetDNSCredentialUsageRequest generates requests for GetDNSCredentialUsage
+func NewGetDNSCredentialUsageRequest(server string, orgId OrgId, id Id) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/dns-credentials/%s/usage", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -15164,7 +15263,7 @@ type ClientWithResponsesInterface interface {
 	RevealDeployCredentialSecretWithResponse(ctx context.Context, orgId OrgId, id Id, body RevealDeployCredentialSecretJSONRequestBody, reqEditors ...RequestEditorFn) (*RevealDeployCredentialSecretResponse, error)
 
 	// ListDeployTargetsWithResponse request
-	ListDeployTargetsWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*ListDeployTargetsResponse, error)
+	ListDeployTargetsWithResponse(ctx context.Context, orgId OrgId, params *ListDeployTargetsParams, reqEditors ...RequestEditorFn) (*ListDeployTargetsResponse, error)
 
 	// CreateDeployTargetWithBodyWithResponse request with any body
 	CreateDeployTargetWithBodyWithResponse(ctx context.Context, orgId OrgId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDeployTargetResponse, error)
@@ -15221,6 +15320,9 @@ type ClientWithResponsesInterface interface {
 	TestDNSCredentialWithBodyWithResponse(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestDNSCredentialResponse, error)
 
 	TestDNSCredentialWithResponse(ctx context.Context, orgId OrgId, id Id, body TestDNSCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*TestDNSCredentialResponse, error)
+
+	// GetDNSCredentialUsageWithResponse request
+	GetDNSCredentialUsageWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*GetDNSCredentialUsageResponse, error)
 
 	// ListEnrollmentRequestsWithResponse request
 	ListEnrollmentRequestsWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*ListEnrollmentRequestsResponse, error)
@@ -17910,6 +18012,7 @@ type ListDeployTargetsResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
 	JSON200                   *DeployTargetList
+	ApplicationproblemJSON400 *BadRequest
 	ApplicationproblemJSON401 *Unauthorized
 	ApplicationproblemJSON403 *Forbidden
 	ApplicationproblemJSON404 *NotFound
@@ -18326,6 +18429,32 @@ func (r TestDNSCredentialResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r TestDNSCredentialResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetDNSCredentialUsageResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *DNSCredentialUsage
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDNSCredentialUsageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDNSCredentialUsageResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -20663,8 +20792,8 @@ func (c *ClientWithResponses) RevealDeployCredentialSecretWithResponse(ctx conte
 }
 
 // ListDeployTargetsWithResponse request returning *ListDeployTargetsResponse
-func (c *ClientWithResponses) ListDeployTargetsWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*ListDeployTargetsResponse, error) {
-	rsp, err := c.ListDeployTargets(ctx, orgId, reqEditors...)
+func (c *ClientWithResponses) ListDeployTargetsWithResponse(ctx context.Context, orgId OrgId, params *ListDeployTargetsParams, reqEditors ...RequestEditorFn) (*ListDeployTargetsResponse, error) {
+	rsp, err := c.ListDeployTargets(ctx, orgId, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -20851,6 +20980,15 @@ func (c *ClientWithResponses) TestDNSCredentialWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseTestDNSCredentialResponse(rsp)
+}
+
+// GetDNSCredentialUsageWithResponse request returning *GetDNSCredentialUsageResponse
+func (c *ClientWithResponses) GetDNSCredentialUsageWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*GetDNSCredentialUsageResponse, error) {
+	rsp, err := c.GetDNSCredentialUsage(ctx, orgId, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDNSCredentialUsageResponse(rsp)
 }
 
 // ListEnrollmentRequestsWithResponse request returning *ListEnrollmentRequestsResponse
@@ -27213,6 +27351,13 @@ func ParseListDeployTargetsResponse(rsp *http.Response) (*ListDeployTargetsRespo
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -28248,6 +28393,60 @@ func ParseTestDNSCredentialResponse(rsp *http.Response) (*TestDNSCredentialRespo
 			return nil, err
 		}
 		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetDNSCredentialUsageResponse parses an HTTP response from a GetDNSCredentialUsageWithResponse call
+func ParseGetDNSCredentialUsageResponse(rsp *http.Response) (*GetDNSCredentialUsageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDNSCredentialUsageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DNSCredentialUsage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
 
 	}
 

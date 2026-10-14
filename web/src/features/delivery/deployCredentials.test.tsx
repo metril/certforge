@@ -4,7 +4,7 @@ import { beforeEach, expect, it } from 'vitest';
 import type { DeployCredential } from '@/api/types';
 import { UNCHANGED } from '@/api/types';
 import { server } from '@/test/server';
-import { authHandlers, deployCredentialKinds, makeDeployCredential, meWith, org, problem, url } from '@/test/fixtures';
+import { authHandlers, deployCredentialKinds, makeDeployCredential, makeTarget, meWith, org, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let creds: DeployCredential[];
@@ -138,4 +138,20 @@ it('an operator sees credentials read-only', async () => {
   await user.click(screen.getByRole('button', { name: 'View lab ssh' }));
   const sheet = await screen.findByRole('dialog', { name: 'lab ssh' });
   expect(within(sheet).queryByRole('button', { name: 'Save credential' })).not.toBeInTheDocument();
+});
+
+it('the used-by count opens a popover of the targets, each linking to its target', async () => {
+  creds = [makeDeployCredential({ usedBy: 2 })];
+  let query = '';
+  server.use(
+    http.get(url('/orgs/org-1/deploy-targets'), ({ request }) => {
+      query = new URL(request.url).search;
+      return HttpResponse.json({ items: [makeTarget({ id: 't-7', name: 'edge a' }), makeTarget({ id: 't-8', name: 'edge b' })] });
+    }),
+  );
+  const { user } = renderRoute('/o/acme/delivery/credentials');
+  await user.click(await screen.findByRole('button', { name: '2 targets' }));
+  expect(await screen.findByRole('link', { name: 'edge a' })).toHaveAttribute('href', '/o/acme/delivery/targets/t-7/overview');
+  expect(screen.getByRole('link', { name: 'edge b' })).toBeInTheDocument();
+  expect(new URLSearchParams(query).get('credentialId')).toBe(creds[0]!.id);
 });

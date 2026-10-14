@@ -1,5 +1,6 @@
 import { CircleCheck, CircleX, Clock, type LucideIcon } from 'lucide-react';
 import type { DeliveryStatus, EventDelivery } from '@/api/types';
+import { EntityLink } from '@/components/EntityLink';
 import { ToneChip } from '@/components/StatusChip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -112,7 +113,9 @@ export function DeliverySummary({ deliveries }: { deliveries: readonly EventDeli
                 <div className="flex items-center gap-1.5">
                   <dm.icon className={`size-3.5 shrink-0 ${d.status === 'failed' ? 'text-failed' : d.status === 'delivered' ? 'text-valid' : 'text-pending'}`} aria-label={dm.label} />
                   <span title={d.channelName} className="min-w-0 flex-1 truncate font-medium">
-                    {d.channelName}
+                    <EntityLink kind="channel" id={d.channelId}>
+                      {d.channelName}
+                    </EntityLink>
                   </span>
                   <span className="shrink-0 text-ink-muted">
                     {plural(d.attempts, 'attempt')}

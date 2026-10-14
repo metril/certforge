@@ -67,3 +67,16 @@ FROM dns_provider_credentials dc
 LEFT JOIN refs ON refs.cred = dc.id::text
 WHERE dc.org_id = sqlc.arg(org_id)
 GROUP BY dc.id;
+
+-- name: ListDNSCredentialCertificates :many
+-- Certificates whose rules reference the credential (see CountDNSCredentialUsers).
+SELECT c.id, c.name FROM certificates c
+WHERE c.org_id = sqlc.arg(org_id)
+  AND (c.verification_rules @> jsonb_build_array(jsonb_build_object('dnsCredentialId', sqlc.arg(id)::uuid::text))
+    OR c.overrides->'verificationRules' @> jsonb_build_array(jsonb_build_object('dnsCredentialId', sqlc.arg(id)::uuid::text)))
+ORDER BY c.name;
+
+-- name: CountDNSCredentialDefaults :one
+SELECT count(*)::bigint AS defaults FROM issuance_defaults d
+WHERE d.org_id = sqlc.arg(org_id)
+  AND d.config->'verificationRules' @> jsonb_build_array(jsonb_build_object('dnsCredentialId', sqlc.arg(id)::uuid::text));

@@ -11,6 +11,24 @@ import (
 	"github.com/google/uuid"
 )
 
+const countDNSCredentialDefaults = `-- name: CountDNSCredentialDefaults :one
+SELECT count(*)::bigint AS defaults FROM issuance_defaults d
+WHERE d.org_id = $1
+  AND d.config->'verificationRules' @> jsonb_build_array(jsonb_build_object('dnsCredentialId', $2::uuid::text))
+`
+
+type CountDNSCredentialDefaultsParams struct {
+	OrgID uuid.UUID `json:"org_id"`
+	ID    uuid.UUID `json:"id"`
+}
+
+func (q *Queries) CountDNSCredentialDefaults(ctx context.Context, arg CountDNSCredentialDefaultsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countDNSCredentialDefaults, arg.OrgID, arg.ID)
+	var defaults int64
+	err := row.Scan(&defaults)
+	return defaults, err
+}
+
 const countDNSCredentialUsers = `-- name: CountDNSCredentialUsers :one
 SELECT (
     (SELECT count(*) FROM certificates c
@@ -174,6 +192,45 @@ func (q *Queries) GetDNSCredential(ctx context.Context, arg GetDNSCredentialPara
 		&i.StoredSecretKeys,
 	)
 	return i, err
+}
+
+const listDNSCredentialCertificates = `-- name: ListDNSCredentialCertificates :many
+SELECT c.id, c.name FROM certificates c
+WHERE c.org_id = $1
+  AND (c.verification_rules @> jsonb_build_array(jsonb_build_object('dnsCredentialId', $2::uuid::text))
+    OR c.overrides->'verificationRules' @> jsonb_build_array(jsonb_build_object('dnsCredentialId', $2::uuid::text)))
+ORDER BY c.name
+`
+
+type ListDNSCredentialCertificatesParams struct {
+	OrgID uuid.UUID `json:"org_id"`
+	ID    uuid.UUID `json:"id"`
+}
+
+type ListDNSCredentialCertificatesRow struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+// Certificates whose rules reference the credential (see CountDNSCredentialUsers).
+func (q *Queries) ListDNSCredentialCertificates(ctx context.Context, arg ListDNSCredentialCertificatesParams) ([]ListDNSCredentialCertificatesRow, error) {
+	rows, err := q.db.Query(ctx, listDNSCredentialCertificates, arg.OrgID, arg.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDNSCredentialCertificatesRow{}
+	for rows.Next() {
+		var i ListDNSCredentialCertificatesRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listDNSCredentials = `-- name: ListDNSCredentials :many

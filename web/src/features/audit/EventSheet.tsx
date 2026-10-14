@@ -2,6 +2,7 @@ import type { AuditEvent } from '@/api/types';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetBody } from '@/components/ui/sheet';
 import { fmtDateTime } from '@/lib/time';
 import { DetailsDiff } from './DetailsDiff';
+import { ActorName, ResourceId } from './ResourceRef';
 
 export function EventSheet({
   event,
@@ -28,14 +29,14 @@ export function EventSheet({
                 <dd>{fmtDateTime(event.ts)}</dd>
                 <dt className="text-ink-muted">Actor</dt>
                 <dd className="truncate">
-                  {event.actorName || '–'}{' '}
+                  <ActorName event={event}>{event.actorName || '–'}</ActorName>{' '}
                   <span className="font-mono text-xs text-ink-muted">
                     {event.actorType} {event.actorId}
                   </span>
                 </dd>
                 <dt className="text-ink-muted">Resource</dt>
                 <dd className="truncate">
-                  {event.resourceType} <span className="font-mono text-xs">{event.resourceId}</span>
+                  {event.resourceType} <ResourceId event={event} className="font-mono text-xs" />
                 </dd>
                 <dt className="text-ink-muted">Org</dt>
                 <dd>{orgName(event.orgId)}</dd>

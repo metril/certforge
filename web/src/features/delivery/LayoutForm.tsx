@@ -8,6 +8,7 @@ import { useSaveLayout } from '@/api/queries/delivery';
 import { ApiError, errorMessage, fieldOfTitle } from '@/api/errors';
 import { UNCHANGED } from '@/api/types';
 import type { Layout, OutputFile, OutputFormat, OutputPart, P12Encoding } from '@/api/types';
+import { EntityLink } from '@/components/EntityLink';
 import { ChipSet } from '@/components/ChipSet';
 import type { ComboOption } from '@/components/Combobox';
 import { FormSection } from '@/components/FormSection';
@@ -455,6 +456,15 @@ export function LayoutForm({ orgId, orgSlug, layout, readOnly = false }: Props) 
             disabled={readOnly}
           />
         </Field>
+        {extraCertificateIds.length > 0 && (
+          <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-muted sm:col-span-2">
+            {extraCertificateIds.map((id) => (
+              <EntityLink key={id} kind="certificate" id={id}>
+                {allCerts.find((c) => c.id === id)?.name ?? id}
+              </EntityLink>
+            ))}
+          </p>
+        )}
       </FormSection>
       {formError && (
         <p role="alert" className="flex items-center gap-1.5 text-sm">

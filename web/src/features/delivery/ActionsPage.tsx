@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Plus, StepBack, StepForward } from 'lucide-react';
@@ -11,6 +11,7 @@ import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { HelpTip } from '@/components/HelpTip';
+import { EntityLink } from '@/components/EntityLink';
 import { PrimaryCell } from '@/components/PrimaryCell';
 import { PermissionTip } from '@/components/PermissionTip';
 import { RunsOnChip } from '@/components/RunsOnChip';
@@ -156,7 +157,15 @@ export function ActionsPage() {
                   <TableCell className={cn('py-1.5', stickyCol)}>
                     <PrimaryCell primary={g.name} meta={[`${g.actionIds.length} ${g.actionIds.length === 1 ? 'action' : 'actions'}`]} />
                   </TableCell>
-                  <TableCell className="truncate py-1 text-sm text-ink-muted">{g.actionIds.map(actionName).join(' → ')}</TableCell>
+                  <TableCell className="truncate py-1 text-sm text-ink-muted">{g.actionIds.map((id, i) => (
+                      <Fragment key={`${id}-${i}`}>
+                        {i > 0 && ' → '}
+                        <EntityLink kind="action" id={id}>
+                          {actionName(id)}
+                        </EntityLink>
+                      </Fragment>
+                    ))}
+                  </TableCell>
                   <TableCell className="py-1">
                     <UsedBy count={g.grantCount} filter={{ actionGroupId: g.id }} />
                   </TableCell>

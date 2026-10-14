@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { Link, type LinkProps } from '@tanstack/react-router';
 import { errorMessage } from '@/api/errors';
 import { plural } from '@/api/queries/certificates';
 import { grantsListQuery, type GrantsFilter } from '@/api/queries/grants';
 import type { Grant } from '@/api/types';
+import { grantTarget } from '@/components/EntityLink';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
@@ -22,16 +23,10 @@ function GrantRow({ g, orgSlug }: { g: Grant; orgSlug: string }) {
       </span>
     </>
   );
-  // A server grant opens on its target's Grants tab, an agent grant on its client's Certificates tab.
-  if (g.runsOn === 'server' && g.deployTargetId)
+  const t = grantTarget(g, orgSlug);
+  if (t)
     return (
-      <Link to="/o/$org/delivery/targets/$id/$tab" params={{ org: orgSlug, id: g.deployTargetId, tab: 'grants' }} search={{ open: g.id }} className={rowCls}>
-        {body}
-      </Link>
-    );
-  if (g.clientId)
-    return (
-      <Link to="/o/$org/clients/$id/$tab" params={{ org: orgSlug, id: g.clientId, tab: 'certificates' }} search={{ open: g.id }} className={rowCls}>
+      <Link {...(t as LinkProps)} className={rowCls}>
         {body}
       </Link>
     );

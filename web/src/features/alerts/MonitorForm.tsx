@@ -9,6 +9,7 @@ import { ApiError, errorMessage } from '@/api/errors';
 import { allCertificatesPickerQuery } from '@/api/queries/certificates';
 import { useCheckMonitor, useCreateMonitor, useDeleteMonitor, useUpdateMonitor } from '@/api/queries/monitors';
 import type { Monitor, MonitorInput } from '@/api/types';
+import { EntityLink } from '@/components/EntityLink';
 import { Combobox, type ComboOption } from '@/components/Combobox';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { CopyField } from '@/components/CopyField';
@@ -197,7 +198,15 @@ export function MonitorForm({ orgId, orgSlug, monitor }: Props) {
           )}
           <span className="flex items-center gap-1.5">
             <span className="text-xs text-ink-muted">Expected</span>
-            <span>{monitor.expectedCertificateName ?? 'Any CertForge certificate'}</span>
+            <span>
+              {monitor.expectedCertificateName ? (
+                <EntityLink kind="certificate" id={monitor.expectedCertificateId}>
+                  {monitor.expectedCertificateName}
+                </EntityLink>
+              ) : (
+                'Any CertForge certificate'
+              )}
+            </span>
           </span>
           {monitor.lastError && <span className="text-xs text-ink-muted">{monitor.lastError}</span>}
         </div>
