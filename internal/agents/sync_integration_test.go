@@ -945,3 +945,43 @@ func TestHeartbeatSteadyStateTakesNoLock(t *testing.T) {
 		t.Fatalf("state after a mismatched heartbeat = %q, want drift", got)
 	}
 }
+
+// TestHeartbeatStoresFileWatch: the watcher health is stored, updated and
+// left alone by an agent that does not send it.
+func TestHeartbeatStoresFileWatch(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+	c := f.client(t, "web-fw")
+	cl, err := f.q.GetClientByID(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	get := func() (*bool, string) {
+		got, err := f.q.GetClientByID(ctx, c.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.FileWatchActive, got.FileWatchReason
+	}
+	if a, _ := get(); a != nil {
+		t.Fatalf("before any heartbeat: %v", *a)
+	}
+	if err := f.svc.Heartbeat(ctx, cl, agentproto.Heartbeat{Installed: []agentproto.InstalledFile{}, FileWatch: &agentproto.FileWatchStatus{Reason: "inotify limit"}}); err != nil {
+		t.Fatal(err)
+	}
+	if a, r := get(); a == nil || *a || r != "inotify limit" {
+		t.Fatalf("off: %v %q", a, r)
+	}
+	if err := f.svc.Heartbeat(ctx, cl, agentproto.Heartbeat{Installed: []agentproto.InstalledFile{}}); err != nil {
+		t.Fatal(err)
+	}
+	if a, r := get(); a == nil || *a || r != "inotify limit" {
+		t.Fatalf("kept: %v %q", a, r)
+	}
+	if err := f.svc.Heartbeat(ctx, cl, agentproto.Heartbeat{Installed: []agentproto.InstalledFile{}, FileWatch: &agentproto.FileWatchStatus{Active: true}}); err != nil {
+		t.Fatal(err)
+	}
+	if a, r := get(); a == nil || !*a || r != "" {
+		t.Fatalf("on: %v %q", a, r)
+	}
+}

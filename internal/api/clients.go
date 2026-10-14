@@ -43,7 +43,7 @@ func clientFromRow(r sqlcgen.ListClientsRow) sqlcgen.Client {
 	return sqlcgen.Client{ID: r.ID, OrgID: r.OrgID, SiteID: r.SiteID, Name: r.Name, Status: r.Status,
 		AgentCertSerial: r.AgentCertSerial, AgentCertNotAfter: r.AgentCertNotAfter, AgentCaID: r.AgentCaID,
 		Hostname: r.Hostname, Os: r.Os, Arch: r.Arch, AgentVersion: r.AgentVersion, Capabilities: r.Capabilities, RestartTargets: r.RestartTargets,
-		LastSeen: r.LastSeen, DesiredRevision: r.DesiredRevision, AppliedRevision: r.AppliedRevision, CreatedAt: r.CreatedAt}
+		FileWatchActive: r.FileWatchActive, FileWatchReason: r.FileWatchReason, LastSeen: r.LastSeen, DesiredRevision: r.DesiredRevision, AppliedRevision: r.AppliedRevision, CreatedAt: r.CreatedAt}
 }
 
 // clientsOut adds grant counts, token expiry and connection state (connected:
@@ -86,6 +86,12 @@ func (s *Server) clientsOut(ctx context.Context, rows []sqlcgen.Client) ([]gen.C
 			AgentVersion: c.AgentVersion, Capabilities: c.Capabilities, RestartTargets: restartTargetsOut(c.RestartTargets), LastSeen: c.LastSeen,
 			AgentCertNotAfter: c.AgentCertNotAfter, AgentCaId: c.AgentCaID, DesiredRevision: c.DesiredRevision, AppliedRevision: c.AppliedRevision,
 			GrantCount: int(n.Grants), DriftCount: int(n.Drift), FailedCount: int(n.Failed), CreatedAt: c.CreatedAt}
+		if c.FileWatchActive != nil {
+			g.FileWatch = &struct {
+				Active bool   `json:"active"`
+				Reason string `json:"reason"`
+			}{Active: *c.FileWatchActive, Reason: c.FileWatchReason}
+		}
 		if exp, ok := em[c.ID]; ok && c.Status == "pending" {
 			g.TokenExpiresAt = &exp
 		}

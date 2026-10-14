@@ -17,7 +17,7 @@ UPDATE clients SET status = 'active', agent_cert_serial = $1,
        agent_cert_not_after = $2, agent_ca_id = $3,
        hostname = $4, os = $5, arch = $6,
        agent_version = $7, last_seen = now()
-WHERE id = $8 RETURNING id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets
+WHERE id = $8 RETURNING id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets, file_watch_active, file_watch_reason
 `
 
 type ActivateClientParams struct {
@@ -62,6 +62,8 @@ func (q *Queries) ActivateClient(ctx context.Context, arg ActivateClientParams) 
 		&i.AppliedRevision,
 		&i.CreatedAt,
 		&i.RestartTargets,
+		&i.FileWatchActive,
+		&i.FileWatchReason,
 	)
 	return i, err
 }
@@ -121,7 +123,7 @@ func (q *Queries) CountClients(ctx context.Context, orgID uuid.UUID) (int64, err
 }
 
 const createClient = `-- name: CreateClient :one
-INSERT INTO clients (org_id, site_id, name) VALUES ($1, $2, $3) RETURNING id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets
+INSERT INTO clients (org_id, site_id, name) VALUES ($1, $2, $3) RETURNING id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets, file_watch_active, file_watch_reason
 `
 
 type CreateClientParams struct {
@@ -152,6 +154,8 @@ func (q *Queries) CreateClient(ctx context.Context, arg CreateClientParams) (Cli
 		&i.AppliedRevision,
 		&i.CreatedAt,
 		&i.RestartTargets,
+		&i.FileWatchActive,
+		&i.FileWatchReason,
 	)
 	return i, err
 }
@@ -183,7 +187,7 @@ func (q *Queries) DeleteUnusedEnrollmentTokens(ctx context.Context, clientID uui
 }
 
 const getClient = `-- name: GetClient :one
-SELECT id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets FROM clients WHERE id = $1 AND org_id = $2
+SELECT id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets, file_watch_active, file_watch_reason FROM clients WHERE id = $1 AND org_id = $2
 `
 
 type GetClientParams struct {
@@ -213,12 +217,14 @@ func (q *Queries) GetClient(ctx context.Context, arg GetClientParams) (Client, e
 		&i.AppliedRevision,
 		&i.CreatedAt,
 		&i.RestartTargets,
+		&i.FileWatchActive,
+		&i.FileWatchReason,
 	)
 	return i, err
 }
 
 const getClientByID = `-- name: GetClientByID :one
-SELECT id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets FROM clients WHERE id = $1
+SELECT id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets, file_watch_active, file_watch_reason FROM clients WHERE id = $1
 `
 
 func (q *Queries) GetClientByID(ctx context.Context, id uuid.UUID) (Client, error) {
@@ -243,6 +249,8 @@ func (q *Queries) GetClientByID(ctx context.Context, id uuid.UUID) (Client, erro
 		&i.AppliedRevision,
 		&i.CreatedAt,
 		&i.RestartTargets,
+		&i.FileWatchActive,
+		&i.FileWatchReason,
 	)
 	return i, err
 }
@@ -272,10 +280,10 @@ func (q *Queries) InsertEnrollmentToken(ctx context.Context, arg InsertEnrollmen
 
 const listClients = `-- name: ListClients :many
 SELECT k.id, k.org_id, k.site_id, k.name, k.status, k.agent_cert_serial, k.agent_cert_not_after, k.agent_ca_id,
-       k.hostname, k.os, k.arch, k.agent_version, k.capabilities, k.restart_targets, k.last_seen, k.desired_revision,
+       k.hostname, k.os, k.arch, k.agent_version, k.capabilities, k.restart_targets, k.file_watch_active, k.file_watch_reason, k.last_seen, k.desired_revision,
        k.applied_revision, k.created_at, k.sort_key
 FROM (
-  SELECT c.id, c.org_id, c.site_id, c.name, c.status, c.agent_cert_serial, c.agent_cert_not_after, c.agent_ca_id, c.hostname, c.os, c.arch, c.agent_version, c.capabilities, c.last_seen, c.desired_revision, c.applied_revision, c.created_at, c.restart_targets, (CASE $1::text
+  SELECT c.id, c.org_id, c.site_id, c.name, c.status, c.agent_cert_serial, c.agent_cert_not_after, c.agent_ca_id, c.hostname, c.os, c.arch, c.agent_version, c.capabilities, c.last_seen, c.desired_revision, c.applied_revision, c.created_at, c.restart_targets, c.file_watch_active, c.file_watch_reason, (CASE $1::text
       WHEN 'status' THEN c.status
       WHEN 'lastSeen' THEN COALESCE(to_char(c.last_seen AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US'), '')
       ELSE lower(c.name) END)::text AS sort_key
@@ -324,6 +332,8 @@ type ListClientsRow struct {
 	AgentVersion      string     `json:"agent_version"`
 	Capabilities      []string   `json:"capabilities"`
 	RestartTargets    []byte     `json:"restart_targets"`
+	FileWatchActive   *bool      `json:"file_watch_active"`
+	FileWatchReason   string     `json:"file_watch_reason"`
 	LastSeen          *time.Time `json:"last_seen"`
 	DesiredRevision   int64      `json:"desired_revision"`
 	AppliedRevision   int64      `json:"applied_revision"`
@@ -366,6 +376,8 @@ func (q *Queries) ListClients(ctx context.Context, arg ListClientsParams) ([]Lis
 			&i.AgentVersion,
 			&i.Capabilities,
 			&i.RestartTargets,
+			&i.FileWatchActive,
+			&i.FileWatchReason,
 			&i.LastSeen,
 			&i.DesiredRevision,
 			&i.AppliedRevision,
@@ -383,7 +395,7 @@ func (q *Queries) ListClients(ctx context.Context, arg ListClientsParams) ([]Lis
 }
 
 const lockClient = `-- name: LockClient :one
-SELECT id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets FROM clients WHERE id = $1 AND org_id = $2 FOR UPDATE
+SELECT id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets, file_watch_active, file_watch_reason FROM clients WHERE id = $1 AND org_id = $2 FOR UPDATE
 `
 
 type LockClientParams struct {
@@ -413,12 +425,14 @@ func (q *Queries) LockClient(ctx context.Context, arg LockClientParams) (Client,
 		&i.AppliedRevision,
 		&i.CreatedAt,
 		&i.RestartTargets,
+		&i.FileWatchActive,
+		&i.FileWatchReason,
 	)
 	return i, err
 }
 
 const lockClientByID = `-- name: LockClientByID :one
-SELECT id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets FROM clients WHERE id = $1 FOR UPDATE
+SELECT id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets, file_watch_active, file_watch_reason FROM clients WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) LockClientByID(ctx context.Context, id uuid.UUID) (Client, error) {
@@ -443,6 +457,8 @@ func (q *Queries) LockClientByID(ctx context.Context, id uuid.UUID) (Client, err
 		&i.AppliedRevision,
 		&i.CreatedAt,
 		&i.RestartTargets,
+		&i.FileWatchActive,
+		&i.FileWatchReason,
 	)
 	return i, err
 }
@@ -525,7 +541,7 @@ const renewClientCert = `-- name: RenewClientCert :one
 UPDATE clients SET agent_cert_serial = $1, agent_cert_not_after = $2,
        agent_ca_id = $3, last_seen = now()
 WHERE id = $4 AND status = 'active' AND agent_cert_serial = $5
-RETURNING id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets
+RETURNING id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets, file_watch_active, file_watch_reason
 `
 
 type RenewClientCertParams struct {
@@ -564,13 +580,31 @@ func (q *Queries) RenewClientCert(ctx context.Context, arg RenewClientCertParams
 		&i.AppliedRevision,
 		&i.CreatedAt,
 		&i.RestartTargets,
+		&i.FileWatchActive,
+		&i.FileWatchReason,
 	)
 	return i, err
 }
 
+const setClientFileWatch = `-- name: SetClientFileWatch :exec
+UPDATE clients SET file_watch_active = $2, file_watch_reason = $3
+WHERE id = $1 AND (file_watch_active IS DISTINCT FROM $2 OR file_watch_reason IS DISTINCT FROM $3)
+`
+
+type SetClientFileWatchParams struct {
+	ID              uuid.UUID `json:"id"`
+	FileWatchActive *bool     `json:"file_watch_active"`
+	FileWatchReason string    `json:"file_watch_reason"`
+}
+
+func (q *Queries) SetClientFileWatch(ctx context.Context, arg SetClientFileWatchParams) error {
+	_, err := q.db.Exec(ctx, setClientFileWatch, arg.ID, arg.FileWatchActive, arg.FileWatchReason)
+	return err
+}
+
 const setClientPending = `-- name: SetClientPending :one
 UPDATE clients SET status = 'pending', agent_cert_serial = '', agent_cert_not_after = NULL, agent_ca_id = NULL
-WHERE id = $1 RETURNING id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets
+WHERE id = $1 RETURNING id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets, file_watch_active, file_watch_reason
 `
 
 func (q *Queries) SetClientPending(ctx context.Context, id uuid.UUID) (Client, error) {
@@ -595,6 +629,8 @@ func (q *Queries) SetClientPending(ctx context.Context, id uuid.UUID) (Client, e
 		&i.AppliedRevision,
 		&i.CreatedAt,
 		&i.RestartTargets,
+		&i.FileWatchActive,
+		&i.FileWatchReason,
 	)
 	return i, err
 }
@@ -614,7 +650,7 @@ func (q *Queries) SetClientRestartTargets(ctx context.Context, arg SetClientRest
 }
 
 const setClientRevoked = `-- name: SetClientRevoked :one
-UPDATE clients SET status = 'revoked' WHERE id = $1 RETURNING id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets
+UPDATE clients SET status = 'revoked' WHERE id = $1 RETURNING id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets, file_watch_active, file_watch_reason
 `
 
 func (q *Queries) SetClientRevoked(ctx context.Context, id uuid.UUID) (Client, error) {
@@ -639,13 +675,15 @@ func (q *Queries) SetClientRevoked(ctx context.Context, id uuid.UUID) (Client, e
 		&i.AppliedRevision,
 		&i.CreatedAt,
 		&i.RestartTargets,
+		&i.FileWatchActive,
+		&i.FileWatchReason,
 	)
 	return i, err
 }
 
 const updateClient = `-- name: UpdateClient :one
 UPDATE clients SET name = $1, site_id = $2
-WHERE id = $3 AND org_id = $4 RETURNING id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets
+WHERE id = $3 AND org_id = $4 RETURNING id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets, file_watch_active, file_watch_reason
 `
 
 type UpdateClientParams struct {
@@ -682,13 +720,15 @@ func (q *Queries) UpdateClient(ctx context.Context, arg UpdateClientParams) (Cli
 		&i.AppliedRevision,
 		&i.CreatedAt,
 		&i.RestartTargets,
+		&i.FileWatchActive,
+		&i.FileWatchReason,
 	)
 	return i, err
 }
 
 const updateClientFacts = `-- name: UpdateClientFacts :one
 UPDATE clients SET hostname = $2, os = $3, arch = $4, agent_version = $5, capabilities = $6, last_seen = now()
-WHERE id = $1 RETURNING id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets
+WHERE id = $1 RETURNING id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets, file_watch_active, file_watch_reason
 `
 
 type UpdateClientFactsParams struct {
@@ -729,6 +769,8 @@ func (q *Queries) UpdateClientFacts(ctx context.Context, arg UpdateClientFactsPa
 		&i.AppliedRevision,
 		&i.CreatedAt,
 		&i.RestartTargets,
+		&i.FileWatchActive,
+		&i.FileWatchReason,
 	)
 	return i, err
 }

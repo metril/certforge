@@ -1664,6 +1664,15 @@ type Client struct {
 	// FailedCount Grants whose last deployment failed.
 	FailedCount int `json:"failedCount"`
 
+	// FileWatch The agent's file watcher, from its last heartbeat; null for an agent that has no watcher (older versions) or has not reported yet.
+	FileWatch *struct {
+		// Active The agent is watching every installed file
+		Active bool `json:"active"`
+
+		// Reason Why it is not (disabled in settings or the agent config, the watcher could not start, or a directory could not be watched); empty when active.
+		Reason string `json:"reason"`
+	} `json:"fileWatch"`
+
 	// GrantCount Live grants.
 	GrantCount int `json:"grantCount"`
 

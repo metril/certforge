@@ -4395,6 +4395,13 @@ export interface components {
             capabilities: string[];
             /** @description What the agent reported it could restart, refreshed on each heartbeat. Allowed entries are its CF_RESTART_ALLOW list; the rest are running Docker containers shown for reference only. Empty when the agent has no restart capability. */
             restartTargets: components["schemas"]["RestartTarget"][];
+            /** @description The agent's file watcher, from its last heartbeat; null for an agent that has no watcher (older versions) or has not reported yet. */
+            fileWatch: {
+                /** @description The agent is watching every installed file */
+                active: boolean;
+                /** @description Why it is not (disabled in settings or the agent config, the watcher could not start, or a directory could not be watched); empty when active. */
+                reason: string;
+            } | null;
             /**
              * Format: date-time
              * @description Last hello

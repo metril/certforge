@@ -49,11 +49,12 @@ const settingsSchema = `{
     "offlineAfterSeconds": {"type": "integer", "title": "Offline after (seconds)", "description": "A client not seen for this long shows as offline.", "minimum": 30, "maximum": 86400, "default": 180},
     "requireApproval": {"type": "boolean", "title": "Require approval", "description": "An agent that presents a valid token waits for an administrator to approve its verification code before it receives a certificate. Turn off only if a token alone should be enough.", "default": true},
     "pendingTtlHours": {"type": "integer", "title": "Approval window (hours)", "description": "How long a pending request waits for approval, and how long an approved agent has to collect its certificate.", "minimum": 1, "maximum": 168, "default": 24},
-    "serverRemediationAttempts": {"type": "integer", "title": "Auto-remediation attempts", "description": "How many times in a row a server grant is redeployed for the same observed certificate before auto-remediation stops.", "minimum": 1, "maximum": 10, "default": 3}
+    "serverRemediationAttempts": {"type": "integer", "title": "Auto-remediation attempts", "description": "How many times in a row a server grant is redeployed for the same observed certificate before auto-remediation stops.", "minimum": 1, "maximum": 10, "default": 3},
+    "fileWatch": {"type": "boolean", "title": "Watch installed files", "description": "Agents watch their installed files and report a change within seconds instead of at the next heartbeat. An agent can opt out locally with CF_AGENT_WATCH_FILES=false.", "default": true}
   }
 }`
 
-const settingsDefault = `{"agentUrl":"","listenerNames":[],"tokenTtlHours":24,"agentCertDays":90,"heartbeatSeconds":60,"offlineAfterSeconds":180,"requireApproval":true,"pendingTtlHours":24,"serverRemediationAttempts":3}`
+const settingsDefault = `{"agentUrl":"","listenerNames":[],"tokenTtlHours":24,"agentCertDays":90,"heartbeatSeconds":60,"offlineAfterSeconds":180,"requireApproval":true,"pendingTtlHours":24,"serverRemediationAttempts":3,"fileWatch":true}`
 
 // Settings is the agents section. Get and Resolve return it with defaults filled.
 type Settings struct {
@@ -69,6 +70,8 @@ type Settings struct {
 	PendingTTLHours int   `json:"pendingTtlHours"`
 	// ServerRemediationAttempts caps auto-remediation redeploys per observed certificate.
 	ServerRemediationAttempts int `json:"serverRemediationAttempts"`
+	// FileWatch is a pointer so a stored section without the field resolves to on.
+	FileWatch *bool `json:"fileWatch"`
 }
 
 // RegisterSettings adds the agents section and its extra checks.
@@ -155,6 +158,10 @@ func Resolve(s Settings, baseURL string) Settings {
 	if s.ServerRemediationAttempts <= 0 {
 		s.ServerRemediationAttempts = 3
 	}
+	if s.FileWatch == nil {
+		t := true
+		s.FileWatch = &t
+	}
 	return s
 }
 
@@ -184,6 +191,9 @@ func (s Settings) TokenTTL() time.Duration { return time.Duration(s.TokenTTLHour
 
 // ApprovalRequired reports whether a redeemed token waits for an administrator.
 func (s Settings) ApprovalRequired() bool { return s.RequireApproval == nil || *s.RequireApproval }
+
+// FileWatchEnabled reports whether agents should watch installed files.
+func (s Settings) FileWatchEnabled() bool { return s.FileWatch == nil || *s.FileWatch }
 
 // PendingTTL is how long an enrollment request waits for approval, and then
 // for collection.

@@ -172,3 +172,27 @@ func TestApprovalSettingsDefaultToRequired(t *testing.T) {
 		t.Fatalf("valid approval settings rejected: %v", err)
 	}
 }
+
+func TestFileWatchSettingDefaultsOn(t *testing.T) {
+	if !Resolve(Settings{}, "").FileWatchEnabled() {
+		t.Fatal("file watch should default to on")
+	}
+	var legacy, off Settings
+	if err := json.Unmarshal([]byte(`{"agentUrl":""}`), &legacy); err != nil || !Resolve(legacy, "").FileWatchEnabled() {
+		t.Fatalf("legacy section: %+v %v", legacy, err)
+	}
+	if err := json.Unmarshal([]byte(`{"fileWatch":false}`), &off); err != nil || Resolve(off, "").FileWatchEnabled() {
+		t.Fatalf("explicit off: %+v %v", off, err)
+	}
+	reg := settings.NewRegistry()
+	if err := RegisterSettings(reg); err != nil {
+		t.Fatal(err)
+	}
+	sec, _ := reg.Section(SettingsSection)
+	if err := sec.Validate([]byte(`{"fileWatch":false}`)); err != nil {
+		t.Fatalf("valid: %v", err)
+	}
+	if err := sec.Validate([]byte(`{"fileWatch":"no"}`)); err == nil {
+		t.Fatal("non-boolean accepted")
+	}
+}

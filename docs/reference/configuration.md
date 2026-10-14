@@ -176,6 +176,7 @@ The defaults match Let's Encrypt's published limits; a custom or staging CA may 
 | **Approval window (hours)** (`pendingTtlHours`) | 24 | 1–168 | How long a request waits for a decision, and then how long an approved agent has to collect its certificate. At most 50 requests wait per organization. |
 | **Agent certificate lifetime (days)** (`agentCertDays`) | 90 | 7–365 | Lifetime of an agent's identity certificate; agents renew at two thirds. |
 | **Heartbeat interval (seconds)** (`heartbeatSeconds`) | 60 | 15–3600 | How often agents report installed files for drift detection. |
+| **Watch installed files** (`fileWatch`) | on | – | Agents watch their installed files and report a change within seconds instead of at the next heartbeat. An agent can opt out with `CF_AGENT_WATCH_FILES=false`. See [File watching](../guide/agents.md#file-watching). |
 | **Offline after (seconds)** (`offlineAfterSeconds`) | 180 | 30–86400 | A client not seen for this long shows as offline. Must be longer than the heartbeat interval. |
 
 ### Backups
