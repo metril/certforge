@@ -55,7 +55,9 @@ Series with a `route` label use the route pattern (for example `/api/v1/orgs/{or
 | `certforge_issuance_attempts_total` | counter | `result` (`success`, `failed`) | Issuance attempts by outcome. |
 | `certforge_issuance_duration_seconds` | histogram | none | Issuance attempt duration. |
 | `certforge_clients` | gauge | `org`, `status` (`online`, `offline`, `pending`, `revoked`) | Agent clients by status. `online` is active and seen within **Settings → Agents → Offline after (seconds)**; `offline` is active but stale. |
+| `certforge_clients_file_watch_inactive` | gauge | `org` | Active clients whose agent reports its file watcher is not running, so drift is only caught by the heartbeat. |
 | `certforge_deployments` | gauge | `org`, `status` (`pending`, `ok`, `failed`, `drift`) | Deployments, agent and server grants alike. |
+| `certforge_deployment_transitions_total` | counter | `kind` (`agent`, `server`), `to` | Deployment state changes. Agent grants count every change; server grants count a first drift (`drift`) and a return to `ok` after drift. |
 | `certforge_notifications_total` | counter | `type`, `result` (`delivered`, `failed`) | Notification delivery attempts by channel type. |
 | `certforge_monitor_checks_total` | counter | `result` | External monitor checks by resulting state. |
 | `certforge_monitors` | gauge | `org`, `state` | External monitors by state. |
@@ -74,6 +76,8 @@ No metric counts pending enrollments. Watch the **Awaiting approval** card or th
 Useful alerts:
 - Audit table rolled back or truncated: `resets(max(certforge_audit_head_id > 0)[1d:5m]) > 0`. The `> 0` ignores the brief 0 after a restart.
 - Backups stale: `time() - certforge_backup_last_success_timestamp_seconds > 2 * 86400` when the schedule is daily.
+- Deployment drift: `increase(certforge_deployment_transitions_total{to="drift"}[15m]) > 0`.
+- File watcher down: `certforge_clients_file_watch_inactive > 0`.
 - Agents offline: `certforge_clients{status="offline"} > 0`.
 
 ## Common problems

@@ -163,6 +163,43 @@ func (q *Queries) MetricsClientsByStatus(ctx context.Context, onlineCutoff time.
 	return items, nil
 }
 
+const metricsClientsFileWatchInactive = `-- name: MetricsClientsFileWatchInactive :many
+SELECT o.slug AS org,
+       count(*) FILTER (WHERE c.file_watch_active IS FALSE) AS count
+FROM clients c
+JOIN orgs o ON o.id = c.org_id
+WHERE c.status = 'active'
+GROUP BY o.slug
+`
+
+type MetricsClientsFileWatchInactiveRow struct {
+	Org   string `json:"org"`
+	Count int64  `json:"count"`
+}
+
+// Active clients whose agent reports its file watcher is not running (an
+// agent that never reported one, NULL, is not counted). Orgs with clients
+// always get a row so an alert on > 0 can also see it clear.
+func (q *Queries) MetricsClientsFileWatchInactive(ctx context.Context) ([]MetricsClientsFileWatchInactiveRow, error) {
+	rows, err := q.db.Query(ctx, metricsClientsFileWatchInactive)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MetricsClientsFileWatchInactiveRow{}
+	for rows.Next() {
+		var i MetricsClientsFileWatchInactiveRow
+		if err := rows.Scan(&i.Org, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const metricsDeploymentsByStatus = `-- name: MetricsDeploymentsByStatus :many
 SELECT o.slug AS org, d.state AS status, count(*) AS count
 FROM deployments d

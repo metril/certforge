@@ -15,6 +15,7 @@ import (
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
+	"github.com/metril/certforge/internal/metrics"
 	"github.com/metril/certforge/internal/render"
 )
 
@@ -259,6 +260,7 @@ func (s *Service) Report(ctx context.Context, c sqlcgen.Client, rep agentproto.R
 	}
 	var events []audit.Event
 	var transitions []DeploymentTransition
+	var changedTo []string
 	var remediateGrants []uuid.UUID
 	pushRemediate := false
 	for _, res := range rep.Results {
@@ -298,6 +300,7 @@ func (s *Service) Report(ctx context.Context, c sqlcgen.Client, rep agentproto.R
 			}
 			if next != d.State {
 				events = append(events, deploymentEvent(c, d, next, errText, missing, mismatched))
+				changedTo = append(changedTo, next)
 				if t, ok := transitionOf(c, d, next, errText); ok {
 					transitions = append(transitions, t)
 				}
@@ -343,6 +346,9 @@ func (s *Service) Report(ctx context.Context, c sqlcgen.Client, rep agentproto.R
 	}
 	for _, e := range events {
 		s.audit(ctx, e)
+	}
+	for _, to := range changedTo {
+		metrics.DeploymentTransitions.WithLabelValues("agent", to).Inc()
 	}
 	s.notifyTransitions(ctx, transitions)
 	s.nudge(revs, map[uuid.UUID]bool{c.ID: pushRemediate})
@@ -399,6 +405,7 @@ func (s *Service) Heartbeat(ctx context.Context, c sqlcgen.Client, hb agentproto
 	}
 	var events []audit.Event
 	var transitions []DeploymentTransition
+	var changedTo []string
 	var remediateGrants []uuid.UUID
 	pushRemediate := false
 	for _, d := range rows {
@@ -422,6 +429,7 @@ func (s *Service) Heartbeat(ctx context.Context, c sqlcgen.Client, hb agentproto
 			return err
 		}
 		events = append(events, deploymentEvent(c, d, next, "", missing, mismatched))
+		changedTo = append(changedTo, next)
 		if t, ok := transitionOf(c, d, next, ""); ok {
 			transitions = append(transitions, t)
 		}
@@ -444,6 +452,9 @@ func (s *Service) Heartbeat(ctx context.Context, c sqlcgen.Client, hb agentproto
 	}
 	for _, e := range events {
 		s.audit(ctx, e)
+	}
+	for _, to := range changedTo {
+		metrics.DeploymentTransitions.WithLabelValues("agent", to).Inc()
 	}
 	s.notifyTransitions(ctx, transitions)
 	s.nudge(revs, map[uuid.UUID]bool{c.ID: pushRemediate})

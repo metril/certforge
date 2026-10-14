@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/metril/certforge/internal/audit"
+	"github.com/metril/certforge/internal/metrics"
 	"github.com/metril/certforge/internal/targets"
 )
 
@@ -326,6 +328,8 @@ func TestDriftSendsOneAlertPerEpisode(t *testing.T) {
 	ev := &fakeEvents{}
 	f.disp.Events = ev
 	f.disp.Auditor = nil
+	driftBefore := testutil.ToFloat64(metrics.DeploymentTransitions.WithLabelValues("server", "drift"))
+	okBefore := testutil.ToFloat64(metrics.DeploymentTransitions.WithLabelValues("server", "ok"))
 	f.check(t, "mismatch", "observed0123456789")
 	if len(ev.drifts) != 1 || ev.drifts[0].GrantID != f.grant || ev.drifts[0].VersionID != f.version ||
 		ev.drifts[0].CertName != "drift" || ev.drifts[0].TargetName != "drift-target" {
@@ -334,5 +338,13 @@ func TestDriftSendsOneAlertPerEpisode(t *testing.T) {
 	f.check(t, "mismatch", "observed0123456789")
 	if len(ev.drifts) != 1 {
 		t.Fatalf("a repeated mismatch sent %d alerts, want 1", len(ev.drifts))
+	}
+	if got := testutil.ToFloat64(metrics.DeploymentTransitions.WithLabelValues("server", "drift")) - driftBefore; got != 1 {
+		t.Fatalf("drift transitions = %v, want 1", got)
+	}
+	f.check(t, "ok", "")
+	f.check(t, "ok", "") // already ok: not a transition
+	if got := testutil.ToFloat64(metrics.DeploymentTransitions.WithLabelValues("server", "ok")) - okBefore; got != 1 {
+		t.Fatalf("ok transitions = %v, want 1", got)
 	}
 }

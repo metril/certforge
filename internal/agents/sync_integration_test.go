@@ -21,6 +21,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"software.sslmate.com/src/go-pkcs12"
 
 	"github.com/metril/certforge/internal/agentca"
@@ -32,6 +33,7 @@ import (
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
 	"github.com/metril/certforge/internal/deploy"
+	"github.com/metril/certforge/internal/metrics"
 	"github.com/metril/certforge/internal/render"
 	"github.com/metril/certforge/internal/signer"
 	"github.com/metril/certforge/internal/targets"
@@ -1019,10 +1021,9 @@ func TestDeploymentAlertsOncePerTransition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var good, bad []agentproto.InstalledFile
+	var bad []agentproto.InstalledFile
 	var installed []agentproto.FileDigest
 	for _, file := range asg.Grants[0].Files {
-		good = append(good, agentproto.InstalledFile{GrantID: gid, Path: file.Path, SHA256: file.SHA256})
 		bad = append(bad, agentproto.InstalledFile{GrantID: gid, Path: file.Path, SHA256: "0000"})
 		installed = append(installed, agentproto.FileDigest{Path: file.Path, SHA256: file.SHA256})
 	}
@@ -1033,6 +1034,11 @@ func TestDeploymentAlertsOncePerTransition(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
+	counter := func(to string) float64 {
+		return testutil.ToFloat64(metrics.DeploymentTransitions.WithLabelValues("agent", to))
+	}
+	okBefore, driftBefore, failedBefore := counter("ok"), counter("drift"), counter("failed")
 
 	report(agentproto.GrantResult{State: agentproto.StateOK, Installed: installed})
 	if len(ev.got) != 0 {
@@ -1057,5 +1063,9 @@ func TestDeploymentAlertsOncePerTransition(t *testing.T) {
 	report(agentproto.GrantResult{State: agentproto.StateFailed, Error: "disk full"})
 	if len(ev.got) != 2 {
 		t.Fatalf("a repeated failed sent %d alerts, want 2 total", len(ev.got))
+	}
+	if counter("ok")-okBefore != 1 || counter("drift")-driftBefore != 1 || counter("failed")-failedBefore != 1 {
+		t.Fatalf("transition counters moved ok=%v drift=%v failed=%v, want 1 each",
+			counter("ok")-okBefore, counter("drift")-driftBefore, counter("failed")-failedBefore)
 	}
 }

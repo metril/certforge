@@ -75,7 +75,7 @@ func TestCollectorSeries(t *testing.T) {
 		orgID).Scan(&onlineClientID); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.QueryRow(ctx, `INSERT INTO clients (org_id, name, status, last_seen) VALUES ($1, 'agent-2', 'active', now() - interval '1 hour') RETURNING id`,
+	if err := pool.QueryRow(ctx, `INSERT INTO clients (org_id, name, status, last_seen, file_watch_active) VALUES ($1, 'agent-2', 'active', now() - interval '1 hour', false) RETURNING id`,
 		orgID).Scan(&offlineClientID); err != nil {
 		t.Fatal(err)
 	}
@@ -138,6 +138,7 @@ func TestCollectorSeries(t *testing.T) {
 		"certforge_certificate_not_after_seconds",
 		"certforge_certificates_due_renewal",
 		"certforge_clients",
+		"certforge_clients_file_watch_inactive",
 		"certforge_deployments",
 		"certforge_monitors",
 		"certforge_river_jobs",
@@ -155,6 +156,9 @@ func TestCollectorSeries(t *testing.T) {
 	}
 	if got := sample(t, mfs, "certforge_clients", map[string]string{"org": slug, "status": "offline"}); got != 1 {
 		t.Errorf("clients offline = %v, want 1", got)
+	}
+	if got := sample(t, mfs, "certforge_clients_file_watch_inactive", map[string]string{"org": slug}); got != 1 {
+		t.Errorf("file watch inactive = %v, want 1", got)
 	}
 	if got := sample(t, mfs, "certforge_certificates_due_renewal", map[string]string{"org": slug}); got != 1 {
 		t.Errorf("due renewal = %v, want 1", got)
