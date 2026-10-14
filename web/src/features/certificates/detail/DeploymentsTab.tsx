@@ -20,14 +20,14 @@ import { cn } from '@/lib/utils';
 import { ClientWriteTip } from '@/features/clients/detail/ClientWriteTip';
 import { failedWithoutData } from '@/lib/queryState';
 
-const COLS = 'md:grid-cols-[minmax(0,1fr)_minmax(0,112px)_56px_minmax(0,120px)_minmax(0,120px)_minmax(0,120px)_minmax(0,180px)_112px]';
+const COLS = 'md:grid-cols-[minmax(0,1fr)_minmax(0,112px)_56px_minmax(0,120px)_minmax(0,120px)_minmax(0,120px)_minmax(120px,160px)_112px]';
 
-function installedNote(d: CertificateDeployment, cert: Certificate): string {
-  if (!d.deployment.versionId) return 'No version yet';
+function installedNote(d: CertificateDeployment, cert: Certificate): { version: string; files?: string; mismatch?: boolean } {
+  if (!d.deployment.versionId) return { version: 'No version yet' };
   const version = d.deployment.versionId === cert.currentVersion?.id ? 'Current version' : 'Older version';
-  if (!d.deployment.reportedAt) return version;
+  if (!d.deployment.reportedAt) return { version };
   const ok = fileRows(d.deployment).filter((r) => r.match === 'ok').length;
-  return `${version} · ${ok}/${d.deployment.expected.length} files match`;
+  return { version, files: `${ok}/${d.deployment.expected.length} files match`, mismatch: ok < d.deployment.expected.length };
 }
 
 // CertificateDeployment carries no lastSeen, so `connection()` can't tell
@@ -35,6 +35,15 @@ function installedNote(d: CertificateDeployment, cert: Certificate): string {
 // instead (revoked wins, then the server's own online/offline verdict),
 // matching what the list/detail/Overview show for the same client.
 const connectionKind = (d: CertificateDeployment): Connection => (d.clientStatus === 'revoked' ? 'revoked' : d.clientOnline ? 'online' : 'offline');
+
+function InstalledNote({ note }: { note: ReturnType<typeof installedNote> }) {
+  return (
+    <span className="grid min-w-0 text-xs leading-tight text-ink-muted">
+      <span>{note.version}</span>
+      {note.files && <span className={cn(note.mismatch && 'text-drift')}>{note.files}</span>}
+    </span>
+  );
+}
 
 /** A layout or target name linking to its Delivery sheet; "–" when the grant has none. */
 function DeliveryRef({ orgSlug, kind, id, name }: { orgSlug: string; kind: 'layouts' | 'targets'; id: string | null; name: string | null }) {
@@ -107,7 +116,7 @@ export function DeploymentsTab({ cert, orgId, orgSlug }: { cert: Certificate; or
             <DeliveryRef orgSlug={orgSlug} kind="layouts" id={d.layoutId} name={d.layoutName} />
             <DeliveryRef orgSlug={orgSlug} kind="targets" id={d.deployTargetId} name={d.deployTargetName} />
             <DeploymentChip state={d.deployment.state} withHelp />
-            <span className="truncate text-xs text-ink-muted">{installedNote(d, cert)}</span>
+            <InstalledNote note={installedNote(d, cert)} />
             <ClientWriteTip canWrite={canWrite} revoked={d.clientStatus === 'revoked'} side="left">
               <Button
                 size="sm"

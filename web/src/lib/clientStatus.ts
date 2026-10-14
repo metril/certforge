@@ -74,3 +74,16 @@ export function fileRows(d: Pick<Deployment, 'expected' | 'installed'>): FileRow
 export function shortHash(h: string | null): string {
   return h ? `${h.slice(0, 12)}…` : '–';
 }
+
+/** Positional comparison of two strings as runs; the longer string's
+ * unmatched tail counts as differing. Adjacent runs of one kind are merged. */
+export function diffRuns(a: string, b: string): { text: string; diff: boolean }[] {
+  const runs: { text: string; diff: boolean }[] = [];
+  for (let i = 0; i < a.length; i++) {
+    const diff = a[i] !== b[i];
+    const last = runs[runs.length - 1];
+    if (last && last.diff === diff) last.text += a[i];
+    else runs.push({ text: a[i]!, diff });
+  }
+  return runs;
+}
