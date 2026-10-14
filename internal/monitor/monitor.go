@@ -72,16 +72,16 @@ type Monitor struct {
 	ExpectedCertificateName *string
 	// GrantDeployTargetID is the owning server grant's target (list only).
 	GrantDeployTargetID *uuid.UUID
-	Enabled                 bool
-	State                   string
-	StateChangedAt          time.Time
-	LastCheckedAt           *time.Time
-	NextCheckAt             time.Time
-	LastFingerprint         string
-	LastNotAfter            *time.Time
-	LastIssuer              string
-	LastError               string
-	ConsecutiveFailures     int
+	Enabled             bool
+	State               string
+	StateChangedAt      time.Time
+	LastCheckedAt       *time.Time
+	NextCheckAt         time.Time
+	LastFingerprint     string
+	LastNotAfter        *time.Time
+	LastIssuer          string
+	LastError           string
+	ConsecutiveFailures int
 	// PostDeployDelaySeconds is how long after a server-grant deploy its verify check runs.
 	PostDeployDelaySeconds int
 	// GrantID is the server grant that owns this monitor; nil when standalone.
