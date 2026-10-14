@@ -216,7 +216,7 @@ export function CertificateWizard({ from, edit }: { from?: Certificate; edit?: C
             />}
           {step === 1 && <VerificationStep orgId={org.id} state={state} dispatch={dispatch} inherited={inherited} privateCa={privateCa} />}
           {step === 2 && <OptionsStep orgId={org.id} state={state} dispatch={dispatch} />}
-          {step === 3 && <ReviewStep orgId={org.id} state={state} dispatch={dispatch} inherited={inherited} />}
+          {step === 3 && <ReviewStep orgId={org.id} state={state} dispatch={dispatch} inherited={inherited} privateCa={privateCa} caName={effCa?.name} />}
             </CardBody>
           </Card>
           <div className="flex flex-wrap gap-2 border-t border-border pt-4">

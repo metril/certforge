@@ -6,6 +6,7 @@ import { Field } from '@/components/Field';
 import { Input } from '@/components/ui/input';
 import { effectiveText, isUnset, ISSUANCE_FIELDS, useFieldCtx, type FieldKey } from '@/features/settings/issuanceFields';
 import { CoveragePanel } from '@/forms/CoveragePanel';
+import { VerificationNotNeeded } from '@/forms/VerificationNotNeeded';
 import { SourceBadge } from '@/forms/InheritableField';
 import { coverage, type Inherited } from '@/lib/coverage';
 import type { WizardAction, WizardState } from './state';
@@ -16,9 +17,9 @@ export function effectiveOf(overrides: IssuanceDefaults, eff: Partial<Record<Fie
   return eff[k] ?? ({ value: null, source: 'default' } as EffectiveValue);
 }
 
-type Props = { orgId: string; state: WizardState; dispatch: Dispatch<WizardAction>; inherited: Inherited };
+type Props = { orgId: string; state: WizardState; dispatch: Dispatch<WizardAction>; inherited: Inherited; privateCa: boolean; caName?: string };
 
-export function ReviewStep({ orgId, state, dispatch, inherited }: Props) {
+export function ReviewStep({ orgId, state, dispatch, inherited, privateCa, caName }: Props) {
   const ctx = useFieldCtx(orgId);
   const eff = useQuery(effectiveDefaultsQuery(orgId)).data ?? {};
   return (
@@ -32,7 +33,11 @@ export function ReviewStep({ orgId, state, dispatch, inherited }: Props) {
         </h3>
         <p className="break-all font-mono text-xs leading-relaxed">{state.names.join(', ')}</p>
       </section>
-      <CoveragePanel items={coverage(state.names, state.rules, inherited, ctx.clients)} credentials={ctx.credentials} clients={ctx.clients} />
+      {privateCa ? (
+        <VerificationNotNeeded caName={caName} />
+      ) : (
+        <CoveragePanel items={coverage(state.names, state.rules, inherited, ctx.clients)} credentials={ctx.credentials} clients={ctx.clients} />
+      )}
       <section aria-label="Options" className="grid gap-2">
         <h3 className="text-sm font-semibold">Options</h3>
         <dl className="grid grid-cols-1 gap-1 text-sm md:grid-cols-[200px_1fr] md:gap-x-4 md:gap-y-2">

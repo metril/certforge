@@ -467,3 +467,20 @@ it('Cancel in edit mode returns to the certificate settings tab', async () => {
   await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/certificates/c-1/settings'));
   await screen.findByRole('navigation', { name: 'Breadcrumb' });
 });
+
+it('Review shows verification as not needed for a private CA instead of coverage', async () => {
+  server.use(
+    http.get(url('/orgs/org-1/cas'), () => HttpResponse.json([ca, caLocal])),
+    http.get(url('/orgs/org-1/issuance-defaults/effective'), () => HttpResponse.json({ caId: { value: caLocal.id, source: 'org' }, builtin: { keyType: 'ec256', renewPolicy: { mode: 'percent', value: 33, useAri: false }, preferredChain: '', reuseKey: false, mustStaple: false, resolvers: [], verificationRules: [] } })),
+  );
+  const { user } = renderRoute('/o/acme/certificates/new');
+  await user.click(await screen.findByLabelText('Names'));
+  await user.paste('www.example.com');
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  await user.click(await screen.findByRole('button', { name: 'Next' }));
+  await user.click(await screen.findByRole('button', { name: 'Review' }));
+  const note = await screen.findByRole('region', { name: 'Verification' });
+  expect(note).toHaveTextContent('Not needed');
+  expect(note).toHaveTextContent('Internal CA issues without domain verification');
+  expect(screen.queryByRole('region', { name: 'Coverage' })).not.toBeInTheDocument();
+});
