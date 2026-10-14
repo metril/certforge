@@ -469,3 +469,12 @@ it('the used-by count opens a popover of certificates and default sets', async (
   expect(await screen.findByRole('link', { name: 'www' })).toHaveAttribute('href', '/o/acme/certificates/c-7/overview');
   expect(screen.getByText('1 default set in Settings')).toBeInTheDocument();
 });
+
+it('?edit=<id> opens no editable sheet for a viewer, and still drops the param', async () => {
+  creds = [cred];
+  server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: 'org-1' }]))));
+  const { router } = renderRoute('/o/acme/issuers/dns?edit=d-1');
+  await screen.findByText('Cloudflare prod');
+  await waitFor(() => expect(router.state.location.search).toEqual({}));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});

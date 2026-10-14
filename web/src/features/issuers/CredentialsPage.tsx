@@ -64,8 +64,10 @@ export function CredentialsPage() {
     if (!edit || isPending || metaPending) return;
     const credential = creds.find((c) => c.id === edit);
     const provider = credential && meta?.dnsProviders.find((p) => p.code === credential.providerCode);
-    if (credential && provider) setSheet({ provider, credential });
-    else toast.error('Credential not found.');
+    // The sheet only edits, so a reader without dnscreds:write gets the list and nothing opens.
+    if (credential && provider) {
+      if (canWrite) setSheet({ provider, credential });
+    } else toast.error('Credential not found.');
     void navigate({ search: {}, replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [edit, isPending, metaPending]);
