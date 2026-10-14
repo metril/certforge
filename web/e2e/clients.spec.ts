@@ -28,7 +28,7 @@ test('clients: enroll the compose agent, grant a certificate, see it deployed', 
   await expect(page.getByRole('button', { name: 'New layout' }).first()).toBeVisible();
   await snap(page, 'layouts');
   await page.getByRole('button', { name: 'New layout' }).click();
-  const layout = page.getByRole('dialog', { name: 'New layout' });
+  const layout = page.getByRole('main');
   await layout.getByLabel('Name', { exact: true }).fill('pw-files');
   const file = layout.getByRole('listitem', { name: 'File 1' });
   await file.getByLabel('Path', { exact: true }).fill(`/etc/ssl/certforge/${PEM}`);
@@ -36,7 +36,7 @@ test('clients: enroll the compose agent, grant a certificate, see it deployed', 
   await file.getByLabel('Mode', { exact: true }).fill('0644');
   await snap(page, 'layout-sheet');
   await layout.getByRole('button', { name: 'Save' }).click();
-  await expect(layout).toBeHidden();
+  await expect(page.getByRole('table', { name: 'File layouts' })).toBeVisible();
 
   // 3. Enroll: the compose agent waits for CF_AGENT_TOKEN_FILE=/data/token.
   await page.goto(`/o/${E2E.orgSlug}/clients`);

@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useSearch } from '@tanstack/react-router';
+import { useNavigate } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
-import { toast } from 'sonner';
 import { errorMessage } from '@/api/errors';
 import { layoutsQuery, useDeleteLayout } from '@/api/queries/delivery';
 import type { Layout } from '@/api/types';
@@ -16,7 +15,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
-import { LayoutSheet } from './LayoutSheet';
 import { RowActions, UsedBy } from './RowActions';
 import { failedWithoutData } from '@/lib/queryState';
 
@@ -36,28 +34,14 @@ export function LayoutsPage() {
   const org = useOrg();
   const me = useMe();
   const canWrite = can(me, 'delivery:write', org.id);
-  const { edit } = useSearch({ from: '/_app/o/$org/delivery/layouts' });
-  const navigate = useNavigate({ from: '/o/$org/delivery/layouts' });
+  const navigate = useNavigate();
   const q = useQuery(layoutsQuery(org.id));
   const del = useDeleteLayout(org.id);
   const [deleting, setDeleting] = useState<Layout | null>(null);
-  const openSheet = (id: string | undefined) => void navigate({ search: { edit: id }, replace: id === undefined });
   const layouts = q.data ?? [];
-  // A hand-edited or stale `?edit=<id>` that no longer resolves (deleted
-  // elsewhere) must not leave the page silently doing nothing — drop it
-  // from the URL and say why, once the list has actually loaded.
-  useEffect(() => {
-    if (q.isPending || !edit || edit === 'new') return;
-    if (!layouts.some((l) => l.id === edit)) {
-      openSheet(undefined);
-      toast.error('File layout not found.');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [edit, q.isPending, layouts.map((l) => l.id).join(',')]);
-  const editing = layouts.find((l) => l.id === edit);
   const add = (
     <PermissionTip allowed={canWrite} action="delivery:write">
-      <Button disabled={!canWrite} onClick={() => openSheet('new')}>
+      <Button disabled={!canWrite} onClick={() => void navigate({ to: '/o/$org/delivery/layouts/new', params: { org: org.slug } })}>
         <Plus className="size-4" aria-hidden />
         New layout
       </Button>
@@ -99,7 +83,7 @@ export function LayoutsPage() {
                       name={l.name}
                       grantCount={l.grantCount}
                       canWrite={canWrite}
-                      onOpen={() => openSheet(l.id)}
+                      onOpen={() => void navigate({ to: '/o/$org/delivery/layouts/$id/edit', params: { org: org.slug, id: l.id } })}
                       onDelete={() => setDeleting(l)}
                     />
                   </TableCell>
@@ -108,9 +92,6 @@ export function LayoutsPage() {
             </TableBody>
           </Table>
         </>
-      )}
-      {((canWrite && edit === 'new') || editing) && (
-        <LayoutSheet key={edit} orgId={org.id} layout={editing} readOnly={!canWrite} onOpenChange={(o) => !o && openSheet(undefined)} />
       )}
       <ConfirmDestructive
         open={!!deleting}

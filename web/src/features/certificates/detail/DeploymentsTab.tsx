@@ -40,7 +40,7 @@ function DeliveryRef({ orgSlug, kind, id, name }: { orgSlug: string; kind: 'layo
   if (!id) return <span className="text-ink-muted">–</span>;
   const cls = 'truncate hover:underline';
   if (kind === 'targets') return <Link to="/o/$org/delivery/targets/$id/$tab" params={{ org: orgSlug, id, tab: 'overview' }} className={cls}>{name ?? id}</Link>;
-  return <Link to="/o/$org/delivery/layouts" params={{ org: orgSlug }} search={{ edit: id }} className={cls}>{name ?? id}</Link>;
+  return <Link to="/o/$org/delivery/layouts/$id/edit" params={{ org: orgSlug, id }} className={cls}>{name ?? id}</Link>;
 }
 
 export function DeploymentsTab({ cert, orgId, orgSlug }: { cert: Certificate; orgId: string; orgSlug: string }) {

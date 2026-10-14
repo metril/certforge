@@ -37,7 +37,6 @@ import { Route as AppOOrgClientsNewRouteImport } from './routes/_app/o/$org/clie
 import { Route as AppOOrgDeliveryIndexRouteImport } from './routes/_app/o/$org/delivery/index'
 import { Route as AppOOrgDeliveryActionsRouteImport } from './routes/_app/o/$org/delivery/actions'
 import { Route as AppOOrgDeliveryCredentialsRouteImport } from './routes/_app/o/$org/delivery/credentials'
-import { Route as AppOOrgDeliveryLayoutsRouteImport } from './routes/_app/o/$org/delivery/layouts'
 import { Route as AppOOrgIssuersIndexRouteImport } from './routes/_app/o/$org/issuers/index'
 import { Route as AppOOrgIssuersAccountsRouteImport } from './routes/_app/o/$org/issuers/accounts'
 import { Route as AppOOrgIssuersCasRouteImport } from './routes/_app/o/$org/issuers/cas'
@@ -47,8 +46,11 @@ import { Route as AppOOrgCertificatesIdTabRouteImport } from './routes/_app/o/$o
 import { Route as AppOOrgCertificatesIdEditRouteImport } from './routes/_app/o/$org/certificates/$id/edit'
 import { Route as AppOOrgClientsIdIndexRouteImport } from './routes/_app/o/$org/clients/$id/index'
 import { Route as AppOOrgClientsIdTabRouteImport } from './routes/_app/o/$org/clients/$id/$tab'
+import { Route as AppOOrgDeliveryLayoutsIndexRouteImport } from './routes/_app/o/$org/delivery/layouts/index'
+import { Route as AppOOrgDeliveryLayoutsNewRouteImport } from './routes/_app/o/$org/delivery/layouts/new'
 import { Route as AppOOrgDeliveryTargetsIndexRouteImport } from './routes/_app/o/$org/delivery/targets/index'
 import { Route as AppOOrgDeliveryTargetsNewRouteImport } from './routes/_app/o/$org/delivery/targets/new'
+import { Route as AppOOrgDeliveryLayoutsIdEditRouteImport } from './routes/_app/o/$org/delivery/layouts/$id/edit'
 import { Route as AppOOrgDeliveryTargetsIdTabRouteImport } from './routes/_app/o/$org/delivery/targets/$id/$tab'
 import { Route as AppOOrgDeliveryTargetsIdEditRouteImport } from './routes/_app/o/$org/delivery/targets/$id/edit'
 
@@ -195,11 +197,6 @@ const AppOOrgDeliveryCredentialsRoute =
     path: '/credentials',
     getParentRoute: () => AppOOrgDeliveryRouteRoute,
   } as any)
-const AppOOrgDeliveryLayoutsRoute = AppOOrgDeliveryLayoutsRouteImport.update({
-  id: '/layouts',
-  path: '/layouts',
-  getParentRoute: () => AppOOrgDeliveryRouteRoute,
-} as any)
 const AppOOrgIssuersIndexRoute = AppOOrgIssuersIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -248,6 +245,18 @@ const AppOOrgClientsIdTabRoute = AppOOrgClientsIdTabRouteImport.update({
   path: '/clients/$id/$tab',
   getParentRoute: () => AppOOrgRouteRoute,
 } as any)
+const AppOOrgDeliveryLayoutsIndexRoute =
+  AppOOrgDeliveryLayoutsIndexRouteImport.update({
+    id: '/layouts/',
+    path: '/layouts/',
+    getParentRoute: () => AppOOrgDeliveryRouteRoute,
+  } as any)
+const AppOOrgDeliveryLayoutsNewRoute =
+  AppOOrgDeliveryLayoutsNewRouteImport.update({
+    id: '/layouts/new',
+    path: '/layouts/new',
+    getParentRoute: () => AppOOrgDeliveryRouteRoute,
+  } as any)
 const AppOOrgDeliveryTargetsIndexRoute =
   AppOOrgDeliveryTargetsIndexRouteImport.update({
     id: '/targets/',
@@ -258,6 +267,12 @@ const AppOOrgDeliveryTargetsNewRoute =
   AppOOrgDeliveryTargetsNewRouteImport.update({
     id: '/targets/new',
     path: '/targets/new',
+    getParentRoute: () => AppOOrgDeliveryRouteRoute,
+  } as any)
+const AppOOrgDeliveryLayoutsIdEditRoute =
+  AppOOrgDeliveryLayoutsIdEditRouteImport.update({
+    id: '/layouts/$id/edit',
+    path: '/layouts/$id/edit',
     getParentRoute: () => AppOOrgDeliveryRouteRoute,
   } as any)
 const AppOOrgDeliveryTargetsIdTabRoute =
@@ -297,7 +312,6 @@ export interface FileRoutesByFullPath {
   '/o/$org/clients/new': typeof AppOOrgClientsNewRoute
   '/o/$org/delivery/actions': typeof AppOOrgDeliveryActionsRoute
   '/o/$org/delivery/credentials': typeof AppOOrgDeliveryCredentialsRoute
-  '/o/$org/delivery/layouts': typeof AppOOrgDeliveryLayoutsRoute
   '/o/$org/issuers/accounts': typeof AppOOrgIssuersAccountsRoute
   '/o/$org/issuers/cas': typeof AppOOrgIssuersCasRoute
   '/o/$org/issuers/dns': typeof AppOOrgIssuersDnsRoute
@@ -309,10 +323,13 @@ export interface FileRoutesByFullPath {
   '/o/$org/certificates/$id/$tab': typeof AppOOrgCertificatesIdTabRoute
   '/o/$org/certificates/$id/edit': typeof AppOOrgCertificatesIdEditRoute
   '/o/$org/clients/$id/$tab': typeof AppOOrgClientsIdTabRoute
+  '/o/$org/delivery/layouts/new': typeof AppOOrgDeliveryLayoutsNewRoute
   '/o/$org/delivery/targets/new': typeof AppOOrgDeliveryTargetsNewRoute
   '/o/$org/certificates/$id/': typeof AppOOrgCertificatesIdIndexRoute
   '/o/$org/clients/$id/': typeof AppOOrgClientsIdIndexRoute
+  '/o/$org/delivery/layouts/': typeof AppOOrgDeliveryLayoutsIndexRoute
   '/o/$org/delivery/targets/': typeof AppOOrgDeliveryTargetsIndexRoute
+  '/o/$org/delivery/layouts/$id/edit': typeof AppOOrgDeliveryLayoutsIdEditRoute
   '/o/$org/delivery/targets/$id/$tab': typeof AppOOrgDeliveryTargetsIdTabRoute
   '/o/$org/delivery/targets/$id/edit': typeof AppOOrgDeliveryTargetsIdEditRoute
 }
@@ -336,7 +353,6 @@ export interface FileRoutesByTo {
   '/o/$org/clients/new': typeof AppOOrgClientsNewRoute
   '/o/$org/delivery/actions': typeof AppOOrgDeliveryActionsRoute
   '/o/$org/delivery/credentials': typeof AppOOrgDeliveryCredentialsRoute
-  '/o/$org/delivery/layouts': typeof AppOOrgDeliveryLayoutsRoute
   '/o/$org/issuers/accounts': typeof AppOOrgIssuersAccountsRoute
   '/o/$org/issuers/cas': typeof AppOOrgIssuersCasRoute
   '/o/$org/issuers/dns': typeof AppOOrgIssuersDnsRoute
@@ -348,10 +364,13 @@ export interface FileRoutesByTo {
   '/o/$org/certificates/$id/$tab': typeof AppOOrgCertificatesIdTabRoute
   '/o/$org/certificates/$id/edit': typeof AppOOrgCertificatesIdEditRoute
   '/o/$org/clients/$id/$tab': typeof AppOOrgClientsIdTabRoute
+  '/o/$org/delivery/layouts/new': typeof AppOOrgDeliveryLayoutsNewRoute
   '/o/$org/delivery/targets/new': typeof AppOOrgDeliveryTargetsNewRoute
   '/o/$org/certificates/$id': typeof AppOOrgCertificatesIdIndexRoute
   '/o/$org/clients/$id': typeof AppOOrgClientsIdIndexRoute
+  '/o/$org/delivery/layouts': typeof AppOOrgDeliveryLayoutsIndexRoute
   '/o/$org/delivery/targets': typeof AppOOrgDeliveryTargetsIndexRoute
+  '/o/$org/delivery/layouts/$id/edit': typeof AppOOrgDeliveryLayoutsIdEditRoute
   '/o/$org/delivery/targets/$id/$tab': typeof AppOOrgDeliveryTargetsIdTabRoute
   '/o/$org/delivery/targets/$id/edit': typeof AppOOrgDeliveryTargetsIdEditRoute
 }
@@ -381,7 +400,6 @@ export interface FileRoutesById {
   '/_app/o/$org/clients/new': typeof AppOOrgClientsNewRoute
   '/_app/o/$org/delivery/actions': typeof AppOOrgDeliveryActionsRoute
   '/_app/o/$org/delivery/credentials': typeof AppOOrgDeliveryCredentialsRoute
-  '/_app/o/$org/delivery/layouts': typeof AppOOrgDeliveryLayoutsRoute
   '/_app/o/$org/issuers/accounts': typeof AppOOrgIssuersAccountsRoute
   '/_app/o/$org/issuers/cas': typeof AppOOrgIssuersCasRoute
   '/_app/o/$org/issuers/dns': typeof AppOOrgIssuersDnsRoute
@@ -393,10 +411,13 @@ export interface FileRoutesById {
   '/_app/o/$org/certificates/$id/$tab': typeof AppOOrgCertificatesIdTabRoute
   '/_app/o/$org/certificates/$id/edit': typeof AppOOrgCertificatesIdEditRoute
   '/_app/o/$org/clients/$id/$tab': typeof AppOOrgClientsIdTabRoute
+  '/_app/o/$org/delivery/layouts/new': typeof AppOOrgDeliveryLayoutsNewRoute
   '/_app/o/$org/delivery/targets/new': typeof AppOOrgDeliveryTargetsNewRoute
   '/_app/o/$org/certificates/$id/': typeof AppOOrgCertificatesIdIndexRoute
   '/_app/o/$org/clients/$id/': typeof AppOOrgClientsIdIndexRoute
+  '/_app/o/$org/delivery/layouts/': typeof AppOOrgDeliveryLayoutsIndexRoute
   '/_app/o/$org/delivery/targets/': typeof AppOOrgDeliveryTargetsIndexRoute
+  '/_app/o/$org/delivery/layouts/$id/edit': typeof AppOOrgDeliveryLayoutsIdEditRoute
   '/_app/o/$org/delivery/targets/$id/$tab': typeof AppOOrgDeliveryTargetsIdTabRoute
   '/_app/o/$org/delivery/targets/$id/edit': typeof AppOOrgDeliveryTargetsIdEditRoute
 }
@@ -426,7 +447,6 @@ export interface FileRouteTypes {
     | '/o/$org/clients/new'
     | '/o/$org/delivery/actions'
     | '/o/$org/delivery/credentials'
-    | '/o/$org/delivery/layouts'
     | '/o/$org/issuers/accounts'
     | '/o/$org/issuers/cas'
     | '/o/$org/issuers/dns'
@@ -438,10 +458,13 @@ export interface FileRouteTypes {
     | '/o/$org/certificates/$id/$tab'
     | '/o/$org/certificates/$id/edit'
     | '/o/$org/clients/$id/$tab'
+    | '/o/$org/delivery/layouts/new'
     | '/o/$org/delivery/targets/new'
     | '/o/$org/certificates/$id/'
     | '/o/$org/clients/$id/'
+    | '/o/$org/delivery/layouts/'
     | '/o/$org/delivery/targets/'
+    | '/o/$org/delivery/layouts/$id/edit'
     | '/o/$org/delivery/targets/$id/$tab'
     | '/o/$org/delivery/targets/$id/edit'
   fileRoutesByTo: FileRoutesByTo
@@ -465,7 +488,6 @@ export interface FileRouteTypes {
     | '/o/$org/clients/new'
     | '/o/$org/delivery/actions'
     | '/o/$org/delivery/credentials'
-    | '/o/$org/delivery/layouts'
     | '/o/$org/issuers/accounts'
     | '/o/$org/issuers/cas'
     | '/o/$org/issuers/dns'
@@ -477,10 +499,13 @@ export interface FileRouteTypes {
     | '/o/$org/certificates/$id/$tab'
     | '/o/$org/certificates/$id/edit'
     | '/o/$org/clients/$id/$tab'
+    | '/o/$org/delivery/layouts/new'
     | '/o/$org/delivery/targets/new'
     | '/o/$org/certificates/$id'
     | '/o/$org/clients/$id'
+    | '/o/$org/delivery/layouts'
     | '/o/$org/delivery/targets'
+    | '/o/$org/delivery/layouts/$id/edit'
     | '/o/$org/delivery/targets/$id/$tab'
     | '/o/$org/delivery/targets/$id/edit'
   id:
@@ -509,7 +534,6 @@ export interface FileRouteTypes {
     | '/_app/o/$org/clients/new'
     | '/_app/o/$org/delivery/actions'
     | '/_app/o/$org/delivery/credentials'
-    | '/_app/o/$org/delivery/layouts'
     | '/_app/o/$org/issuers/accounts'
     | '/_app/o/$org/issuers/cas'
     | '/_app/o/$org/issuers/dns'
@@ -521,10 +545,13 @@ export interface FileRouteTypes {
     | '/_app/o/$org/certificates/$id/$tab'
     | '/_app/o/$org/certificates/$id/edit'
     | '/_app/o/$org/clients/$id/$tab'
+    | '/_app/o/$org/delivery/layouts/new'
     | '/_app/o/$org/delivery/targets/new'
     | '/_app/o/$org/certificates/$id/'
     | '/_app/o/$org/clients/$id/'
+    | '/_app/o/$org/delivery/layouts/'
     | '/_app/o/$org/delivery/targets/'
+    | '/_app/o/$org/delivery/layouts/$id/edit'
     | '/_app/o/$org/delivery/targets/$id/$tab'
     | '/_app/o/$org/delivery/targets/$id/edit'
   fileRoutesById: FileRoutesById
@@ -733,13 +760,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppOOrgDeliveryCredentialsRouteImport
       parentRoute: typeof AppOOrgDeliveryRouteRoute
     }
-    '/_app/o/$org/delivery/layouts': {
-      id: '/_app/o/$org/delivery/layouts'
-      path: '/layouts'
-      fullPath: '/o/$org/delivery/layouts'
-      preLoaderRoute: typeof AppOOrgDeliveryLayoutsRouteImport
-      parentRoute: typeof AppOOrgDeliveryRouteRoute
-    }
     '/_app/o/$org/issuers/': {
       id: '/_app/o/$org/issuers/'
       path: '/'
@@ -803,6 +823,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppOOrgClientsIdTabRouteImport
       parentRoute: typeof AppOOrgRouteRoute
     }
+    '/_app/o/$org/delivery/layouts/': {
+      id: '/_app/o/$org/delivery/layouts/'
+      path: '/layouts'
+      fullPath: '/o/$org/delivery/layouts/'
+      preLoaderRoute: typeof AppOOrgDeliveryLayoutsIndexRouteImport
+      parentRoute: typeof AppOOrgDeliveryRouteRoute
+    }
+    '/_app/o/$org/delivery/layouts/new': {
+      id: '/_app/o/$org/delivery/layouts/new'
+      path: '/layouts/new'
+      fullPath: '/o/$org/delivery/layouts/new'
+      preLoaderRoute: typeof AppOOrgDeliveryLayoutsNewRouteImport
+      parentRoute: typeof AppOOrgDeliveryRouteRoute
+    }
     '/_app/o/$org/delivery/targets/': {
       id: '/_app/o/$org/delivery/targets/'
       path: '/targets'
@@ -815,6 +849,13 @@ declare module '@tanstack/react-router' {
       path: '/targets/new'
       fullPath: '/o/$org/delivery/targets/new'
       preLoaderRoute: typeof AppOOrgDeliveryTargetsNewRouteImport
+      parentRoute: typeof AppOOrgDeliveryRouteRoute
+    }
+    '/_app/o/$org/delivery/layouts/$id/edit': {
+      id: '/_app/o/$org/delivery/layouts/$id/edit'
+      path: '/layouts/$id/edit'
+      fullPath: '/o/$org/delivery/layouts/$id/edit'
+      preLoaderRoute: typeof AppOOrgDeliveryLayoutsIdEditRouteImport
       parentRoute: typeof AppOOrgDeliveryRouteRoute
     }
     '/_app/o/$org/delivery/targets/$id/$tab': {
@@ -854,10 +895,12 @@ const AppOOrgAlertsRouteRouteWithChildren =
 interface AppOOrgDeliveryRouteRouteChildren {
   AppOOrgDeliveryActionsRoute: typeof AppOOrgDeliveryActionsRoute
   AppOOrgDeliveryCredentialsRoute: typeof AppOOrgDeliveryCredentialsRoute
-  AppOOrgDeliveryLayoutsRoute: typeof AppOOrgDeliveryLayoutsRoute
   AppOOrgDeliveryIndexRoute: typeof AppOOrgDeliveryIndexRoute
+  AppOOrgDeliveryLayoutsNewRoute: typeof AppOOrgDeliveryLayoutsNewRoute
   AppOOrgDeliveryTargetsNewRoute: typeof AppOOrgDeliveryTargetsNewRoute
+  AppOOrgDeliveryLayoutsIndexRoute: typeof AppOOrgDeliveryLayoutsIndexRoute
   AppOOrgDeliveryTargetsIndexRoute: typeof AppOOrgDeliveryTargetsIndexRoute
+  AppOOrgDeliveryLayoutsIdEditRoute: typeof AppOOrgDeliveryLayoutsIdEditRoute
   AppOOrgDeliveryTargetsIdTabRoute: typeof AppOOrgDeliveryTargetsIdTabRoute
   AppOOrgDeliveryTargetsIdEditRoute: typeof AppOOrgDeliveryTargetsIdEditRoute
 }
@@ -865,10 +908,12 @@ interface AppOOrgDeliveryRouteRouteChildren {
 const AppOOrgDeliveryRouteRouteChildren: AppOOrgDeliveryRouteRouteChildren = {
   AppOOrgDeliveryActionsRoute: AppOOrgDeliveryActionsRoute,
   AppOOrgDeliveryCredentialsRoute: AppOOrgDeliveryCredentialsRoute,
-  AppOOrgDeliveryLayoutsRoute: AppOOrgDeliveryLayoutsRoute,
   AppOOrgDeliveryIndexRoute: AppOOrgDeliveryIndexRoute,
+  AppOOrgDeliveryLayoutsNewRoute: AppOOrgDeliveryLayoutsNewRoute,
   AppOOrgDeliveryTargetsNewRoute: AppOOrgDeliveryTargetsNewRoute,
+  AppOOrgDeliveryLayoutsIndexRoute: AppOOrgDeliveryLayoutsIndexRoute,
   AppOOrgDeliveryTargetsIndexRoute: AppOOrgDeliveryTargetsIndexRoute,
+  AppOOrgDeliveryLayoutsIdEditRoute: AppOOrgDeliveryLayoutsIdEditRoute,
   AppOOrgDeliveryTargetsIdTabRoute: AppOOrgDeliveryTargetsIdTabRoute,
   AppOOrgDeliveryTargetsIdEditRoute: AppOOrgDeliveryTargetsIdEditRoute,
 }

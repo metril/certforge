@@ -6,7 +6,6 @@ import type { DnsCredential } from '@/api/types';
 import { server } from '@/test/server';
 import { authHandlers, me, presets, caLocalImported, cloudflare, makeChannel, makeLayout, makeMonitor, makeTarget, metaNotifiers, org, targetTestSecret, testSecretSchema, traefikSchema, url } from '@/test/fixtures';
 import { renderRoute, renderUI } from '@/test/render';
-import { LayoutSheet } from '@/features/delivery/LayoutSheet';
 import { CaSheet } from '@/features/issuers/CaSheet';
 import { CredentialSheet } from '@/features/issuers/CredentialSheet';
 import { MonitorSheet } from '@/features/alerts/MonitorSheet';
@@ -58,12 +57,15 @@ it('target edit page with stored secrets leaves clean', () => expectCleanLeave(t
 
 it('target edit page plain leaves clean', () => expectCleanLeave('t-1', 'Edit edge traefik'));
 
-it('LayoutSheet with stored password closes clean', async () => {
+it('layout edit page with stored password leaves clean', async () => {
   const files = [{ path: '/a.p12', format: 'p12', parts: ['fullchain', 'key'], owner: 'root', group: 'root', mode: '0640' }] as never;
-  await expectCleanEscape(
-    <Host>{(_o, set) => <LayoutSheet orgId={org.id} layout={makeLayout({ passwordSet: true, files })} readOnly={false} onOpenChange={set} />}</Host>,
-    'Edit nginx',
-  );
+  server.use(http.get(url('/orgs/org-1/layouts'), () => HttpResponse.json({ items: [makeLayout({ passwordSet: true, files })] })));
+  const { router } = renderRoute('/o/acme/delivery/layouts/l-1/edit');
+  await screen.findByRole('heading', { name: 'Edit nginx' });
+  await new Promise((r) => setTimeout(r, 100));
+  await router.navigate({ to: '/o/$org/delivery/layouts', params: { org: 'acme' } });
+  expect(screen.queryByText('Discard changes?')).not.toBeInTheDocument();
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/delivery/layouts'));
 });
 
 it('CaSheet (imported private CA) closes clean', async () => {
