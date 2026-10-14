@@ -169,7 +169,8 @@ export function TargetForm({ orgId, orgSlug, target, types, readOnly = false }: 
       toast.success('Deploy target saved');
       await Promise.all([qc.invalidateQueries({ queryKey: ['deploy-targets', orgId] }), invalidateGrants(qc, orgId)]);
       bypass.current = true;
-      void navigate({ to: '/o/$org/delivery/targets/$id/$tab', params: { org: orgSlug, id: target?.id ?? saved.id, tab: 'overview' } });
+      // New: on to the target's page. Edit: back to the list the user came from.
+      void navigate(target ? { to: '/o/$org/delivery/targets', params: { org: orgSlug } } : { to: '/o/$org/delivery/targets/$id/$tab', params: { org: orgSlug, id: saved.id, tab: 'overview' } });
     } catch (e) {
       const msg = errorMessage(e);
       const field = fieldErrorFromMessage(schema, msg);
@@ -343,9 +344,7 @@ export function TargetForm({ orgId, orgSlug, target, types, readOnly = false }: 
       )}
     </dl>
   );
-  const backTo = target
-    ? { label: target.name, link: { to: '/o/$org/delivery/targets/$id/$tab', params: { org: orgSlug, id: target.id, tab: 'overview' } } as const }
-    : { label: 'Deploy targets', link: { to: '/o/$org/delivery/targets', params: { org: orgSlug } } as const };
+  const backTo = { label: 'Deploy targets', link: { to: '/o/$org/delivery/targets', params: { org: orgSlug } } as const };
 
   return (
     <FormPage

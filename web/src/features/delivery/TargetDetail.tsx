@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate } from '@tanstack/react-router';
 import { ChevronLeft, KeyRound, KeySquare, Lock, Pencil, Plus, RotateCw, Trash2 } from 'lucide-react';
@@ -55,8 +55,10 @@ export function TargetDetail({ orgId, orgSlug, target, types, tab }: Props) {
   const isMdUp = useMediaQuery('(min-width: 768px)');
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
   const [removing, setRemoving] = useState<Grant | null>(null);
-  const q = useQuery(targetGrantsQuery(orgId, target.id));
-  const layoutsQ = useQuery(layoutsQuery(orgId));
+  useEffect(() => setMode({ kind: 'list' }), [tab]);
+  const grantsTab = target.runsOn === 'server' && tab === 'grants';
+  const q = useQuery({ ...targetGrantsQuery(orgId, target.id), enabled: grantsTab });
+  const layoutsQ = useQuery({ ...layoutsQuery(orgId), enabled: grantsTab });
   const layouts = layoutsQ.data ?? [];
   const credsQ = useQuery({ ...deployCredentialsQuery(orgId), enabled: !!target.credentialId });
   const credName = credsQ.data?.find((c) => c.id === target.credentialId)?.name;

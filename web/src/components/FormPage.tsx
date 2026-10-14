@@ -36,7 +36,7 @@ export function FormPage({ title, help, backTo, actions, rail, dirty, bypass, ch
         {backTo.label}
       </Link>
       <PageHeader title={title} help={help} actions={actions} />
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_var(--rail-width)]">
         <div className="grid min-w-0 gap-4">{children}</div>
         {rail && (
           <aside aria-label="Summary" className="lg:sticky lg:top-6 lg:self-start">

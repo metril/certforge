@@ -4,6 +4,11 @@
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
+:root {
+  /* Width of the sticky summary column beside a full-page form (FormPage). */
+  --rail-width: 20rem;
+}
+
 @theme inline {
   --font-sans: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Atkinson Hyperlegible Mono", ui-monospace, monospace;

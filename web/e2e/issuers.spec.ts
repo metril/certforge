@@ -242,6 +242,8 @@ test('server grant', async ({ page }) => {
   await pickTargetType(targetSheet, /^Vault KV/);
   await targetSheet.getByRole('button', { name: 'Save' }).click();
   await expect(targetSheet.getByRole('button', { name: 'Save' })).toBeHidden();
+  // A new target lands on its page, an edit on the list: go to the list.
+  await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
 
   const targetsTable = page.getByRole('table', { name: 'Deploy targets' });
   const targetRow = targetsTable.getByRole('row', { name: /^e2e-vault-kv/ });

@@ -176,7 +176,7 @@ it('replace sends new secret; remove sends empty', async () => {
   await user.type(within(sheet).getByLabelText('Token'), 'new-secret');
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(patched).toMatchObject({ config: { token: 'new-secret' } }));
-  await waitFor(() => expect(router.state.location.pathname).toBe(`/o/acme/delivery/targets/${targetTestSecret.id}/overview`));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/delivery/targets'));
 
   await router.navigate({ to: '/o/$org/delivery/targets/$id/edit', params: { org: 'acme', id: targetTestSecret.id } });
   await screen.findByRole('heading', { name: `Edit ${targetTestSecret.name}` });

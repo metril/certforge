@@ -76,6 +76,8 @@ test('traefik target runs on agent', async ({ page }) => {
   await sheet.getByLabel('Directory on the agent').fill('/etc/traefik/dynamic');
   await sheet.getByRole('button', { name: 'Save' }).click();
   await expect(sheet.getByRole('button', { name: 'Save' })).toBeHidden();
+  // A new target lands on its page, an edit on the list: go to the list.
+  await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
 
   const table = page.getByRole('table', { name: 'Deploy targets' });
   const row = table.getByRole('row', { name: new RegExp(`^${name}`) });
@@ -101,7 +103,8 @@ test('traefik target runs on agent', async ({ page }) => {
   await expect(page.getByRole('tooltip')).toContainText(RUNS_ON_LOCKED);
   await snap(page, 'target-sheet-traefik');
   await edit.getByRole('button', { name: 'Cancel' }).click();
-  await expect(edit).toBeHidden();
+  await expect(page).toHaveURL(new RegExp(`/delivery/targets$`));
+  await expect(page.getByRole('table', { name: 'Deploy targets' })).toBeVisible();
 
   await row.getByRole('button', { name: `Delete ${name}` }).click();
   const confirm = page.getByRole('dialog', { name: 'Delete deploy target' });
@@ -128,6 +131,8 @@ test('targets at 375 px', async ({ page }) => {
   await addSheet.getByLabel('Directory on the agent').fill('/etc/traefik/dynamic');
   await addSheet.getByRole('button', { name: 'Save' }).click();
   await expect(addSheet.getByRole('button', { name: 'Save' })).toBeHidden();
+  // A new target lands on its page, an edit on the list: go to the list.
+  await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
 
   await page.setViewportSize({ width: 375, height: 800 });
   await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
@@ -203,6 +208,8 @@ test('saved credential: attach to two targets, rotate, delete blocked, detach, d
     if (i === 0) await snap(page, 'target-sheet-credential');
     await sheet.getByRole('button', { name: 'Save' }).click();
     await expect(sheet.getByRole('button', { name: 'Save' })).toBeHidden();
+    // A new target lands on its page, an edit on the list: go to the list.
+    await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
     await expect(page.getByRole('table', { name: 'Deploy targets' }).getByRole('row', { name: new RegExp(`^${name}`) })).toContainText(`uses ${cred}`);
   }
 
@@ -243,6 +250,8 @@ test('saved credential: attach to two targets, rotate, delete blocked, detach, d
     await sheet.getByLabel('Password', { exact: true }).fill('own-secret');
     await sheet.getByRole('button', { name: 'Save' }).click();
     await expect(sheet.getByRole('button', { name: 'Save' })).toBeHidden();
+    // A new target lands on its page, an edit on the list: go to the list.
+    await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
   }
   await page.goto(`/o/${E2E.orgSlug}/delivery/credentials`);
   await expect(credRow.getByText('2 targets')).toHaveCount(0);
@@ -320,6 +329,8 @@ test('pfSense CA certificate: upload a DER file and fetch from the server', asyn
 
   await sheet.getByRole('button', { name: 'Save' }).click();
   await expect(sheet.getByRole('button', { name: 'Save' })).toBeHidden();
+  // A new target lands on its page, an edit on the list: go to the list.
+  await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
 
   const table = page.getByRole('table', { name: 'Deploy targets' });
   await table.getByRole('button', { name: `Edit ${name}` }).click();
