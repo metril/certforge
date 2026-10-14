@@ -443,3 +443,18 @@ it('keeps a revealed secret out of the mutation cache, even before Hide', async 
   const held = queryClient.getMutationCache().getAll().filter((m) => JSON.stringify([m.state.data, m.state.variables]).includes('cf-token-plain'));
   expect(held).toEqual([]);
 });
+
+it('?edit=<id> opens that credential sheet and drops the param', async () => {
+  creds = [cred];
+  const { router } = renderRoute('/o/acme/issuers/dns?edit=d-1');
+  expect(await screen.findByRole('dialog', { name: 'Edit Cloudflare prod' })).toBeInTheDocument();
+  await waitFor(() => expect(router.state.location.search).toEqual({}));
+});
+
+it('?edit=<unknown id> drops the param instead of opening a sheet', async () => {
+  creds = [cred];
+  const { router } = renderRoute('/o/acme/issuers/dns?edit=nope');
+  await screen.findByText('Cloudflare prod');
+  await waitFor(() => expect(router.state.location.search).toEqual({}));
+  expect(screen.queryByRole('dialog')).toBeNull();
+});

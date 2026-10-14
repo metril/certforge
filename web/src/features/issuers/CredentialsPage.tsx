@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate, useSearch } from '@tanstack/react-router';
+import { toast } from 'sonner';
 import { FlaskConical, Pencil, Plus, Trash2 } from 'lucide-react';
 import { dnsCredentialsQuery, metaSchemasQuery, useDeleteCredential } from '@/api/queries/dns';
 import { errorMessage } from '@/api/errors';
@@ -51,6 +53,19 @@ export function CredentialsPage() {
   const [deleting, setDeleting] = useState<DnsCredential | null>(null);
   const providers = meta?.dnsProviders ?? [];
   const providerOf = (code: string) => providers.find((p) => p.code === code);
+  const { edit } = useSearch({ from: '/_app/o/$org/issuers/dns' });
+  const navigate = useNavigate({ from: '/o/$org/issuers/dns' });
+  // `?edit=<id>` (an entity link) opens that credential's sheet once, then leaves the URL clean;
+  // an id that no longer resolves says so instead of doing nothing.
+  useEffect(() => {
+    if (!edit || isPending || metaPending) return;
+    const credential = creds.find((c) => c.id === edit);
+    const provider = credential && meta?.dnsProviders.find((p) => p.code === credential.providerCode);
+    if (credential && provider) setSheet({ provider, credential });
+    else toast.error('Credential not found.');
+    void navigate({ search: {}, replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edit, isPending, metaPending]);
 
   const showList = !isPending && !isError && creds.length > 0;
   return (
