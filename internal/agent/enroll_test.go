@@ -59,7 +59,7 @@ type fakeServer struct {
 	assignFail int                                  // the next GET assignments requests fail with 500
 	assignHits int                                  // GET assignments requests served or blocked
 	deny       bool                                 // GET assignments answers 401 "no client certificate"
-	assigned   *agentproto.Assignments               // non-nil: served by GET assignments instead of an empty set
+	assigned   *agentproto.Assignments              // non-nil: served by GET assignments instead of an empty set
 
 	tokens      map[string][]byte // lookup id -> token hash, for tokens f.token issued
 	hellos      map[string]*ecdh.PrivateKey
