@@ -1,11 +1,27 @@
-import { createContext, useContext } from 'react';
-import { ArrowDown, ArrowUp, CircleAlert, Copy, Plus, X, type LucideIcon } from 'lucide-react';
-import { getInputProps, type BaseInputTemplateProps, type FieldTemplateProps, type IconButtonProps, type ObjectFieldTemplateProps, type TemplatesType } from '@rjsf/utils';
-import { HelpTip } from '@/components/HelpTip';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { cn } from '@/lib/utils';
-import { IconButton } from '@/components/IconButton';
+import { createContext, useContext } from "react";
+import {
+  ArrowDown,
+  ArrowUp,
+  CircleAlert,
+  Copy,
+  Plus,
+  X,
+  type LucideIcon,
+} from "lucide-react";
+import {
+  getInputProps,
+  type BaseInputTemplateProps,
+  type FieldTemplateProps,
+  type IconButtonProps,
+  type ObjectFieldTemplateProps,
+  type TemplatesType,
+} from "@rjsf/utils";
+import { HelpTip } from "@/components/HelpTip";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
+import { isWideField } from "../uiSchema";
+import { IconButton } from "@/components/IconButton";
 
 // B5: RJSF's own SchemaField consumes a field's `ui:classNames` before it
 // ever reaches that field's `uiSchema` prop further down (its comment: "Don't
@@ -19,7 +35,20 @@ import { IconButton } from '@/components/IconButton';
 // of to this label-and-content wrapper.
 const ObjectGridClassNames = createContext<string | undefined>(undefined);
 
-function FieldTemplate({ id, label, displayLabel, rawDescription, required, rawErrors, children, hidden, classNames, schema, uiSchema, registry }: FieldTemplateProps) {
+function FieldTemplate({
+  id,
+  label,
+  displayLabel,
+  rawDescription,
+  required,
+  rawErrors,
+  children,
+  hidden,
+  classNames,
+  schema,
+  uiSchema,
+  registry,
+}: FieldTemplateProps) {
   if (hidden) return <div className="hidden">{children}</div>;
   // Booleans render their own label + help inside SwitchField. RJSF forces
   // displayLabel=false whenever a field sets `ui:field` (our `listArray`
@@ -35,9 +64,14 @@ function FieldTemplate({ id, label, displayLabel, rawDescription, required, rawE
   // form here uses SchemaForm's unconfigured default of "root") is excluded,
   // since its own schema.title (e.g. Issuance's root "Issuance") is meant as
   // this app's tab/heading copy, not a label repeated inside the form body.
-  const isObject = schema.type === 'object';
+  const isObject = schema.type === "object";
   const isNestedObject = isObject && id !== registry.globalFormOptions.idPrefix;
-  const showLabel = (displayLabel || uiSchema?.['ui:field'] === 'listArray' || isNestedObject) && !!label && schema.type !== 'boolean';
+  const showLabel =
+    (displayLabel ||
+      uiSchema?.["ui:field"] === "listArray" ||
+      isNestedObject) &&
+    !!label &&
+    schema.type !== "boolean";
   const body = (
     <>
       {showLabel && (
@@ -55,7 +89,9 @@ function FieldTemplate({ id, label, displayLabel, rawDescription, required, rawE
               heading doesn't get one (skipped for every nested object, not
               just when `required` happens to be set — `required` here is
               never meaningful for one of these object fields today). */}
-          {!isNestedObject && !required && !uiSchema?.["ui:disabled"] && <span className="text-xs text-ink-muted">Optional</span>}
+          {!isNestedObject && !required && !uiSchema?.["ui:disabled"] && (
+            <span className="text-xs text-ink-muted">Optional</span>
+          )}
           {rawDescription && <HelpTip text={rawDescription} />}
         </div>
       )}
@@ -69,52 +105,101 @@ function FieldTemplate({ id, label, displayLabel, rawDescription, required, rawE
     </>
   );
   if (isObject) {
-    const gridClassNames = typeof uiSchema?.['ui:classNames'] === 'string' ? uiSchema['ui:classNames'] : undefined;
+    const gridClassNames =
+      typeof uiSchema?.["ui:classNames"] === "string"
+        ? uiSchema["ui:classNames"]
+        : undefined;
     return (
       <ObjectGridClassNames.Provider value={gridClassNames}>
         <div className="grid gap-1.5">{body}</div>
       </ObjectGridClassNames.Provider>
     );
   }
-  return <div className={cn('grid gap-1.5', classNames)}>{body}</div>;
+  return <div className={cn("grid gap-1.5", classNames)}>{body}</div>;
 }
 
-function ObjectFieldTemplate({ properties }: ObjectFieldTemplateProps) {
+function ObjectFieldTemplate({
+  properties,
+  schema,
+  uiSchema,
+  fieldPathId,
+  registry,
+}: ObjectFieldTemplateProps) {
   // B5: honors the `ui:classNames` FieldTemplate forwarded above (e.g.
   // Issuance's rateLimits: 'grid gap-3 sm:grid-cols-2') on this template's
   // own properties grid, not on the label-and-content wrapper.
   const gridClassNames = useContext(ObjectGridClassNames);
+  // SchemaForm `columns={2}` applies to the root object only.
+  const twoCol =
+    registry.formContext?.columns === 2 &&
+    fieldPathId.$id === registry.globalFormOptions.idPrefix;
   return (
-    <div className={cn('grid gap-4', gridClassNames)}>
+    <div
+      className={cn("grid gap-4", twoCol && "sm:grid-cols-2", gridClassNames)}
+    >
       {properties
         .filter((p) => !p.hidden)
-        .map((p) => (
-          <div key={p.name}>{p.content}</div>
-        ))}
+        .map((p) => {
+          const sub = schema.properties?.[p.name];
+          const wide =
+            twoCol &&
+            (typeof sub !== "object" ||
+              isWideField(p.name, sub, uiSchema?.[p.name]));
+          return (
+            <div key={p.name} className={wide ? "sm:col-span-2" : undefined}>
+              {p.content}
+            </div>
+          );
+        })}
     </div>
   );
 }
 
 function BaseInputTemplate(props: BaseInputTemplateProps) {
-  const { id, htmlName, value, required, disabled, readonly, autofocus, placeholder, onChange, onChangeOverride, onBlur, onFocus, options, schema, type, rawErrors } = props;
+  const {
+    id,
+    htmlName,
+    value,
+    required,
+    disabled,
+    readonly,
+    autofocus,
+    placeholder,
+    onChange,
+    onChangeOverride,
+    onBlur,
+    onFocus,
+    options,
+    schema,
+    type,
+    rawErrors,
+  } = props;
   const inputProps = getInputProps(schema, type, options);
   // `ui:options.mono` (Task 8: vault-kv's path and KV document field names)
   // opts a plain string field into the mono font alongside the formats that
   // already imply a machine value.
-  const mono = schema.format === 'uri' || schema.format === 'hostname' || schema.format === 'ipv4' || options.mono === true;
+  const mono =
+    schema.format === "uri" ||
+    schema.format === "hostname" ||
+    schema.format === "ipv4" ||
+    options.mono === true;
   return (
     <Input
       id={id}
       name={htmlName || id}
       {...inputProps}
-      value={value ?? ''}
+      value={value ?? ""}
       required={required}
       disabled={disabled || readonly}
       autoFocus={autofocus}
       placeholder={placeholder}
       aria-invalid={!!rawErrors?.length}
-      className={mono ? 'font-mono text-xs' : undefined}
-      onChange={onChangeOverride ?? ((e) => onChange(e.target.value === '' ? options.emptyValue : e.target.value))}
+      className={mono ? "font-mono text-xs" : undefined}
+      onChange={
+        onChangeOverride ??
+        ((e) =>
+          onChange(e.target.value === "" ? options.emptyValue : e.target.value))
+      }
       onBlur={(e) => onBlur(id, e.target.value)}
       onFocus={(e) => onFocus(id, e.target.value)}
     />
@@ -124,14 +209,23 @@ function BaseInputTemplate(props: BaseInputTemplateProps) {
 function iconButton(label: string, Icon: LucideIcon) {
   return function IconBtn({ onClick, disabled }: IconButtonProps) {
     return (
-      <IconButton type="button" variant="ghost" size="icon" label={label} onClick={onClick} disabled={disabled}>
+      <IconButton
+        type="button"
+        variant="ghost"
+        size="icon"
+        label={label}
+        onClick={onClick}
+        disabled={disabled}
+      >
         <Icon className="size-4" aria-hidden />
       </IconButton>
     );
   };
 }
 
-export const templates: Partial<Omit<TemplatesType, 'ButtonTemplates'>> & { ButtonTemplates?: Partial<TemplatesType['ButtonTemplates']> } = {
+export const templates: Partial<Omit<TemplatesType, "ButtonTemplates">> & {
+  ButtonTemplates?: Partial<TemplatesType["ButtonTemplates"]>;
+} = {
   FieldTemplate,
   ObjectFieldTemplate,
   BaseInputTemplate,
@@ -140,10 +234,10 @@ export const templates: Partial<Omit<TemplatesType, 'ButtonTemplates'>> & { Butt
   ErrorListTemplate: () => null,
   ButtonTemplates: {
     SubmitButton: () => null,
-    AddButton: iconButton('Add item', Plus),
-    RemoveButton: iconButton('Remove item', X),
-    MoveUpButton: iconButton('Move up', ArrowUp),
-    MoveDownButton: iconButton('Move down', ArrowDown),
-    CopyButton: iconButton('Copy item', Copy),
+    AddButton: iconButton("Add item", Plus),
+    RemoveButton: iconButton("Remove item", X),
+    MoveUpButton: iconButton("Move up", ArrowUp),
+    MoveDownButton: iconButton("Move down", ArrowDown),
+    CopyButton: iconButton("Copy item", Copy),
   },
 };

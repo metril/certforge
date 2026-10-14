@@ -15,7 +15,7 @@ import { makeQueryClient } from '@/lib/queryClient';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from './tooltip';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, useSheetGuard } from './sheet';
+import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, useSheetGuard } from './sheet';
 
 function Harness({ form, dirty }: { form?: boolean; dirty?: boolean }) {
   const [open, setOpen] = useState(true);
@@ -177,5 +177,50 @@ describe('Sheet navigation guard', () => {
     act(() => window.history.back());
     await vi.waitFor(() => expect(screen.queryByText('Panel')).not.toBeInTheDocument());
     expect(screen.queryByText('Discard changes?')).not.toBeInTheDocument();
+  });
+});
+
+describe('Sheet layout', () => {
+  function Layout({ size }: { size?: 'sm' | 'md' | 'lg' | 'xl' }) {
+    return (
+      <Sheet open>
+        <SheetContent size={size}>
+          <SheetHeader>
+            <SheetTitle>Panel</SheetTitle>
+            <SheetDescription>desc</SheetDescription>
+          </SheetHeader>
+          <SheetBody>body</SheetBody>
+          <SheetFooter>foot</SheetFooter>
+        </SheetContent>
+      </Sheet>
+    );
+  }
+  const q = (slot: string) => document.querySelector(`[data-slot="${slot}"]`) as HTMLElement;
+
+  it('only the body scrolls and the footer is its sibling', () => {
+    render(
+      <TooltipProvider>
+        <Layout />
+      </TooltipProvider>,
+    );
+    expect(q('sheet-body').className).toContain('overflow-y-auto');
+    expect(q('sheet-content').className).not.toContain('overflow-y-auto');
+    expect(q('sheet-footer').parentElement).toBe(q('sheet-content'));
+    expect(q('sheet-body').contains(q('sheet-footer'))).toBe(false);
+  });
+
+  it.each([
+    [undefined, 'sm:max-w-lg'],
+    ['sm', 'sm:max-w-md'],
+    ['md', 'sm:max-w-lg'],
+    ['lg', 'sm:max-w-2xl'],
+    ['xl', 'sm:max-w-3xl'],
+  ] as const)('size %s maps to %s', (size, cls) => {
+    render(
+      <TooltipProvider>
+        <Layout size={size} />
+      </TooltipProvider>,
+    );
+    expect(q('sheet-content').className).toContain(cls);
   });
 });

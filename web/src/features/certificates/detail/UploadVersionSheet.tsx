@@ -1,16 +1,41 @@
-import { useDirty } from '@/lib/useDirty';
-import { useState } from 'react';
-import { toast } from 'sonner';
-import { useUploadVersion } from '@/api/queries/certificates';
-import { HelpTip } from '@/components/HelpTip';
-import { SwitchField } from '@/components/SwitchField';
-import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
-import { UploadFields, type UploadFieldErrors } from '@/features/certificates/upload/UploadFields';
-import { emptyUploadValue, p12TooLarge, toUploadBody, type UploadValue } from '@/features/certificates/upload/uploadBody';
-import { isUploadFieldName, uploadErrorOutcome } from '@/features/certificates/upload/uploadErrors';
+import { useDirty } from "@/lib/useDirty";
+import { useState } from "react";
+import { toast } from "sonner";
+import { useUploadVersion } from "@/api/queries/certificates";
+import { HelpTip } from "@/components/HelpTip";
+import { SwitchField } from "@/components/SwitchField";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetClose,
+  useSheetGuard,
+  SheetBody,
+} from "@/components/ui/sheet";
+import {
+  UploadFields,
+  type UploadFieldErrors,
+} from "@/features/certificates/upload/UploadFields";
+import {
+  emptyUploadValue,
+  p12TooLarge,
+  toUploadBody,
+  type UploadValue,
+} from "@/features/certificates/upload/uploadBody";
+import {
+  isUploadFieldName,
+  uploadErrorOutcome,
+} from "@/features/certificates/upload/uploadErrors";
 
-type Props = { orgId: string; id: string; onOpenChange: (open: boolean) => void };
+type Props = {
+  orgId: string;
+  id: string;
+  onOpenChange: (open: boolean) => void;
+};
 
 /** Task 7: adds a version to an unmanaged certificate — the header's
  * "Upload new version" action. Reuses Task 5's UploadFields (uploadBody's
@@ -25,17 +50,27 @@ export function UploadVersionSheet({ orgId, id, onOpenChange }: Props) {
   // Offered only once the server refuses an older certificate.
   const [olderNote, setOlderNote] = useState<string | null>(null);
   const [allowOlder, setAllowOlder] = useState(false);
-  const dirty = useDirty({ ...value, file: value.file?.name ?? null, allowOlder });
+  const dirty = useDirty({
+    ...value,
+    file: value.file?.name ?? null,
+    allowOlder,
+  });
 
-  const ready = value.format === 'pem' ? value.certificatePem.trim() !== '' : !!value.file && !p12TooLarge(value.file);
+  const ready =
+    value.format === "pem"
+      ? value.certificatePem.trim() !== ""
+      : !!value.file && !p12TooLarge(value.file);
 
   async function submit() {
     setFieldErrors({});
     setFormError(null);
     if (!ready) return;
     try {
-      await upload.mutateAsync({ ...(await toUploadBody(value)), ...(allowOlder ? { allowOlder: true } : {}) });
-      toast.success('New version uploaded');
+      await upload.mutateAsync({
+        ...(await toUploadBody(value)),
+        ...(allowOlder ? { allowOlder: true } : {}),
+      });
+      toast.success("New version uploaded");
       guard.close();
     } catch (e) {
       const outcome = uploadErrorOutcome(e);
@@ -43,11 +78,11 @@ export function UploadVersionSheet({ orgId, id, onOpenChange }: Props) {
       // needing this certificate's key can't take a keyless version — either
       // way the server's own message names the reason, so `conflict` (like
       // any field this sheet doesn't render) falls through to the form alert.
-      if (outcome.kind === 'field' && outcome.field === 'allowOlder') {
+      if (outcome.kind === "field" && outcome.field === "allowOlder") {
         setOlderNote(outcome.message);
         return;
       }
-      if (outcome.kind === 'field' && isUploadFieldName(outcome.field)) {
+      if (outcome.kind === "field" && isUploadFieldName(outcome.field)) {
         setFieldErrors({ [outcome.field]: outcome.message });
         return;
       }
@@ -57,34 +92,53 @@ export function UploadVersionSheet({ orgId, id, onOpenChange }: Props) {
 
   return (
     <Sheet guard={guard} open form dirty={dirty} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-md">
+      <SheetContent side="right" size="sm">
         <SheetHeader className="flex-row items-center gap-1.5">
           <SheetTitle>Upload new version</SheetTitle>
           <HelpTip id="cert.uploadVersion" />
-          <SheetDescription className="sr-only">Add a new version to this certificate</SheetDescription>
+          <SheetDescription className="sr-only">
+            Add a new version to this certificate
+          </SheetDescription>
         </SheetHeader>
-        <div className="grid gap-5 px-4">
-          <UploadFields value={value} onChange={setValue} errors={fieldErrors} disabled={upload.isPending} />
-          {olderNote && (
-            <div className="grid gap-2">
+        <SheetBody>
+          <div className="grid gap-5">
+            <UploadFields
+              value={value}
+              onChange={setValue}
+              errors={fieldErrors}
+              disabled={upload.isPending}
+            />
+            {olderNote && (
+              <div className="grid gap-2">
+                <p role="alert" className="text-sm">
+                  {olderNote}
+                </p>
+                <SwitchField
+                  id="upload-allow-older"
+                  label="Allow an older certificate"
+                  help="cert.allowOlder"
+                  checked={allowOlder}
+                  onCheckedChange={setAllowOlder}
+                  disabled={upload.isPending}
+                />
+              </div>
+            )}
+            {formError && (
               <p role="alert" className="text-sm">
-                {olderNote}
+                {formError}
               </p>
-              <SwitchField id="upload-allow-older" label="Allow an older certificate" help="cert.allowOlder" checked={allowOlder} onCheckedChange={setAllowOlder} disabled={upload.isPending} />
-            </div>
-          )}
-          {formError && (
-            <p role="alert" className="text-sm">
-              {formError}
-            </p>
-          )}
-        </div>
-        <SheetFooter className="flex-row justify-end gap-2">
+            )}
+          </div>
+        </SheetBody>
+        <SheetFooter>
           <SheetClose asChild>
             <Button variant="outline">Cancel</Button>
           </SheetClose>
-          <Button disabled={!ready || upload.isPending} onClick={() => void submit()}>
-            {upload.isPending ? 'Uploading…' : 'Upload'}
+          <Button
+            disabled={!ready || upload.isPending}
+            onClick={() => void submit()}
+          >
+            {upload.isPending ? "Uploading…" : "Upload"}
           </Button>
         </SheetFooter>
       </SheetContent>

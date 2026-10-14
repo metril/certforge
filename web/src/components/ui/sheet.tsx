@@ -223,16 +223,12 @@ const SheetOverlay = React.forwardRef<
 })
 SheetOverlay.displayName = "SheetOverlay"
 
+const SIZE_CLASS = { sm: 'sm:max-w-md', md: 'sm:max-w-lg', lg: 'sm:max-w-2xl', xl: 'sm:max-w-3xl' } as const
+
 const SheetContent = React.forwardRef<
   React.ComponentRef<typeof SheetPrimitive.Content>,
-  React.ComponentProps<typeof SheetPrimitive.Content> & {
-    side?: "top" | "right" | "bottom" | "left"
-    showCloseButton?: boolean
-  }
->(function SheetContent(
-  { className, children, side = "right", showCloseButton = true, onInteractOutside, ...props },
-  ref
-) {
+  React.ComponentProps<typeof SheetPrimitive.Content> & { side?: 'top' | 'right' | 'bottom' | 'left'; showCloseButton?: boolean; size?: 'sm' | 'md' | 'lg' | 'xl' }
+>(function SheetContent({ className, children, side = 'right', size = 'md', showCloseButton = true, onInteractOutside, ...props }, ref) {
   const form = React.useContext(SheetFormContext)
   return (
     <SheetPortal>
@@ -241,16 +237,14 @@ const SheetContent = React.forwardRef<
         ref={ref}
         data-slot="sheet-content"
         className={cn(
-          "fixed z-50 flex flex-col gap-4 bg-raised shadow-lg transition ease-in-out data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:animate-in data-[state=open]:duration-500",
-          side === "right" &&
-            "inset-y-0 right-0 h-full w-3/4 border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm",
-          side === "left" &&
-            "inset-y-0 left-0 h-full w-3/4 border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm",
-          side === "top" &&
-            "inset-x-0 top-0 h-auto border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
-          side === "bottom" &&
-            "inset-x-0 bottom-0 h-auto border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
-          className
+          'fixed z-50 flex flex-col bg-raised shadow-lg transition ease-in-out data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:animate-in data-[state=open]:duration-500',
+          side === 'right' && 'inset-y-0 right-0 h-full w-full overflow-hidden border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right',
+          side === 'left' && 'inset-y-0 left-0 h-full w-full overflow-hidden border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left',
+          (side === 'left' || side === 'right') && SIZE_CLASS[size],
+          (side === 'top' || side === 'bottom') && 'gap-4',
+          side === 'top' && 'inset-x-0 top-0 h-auto border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top',
+          side === 'bottom' && 'inset-x-0 bottom-0 h-auto border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom',
+          className,
         )}
         onInteractOutside={(e) => {
           if (form) e.preventDefault()
@@ -280,35 +274,20 @@ const SheetContent = React.forwardRef<
 })
 SheetContent.displayName = "SheetContent"
 
-const SheetHeader = React.forwardRef<
-  React.ComponentRef<"div">,
-  React.ComponentProps<"div">
->(function SheetHeader({ className, ...props }, ref) {
-  return (
-    <div
-      ref={ref}
-      data-slot="sheet-header"
-      className={cn("flex flex-col gap-1.5 p-4", className)}
-      {...props}
-    />
-  )
+const SheetHeader = React.forwardRef<React.ComponentRef<'div'>, React.ComponentProps<'div'>>(function SheetHeader({ className, ...props }, ref) {
+  return <div ref={ref} data-slot="sheet-header" className={cn('flex shrink-0 flex-col gap-1.5 border-b border-border p-4', className)} {...props} />
 })
-SheetHeader.displayName = "SheetHeader"
+SheetHeader.displayName = 'SheetHeader'
 
-const SheetFooter = React.forwardRef<
-  React.ComponentRef<"div">,
-  React.ComponentProps<"div">
->(function SheetFooter({ className, ...props }, ref) {
-  return (
-    <div
-      ref={ref}
-      data-slot="sheet-footer"
-      className={cn("mt-auto flex flex-col gap-2 p-4", className)}
-      {...props}
-    />
-  )
+const SheetBody = React.forwardRef<React.ComponentRef<'div'>, React.ComponentProps<'div'>>(function SheetBody({ className, ...props }, ref) {
+  return <div ref={ref} data-slot="sheet-body" className={cn('grid min-h-0 flex-1 content-start gap-4 overflow-y-auto px-4 py-4', className)} {...props} />
 })
-SheetFooter.displayName = "SheetFooter"
+SheetBody.displayName = 'SheetBody'
+
+const SheetFooter = React.forwardRef<React.ComponentRef<'div'>, React.ComponentProps<'div'>>(function SheetFooter({ className, ...props }, ref) {
+  return <div ref={ref} data-slot="sheet-footer" className={cn('flex shrink-0 flex-row justify-end gap-2 border-t border-border bg-raised p-4', className)} {...props} />
+})
+SheetFooter.displayName = 'SheetFooter'
 
 const SheetTitle = React.forwardRef<
   React.ComponentRef<typeof SheetPrimitive.Title>,
@@ -340,15 +319,4 @@ const SheetDescription = React.forwardRef<
 })
 SheetDescription.displayName = "SheetDescription"
 
-export {
-  Sheet,
-  DiscardDialog,
-  useSheetGuard,
-  SheetTrigger,
-  SheetClose,
-  SheetContent,
-  SheetHeader,
-  SheetFooter,
-  SheetTitle,
-  SheetDescription,
-}
+export { Sheet, DiscardDialog, useSheetGuard, SheetTrigger, SheetClose, SheetContent, SheetHeader, SheetBody, SheetFooter, SheetTitle, SheetDescription }

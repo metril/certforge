@@ -1,33 +1,46 @@
-import { useMemo, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
-import { Check, TriangleAlert } from 'lucide-react';
-import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
-import { useProbeAdcs } from '@/api/queries/cas';
-import { settingsQuery } from '@/api/queries/settings';
-import { errorMessage } from '@/api/errors';
-import type { CA, CAPreset, ProviderSchema } from '@/api/types';
-import { CaBundleInput } from '@/components/CaBundleInput';
-import { Field } from '@/components/Field';
-import { HelpTip } from '@/components/HelpTip';
-import { ListInput } from '@/components/ListInput';
-import { SecretInput } from '@/components/SecretInput';
-import { SwitchField } from '@/components/SwitchField';
-import { FormSection } from '@/components/FormSection';
-import { Input } from '@/components/ui/input';
-import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
-import type { AdcsTemplateContext } from '@/forms/theme/widgets';
-import { help } from '@/lib/help';
-import { useMe } from '@/lib/org';
-import { caBundleScope, can } from '@/lib/permissions';
-import { cn } from '@/lib/utils';
-import { ADCS_PROBE_BLOCKED, adcsProbeRequest, adcsTemplateReason, type AcmeDraft, type CaDraft } from './caBody';
+import {
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
+} from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+import { Check, TriangleAlert } from "lucide-react";
+import type { ErrorSchema, RJSFSchema } from "@rjsf/utils";
+import { useProbeAdcs } from "@/api/queries/cas";
+import { settingsQuery } from "@/api/queries/settings";
+import { errorMessage } from "@/api/errors";
+import type { CA, CAPreset, ProviderSchema } from "@/api/types";
+import { CaBundleInput } from "@/components/CaBundleInput";
+import { Field } from "@/components/Field";
+import { HelpTip } from "@/components/HelpTip";
+import { ListInput } from "@/components/ListInput";
+import { SecretInput } from "@/components/SecretInput";
+import { SwitchField } from "@/components/SwitchField";
+import { FormSection } from "@/components/FormSection";
+import { Input } from "@/components/ui/input";
+import { SchemaForm, type SchemaFormHandle } from "@/forms/SchemaForm";
+import type { AdcsTemplateContext } from "@/forms/theme/widgets";
+import { help } from "@/lib/help";
+import { useMe } from "@/lib/org";
+import { caBundleScope, can } from "@/lib/permissions";
+import { cn } from "@/lib/utils";
+import {
+  ADCS_PROBE_BLOCKED,
+  adcsProbeRequest,
+  adcsTemplateReason,
+  type AcmeDraft,
+  type CaDraft,
+} from "./caBody";
 
-const CUSTOM = 'custom';
+const CUSTOM = "custom";
 
 const isHttps = (v: string) => {
   try {
-    return new URL(v).protocol === 'https:';
+    return new URL(v).protocol === "https:";
   } catch {
     return false;
   }
@@ -38,13 +51,23 @@ const isHttps = (v: string) => {
 export const hostPort = (v: string) => {
   if (/^https:\/\/[^\s/]+\S*$/i.test(v)) return null; // DNS-over-HTTPS endpoint
   const bad = `${v} is not host or host:port`;
-  if (/^[0-9a-fA-F:.]+$/.test(v) && /[0-9a-fA-F]/.test(v) && !v.includes(":::") && (v.match(/:/g) ?? []).length >= 2) return null;
-  const m = /^\[[0-9a-fA-F:.]+(?:%[A-Za-z0-9_.-]+)?\](?::(\d{1,5}))?$/.exec(v) ?? /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?\.?(?::(\d{1,5}))?$/.exec(v);
+  if (
+    /^[0-9a-fA-F:.]+$/.test(v) &&
+    /[0-9a-fA-F]/.test(v) &&
+    !v.includes(":::") &&
+    (v.match(/:/g) ?? []).length >= 2
+  )
+    return null;
+  const m =
+    /^\[[0-9a-fA-F:.]+(?:%[A-Za-z0-9_.-]+)?\](?::(\d{1,5}))?$/.exec(v) ??
+    /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?\.?(?::(\d{1,5}))?$/.exec(v);
   if (!m) return bad;
-  return m[1] === undefined || (Number(m[1]) >= 1 && Number(m[1]) <= 65535) ? null : bad;
+  return m[1] === undefined || (Number(m[1]) >= 1 && Number(m[1]) <= 65535)
+    ? null
+    : bad;
 };
 
-export type ServerField = 'name' | 'directoryUrl' | 'eab' | null;
+export type ServerField = "name" | "directoryUrl" | "eab" | null;
 
 type Props = {
   orgId: string;
@@ -64,17 +87,67 @@ type Props = {
   nameTouched: boolean;
 };
 
-export function CaKindBody({ orgId, draft, setDraft, ca, presets, signers, submitted, serverError, extraErrors, formRef, nameTouched }: Props) {
-  if (draft.kind === 'acme') {
-    return <AcmeBody orgId={orgId} draft={draft} setDraft={setDraft} ca={ca} presets={presets} submitted={submitted} serverError={serverError} nameTouched={nameTouched} />;
+export function CaKindBody({
+  orgId,
+  draft,
+  setDraft,
+  ca,
+  presets,
+  signers,
+  submitted,
+  serverError,
+  extraErrors,
+  formRef,
+  nameTouched,
+}: Props) {
+  if (draft.kind === "acme") {
+    return (
+      <AcmeBody
+        orgId={orgId}
+        draft={draft}
+        setDraft={setDraft}
+        ca={ca}
+        presets={presets}
+        submitted={submitted}
+        serverError={serverError}
+        nameTouched={nameTouched}
+      />
+    );
   }
-  if (draft.kind === 'localca') {
-    return <LocalCaBody draft={draft} setDraft={setDraft} ca={ca} signers={signers} extraErrors={extraErrors} formRef={formRef} />;
+  if (draft.kind === "localca") {
+    return (
+      <LocalCaBody
+        draft={draft}
+        setDraft={setDraft}
+        ca={ca}
+        signers={signers}
+        extraErrors={extraErrors}
+        formRef={formRef}
+      />
+    );
   }
-  if (draft.kind === 'adcs') {
-    return <AdcsBody orgId={orgId} draft={draft} setDraft={setDraft} ca={ca} signers={signers} extraErrors={extraErrors} formRef={formRef} />;
+  if (draft.kind === "adcs") {
+    return (
+      <AdcsBody
+        orgId={orgId}
+        draft={draft}
+        setDraft={setDraft}
+        ca={ca}
+        signers={signers}
+        extraErrors={extraErrors}
+        formRef={formRef}
+      />
+    );
   }
-  return <VaultPkiBody draft={draft} setDraft={setDraft} signers={signers} extraErrors={extraErrors} formRef={formRef} />;
+  return (
+    <VaultPkiBody
+      draft={draft}
+      setDraft={setDraft}
+      signers={signers}
+      extraErrors={extraErrors}
+      formRef={formRef}
+    />
+  );
 }
 
 function AcmeBody({
@@ -98,22 +171,31 @@ function AcmeBody({
 }) {
   const me = useMe();
   const form = draft.acme;
-  const set = <K extends keyof AcmeDraft>(k: K, v: AcmeDraft[K]) => setDraft((d) => ({ ...d, acme: { ...d.acme, [k]: v } }));
+  const set = <K extends keyof AcmeDraft>(k: K, v: AcmeDraft[K]) =>
+    setDraft((d) => ({ ...d, acme: { ...d.acme, [k]: v } }));
 
   const preset = presets.find((p) => p.preset === form.preset);
   const custom = form.preset === CUSTOM;
   const showEab = custom || !!preset?.requiresEab;
   const errors = {
-    preset: form.preset ? null : 'Choose a preset or Custom',
-    directoryUrl: isHttps(form.directoryUrl) ? null : 'Use an https:// URL',
-    eab: preset?.requiresEab && (!form.eabKid.trim() || !form.eabHmac) ? 'This CA requires external account binding' : null,
+    preset: form.preset ? null : "Choose a preset or Custom",
+    directoryUrl: isHttps(form.directoryUrl) ? null : "Use an https:// URL",
+    eab:
+      preset?.requiresEab && (!form.eabKid.trim() || !form.eabHmac)
+        ? "This CA requires external account binding"
+        : null,
   };
-  const errFor = (key: Exclude<ServerField, null>, clientErr: string | null): string | null =>
+  const errFor = (
+    key: Exclude<ServerField, null>,
+    clientErr: string | null,
+  ): string | null =>
     (submitted ? clientErr : null) ??
     // Fix round 1 (#6, carried from the pre-5B CaSheet): a 422 mapped to the
     // EAB field while its fieldset is hidden would otherwise render nowhere;
     // the generic banner below handles that case.
-    (serverError?.field === key && (key !== 'eab' || showEab) ? serverError.message : null);
+    (serverError?.field === key && (key !== "eab" || showEab)
+      ? serverError.message
+      : null);
 
   function pickPreset(p: CAPreset) {
     // Fix round 2 (carried): re-clicking the already-selected preset card is
@@ -131,13 +213,19 @@ function AcmeBody({
         directoryUrl: p.directoryUrl,
         // Fix round 1 (#1, carried): a previous preset's EAB kid/HMAC must
         // not survive a switch.
-        eabKid: '',
+        eabKid: "",
         eabHmac: undefined,
       },
     }));
   }
 
-  const card = (key: string, title: string, sub: string, eab: boolean, onPick: () => void) => {
+  const card = (
+    key: string,
+    title: string,
+    sub: string,
+    eab: boolean,
+    onPick: () => void,
+  ) => {
     const on = form.preset === key;
     return (
       <button
@@ -145,12 +233,19 @@ function AcmeBody({
         type="button"
         aria-pressed={on}
         onClick={onPick}
-        className={cn('grid gap-0.5 rounded-md border p-3 text-left', on ? 'border-primary bg-primary/8' : 'border-border hover:bg-subtle')}
+        className={cn(
+          "grid gap-0.5 rounded-md border p-3 text-left",
+          on ? "border-primary bg-primary/8" : "border-border hover:bg-subtle",
+        )}
       >
         <span className="flex items-center gap-1.5 text-sm font-semibold">
           {on && <Check className="size-3.5 text-primary" aria-hidden />}
           {title}
-          {eab && <span className="rounded-sm bg-subtle px-1 text-xs font-normal">EAB</span>}
+          {eab && (
+            <span className="rounded-sm bg-subtle px-1 text-xs font-normal">
+              EAB
+            </span>
+          )}
         </span>
         <span className="truncate font-mono text-xs text-ink-muted">{sub}</span>
       </button>
@@ -168,29 +263,49 @@ function AcmeBody({
             // Adaptation (preflight A20, carried): `custom` is one of the 7
             // presets the API returns (directoryUrl: ''), not a card this
             // component adds itself.
-            card(p.preset, p.name, p.preset === CUSTOM ? 'Any ACME directory' : new URL(p.directoryUrl).host, p.requiresEab, () => pickPreset(p)),
+            card(
+              p.preset,
+              p.name,
+              p.preset === CUSTOM
+                ? "Any ACME directory"
+                : new URL(p.directoryUrl).host,
+              p.requiresEab,
+              () => pickPreset(p),
+            ),
           )}
         </div>
-        {submitted && errors.preset && <p className="text-xs">{errors.preset}</p>}
+        {submitted && errors.preset && (
+          <p className="text-xs">{errors.preset}</p>
+        )}
       </fieldset>
       {form.preset && (
         <>
-          <Field id="ca-dir" label="Directory URL" help="ca.directoryUrl" error={errFor('directoryUrl', errors.directoryUrl)}>
+          <Field
+            id="ca-dir"
+            label="Directory URL"
+            help="ca.directoryUrl"
+            error={errFor("directoryUrl", errors.directoryUrl)}
+          >
             <Input
               id="ca-dir"
               className="font-mono text-xs"
               value={form.directoryUrl}
-              onChange={(e) => set('directoryUrl', e.target.value)}
+              onChange={(e) => set("directoryUrl", e.target.value)}
               placeholder="https://ca.example.com/acme/directory"
             />
           </Field>
           {custom && (
-            <Field id="ca-trust" label="Trust bundle" help="ca.importTrustBundle" optional>
+            <Field
+              id="ca-trust"
+              label="Trust bundle"
+              help="ca.importTrustBundle"
+              optional
+            >
               <CaBundleInput
                 id="ca-trust"
                 label="Trust bundle"
                 value={form.trustBundlePem}
-                onChange={(v) => set('trustBundlePem', v)}
+                onChange={(v) => set("trustBundlePem", v)}
                 url={form.directoryUrl}
                 scope={caBundleScope(me, orgId)}
               />
@@ -202,31 +317,68 @@ function AcmeBody({
                 External account binding <HelpTip id="ca.eab" />
               </legend>
               <Field id="ca-eab-kid" label="Key ID" optional={custom}>
-                <Input id="ca-eab-kid" className="font-mono text-xs" value={form.eabKid} onChange={(e) => set('eabKid', e.target.value)} placeholder="kid_3xAmPlE" />
+                <Input
+                  id="ca-eab-kid"
+                  className="font-mono text-xs"
+                  value={form.eabKid}
+                  onChange={(e) => set("eabKid", e.target.value)}
+                  placeholder="kid_3xAmPlE"
+                />
               </Field>
-              <Field id="ca-eab-hmac" label="HMAC key" optional={custom} error={errFor('eab', errors.eab)}>
-                <SecretInput id="ca-eab-hmac" label="HMAC key" stored={!!ca?.hasEab} value={form.eabHmac} onChange={(v) => set('eabHmac', v)} />
+              <Field
+                id="ca-eab-hmac"
+                label="HMAC key"
+                optional={custom}
+                error={errFor("eab", errors.eab)}
+              >
+                <SecretInput
+                  id="ca-eab-hmac"
+                  label="HMAC key"
+                  stored={!!ca?.hasEab}
+                  value={form.eabHmac}
+                  onChange={(v) => set("eabHmac", v)}
+                />
               </Field>
             </fieldset>
           )}
-          <FormSection title="Advanced" collapsible count={form.resolvers.length > 0 ? 1 : 0} forceOpen={submitted && form.resolvers.some((r) => !!hostPort(r))}>
-            <Field id="ca-resolvers" label="Resolvers" help="ca.resolvers" optional>
-              <ListInput id="ca-resolvers" value={form.resolvers} onChange={(v) => set('resolvers', v)} placeholder="1.1.1.1:53" validate={hostPort} />
+          <FormSection
+            title="Advanced"
+            collapsible
+            count={form.resolvers.length > 0 ? 1 : 0}
+            forceOpen={submitted && form.resolvers.some((r) => !!hostPort(r))}
+          >
+            <Field
+              id="ca-resolvers"
+              label="Resolvers"
+              help="ca.resolvers"
+              optional
+            >
+              <ListInput
+                id="ca-resolvers"
+                value={form.resolvers}
+                onChange={(v) => set("resolvers", v)}
+                placeholder="1.1.1.1:53"
+                validate={hostPort}
+              />
             </Field>
           </FormSection>
         </>
       )}
-      {serverError && (!serverError.field || (serverError.field === 'eab' && !showEab)) && (
-        <p role="alert" className="text-xs">
-          {serverError.message}
-        </p>
-      )}
+      {serverError &&
+        (!serverError.field || (serverError.field === "eab" && !showEab)) && (
+          <p role="alert" className="text-xs">
+            {serverError.message}
+          </p>
+        )}
     </>
   );
 }
 
 function schemaOf(signers: ProviderSchema[], code: string): RJSFSchema {
-  return (signers.find((s) => s.code === code)?.schema ?? { type: 'object', properties: {} }) as RJSFSchema;
+  return (signers.find((s) => s.code === code)?.schema ?? {
+    type: "object",
+    properties: {},
+  }) as RJSFSchema;
 }
 
 function LocalCaBody({
@@ -246,7 +398,7 @@ function LocalCaBody({
 }) {
   const editing = !!ca;
   const { config, importing } = draft.localca;
-  const baseSchema = useMemo(() => schemaOf(signers, 'localca'), [signers]);
+  const baseSchema = useMemo(() => schemaOf(signers, "localca"), [signers]);
   // Importing: `subject`/`keyType`/the validity years come from the
   // imported certificate itself, never typed by the operator, so they're
   // dropped from the schema entirely rather than left present-but-hidden —
@@ -259,32 +411,42 @@ function LocalCaBody({
   // required (5a-facts.md) — that requirement is for the generate path.
   const schema = useMemo(() => {
     if (editing || !importing) return baseSchema;
-    const drop = new Set(['subject', 'keyType', 'rootValidityYears', 'issuingValidityYears']);
-    const properties = Object.fromEntries(Object.entries(baseSchema.properties ?? {}).filter(([k]) => !drop.has(k)));
+    const drop = new Set([
+      "subject",
+      "keyType",
+      "rootValidityYears",
+      "issuingValidityYears",
+    ]);
+    const properties = Object.fromEntries(
+      Object.entries(baseSchema.properties ?? {}).filter(([k]) => !drop.has(k)),
+    );
     return { ...baseSchema, required: [], properties };
   }, [baseSchema, importing, editing]);
   const uiSchemaOverrides = useMemo(() => {
     if (editing) {
       return {
-        subject: { 'ui:readonly': true },
-        keyType: { 'ui:readonly': true },
-        rootValidityYears: { 'ui:readonly': true },
-        issuingValidityYears: { 'ui:readonly': true },
-        importPem: { 'ui:widget': 'hidden' },
-        importKeyPem: { 'ui:widget': 'hidden' },
+        subject: { "ui:readonly": true },
+        keyType: { "ui:readonly": true },
+        rootValidityYears: { "ui:readonly": true },
+        issuingValidityYears: { "ui:readonly": true },
+        importPem: { "ui:widget": "hidden" },
+        importKeyPem: { "ui:widget": "hidden" },
       };
     }
     if (importing) {
       return {
-        subject: { 'ui:widget': 'hidden' },
-        keyType: { 'ui:widget': 'hidden' },
-        rootValidityYears: { 'ui:widget': 'hidden' },
-        issuingValidityYears: { 'ui:widget': 'hidden' },
-        importPem: { 'ui:widget': 'textarea' },
-        importKeyPem: { 'ui:widget': 'textarea' },
+        subject: { "ui:widget": "hidden" },
+        keyType: { "ui:widget": "hidden" },
+        rootValidityYears: { "ui:widget": "hidden" },
+        issuingValidityYears: { "ui:widget": "hidden" },
+        importPem: { "ui:widget": "textarea" },
+        importKeyPem: { "ui:widget": "textarea" },
       };
     }
-    return { importPem: { 'ui:widget': 'hidden' }, importKeyPem: { 'ui:widget': 'hidden' } };
+    return {
+      importPem: { "ui:widget": "hidden" },
+      importKeyPem: { "ui:widget": "hidden" },
+    };
   }, [editing, importing]);
 
   return (
@@ -303,7 +465,15 @@ function LocalCaBody({
               // entirely when importing, `additionalProperties: false`)
               // rejects outright as "False boolean schema" on validate.
               const c = { ...(d.localca.config as Record<string, unknown>) };
-              for (const k of v ? ['subject', 'keyType', 'rootValidityYears', 'issuingValidityYears'] : ['importPem', 'importKeyPem']) delete c[k];
+              for (const k of v
+                ? [
+                    "subject",
+                    "keyType",
+                    "rootValidityYears",
+                    "issuingValidityYears",
+                  ]
+                : ["importPem", "importKeyPem"])
+                delete c[k];
               return { ...d, localca: { config: c, importing: v } };
             })
           }
@@ -313,16 +483,19 @@ function LocalCaBody({
         ref={formRef}
         schema={schema}
         value={config}
-        onChange={(v) => setDraft((d) => ({ ...d, localca: { ...d.localca, config: v } }))}
+        onChange={(v) =>
+          setDraft((d) => ({ ...d, localca: { ...d.localca, config: v } }))
+        }
         storedSecrets={ca?.storedSecrets}
         extraErrors={extraErrors}
         uiSchemaOverrides={uiSchemaOverrides}
+        columns={2}
       />
     </>
   );
 }
 
-const ADCS_UI = { template: { 'ui:widget': 'adcsTemplate' } };
+const ADCS_UI = { template: { "ui:widget": "adcsTemplate" } };
 
 function AdcsBody({
   orgId,
@@ -341,12 +514,13 @@ function AdcsBody({
   extraErrors?: ErrorSchema;
   formRef: RefObject<SchemaFormHandle | null>;
 }) {
-  const schema = useMemo(() => schemaOf(signers, 'adcs'), [signers]);
+  const schema = useMemo(() => schemaOf(signers, "adcs"), [signers]);
   const me = useMe();
-  const canWrite = can(me, 'cas:write', orgId);
+  const canWrite = can(me, "cas:write", orgId);
   const probe = useProbeAdcs(orgId);
   // Kept across a failed reload, so a transient error doesn't drop the list.
-  const [templates, setTemplates] = useState<AdcsTemplateContext['templates']>(undefined);
+  const [templates, setTemplates] =
+    useState<AdcsTemplateContext["templates"]>(undefined);
   const request = adcsProbeRequest(draft.adcs.config, ca?.id);
   // RJSF's shouldComponentUpdate deep-compares props and treats functions as
   // equal, so a widget keeps an older onLoad: read the latest request here.
@@ -356,30 +530,36 @@ function AdcsBody({
   const error = probe.isError
     ? errorMessage(probe.error)
     : data && !data.ok
-      ? data.error || 'Could not read the policy.'
+      ? data.error || "Could not read the policy."
       : data?.ok && data.templates.length === 0
-        ? 'The policy publishes no templates.'
+        ? "The policy publishes no templates."
         : undefined;
-  const loadBlocked = !canWrite ? 'Needs the cas:write permission' : request ? undefined : ADCS_PROBE_BLOCKED;
+  const loadBlocked = !canWrite
+    ? "Needs the cas:write permission"
+    : request
+      ? undefined
+      : ADCS_PROBE_BLOCKED;
   // Rebuilt every render (probe state changes with it); RJSF re-renders the
   // form on any parent render anyway.
   const formContext = {
-      caBundle: caBundleScope(me, orgId),
-      adcsTemplates: {
-        templates,
-        reasonOf: adcsTemplateReason,
-        templateOf: (name: string) => templates?.find((t) => t.name === name),
-        loading: probe.isPending,
-        error,
-        loadBlocked,
-        loadTip: help['ca.adcsLoad'].text,
-        onLoad: () => {
-          if (!latest.current) return;
-          // The template is left out: Load lists templates, Test judges one.
-          const body = { ...latest.current, template: undefined };
-          probe.mutate(() => body, { onSuccess: (r) => r.ok && setTemplates(r.templates) });
-        },
-      } satisfies AdcsTemplateContext,
+    caBundle: caBundleScope(me, orgId),
+    adcsTemplates: {
+      templates,
+      reasonOf: adcsTemplateReason,
+      templateOf: (name: string) => templates?.find((t) => t.name === name),
+      loading: probe.isPending,
+      error,
+      loadBlocked,
+      loadTip: help["ca.adcsLoad"].text,
+      onLoad: () => {
+        if (!latest.current) return;
+        // The template is left out: Load lists templates, Test judges one.
+        const body = { ...latest.current, template: undefined };
+        probe.mutate(() => body, {
+          onSuccess: (r) => r.ok && setTemplates(r.templates),
+        });
+      },
+    } satisfies AdcsTemplateContext,
   };
   return (
     <SchemaForm
@@ -391,6 +571,7 @@ function AdcsBody({
       extraErrors={extraErrors}
       uiSchemaOverrides={ADCS_UI}
       formContext={formContext}
+      columns={2}
     />
   );
 }
@@ -409,10 +590,14 @@ function VaultPkiBody({
   formRef: RefObject<SchemaFormHandle | null>;
 }) {
   const me = useMe();
-  const canReadSettings = can(me, 'settings:read', null);
-  const vaultQ = useQuery({ ...settingsQuery('vault'), enabled: canReadSettings });
-  const schema = useMemo(() => schemaOf(signers, 'vaultpki'), [signers]);
-  const notConfigured = canReadSettings && vaultQ.data !== undefined && !vaultQ.data.value?.address;
+  const canReadSettings = can(me, "settings:read", null);
+  const vaultQ = useQuery({
+    ...settingsQuery("vault"),
+    enabled: canReadSettings,
+  });
+  const schema = useMemo(() => schemaOf(signers, "vaultpki"), [signers]);
+  const notConfigured =
+    canReadSettings && vaultQ.data !== undefined && !vaultQ.data.value?.address;
 
   return (
     <>
@@ -422,12 +607,17 @@ function VaultPkiBody({
         value={draft.vaultpki.config}
         onChange={(v) => setDraft((d) => ({ ...d, vaultpki: { config: v } }))}
         extraErrors={extraErrors}
+        columns={2}
       />
       {notConfigured && (
         <p className="flex items-center gap-1.5 text-xs text-ink-muted">
           <TriangleAlert className="size-3.5 text-expiring" aria-hidden />
-          Vault is not configured.{' '}
-          <Link to="/settings/$section" params={{ section: 'integrations' }} className="underline underline-offset-2">
+          Vault is not configured.{" "}
+          <Link
+            to="/settings/$section"
+            params={{ section: "integrations" }}
+            className="underline underline-offset-2"
+          >
             Settings → Integrations
           </Link>
         </p>

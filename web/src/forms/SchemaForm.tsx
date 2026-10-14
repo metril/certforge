@@ -1,16 +1,16 @@
-import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react';
+import { forwardRef, useImperativeHandle, useMemo, useRef } from "react";
 // Imported from these specific subpaths (rather than the `@rjsf/core`
 // barrel) because @rjsf/core's own index.js unconditionally imports
 // getTestRegistry.js, which imports @rjsf/validator-ajv8 — a package this
 // app no longer installs (see ./validator.ts). Neither withTheme.js nor
 // components/Form.js reference that module, so this avoids the dependency
 // without patching @rjsf/core itself.
-import type Form from '@rjsf/core/lib/components/Form.js';
-import withTheme from '@rjsf/core/lib/withTheme.js';
-import type { ErrorSchema, RJSFSchema, UiSchema } from '@rjsf/utils';
-import { shadcnTheme } from './theme';
-import { buildUiSchema, serverPathKeys } from './uiSchema';
-import { validator } from './validator';
+import type Form from "@rjsf/core/lib/components/Form.js";
+import withTheme from "@rjsf/core/lib/withTheme.js";
+import type { ErrorSchema, RJSFSchema, UiSchema } from "@rjsf/utils";
+import { shadcnTheme } from "./theme";
+import { buildUiSchema, serverPathKeys } from "./uiSchema";
+import { validator } from "./validator";
 
 const ThemedForm = withTheme(shadcnTheme);
 
@@ -51,67 +51,102 @@ type Props = {
   /** Extra formContext entries for custom widgets (e.g. the AD CS template
    * picker's loaded templates and Load action). */
   formContext?: Record<string, unknown>;
+  /** Two columns from `sm` up (xl sheets); wide fields span both. */
+  columns?: 1 | 2;
 };
 
-export const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm({ schema, value, onChange, storedSecrets, readonly = false, extraErrors, uiSchemaOverrides, onRevealSecret, revealDisabledReason, formContext: extraContext }, ref) {
-  const formRef = useRef<Form>(null);
-  const uiSchema = useMemo(() => {
-    const base = buildUiSchema(schema, { storedSecrets });
-    if (!uiSchemaOverrides) return base;
-    const merged: UiSchema = { ...base };
-    for (const [key, override] of Object.entries(uiSchemaOverrides)) {
-      // A top-level 'ui:order' (an array) or any other non-object override
-      // must pass through as-is: spreading an array into an object (the
-      // old unconditional object-merge below) turns it into {0: ..., 1:
-      // ...}, which RJSF's ui:order does not understand.
-      merged[key] =
-        Array.isArray(override) || typeof override !== 'object'
-          ? override
-          : { ...(typeof base[key] === 'object' ? base[key] : {}), ...override };
-    }
-    return merged;
-  }, [schema, storedSecrets, uiSchemaOverrides]);
-  const serverPath = useMemo(() => serverPathKeys(schema), [schema]);
-  // formData: the live value, for a widget that reads a sibling field (the
-  // CA bundle's Fetch prefills its server from the form's URL field).
-  const formContext = useMemo(() => ({ ...extraContext, onRevealSecret, revealDisabledReason, formData: value }), [extraContext, onRevealSecret, revealDisabledReason, value]);
-  useImperativeHandle(ref, () => ({ validate: () => formRef.current?.validateForm() ?? false }), []);
-  return (
-    <ThemedForm
-      ref={formRef}
-      schema={schema}
-      uiSchema={uiSchema}
-      formData={value}
-      validator={validator}
-      readonly={readonly}
-      formContext={formContext}
-      extraErrors={extraErrors}
-      showErrorList={false}
-      noHtml5Validate
-      // C1: every caller (CredentialSheet, SchemaSection) either wraps this
-      // in its own <form> or drives saving from a plain button's onClick,
-      // never from this form's native submit; rendering RJSF's own <form>
-      // tag too produces an invalid nested <form>-in-<form> (React warns via
-      // validateDOMNesting) in the CredentialSheet case. `tagName="div"`
-      // keeps every field's markup identical while dropping the extra tag.
-      tagName="div"
-      // C1: validateForm() (called from the `validate` imperative handle
-      // above) runs the same error path RJSF's onSubmit uses; with no
-      // onError, RJSF's default logs "Form validation failed" via
-      // console.error on every expected, user-visible validation failure.
-      // The field-level errors already render inline (FieldTemplate reads
-      // the form's own error state), so there's nothing more to do here.
-      onError={() => {}}
-      onChange={(e) => {
-        const data = { ...((e.formData ?? {}) as Record<string, unknown>) };
-        // Fix round 1: a serverPath field is server-managed (preflight A10);
-        // the API 422s if the client sends one at all. The widget is
-        // hidden, so nothing here ever sets it, but an older credential's
-        // `config` can still carry a stale value for it, so it's stripped
-        // on every change rather than trusting every caller to omit it.
-        for (const k of serverPath) delete data[k];
-        onChange(data);
-      }}
-    />
-  );
-});
+export const SchemaForm = forwardRef<SchemaFormHandle, Props>(
+  function SchemaForm(
+    {
+      schema,
+      value,
+      onChange,
+      storedSecrets,
+      readonly = false,
+      extraErrors,
+      uiSchemaOverrides,
+      onRevealSecret,
+      revealDisabledReason,
+      formContext: extraContext,
+      columns = 1,
+    },
+    ref,
+  ) {
+    const formRef = useRef<Form>(null);
+    const uiSchema = useMemo(() => {
+      const base = buildUiSchema(schema, { storedSecrets });
+      if (!uiSchemaOverrides) return base;
+      const merged: UiSchema = { ...base };
+      for (const [key, override] of Object.entries(uiSchemaOverrides)) {
+        // A top-level 'ui:order' (an array) or any other non-object override
+        // must pass through as-is: spreading an array into an object (the
+        // old unconditional object-merge below) turns it into {0: ..., 1:
+        // ...}, which RJSF's ui:order does not understand.
+        merged[key] =
+          Array.isArray(override) || typeof override !== "object"
+            ? override
+            : {
+                ...(typeof base[key] === "object" ? base[key] : {}),
+                ...override,
+              };
+      }
+      return merged;
+    }, [schema, storedSecrets, uiSchemaOverrides]);
+    const serverPath = useMemo(() => serverPathKeys(schema), [schema]);
+    // formData: the live value, for a widget that reads a sibling field (the
+    // CA bundle's Fetch prefills its server from the form's URL field).
+    const formContext = useMemo(
+      () => ({
+        ...extraContext,
+        onRevealSecret,
+        revealDisabledReason,
+        formData: value,
+        columns,
+      }),
+      [extraContext, onRevealSecret, revealDisabledReason, value, columns],
+    );
+    useImperativeHandle(
+      ref,
+      () => ({ validate: () => formRef.current?.validateForm() ?? false }),
+      [],
+    );
+    return (
+      <ThemedForm
+        ref={formRef}
+        schema={schema}
+        uiSchema={uiSchema}
+        formData={value}
+        validator={validator}
+        readonly={readonly}
+        formContext={formContext}
+        extraErrors={extraErrors}
+        showErrorList={false}
+        noHtml5Validate
+        // C1: every caller (CredentialSheet, SchemaSection) either wraps this
+        // in its own <form> or drives saving from a plain button's onClick,
+        // never from this form's native submit; rendering RJSF's own <form>
+        // tag too produces an invalid nested <form>-in-<form> (React warns via
+        // validateDOMNesting) in the CredentialSheet case. `tagName="div"`
+        // keeps every field's markup identical while dropping the extra tag.
+        tagName="div"
+        // C1: validateForm() (called from the `validate` imperative handle
+        // above) runs the same error path RJSF's onSubmit uses; with no
+        // onError, RJSF's default logs "Form validation failed" via
+        // console.error on every expected, user-visible validation failure.
+        // The field-level errors already render inline (FieldTemplate reads
+        // the form's own error state), so there's nothing more to do here.
+        onError={() => {}}
+        onChange={(e) => {
+          const data = { ...((e.formData ?? {}) as Record<string, unknown>) };
+          // Fix round 1: a serverPath field is server-managed (preflight A10);
+          // the API 422s if the client sends one at all. The widget is
+          // hidden, so nothing here ever sets it, but an older credential's
+          // `config` can still carry a stale value for it, so it's stripped
+          // on every change rather than trusting every caller to omit it.
+          for (const k of serverPath) delete data[k];
+          onChange(data);
+        }}
+      />
+    );
+  },
+);

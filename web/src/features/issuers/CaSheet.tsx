@@ -1,26 +1,42 @@
-import { useRef, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
-import { presetsQuery, saveCa } from '@/api/queries/cas';
-import { metaSchemasQuery } from '@/api/queries/dns';
-import { ApiError, errorMessage } from '@/api/errors';
-import type { CA, CaType } from '@/api/types';
-import { Field } from '@/components/Field';
-import { HelpTip } from '@/components/HelpTip';
-import { PermissionTip } from '@/components/PermissionTip';
-import { SegmentedControl } from '@/components/SegmentedControl';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
-import type { SchemaFormHandle } from '@/forms/SchemaForm';
-import { KIND_FULL_LABEL } from '@/lib/caKinds';
-import { help } from '@/lib/help';
-import { settledConfig } from '@/lib/secretForm';
-import { useMe } from '@/lib/org';
-import { can } from '@/lib/permissions';
-import { AdcsTestButton, AdcsTestDialog } from './AdcsTestDialog';
-import { adcsProbeRequest, initialDraft, toCaInput, type CaDraft } from './caBody';
-import { CaKindBody, type ServerField } from './CaKindBody';
+import { FormSection } from "@/components/FormSection";
+import { useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ErrorSchema, RJSFSchema } from "@rjsf/utils";
+import { presetsQuery, saveCa } from "@/api/queries/cas";
+import { metaSchemasQuery } from "@/api/queries/dns";
+import { ApiError, errorMessage } from "@/api/errors";
+import type { CA, CaType } from "@/api/types";
+import { Field } from "@/components/Field";
+import { HelpTip } from "@/components/HelpTip";
+import { PermissionTip } from "@/components/PermissionTip";
+import { SegmentedControl } from "@/components/SegmentedControl";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetClose,
+  useSheetGuard,
+  SheetBody,
+} from "@/components/ui/sheet";
+import type { SchemaFormHandle } from "@/forms/SchemaForm";
+import { KIND_FULL_LABEL } from "@/lib/caKinds";
+import { help } from "@/lib/help";
+import { settledConfig } from "@/lib/secretForm";
+import { useMe } from "@/lib/org";
+import { can } from "@/lib/permissions";
+import { AdcsTestButton, AdcsTestDialog } from "./AdcsTestDialog";
+import {
+  adcsProbeRequest,
+  initialDraft,
+  toCaInput,
+  type CaDraft,
+} from "./caBody";
+import { CaKindBody, type ServerField } from "./CaKindBody";
 
 // Adaptation: the Problem schema has no structured field name, only a prose
 // `detail`. This best-effort match places a 422's detail next to the field
@@ -28,10 +44,13 @@ import { CaKindBody, type ServerField } from './CaKindBody';
 // acme-only — private-kind 422s are mapped by `configFieldError` below.
 export function fieldFromDetail(detail: string): ServerField {
   const d = detail.toLowerCase();
-  if (d.includes('directory')) return 'directoryUrl';
-  if (d.includes('eab') || d.includes('external account')) return 'eab';
+  if (d.includes("directory")) return "directoryUrl";
+  if (d.includes("eab") || d.includes("external account")) return "eab";
   // Whole word, and not a qualified name (hostname, DNS name, ...).
-  if (/(?<!\b(?:dns|host|common|server|domain|subject)\s)(?<![\w-])name\b/.test(d)) return 'name';
+  if (
+    /(?<!\b(?:dns|host|common|server|domain|subject)\s)(?<![\w-])name\b/.test(d)
+  )
+    return "name";
   return null;
 }
 
@@ -40,76 +59,116 @@ export function fieldFromDetail(detail: string): ServerField {
 // nested ErrorSchema SchemaForm's `extraErrors` expects, relative to
 // `config` itself (SchemaForm's own schema root). Returns null when the
 // title doesn't name a config field, so the caller falls back to a banner.
-function configFieldError(title: string | undefined, message: string): ErrorSchema | null {
-  if (!title?.startsWith('Invalid config.')) return null;
-  const path = title.slice('Invalid config.'.length).split('.');
-  return path.reduceRight<ErrorSchema>((acc, key) => ({ [key]: acc }) as ErrorSchema, { __errors: [message] } as unknown as ErrorSchema);
+function configFieldError(
+  title: string | undefined,
+  message: string,
+): ErrorSchema | null {
+  if (!title?.startsWith("Invalid config.")) return null;
+  const path = title.slice("Invalid config.".length).split(".");
+  return path.reduceRight<ErrorSchema>(
+    (acc, key) => ({ [key]: acc }) as ErrorSchema,
+    { __errors: [message] } as unknown as ErrorSchema,
+  );
 }
 
-const KIND_OPTIONS: CaType[] = ['acme', 'localca', 'vaultpki', 'adcs'];
+const KIND_OPTIONS: CaType[] = ["acme", "localca", "vaultpki", "adcs"];
 
-type Props = { orgId: string; open: boolean; ca?: CA; initialKind?: CaType; onOpenChange: (open: boolean) => void };
+type Props = {
+  orgId: string;
+  open: boolean;
+  ca?: CA;
+  initialKind?: CaType;
+  onOpenChange: (open: boolean) => void;
+};
 
-export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }: Props) {
+export function CaSheet({
+  orgId,
+  open,
+  ca,
+  initialKind = "acme",
+  onOpenChange,
+}: Props) {
   const guard = useSheetGuard(onOpenChange);
   const qc = useQueryClient();
   const me = useMe();
   // cas:write is global-only (internal/authz/authz.go): a control the
   // caller cannot use is disabled behind PermissionTip, never hidden.
-  const canWrite = can(me, 'cas:write', orgId);
+  const canWrite = can(me, "cas:write", orgId);
   const { data: presets = [] } = useQuery(presetsQuery);
   const { data: meta, isPending: metaPending } = useQuery(metaSchemasQuery);
   const signers = meta?.signers ?? [];
   const formRef = useRef<SchemaFormHandle>(null);
-  const [draft, setDraft] = useState<CaDraft>(() => initialDraft(ca, initialKind));
+  const [draft, setDraft] = useState<CaDraft>(() =>
+    initialDraft(ca, initialKind),
+  );
   // Fix round 1 (#1, carried from the pre-5B CaSheet): an existing CA's name
   // was typed by someone, so an acme preset pick shouldn't clobber it.
   const [nameTouched, setNameTouched] = useState(!!ca);
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [serverError, setServerError] = useState<{ field: ServerField; message: string } | null>(null);
-  const [configError, setConfigError] = useState<ErrorSchema | undefined>(undefined);
+  const [serverError, setServerError] = useState<{
+    field: ServerField;
+    message: string;
+  } | null>(null);
+  const [configError, setConfigError] = useState<ErrorSchema | undefined>(
+    undefined,
+  );
   const [bannerError, setBannerError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
-  const adcsRequest = draft.kind === 'adcs' ? adcsProbeRequest(draft.adcs.config, ca?.id) : null;
+  const adcsRequest =
+    draft.kind === "adcs" ? adcsProbeRequest(draft.adcs.config, ca?.id) : null;
   // rjsf fires onChange on mount once defaults fill, so the kinds' config is
   // compared in its settled form (as TargetSheet does) and the baseline waits
   // for the signer schemas to arrive.
-  const settleKind = (kind: 'localca' | 'vaultpki' | 'adcs', config: Record<string, unknown>) => {
-    const schema = signers.find((x) => x.code === kind)?.schema as RJSFSchema | undefined;
-    return schema ? settledConfig(schema, config, ca?.storedSecrets ?? []) : config;
+  const settleKind = (
+    kind: "localca" | "vaultpki" | "adcs",
+    config: Record<string, unknown>,
+  ) => {
+    const schema = signers.find((x) => x.code === kind)?.schema as
+      RJSFSchema | undefined;
+    return schema
+      ? settledConfig(schema, config, ca?.storedSecrets ?? [])
+      : config;
   };
   const settled = JSON.stringify({
     ...draft,
     // An importing draft's schema drops fields; the switch itself is already an edit.
-    localca: { ...draft.localca, config: draft.localca.importing ? draft.localca.config : settleKind('localca', draft.localca.config) },
-    vaultpki: { config: settleKind('vaultpki', draft.vaultpki.config) },
-    adcs: { config: settleKind('adcs', draft.adcs.config) },
+    localca: {
+      ...draft.localca,
+      config: draft.localca.importing
+        ? draft.localca.config
+        : settleKind("localca", draft.localca.config),
+    },
+    vaultpki: { config: settleKind("vaultpki", draft.vaultpki.config) },
+    adcs: { config: settleKind("adcs", draft.adcs.config) },
   });
   const baseline = useRef<string | null>(null);
   if (baseline.current === null && !metaPending) baseline.current = settled;
   const dirty = baseline.current !== null && settled !== baseline.current;
 
   const preset = presets.find((p) => p.preset === draft.acme.preset);
-  const nameOk = draft.name.trim() !== '';
+  const nameOk = draft.name.trim() !== "";
   const acmeValid =
     !!draft.acme.preset &&
     nameOk &&
     (() => {
       try {
-        return new URL(draft.acme.directoryUrl).protocol === 'https:';
+        return new URL(draft.acme.directoryUrl).protocol === "https:";
       } catch {
         return false;
       }
     })() &&
-    !(preset?.requiresEab && (!draft.acme.eabKid.trim() || !draft.acme.eabHmac));
+    !(
+      preset?.requiresEab &&
+      (!draft.acme.eabKid.trim() || !draft.acme.eabHmac)
+    );
 
   async function submit() {
     setSubmitted(true);
     setServerError(null);
     setConfigError(undefined);
     setBannerError(null);
-    if (draft.kind === 'acme') {
+    if (draft.kind === "acme") {
       if (!acmeValid) return;
     } else {
       const formOk = formRef.current?.validate() ?? true;
@@ -123,11 +182,17 @@ export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }:
       // Fix round 2 (carried): a plain network failure (offline, timeout —
       // not an ApiError) must still surface, not just stop the button
       // spinning.
-      if (draft.kind === 'acme') {
-        const field = e instanceof ApiError ? fieldFromDetail(e.problem.detail ?? '') : null;
+      if (draft.kind === "acme") {
+        const field =
+          e instanceof ApiError
+            ? fieldFromDetail(e.problem.detail ?? "")
+            : null;
         setServerError({ field, message: errorMessage(e) });
       } else {
-        const err = e instanceof ApiError ? configFieldError(e.problem.title, errorMessage(e)) : null;
+        const err =
+          e instanceof ApiError
+            ? configFieldError(e.problem.title, errorMessage(e))
+            : null;
         if (err) setConfigError(err);
         else setBannerError(errorMessage(e));
       }
@@ -137,75 +202,112 @@ export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }:
   }
 
   return (
-    <Sheet guard={guard} open={open} form dirty={dirty} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
+    <Sheet
+      guard={guard}
+      open={open}
+      form
+      dirty={dirty}
+      onOpenChange={onOpenChange}
+    >
+      <SheetContent side="right" size="xl">
         <SheetHeader>
-          <SheetTitle>{ca ? `Edit ${ca.name}` : 'Add certificate authority'}</SheetTitle>
-          <SheetDescription className="sr-only">Certificate authority settings</SheetDescription>
+          <SheetTitle>
+            {ca ? `Edit ${ca.name}` : "Add certificate authority"}
+          </SheetTitle>
+          <SheetDescription className="sr-only">
+            Certificate authority settings
+          </SheetDescription>
         </SheetHeader>
         <form
-          className="grid gap-5 px-4"
+          className="flex min-h-0 flex-1 flex-col"
           onSubmit={(e) => {
             e.preventDefault();
             void submit();
           }}
         >
-          <Field id="ca-type" label="Type" help="ca.type">
-            <span className="inline-flex items-center gap-1.5">
-              <SegmentedControl<CaType>
+          <SheetBody>
+            <FormSection title="General" columns={2}>
+              <Field
                 id="ca-type"
-                aria-label="Type"
-                value={draft.kind}
-                onChange={(kind) => setDraft((d) => ({ ...d, kind }))}
-                options={KIND_OPTIONS.map((k) => ({
-                  value: k,
-                  label: KIND_FULL_LABEL[k],
-                  disabled: !!ca,
-                  hint: ca ? help['ca.typeLocked'].text : undefined,
-                }))}
+                label="Type"
+                help="ca.type"
+                className="sm:col-span-2"
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <SegmentedControl<CaType>
+                    id="ca-type"
+                    aria-label="Type"
+                    value={draft.kind}
+                    onChange={(kind) => setDraft((d) => ({ ...d, kind }))}
+                    options={KIND_OPTIONS.map((k) => ({
+                      value: k,
+                      label: KIND_FULL_LABEL[k],
+                      disabled: !!ca,
+                      hint: ca ? help["ca.typeLocked"].text : undefined,
+                    }))}
+                  />
+                  {draft.kind === "vaultpki" && <HelpTip id="ca.vaultPki" />}
+                  {draft.kind === "adcs" && <HelpTip id="ca.adcs" />}
+                </span>
+              </Field>
+              <Field
+                id="ca-name"
+                label="Name"
+                error={
+                  submitted && !nameOk
+                    ? "Required"
+                    : serverError?.field === "name"
+                      ? serverError.message
+                      : null
+                }
+              >
+                <Input
+                  id="ca-name"
+                  value={draft.name}
+                  onChange={(e) => {
+                    setNameTouched(true);
+                    setDraft((d) => ({ ...d, name: e.target.value }));
+                  }}
+                  placeholder="Let's Encrypt"
+                />
+              </Field>
+            </FormSection>
+            <FormSection title="Settings">
+              <CaKindBody
+                orgId={orgId}
+                draft={draft}
+                setDraft={setDraft}
+                ca={ca}
+                presets={presets}
+                signers={signers}
+                submitted={submitted}
+                serverError={serverError}
+                extraErrors={configError}
+                formRef={formRef}
+                nameTouched={nameTouched}
               />
-              {draft.kind === 'vaultpki' && <HelpTip id="ca.vaultPki" />}
-              {draft.kind === 'adcs' && <HelpTip id="ca.adcs" />}
-            </span>
-          </Field>
-          <Field id="ca-name" label="Name" error={submitted && !nameOk ? 'Required' : serverError?.field === 'name' ? serverError.message : null}>
-            <Input
-              id="ca-name"
-              value={draft.name}
-              onChange={(e) => {
-                setNameTouched(true);
-                setDraft((d) => ({ ...d, name: e.target.value }));
-              }}
-              placeholder="Let's Encrypt"
-            />
-          </Field>
-          <CaKindBody
-            orgId={orgId}
-            draft={draft}
-            setDraft={setDraft}
-            ca={ca}
-            presets={presets}
-            signers={signers}
-            submitted={submitted}
-            serverError={serverError}
-            extraErrors={configError}
-            formRef={formRef}
-            nameTouched={nameTouched}
-          />
-          {bannerError && (
-            <p role="alert" className="text-xs">
-              {bannerError}
-            </p>
-          )}
-          <SheetFooter className="flex-row justify-end gap-2 px-0">
-            {draft.kind === 'adcs' && (
+            </FormSection>
+            {bannerError && (
+              <p role="alert" className="text-xs">
+                {bannerError}
+              </p>
+            )}
+          </SheetBody>
+          <SheetFooter>
+            {draft.kind === "adcs" && (
               <span className="mr-auto inline-flex items-center gap-1.5">
-                <AdcsTestButton canWrite={canWrite} request={adcsRequest} onClick={() => setTesting(true)} />
+                <AdcsTestButton
+                  canWrite={canWrite}
+                  request={adcsRequest}
+                  onClick={() => setTesting(true)}
+                />
                 <HelpTip id="ca.adcsTest" />
               </span>
             )}
             <SheetClose asChild>
-              <Button type="button" variant="outline">Cancel</Button>
+              <Button type="button" variant="outline">
+                Cancel
+              </Button>
             </SheetClose>
             <PermissionTip allowed={canWrite} action="cas:write">
               <Button type="submit" disabled={!canWrite || saving}>
@@ -214,7 +316,14 @@ export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }:
             </PermissionTip>
           </SheetFooter>
         </form>
-        {testing && adcsRequest && <AdcsTestDialog orgId={orgId} name={draft.name.trim()} request={adcsRequest} onOpenChange={setTesting} />}
+        {testing && adcsRequest && (
+          <AdcsTestDialog
+            orgId={orgId}
+            name={draft.name.trim()}
+            request={adcsRequest}
+            onOpenChange={setTesting}
+          />
+        )}
       </SheetContent>
     </Sheet>
   );

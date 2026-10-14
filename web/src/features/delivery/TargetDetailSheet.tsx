@@ -1,76 +1,140 @@
-import { Fragment, useState } from 'react';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
-import { KeyRound, KeySquare, Lock, Pencil, Plus, RotateCw, Trash2 } from 'lucide-react';
-import { layoutsQuery, targetHookRunsInfinite } from '@/api/queries/delivery';
-import { deployCredentialsQuery } from '@/api/queries/deployCredentials';
-import { targetGrantsQuery, useDeleteGrant, useRedeployGrant } from '@/api/queries/grants';
-import type { DeployTarget, Grant, ProviderSchema } from '@/api/types';
-import { ConfirmDestructive } from '@/components/ConfirmDestructive';
-import { EmptyState } from '@/components/EmptyState';
-import { ErrorState } from '@/components/ErrorState';
-import { HelpTip } from '@/components/HelpTip';
-import { PermissionTip } from '@/components/PermissionTip';
-import { RunsOnChip } from '@/components/RunsOnChip';
-import { ServerDeploymentChip } from '@/components/ServerDeploymentChip';
-import { ToneChip } from '@/components/StatusChip';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ActionRunsList } from '@/features/clients/detail/ActionRunsTab';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { errorMessage } from '@/api/errors';
-import { help } from '@/lib/help';
-import { useMe } from '@/lib/org';
-import { can } from '@/lib/permissions';
-import { needsKey, typeMeta } from '@/lib/targets';
-import { relTime } from '@/lib/time';
-import { useMediaQuery } from '@/lib/useMediaQuery';
-import { PfSenseUsage } from './PfSenseUsage';
-import { ServerGrantForm } from './ServerGrantForm';
-import { failedWithoutData } from '@/lib/queryState';
-import { IconButton } from '@/components/IconButton';
+import { Fragment, useState } from "react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+import {
+  KeyRound,
+  KeySquare,
+  Lock,
+  Pencil,
+  Plus,
+  RotateCw,
+  Trash2,
+} from "lucide-react";
+import { layoutsQuery, targetHookRunsInfinite } from "@/api/queries/delivery";
+import { deployCredentialsQuery } from "@/api/queries/deployCredentials";
+import {
+  targetGrantsQuery,
+  useDeleteGrant,
+  useRedeployGrant,
+} from "@/api/queries/grants";
+import type { DeployTarget, Grant, ProviderSchema } from "@/api/types";
+import { ConfirmDestructive } from "@/components/ConfirmDestructive";
+import { EmptyState } from "@/components/EmptyState";
+import { ErrorState } from "@/components/ErrorState";
+import { HelpTip } from "@/components/HelpTip";
+import { PermissionTip } from "@/components/PermissionTip";
+import { RunsOnChip } from "@/components/RunsOnChip";
+import { ServerDeploymentChip } from "@/components/ServerDeploymentChip";
+import { ToneChip } from "@/components/StatusChip";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ActionRunsList } from "@/features/clients/detail/ActionRunsTab";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetBody,
+} from "@/components/ui/sheet";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { errorMessage } from "@/api/errors";
+import { help } from "@/lib/help";
+import { useMe } from "@/lib/org";
+import { can } from "@/lib/permissions";
+import { needsKey, typeMeta } from "@/lib/targets";
+import { relTime } from "@/lib/time";
+import { useMediaQuery } from "@/lib/useMediaQuery";
+import { PfSenseUsage } from "./PfSenseUsage";
+import { ServerGrantForm } from "./ServerGrantForm";
+import { failedWithoutData } from "@/lib/queryState";
+import { IconButton } from "@/components/IconButton";
 
-type Props = { orgId: string; orgSlug: string; target: DeployTarget; types: ProviderSchema[]; onEdit: () => void; onOpenChange: (open: boolean) => void };
+type Props = {
+  orgId: string;
+  orgSlug: string;
+  target: DeployTarget;
+  types: ProviderSchema[];
+  onEdit: () => void;
+  onOpenChange: (open: boolean) => void;
+};
 
-type Mode = { kind: 'list' } | { kind: 'form'; editing?: Grant };
+type Mode = { kind: "list" } | { kind: "form"; editing?: Grant };
 
 // Mounted only while its tab is open, so the runs are fetched (and polled) on demand.
 function TargetRuns({ orgId, targetId }: { orgId: string; targetId: string }) {
   const q = useInfiniteQuery(targetHookRunsInfinite(orgId, targetId));
-  return <ActionRunsList q={q} nameOf={() => 'SSH command'} empty={<EmptyState message="No action runs yet." />} />;
+  return (
+    <ActionRunsList
+      q={q}
+      nameOf={() => "SSH command"}
+      empty={<EmptyState message="No action runs yet." />}
+    />
+  );
 }
 
-export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpenChange }: Props) {
+export function TargetDetailSheet({
+  orgId,
+  orgSlug,
+  target,
+  types,
+  onEdit,
+  onOpenChange,
+}: Props) {
   const me = useMe();
-  const canWrite = can(me, 'clients:write', orgId);
-  const canExportKeys = can(me, 'keys:export', orgId);
-  const canDelivery = can(me, 'delivery:write', orgId);
-  const isMdUp = useMediaQuery('(min-width: 768px)');
-  const [mode, setMode] = useState<Mode>({ kind: 'list' });
+  const canWrite = can(me, "clients:write", orgId);
+  const canExportKeys = can(me, "keys:export", orgId);
+  const canDelivery = can(me, "delivery:write", orgId);
+  const isMdUp = useMediaQuery("(min-width: 768px)");
+  const [mode, setMode] = useState<Mode>({ kind: "list" });
   const [removing, setRemoving] = useState<Grant | null>(null);
   const q = useQuery(targetGrantsQuery(orgId, target.id));
   const layoutsQ = useQuery(layoutsQuery(orgId));
   const layouts = layoutsQ.data ?? [];
-  const credsQ = useQuery({ ...deployCredentialsQuery(orgId), enabled: !!target.credentialId });
+  const credsQ = useQuery({
+    ...deployCredentialsQuery(orgId),
+    enabled: !!target.credentialId,
+  });
   const credName = credsQ.data?.find((c) => c.id === target.credentialId)?.name;
   const redeploy = useRedeployGrant(orgId);
   const del = useDeleteGrant(orgId);
 
-  const typeName = types.find((t) => t.code === target.type)?.name ?? target.type;
-  const keyed = needsKey(typeMeta(types, target.type)?.keyPolicy, target.config);
+  const typeName =
+    types.find((t) => t.code === target.type)?.name ?? target.type;
+  const keyed = needsKey(
+    typeMeta(types, target.type)?.keyPolicy,
+    target.config,
+  );
   const newGrantAllowed = canWrite && (!keyed || canExportKeys);
-  const newGrantReason = !canWrite ? 'clients:write' : 'keys:export';
-  const layoutName = (id: string | null) => (id ? (layouts.find((l) => l.id === id)?.name ?? '…') : 'Target files');
-  const redeploying = (g: Grant) => redeploy.isPending && redeploy.variables === g.id;
+  const newGrantReason = !canWrite ? "clients:write" : "keys:export";
+  const layoutName = (id: string | null) =>
+    id ? (layouts.find((l) => l.id === id)?.name ?? "…") : "Target files";
+  const redeploying = (g: Grant) =>
+    redeploy.isPending && redeploy.variables === g.id;
 
-  const openForm = (editing?: Grant) => setMode({ kind: 'form', editing });
-  const backToList = () => setMode({ kind: 'list' });
+  const openForm = (editing?: Grant) => setMode({ kind: "form", editing });
+  const backToList = () => setMode({ kind: "list" });
 
   const newGrantButton = (
     <PermissionTip allowed={newGrantAllowed} action={newGrantReason}>
-      <Button type="button" size="sm" disabled={!newGrantAllowed} onClick={() => openForm()}>
+      <Button
+        type="button"
+        size="sm"
+        disabled={!newGrantAllowed}
+        onClick={() => openForm()}
+      >
         <Plus className="size-4" aria-hidden />
         New server grant
       </Button>
@@ -78,66 +142,111 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
   );
 
   const certLink = (g: Grant) => (
-    <Link to="/o/$org/certificates/$id/$tab" params={{ org: orgSlug, id: g.certificateId, tab: 'overview' }} className="truncate font-semibold hover:underline">
+    <Link
+      to="/o/$org/certificates/$id/$tab"
+      params={{ org: orgSlug, id: g.certificateId, tab: "overview" }}
+      className="truncate font-semibold hover:underline"
+    >
       {g.certificateName}
     </Link>
   );
 
   const actions = (g: Grant) => (
     <span className="inline-flex">
-      <IconButton tip={canWrite ? undefined : `Needs the clients:write permission`}
-          variant="ghost"
-          size="icon-sm"
-          className="size-7"
-          disabled={!canWrite || redeploying(g)}
-          label={`Redeploy ${g.certificateName}`}
-          onClick={() => redeploy.mutate(g.id)}
-        >
-          <RotateCw className="size-3.5" aria-hidden />
-        </IconButton>
+      <IconButton
+        tip={canWrite ? undefined : `Needs the clients:write permission`}
+        variant="ghost"
+        size="icon-sm"
+        className="size-7"
+        disabled={!canWrite || redeploying(g)}
+        label={`Redeploy ${g.certificateName}`}
+        onClick={() => redeploy.mutate(g.id)}
+      >
+        <RotateCw className="size-3.5" aria-hidden />
+      </IconButton>
       {/* Batch 4 review: updateServerGrant's own requireKeyIfNeeded gate
           means an includeKey target's grants need keys:export to edit at
           all, not just clients:write — same reasoning as newGrantAllowed
           above, reused here rather than only checking clients:write. */}
-      <IconButton tip={newGrantAllowed ? undefined : `Needs the ${newGrantReason} permission`}
-          variant="ghost"
-          size="icon-sm"
-          className="size-7"
-          disabled={!newGrantAllowed}
-          label={`Edit layout for ${g.certificateName}`}
-          onClick={() => openForm(g)}
-        >
-          <Pencil className="size-3.5" aria-hidden />
-        </IconButton>
-      <IconButton tip={canWrite ? undefined : `Needs the clients:write permission`} variant="ghost" size="icon-sm" className="size-7" disabled={!canWrite} label={`Remove ${g.certificateName}`} onClick={() => setRemoving(g)}>
-          <Trash2 className="size-3.5" aria-hidden />
-        </IconButton>
+      <IconButton
+        tip={
+          newGrantAllowed ? undefined : `Needs the ${newGrantReason} permission`
+        }
+        variant="ghost"
+        size="icon-sm"
+        className="size-7"
+        disabled={!newGrantAllowed}
+        label={`Edit layout for ${g.certificateName}`}
+        onClick={() => openForm(g)}
+      >
+        <Pencil className="size-3.5" aria-hidden />
+      </IconButton>
+      <IconButton
+        tip={canWrite ? undefined : `Needs the clients:write permission`}
+        variant="ghost"
+        size="icon-sm"
+        className="size-7"
+        disabled={!canWrite}
+        label={`Remove ${g.certificateName}`}
+        onClick={() => setRemoving(g)}
+      >
+        <Trash2 className="size-3.5" aria-hidden />
+      </IconButton>
     </span>
   );
 
   const statusCell = (g: Grant) => (
     <span className="inline-flex items-center gap-1.5">
-      <ServerDeploymentChip status={g.serverDeployment!.status} lastError={g.serverDeployment!.lastError} withHelp />
-      {g.serverDeployment!.deployedAt && <span className="text-xs text-ink-muted">{relTime(g.serverDeployment!.deployedAt)}</span>}
+      <ServerDeploymentChip
+        status={g.serverDeployment!.status}
+        lastError={g.serverDeployment!.lastError}
+        withHelp
+      />
+      {g.serverDeployment!.deployedAt && (
+        <span className="text-xs text-ink-muted">
+          {relTime(g.serverDeployment!.deployedAt)}
+        </span>
+      )}
     </span>
   );
 
   const grantsList = () => {
-    if (failedWithoutData(q)) return <ErrorState message={`Couldn't load grants. ${errorMessage(q.error)}`} onRetry={() => void q.refetch()} />;
-    if (q.isPending) return <p className="py-6 text-center text-sm text-ink-muted">Loading…</p>;
+    if (failedWithoutData(q))
+      return (
+        <ErrorState
+          message={`Couldn't load grants. ${errorMessage(q.error)}`}
+          onRetry={() => void q.refetch()}
+        />
+      );
+    if (q.isPending)
+      return (
+        <p className="py-6 text-center text-sm text-ink-muted">Loading…</p>
+      );
     const grants = q.data;
-    if (grants.length === 0) return <EmptyState message="No certificates granted yet.">{newGrantButton}</EmptyState>;
+    if (grants.length === 0)
+      return (
+        <EmptyState message="No certificates granted yet.">
+          {newGrantButton}
+        </EmptyState>
+      );
     if (!isMdUp) {
       return (
         <ul aria-label="Grants" className="grid gap-2">
           {grants.map((g) => (
-            <li key={g.id} className="grid grid-cols-1 gap-2 rounded-md border border-border bg-panel p-3">
+            <li
+              key={g.id}
+              className="grid grid-cols-1 gap-2 rounded-md border border-border bg-panel p-3"
+            >
               <div className="flex items-center justify-between gap-2">
                 {certLink(g)}
                 {statusCell(g)}
               </div>
-              <span className="truncate text-xs text-ink-muted">{layoutName(g.layoutId)}</span>
-              {target.type === 'pfsense' && <PfSenseUsage orgId={orgId} grantId={g.id} />}
+              <span className="truncate text-xs text-ink-muted">
+                {layoutName(g.layoutId)}
+              </span>
+              {target.type === "pfsense" && (
+                <PfSenseUsage orgId={orgId} grantId={g.id} />
+              )}
               <div className="flex justify-end">{actions(g)}</div>
             </li>
           ))}
@@ -161,11 +270,13 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
             <Fragment key={g.id}>
               <TableRow className="h-9">
                 <TableCell className="py-1">{certLink(g)}</TableCell>
-                <TableCell className="truncate py-1">{layoutName(g.layoutId)}</TableCell>
+                <TableCell className="truncate py-1">
+                  {layoutName(g.layoutId)}
+                </TableCell>
                 <TableCell className="py-1">{statusCell(g)}</TableCell>
                 <TableCell className="py-1 text-right">{actions(g)}</TableCell>
               </TableRow>
-              {target.type === 'pfsense' && (
+              {target.type === "pfsense" && (
                 <TableRow className="hover:bg-transparent">
                   <TableCell colSpan={4} className="whitespace-normal py-1.5">
                     <PfSenseUsage orgId={orgId} grantId={g.id} />
@@ -181,14 +292,16 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
 
   return (
     <Sheet open onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-2xl">
+      <SheetContent side="right" size="xl">
         <SheetHeader>
           <div className="flex items-start justify-between gap-2 pr-8">
             <div className="flex flex-wrap items-center gap-2">
               <SheetTitle>{target.name}</SheetTitle>
               <span className="text-xs text-ink-muted">{typeName}</span>
               <RunsOnChip mode="server" />
-              {keyed && <ToneChip tone="neutral" icon={KeyRound} label="Includes key" />}
+              {keyed && (
+                <ToneChip tone="neutral" icon={KeyRound} label="Includes key" />
+              )}
               {target.credentialId && (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -199,61 +312,86 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
                       className="inline-flex max-w-48 items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-xs hover:bg-subtle"
                     >
                       <KeySquare className="size-3.5 shrink-0" aria-hidden />
-                      <span className="truncate">{credName ?? 'Saved credential'}</span>
+                      <span className="truncate">
+                        {credName ?? "Saved credential"}
+                      </span>
                     </Link>
                   </TooltipTrigger>
-                  <TooltipContent>{help['target.credential'].text}</TooltipContent>
+                  <TooltipContent>
+                    {help["target.credential"].text}
+                  </TooltipContent>
                 </Tooltip>
               )}
               {target.storedSecrets.length > 0 && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <ToneChip tone="neutral" icon={Lock} label="Stored secrets" />
+                    <ToneChip
+                      tone="neutral"
+                      icon={Lock}
+                      label="Stored secrets"
+                    />
                   </TooltipTrigger>
-                  <TooltipContent>{help['target.secrets'].text}</TooltipContent>
+                  <TooltipContent>{help["target.secrets"].text}</TooltipContent>
                 </Tooltip>
               )}
             </div>
             <PermissionTip allowed={canDelivery} action="delivery:write">
-              <Button type="button" variant="outline" size="sm" disabled={!canDelivery} onClick={onEdit}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!canDelivery}
+                onClick={onEdit}
+              >
                 <Pencil className="size-3.5" aria-hidden />
                 Edit
               </Button>
             </PermissionTip>
           </div>
-          <SheetDescription className="sr-only">{typeName} deploy target</SheetDescription>
+          <SheetDescription className="sr-only">
+            {typeName} deploy target
+          </SheetDescription>
         </SheetHeader>
-        <div className="grid gap-4 px-4">
-          {mode.kind === 'form' ? (
-            <ServerGrantForm orgId={orgId} orgSlug={orgSlug} targetId={target.id} editing={mode.editing} onBack={backToList} onDone={backToList} />
-          ) : (
-            <Tabs defaultValue="grants">
-              <TabsList>
-                <TabsTrigger value="grants">Grants</TabsTrigger>
-                <TabsTrigger value="runs">Action runs</TabsTrigger>
-              </TabsList>
-              <TabsContent value="grants" className="grid gap-4 pt-3">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="flex items-center gap-1.5 text-sm font-semibold">
-                    Grants <HelpTip id="grant.server" />
-                  </h3>
-                  {(q.data?.length ?? 0) > 0 && newGrantButton}
-                </div>
-                {grantsList()}
-              </TabsContent>
-              <TabsContent value="runs" className="pt-3">
-                <TargetRuns orgId={orgId} targetId={target.id} />
-              </TabsContent>
-            </Tabs>
-          )}
-        </div>
+        <SheetBody>
+          <div className="grid gap-4">
+            {mode.kind === "form" ? (
+              <ServerGrantForm
+                orgId={orgId}
+                orgSlug={orgSlug}
+                targetId={target.id}
+                editing={mode.editing}
+                onBack={backToList}
+                onDone={backToList}
+              />
+            ) : (
+              <Tabs defaultValue="grants">
+                <TabsList>
+                  <TabsTrigger value="grants">Grants</TabsTrigger>
+                  <TabsTrigger value="runs">Action runs</TabsTrigger>
+                </TabsList>
+                <TabsContent value="grants" className="grid gap-4 pt-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+                      Grants <HelpTip id="grant.server" />
+                    </h3>
+                    {(q.data?.length ?? 0) > 0 && newGrantButton}
+                  </div>
+                  {grantsList()}
+                </TabsContent>
+                <TabsContent value="runs" className="pt-3">
+                  <TargetRuns orgId={orgId} targetId={target.id} />
+                </TabsContent>
+              </Tabs>
+            )}
+          </div>
+        </SheetBody>
       </SheetContent>
       <ConfirmDestructive
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}
         title="Remove grant?"
         consequence="CertForge stops pushing this certificate to the target; what is already there stays."
-        confirmText={removing?.certificateName ?? ''}
+        confirmText={removing?.certificateName ?? ""}
         actionLabel="Remove"
         onConfirm={() => del.mutateAsync({ id: removing!.id })}
       />
