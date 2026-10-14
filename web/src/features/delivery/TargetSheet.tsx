@@ -11,14 +11,14 @@ import { CREDENTIAL_KIND_LABEL, deployCredentialsQuery, suppliedFields } from '@
 import { UNCHANGED, type DeployTarget, type ProviderSchema } from '@/api/types';
 import { Combobox } from '@/components/Combobox';
 import { Field } from '@/components/Field';
-import { HelpTip } from '@/components/HelpTip';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { PermissionTip } from '@/components/PermissionTip';
 import { RunsOnChip } from '@/components/RunsOnChip';
 import { SegmentedControl, type SegmentOption } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard, SheetBody } from '@/components/ui/sheet';
+import { FormSection } from '@/components/FormSection';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
 import { fieldErrorFromMessage, secretKeys } from '@/forms/uiSchema';
 import { help } from '@/lib/help';
@@ -183,133 +183,149 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
 
   return (
     <Sheet guard={guard} open form={!readOnly} dirty={dirty} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
+      <SheetContent side="right" size="xl">
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
           <SheetDescription className="sr-only">Deploy target settings</SheetDescription>
         </SheetHeader>
-        <div className="grid gap-5 px-4">
-          <Field id="target-name" label="Name" error={nameError}>
-            <Input
-              id="target-name"
-              value={name}
-              placeholder="edge traefik"
-              autoComplete="off"
-              disabled={readOnly}
-              onChange={(e) => {
-                setName(e.target.value);
-                setNameError(null);
-              }}
-            />
-          </Field>
-          <Field id="target-type" label="Type" help={typeHelpKey(type)}>
-            {types.length <= 5 ? (
-              <SegmentedControl<string>
-                id="target-type"
-                aria-label="Type"
-                value={type}
-                onChange={changeType}
-                options={types.map((t) => ({
-                  value: t.code,
-                  label: (
-                    <span className="inline-flex items-center gap-1.5">
-                      {t.name}
-                      <RunsOnChip mode={t.runsOn ?? 'agent'} compact={!isSmUp} />
-                    </span>
-                  ),
-                  disabled: locked,
-                }))}
-              />
-            ) : (
-              <Combobox
-                id="target-type"
-                aria-label="Type"
-                value={type}
-                onChange={changeType}
-                options={types.map((t) => ({ value: t.code, label: t.name, hint: RUNS_ON_META[t.runsOn ?? 'agent'].label }))}
-                placeholder="Pick a type"
-                emptyText="No type matches."
-                disabled={locked}
-              />
-            )}
-          </Field>
-          <Field id="target-runs-on" label="Runs on" help="target.runsOn">
-            <SegmentedControl<'server' | 'agent'>
-              id="target-runs-on"
-              aria-label="Runs on"
-              value={runsOn}
-              onChange={setRunsOn}
-              options={[
-                { value: 'server', label: <><ServerIcon className="size-4" aria-hidden />Server</>, ...runsOnOption('server') },
-                { value: 'agent', label: <><Cpu className="size-4" aria-hidden />Agent</>, ...runsOnOption('agent') },
-              ]}
-            />
-          </Field>
-          {credKinds.length > 0 && (
-            <Field id="target-credential" label="Credential" help="target.credential">
-              {(() => {
-                const select = (
-                  <Combobox
-                    id="target-credential"
-                    aria-label="Credential"
-                    value={credentialId ?? 'manual'}
-                    onChange={pickCredential}
-                    options={[
-                      { value: 'manual', label: 'Enter manually' },
-                      ...credentials.map((c) => ({ value: c.id, label: c.name, hint: CREDENTIAL_KIND_LABEL[c.kind] ?? c.kind })),
-                    ]}
-                    placeholder="Enter manually"
-                    emptyText="No saved credential matches."
-                    disabled={readOnly || !canCredWrite}
+        <SheetBody>
+          <div className="grid gap-4">
+            <FormSection title="General" columns={2}>
+              <Field id="target-name" label="Name" error={nameError}>
+                <Input
+                  id="target-name"
+                  value={name}
+                  placeholder="edge traefik"
+                  autoComplete="off"
+                  disabled={readOnly}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    setNameError(null);
+                  }}
+                />
+              </Field>
+              <Field id="target-type" label="Type" help={typeHelpKey(type)} className={types.length <= 5 ? 'sm:col-span-2' : undefined}>
+                {types.length <= 5 ? (
+                  <SegmentedControl<string>
+                    id="target-type"
+                    aria-label="Type"
+                    value={type}
+                    onChange={changeType}
+                    options={types.map((t) => ({
+                      value: t.code,
+                      label: (
+                        <span className="inline-flex items-center gap-1.5">
+                          {t.name}
+                          <RunsOnChip mode={t.runsOn ?? 'agent'} compact={!isSmUp} />
+                        </span>
+                      ),
+                      disabled: locked,
+                    }))}
                   />
-                );
-                if (readOnly || canCredWrite) return select;
-                return (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span tabIndex={0} className="grid">
-                        {select}
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>Needs the deploycreds:write permission</TooltipContent>
-                  </Tooltip>
-                );
-              })()}
-            </Field>
-          )}
-          <div className="grid gap-1.5">
-            <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
-              Settings
-              {secretKeys(schema).length > 0 && <HelpTip id="target.secrets" />}
-            </span>
-            {credPending ? (
-              <p className="py-4 text-sm text-ink-muted">Loading…</p>
-            ) : (
-            <SchemaForm
-              key={credentialId ?? 'manual'}
-              ref={formRef}
-              schema={schema}
-              value={formValue}
-              onChange={(v) => {
-                setConfig(omitKeys(v, supplied));
-                setExtra(null);
-              }}
-              storedSecrets={formStored}
-              readonly={readOnly}
-              extraErrors={extra ?? undefined}
-              uiSchemaOverrides={uiOverrides}
-              formContext={formContext}
-            />
+                ) : (
+                  <Combobox
+                    id="target-type"
+                    aria-label="Type"
+                    value={type}
+                    onChange={changeType}
+                    options={types.map((t) => ({ value: t.code, label: t.name, hint: RUNS_ON_META[t.runsOn ?? 'agent'].label }))}
+                    placeholder="Pick a type"
+                    emptyText="No type matches."
+                    disabled={locked}
+                  />
+                )}
+              </Field>
+              <Field id="target-runs-on" label="Runs on" help="target.runsOn">
+                <SegmentedControl<'server' | 'agent'>
+                  id="target-runs-on"
+                  aria-label="Runs on"
+                  value={runsOn}
+                  onChange={setRunsOn}
+                  options={[
+                    {
+                      value: 'server',
+                      label: (
+                        <>
+                          <ServerIcon className="size-4" aria-hidden />
+                          Server
+                        </>
+                      ),
+                      ...runsOnOption('server'),
+                    },
+                    {
+                      value: 'agent',
+                      label: (
+                        <>
+                          <Cpu className="size-4" aria-hidden />
+                          Agent
+                        </>
+                      ),
+                      ...runsOnOption('agent'),
+                    },
+                  ]}
+                />
+              </Field>
+              {credKinds.length > 0 && (
+                <Field id="target-credential" label="Credential" help="target.credential">
+                  {(() => {
+                    const select = (
+                      <Combobox
+                        id="target-credential"
+                        aria-label="Credential"
+                        value={credentialId ?? 'manual'}
+                        onChange={pickCredential}
+                        options={[{ value: 'manual', label: 'Enter manually' }, ...credentials.map((c) => ({ value: c.id, label: c.name, hint: CREDENTIAL_KIND_LABEL[c.kind] ?? c.kind }))]}
+                        placeholder="Enter manually"
+                        emptyText="No saved credential matches."
+                        disabled={readOnly || !canCredWrite}
+                      />
+                    );
+                    if (readOnly || canCredWrite) return select;
+                    return (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span tabIndex={0} className="grid">
+                            {select}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>Needs the deploycreds:write permission</TooltipContent>
+                      </Tooltip>
+                    );
+                  })()}
+                </Field>
+              )}
+            </FormSection>
+            <FormSection title="Connection" help={secretKeys(schema).length > 0 ? 'target.secrets' : undefined}>
+              {credPending ? (
+                <p className="py-4 text-sm text-ink-muted">Loading…</p>
+              ) : (
+                <SchemaForm
+                  key={credentialId ?? 'manual'}
+                  ref={formRef}
+                  schema={schema}
+                  value={formValue}
+                  onChange={(v) => {
+                    setConfig(omitKeys(v, supplied));
+                    setExtra(null);
+                  }}
+                  storedSecrets={formStored}
+                  readonly={readOnly}
+                  extraErrors={extra ?? undefined}
+                  uiSchemaOverrides={uiOverrides}
+                  formContext={formContext}
+                  columns={2}
+                />
+              )}
+            </FormSection>
+            {formError && (
+              <p role="alert" className="flex items-center gap-1.5 text-sm">
+                <CircleAlert className="size-4 text-failed" aria-hidden />
+                {formError}
+              </p>
             )}
           </div>
-          {formError && (
-            <p role="alert" className="flex items-center gap-1.5 text-sm">
-              <CircleAlert className="size-4 text-failed" aria-hidden />
-              {formError}
-            </p>
-          )}
-        </div>
-        <SheetFooter className="flex-row justify-end gap-2">
+        </SheetBody>
+        <SheetFooter>
           {readOnly ? (
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Close

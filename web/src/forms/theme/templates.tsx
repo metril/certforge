@@ -5,6 +5,7 @@ import { HelpTip } from '@/components/HelpTip';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { isWideField } from '../uiSchema';
 import { IconButton } from '@/components/IconButton';
 
 // B5: RJSF's own SchemaField consumes a field's `ui:classNames` before it
@@ -79,18 +80,26 @@ function FieldTemplate({ id, label, displayLabel, rawDescription, required, rawE
   return <div className={cn('grid gap-1.5', classNames)}>{body}</div>;
 }
 
-function ObjectFieldTemplate({ properties }: ObjectFieldTemplateProps) {
+function ObjectFieldTemplate({ properties, schema, uiSchema, fieldPathId, registry }: ObjectFieldTemplateProps) {
   // B5: honors the `ui:classNames` FieldTemplate forwarded above (e.g.
   // Issuance's rateLimits: 'grid gap-3 sm:grid-cols-2') on this template's
   // own properties grid, not on the label-and-content wrapper.
   const gridClassNames = useContext(ObjectGridClassNames);
+  // SchemaForm `columns={2}` applies to the root object only.
+  const twoCol = registry.formContext?.columns === 2 && fieldPathId.$id === registry.globalFormOptions.idPrefix;
   return (
-    <div className={cn('grid gap-4', gridClassNames)}>
+    <div className={cn('grid gap-4', twoCol && 'sm:grid-cols-2', gridClassNames)}>
       {properties
         .filter((p) => !p.hidden)
-        .map((p) => (
-          <div key={p.name}>{p.content}</div>
-        ))}
+        .map((p) => {
+          const sub = schema.properties?.[p.name];
+          const wide = twoCol && (typeof sub !== 'object' || isWideField(p.name, sub, uiSchema?.[p.name]));
+          return (
+            <div key={p.name} className={wide ? 'sm:col-span-2' : undefined}>
+              {p.content}
+            </div>
+          );
+        })}
     </div>
   );
 }

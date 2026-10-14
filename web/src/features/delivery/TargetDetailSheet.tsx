@@ -17,7 +17,7 @@ import { ToneChip } from '@/components/StatusChip';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ActionRunsList } from '@/features/clients/detail/ActionRunsTab';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetBody } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { errorMessage } from '@/api/errors';
@@ -181,7 +181,7 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
 
   return (
     <Sheet open onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-2xl">
+      <SheetContent side="right" size="xl">
         <SheetHeader>
           <div className="flex items-start justify-between gap-2 pr-8">
             <div className="flex flex-wrap items-center gap-2">
@@ -223,30 +223,32 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
           </div>
           <SheetDescription className="sr-only">{typeName} deploy target</SheetDescription>
         </SheetHeader>
-        <div className="grid gap-4 px-4">
-          {mode.kind === 'form' ? (
-            <ServerGrantForm orgId={orgId} orgSlug={orgSlug} targetId={target.id} editing={mode.editing} onBack={backToList} onDone={backToList} />
-          ) : (
-            <Tabs defaultValue="grants">
-              <TabsList>
-                <TabsTrigger value="grants">Grants</TabsTrigger>
-                <TabsTrigger value="runs">Action runs</TabsTrigger>
-              </TabsList>
-              <TabsContent value="grants" className="grid gap-4 pt-3">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="flex items-center gap-1.5 text-sm font-semibold">
-                    Grants <HelpTip id="grant.server" />
-                  </h3>
-                  {(q.data?.length ?? 0) > 0 && newGrantButton}
-                </div>
-                {grantsList()}
-              </TabsContent>
-              <TabsContent value="runs" className="pt-3">
-                <TargetRuns orgId={orgId} targetId={target.id} />
-              </TabsContent>
-            </Tabs>
-          )}
-        </div>
+        <SheetBody>
+          <div className="grid gap-4">
+            {mode.kind === 'form' ? (
+              <ServerGrantForm orgId={orgId} orgSlug={orgSlug} targetId={target.id} editing={mode.editing} onBack={backToList} onDone={backToList} />
+            ) : (
+              <Tabs defaultValue="grants">
+                <TabsList>
+                  <TabsTrigger value="grants">Grants</TabsTrigger>
+                  <TabsTrigger value="runs">Action runs</TabsTrigger>
+                </TabsList>
+                <TabsContent value="grants" className="grid gap-4 pt-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+                      Grants <HelpTip id="grant.server" />
+                    </h3>
+                    {(q.data?.length ?? 0) > 0 && newGrantButton}
+                  </div>
+                  {grantsList()}
+                </TabsContent>
+                <TabsContent value="runs" className="pt-3">
+                  <TargetRuns orgId={orgId} targetId={target.id} />
+                </TabsContent>
+              </Tabs>
+            )}
+          </div>
+        </SheetBody>
       </SheetContent>
       <ConfirmDestructive
         open={!!removing}

@@ -18,7 +18,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard, SheetBody } from '@/components/ui/sheet';
 import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { generatePassword } from '@/lib/password';
@@ -179,238 +179,246 @@ export function LayoutSheet({ orgId, layout, readOnly, onOpenChange }: Props) {
 
   return (
     <Sheet guard={guard} open form={!readOnly} dirty={dirty} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-2xl">
+      <SheetContent side="right" size="xl">
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
           <SheetDescription className="sr-only">Files the agent writes for each grant using this layout</SheetDescription>
         </SheetHeader>
-        <div className="grid gap-5 px-4">
-          <Field id="layout-name" label="Name" error={nameError}>
-            <Input
-              id="layout-name"
-              value={name}
-              placeholder="nginx"
-              autoComplete="off"
-              disabled={readOnly}
-              onChange={(e) => {
-                setName(e.target.value);
-                setNameError(null);
-              }}
-            />
-          </Field>
-          <ol aria-label="Files" className="grid gap-3">
-            {rows.map((row, i) => {
-              const e: FileErrors = { ...(showErrors ? errors[i] : {}), ...(serverError?.i === i ? { [serverError.field]: serverError.msg } : {}) };
-              const f = row.file;
-              const n = i + 1;
-              const def = emptyFile();
-              const fid = `layout-file-${i}`;
-              return (
-                <li key={row.id} aria-label={`File ${n}`} className="grid gap-3 rounded-md border border-border p-3">
-                  <div className="flex items-start gap-1">
-                    <Field id={`${fid}-path`} label="Path" help="layout.path" error={e.path} className="min-w-0 flex-1">
-                      <Input
-                        id={`${fid}-path`}
-                        className="font-mono text-xs"
-                        placeholder={pathPlaceholder(f.format)}
-                        value={f.path}
-                        disabled={readOnly}
-                        onChange={(ev) => setFile(i, { path: ev.target.value })}
-                      />
-                    </Field>
-                    {!readOnly && (
-                      <div className="flex pt-6">
-                        <IconButton variant="ghost" size="icon-sm" className="size-9" label={`Move file ${n} up`} disabled={i === 0} onClick={() => move(i, -1)}>
-                          <ArrowUp className="size-4" aria-hidden />
-                        </IconButton>
-                        <IconButton variant="ghost" size="icon-sm" className="size-9" label={`Move file ${n} down`} disabled={i === rows.length - 1} onClick={() => move(i, 1)}>
-                          <ArrowDown className="size-4" aria-hidden />
-                        </IconButton>
-                        <IconButton
-                          variant="ghost"
-                          size="icon-sm"
-                          className="size-9"
-                          label={`Remove file ${n}`}
-                          disabled={rows.length === 1}
-                          onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))}
-                        >
-                          <X className="size-4" aria-hidden />
-                        </IconButton>
+        <SheetBody>
+          <div className="grid gap-4">
+            <FormSection title="General">
+              <Field id="layout-name" label="Name" error={nameError}>
+                <Input
+                  id="layout-name"
+                  value={name}
+                  placeholder="nginx"
+                  autoComplete="off"
+                  disabled={readOnly}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    setNameError(null);
+                  }}
+                />
+              </Field>
+            </FormSection>
+            <FormSection title="Files">
+              <ol aria-label="Files" className="grid gap-3">
+                {rows.map((row, i) => {
+                  const e: FileErrors = { ...(showErrors ? errors[i] : {}), ...(serverError?.i === i ? { [serverError.field]: serverError.msg } : {}) };
+                  const f = row.file;
+                  const n = i + 1;
+                  const def = emptyFile();
+                  const fid = `layout-file-${i}`;
+                  return (
+                    <li key={row.id} aria-label={`File ${n}`} className="grid gap-3 rounded-md border border-border p-3">
+                      <div className="flex items-start gap-1">
+                        <Field id={`${fid}-path`} label="Path" help="layout.path" error={e.path} className="min-w-0 flex-1">
+                          <Input
+                            id={`${fid}-path`}
+                            className="font-mono text-xs"
+                            placeholder={pathPlaceholder(f.format)}
+                            value={f.path}
+                            disabled={readOnly}
+                            onChange={(ev) => setFile(i, { path: ev.target.value })}
+                          />
+                        </Field>
+                        {!readOnly && (
+                          <div className="flex pt-6">
+                            <IconButton variant="ghost" size="icon-sm" className="size-9" label={`Move file ${n} up`} disabled={i === 0} onClick={() => move(i, -1)}>
+                              <ArrowUp className="size-4" aria-hidden />
+                            </IconButton>
+                            <IconButton variant="ghost" size="icon-sm" className="size-9" label={`Move file ${n} down`} disabled={i === rows.length - 1} onClick={() => move(i, 1)}>
+                              <ArrowDown className="size-4" aria-hidden />
+                            </IconButton>
+                            <IconButton
+                              variant="ghost"
+                              size="icon-sm"
+                              className="size-9"
+                              label={`Remove file ${n}`}
+                              disabled={rows.length === 1}
+                              onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))}
+                            >
+                              <X className="size-4" aria-hidden />
+                            </IconButton>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                  <Field id={`${fid}-format`} label="Format" help="layout.format">
-                    <SegmentedControl<OutputFormat>
-                      id={`${fid}-format`}
-                      aria-label={`Format of file ${n}`}
-                      size="sm"
-                      value={f.format}
-                      onChange={(fmt) => setFormat(i, fmt)}
-                      options={OUTPUT_FORMATS.map((o) => ({ ...o, disabled: readOnly }))}
-                    />
-                  </Field>
-                  {f.format === 'pem' && (
-                    <Field id={`${fid}-parts`} label="Parts" help="layout.parts" error={e.parts}>
-                      <ChipSet<OutputPart>
-                        id={`${fid}-parts`}
-                        aria-label={`Parts of file ${n}`}
-                        value={f.parts}
-                        onChange={(parts) => setFile(i, { parts })}
-                        options={OUTPUT_PARTS.map((p) => {
-                          // Belt and braces alongside changeExtras stripping
-                          // `extra` from parts the moment the list empties:
-                          // never show a chip as both disabled and selected.
-                          const noExtras = p === 'extra' && extraCertificateIds.length === 0 && !f.parts.includes('extra');
-                          return { value: p, label: p, disabled: readOnly || noExtras, hint: noExtras ? 'Add extra certificates first' : undefined };
-                        })}
-                      />
-                    </Field>
-                  )}
-                  {f.format === 'der' && (
-                    <Field id={`${fid}-parts`} label="Parts" help="layout.derPart" error={e.parts}>
-                      <SegmentedControl<OutputPart>
-                        id={`${fid}-parts`}
-                        aria-label={`Parts of file ${n}`}
-                        value={f.parts[0] === 'key' ? 'key' : 'cert'}
-                        onChange={(p) => setFile(i, { parts: [p] })}
-                        options={[
-                          { value: 'cert', label: 'Certificate', disabled: readOnly },
-                          { value: 'key', label: 'Key', disabled: readOnly },
-                        ]}
-                      />
-                    </Field>
-                  )}
-                  {f.format === 'p12' && (
-                    <Field id={`${fid}-encoding`} label="Encoding" help="download.encoding" error={e.encoding}>
-                      <SegmentedControl<P12Encoding>
-                        id={`${fid}-encoding`}
-                        aria-label={`Encoding of file ${n}`}
-                        value={f.encoding ?? 'modern'}
-                        onChange={(v) => setFile(i, { encoding: v })}
-                        options={[
-                          { value: 'modern', label: 'Modern', disabled: readOnly },
-                          { value: 'legacy', label: 'Legacy', disabled: readOnly },
-                        ]}
-                      />
-                    </Field>
-                  )}
-                  {f.format === 'jks' && (
-                    <Field id={`${fid}-alias`} label="Alias" help="download.alias" optional error={e.alias}>
-                      <Input
-                        id={`${fid}-alias`}
-                        className="font-mono text-xs"
-                        placeholder="example.com"
-                        value={f.alias ?? ''}
-                        disabled={readOnly}
-                        onChange={(ev) => setFile(i, { alias: ev.target.value === '' ? undefined : ev.target.value })}
-                      />
-                    </Field>
-                  )}
-                  <FormSection
-                    title="Advanced"
-                    collapsible
-                    count={(f.owner !== def.owner ? 1 : 0) + (f.group !== def.group ? 1 : 0) + (f.mode !== def.mode ? 1 : 0)}
-                    forceOpen={!!(e.owner || e.group || e.mode)}
-                  >
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      <Field id={`${fid}-owner`} label="Owner" help="layout.owner" optional error={e.owner}>
-                        <Input id={`${fid}-owner`} placeholder="root" value={f.owner} disabled={readOnly} onChange={(ev) => setFile(i, { owner: ev.target.value })} />
-                      </Field>
-                      <Field id={`${fid}-group`} label="Group" help="layout.group" optional error={e.group}>
-                        <Input id={`${fid}-group`} placeholder="www-data" value={f.group} disabled={readOnly} onChange={(ev) => setFile(i, { group: ev.target.value })} />
-                      </Field>
-                      <Field id={`${fid}-mode`} label="Mode" help="layout.mode" error={e.mode}>
-                        <Input
-                          id={`${fid}-mode`}
-                          className="font-mono text-xs"
-                          inputMode="numeric"
-                          placeholder="0640"
-                          value={f.mode}
-                          disabled={readOnly}
-                          onChange={(ev) => setFile(i, { mode: ev.target.value })}
+                      <Field id={`${fid}-format`} label="Format" help="layout.format">
+                        <SegmentedControl<OutputFormat>
+                          id={`${fid}-format`}
+                          aria-label={`Format of file ${n}`}
+                          size="sm"
+                          value={f.format}
+                          onChange={(fmt) => setFormat(i, fmt)}
+                          options={OUTPUT_FORMATS.map((o) => ({ ...o, disabled: readOnly }))}
                         />
                       </Field>
-                    </div>
-                  </FormSection>
-                  {keyReadableByOthers(f) && (
-                    <p className="flex items-center gap-1.5 text-xs">
-                      <TriangleAlert className="size-3.5 text-expiring" aria-hidden />
-                      Key readable by every user
-                      <HelpTip id="layout.keyMode" />
-                    </p>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-          {!readOnly && (
-            <Button variant="outline" size="sm" className="w-fit" disabled={rows.length >= MAX_FILES} onClick={() => setRows((rs) => [...rs, makeRow()])}>
-              <Plus className="size-4" aria-hidden />
-              Add file
-            </Button>
-          )}
-          {showPassword && (
-            <Field id="layout-password" label="Password" help="layout.password" error={passwordError}>
-              {hasStoredPassword ? (
-                <SecretInput
-                  id="layout-password"
-                  label="Password"
-                  value={storedPassword}
-                  onChange={setStoredPassword}
-                  stored={layout!.passwordSet}
-                  disabled={readOnly}
-                  removeDisabledReason={anyKeystoreFile ? help['layout.passwordNeeded'].text : undefined}
-                />
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="layout-password"
-                    type={reveal ? 'text' : 'password'}
-                    className="font-mono text-xs"
-                    autoComplete="new-password"
-                    value={newPassword}
-                    disabled={readOnly}
-                    onChange={(ev) => setNewPassword(ev.target.value)}
-                  />
-                  {!readOnly && (
-                    <>
-                      <IconButton type="button" variant="ghost" size="icon" label={reveal ? 'Hide password' : 'Show password'} onClick={() => setReveal((r) => !r)}>
-                        {reveal ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
-                      </IconButton>
-                      <IconButton type="button" variant="ghost" size="icon" label="Copy password" onClick={() => void copy()}>
-                        {copyStatus === 'copied' && <Check className="size-4 text-valid" aria-hidden />}
-                        {copyStatus === 'failed' && <TriangleAlert className="size-4 text-failed" aria-hidden />}
-                        {copyStatus === 'idle' && <Copy className="size-4" aria-hidden />}
-                      </IconButton>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => setNewPassword(generatePassword())}>
-                        Generate
-                      </Button>
-                    </>
-                  )}
-                </div>
+                      {f.format === 'pem' && (
+                        <Field id={`${fid}-parts`} label="Parts" help="layout.parts" error={e.parts}>
+                          <ChipSet<OutputPart>
+                            id={`${fid}-parts`}
+                            aria-label={`Parts of file ${n}`}
+                            value={f.parts}
+                            onChange={(parts) => setFile(i, { parts })}
+                            options={OUTPUT_PARTS.map((p) => {
+                              // Belt and braces alongside changeExtras stripping
+                              // `extra` from parts the moment the list empties:
+                              // never show a chip as both disabled and selected.
+                              const noExtras = p === 'extra' && extraCertificateIds.length === 0 && !f.parts.includes('extra');
+                              return { value: p, label: p, disabled: readOnly || noExtras, hint: noExtras ? 'Add extra certificates first' : undefined };
+                            })}
+                          />
+                        </Field>
+                      )}
+                      {f.format === 'der' && (
+                        <Field id={`${fid}-parts`} label="Parts" help="layout.derPart" error={e.parts}>
+                          <SegmentedControl<OutputPart>
+                            id={`${fid}-parts`}
+                            aria-label={`Parts of file ${n}`}
+                            value={f.parts[0] === 'key' ? 'key' : 'cert'}
+                            onChange={(p) => setFile(i, { parts: [p] })}
+                            options={[
+                              { value: 'cert', label: 'Certificate', disabled: readOnly },
+                              { value: 'key', label: 'Key', disabled: readOnly },
+                            ]}
+                          />
+                        </Field>
+                      )}
+                      {f.format === 'p12' && (
+                        <Field id={`${fid}-encoding`} label="Encoding" help="download.encoding" error={e.encoding}>
+                          <SegmentedControl<P12Encoding>
+                            id={`${fid}-encoding`}
+                            aria-label={`Encoding of file ${n}`}
+                            value={f.encoding ?? 'modern'}
+                            onChange={(v) => setFile(i, { encoding: v })}
+                            options={[
+                              { value: 'modern', label: 'Modern', disabled: readOnly },
+                              { value: 'legacy', label: 'Legacy', disabled: readOnly },
+                            ]}
+                          />
+                        </Field>
+                      )}
+                      {f.format === 'jks' && (
+                        <Field id={`${fid}-alias`} label="Alias" help="download.alias" optional error={e.alias}>
+                          <Input
+                            id={`${fid}-alias`}
+                            className="font-mono text-xs"
+                            placeholder="example.com"
+                            value={f.alias ?? ''}
+                            disabled={readOnly}
+                            onChange={(ev) => setFile(i, { alias: ev.target.value === '' ? undefined : ev.target.value })}
+                          />
+                        </Field>
+                      )}
+                      <FormSection
+                        title="Advanced"
+                        collapsible
+                        count={(f.owner !== def.owner ? 1 : 0) + (f.group !== def.group ? 1 : 0) + (f.mode !== def.mode ? 1 : 0)}
+                        forceOpen={!!(e.owner || e.group || e.mode)}
+                      >
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                          <Field id={`${fid}-owner`} label="Owner" help="layout.owner" optional error={e.owner}>
+                            <Input id={`${fid}-owner`} placeholder="root" value={f.owner} disabled={readOnly} onChange={(ev) => setFile(i, { owner: ev.target.value })} />
+                          </Field>
+                          <Field id={`${fid}-group`} label="Group" help="layout.group" optional error={e.group}>
+                            <Input id={`${fid}-group`} placeholder="www-data" value={f.group} disabled={readOnly} onChange={(ev) => setFile(i, { group: ev.target.value })} />
+                          </Field>
+                          <Field id={`${fid}-mode`} label="Mode" help="layout.mode" error={e.mode}>
+                            <Input
+                              id={`${fid}-mode`}
+                              className="font-mono text-xs"
+                              inputMode="numeric"
+                              placeholder="0640"
+                              value={f.mode}
+                              disabled={readOnly}
+                              onChange={(ev) => setFile(i, { mode: ev.target.value })}
+                            />
+                          </Field>
+                        </div>
+                      </FormSection>
+                      {keyReadableByOthers(f) && (
+                        <p className="flex items-center gap-1.5 text-xs">
+                          <TriangleAlert className="size-3.5 text-expiring" aria-hidden />
+                          Key readable by every user
+                          <HelpTip id="layout.keyMode" />
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+              {!readOnly && (
+                <Button variant="outline" size="sm" className="w-fit" disabled={rows.length >= MAX_FILES} onClick={() => setRows((rs) => [...rs, makeRow()])}>
+                  <Plus className="size-4" aria-hidden />
+                  Add file
+                </Button>
               )}
-            </Field>
-          )}
-          <Field id="layout-extras" label="Extra certificates" help="layout.extraCerts" error={extrasError}>
-            <MultiCombobox
-              id="layout-extras"
-              aria-label="Extra certificates"
-              value={extraCertificateIds}
-              onChange={changeExtras}
-              options={certOptions}
-              placeholder="Add certificates"
-              emptyText="No certificate matches."
-              disabled={readOnly}
-            />
-          </Field>
-          {formError && (
-            <p role="alert" className="flex items-center gap-1.5 text-sm">
-              <CircleAlert className="size-4 text-failed" aria-hidden />
-              {formError}
-            </p>
-          )}
-        </div>
-        <SheetFooter className="flex-row justify-end gap-2">
+            </FormSection>
+            <FormSection title="Options" columns={2}>
+              {showPassword && (
+                <Field id="layout-password" label="Password" help="layout.password" error={passwordError}>
+                  {hasStoredPassword ? (
+                    <SecretInput
+                      id="layout-password"
+                      label="Password"
+                      value={storedPassword}
+                      onChange={setStoredPassword}
+                      stored={layout!.passwordSet}
+                      disabled={readOnly}
+                      removeDisabledReason={anyKeystoreFile ? help['layout.passwordNeeded'].text : undefined}
+                    />
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="layout-password"
+                        type={reveal ? 'text' : 'password'}
+                        className="font-mono text-xs"
+                        autoComplete="new-password"
+                        value={newPassword}
+                        disabled={readOnly}
+                        onChange={(ev) => setNewPassword(ev.target.value)}
+                      />
+                      {!readOnly && (
+                        <>
+                          <IconButton type="button" variant="ghost" size="icon" label={reveal ? 'Hide password' : 'Show password'} onClick={() => setReveal((r) => !r)}>
+                            {reveal ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
+                          </IconButton>
+                          <IconButton type="button" variant="ghost" size="icon" label="Copy password" onClick={() => void copy()}>
+                            {copyStatus === 'copied' && <Check className="size-4 text-valid" aria-hidden />}
+                            {copyStatus === 'failed' && <TriangleAlert className="size-4 text-failed" aria-hidden />}
+                            {copyStatus === 'idle' && <Copy className="size-4" aria-hidden />}
+                          </IconButton>
+                          <Button type="button" variant="ghost" size="sm" onClick={() => setNewPassword(generatePassword())}>
+                            Generate
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </Field>
+              )}
+              <Field id="layout-extras" label="Extra certificates" help="layout.extraCerts" error={extrasError} className={showPassword ? undefined : 'sm:col-span-2'}>
+                <MultiCombobox
+                  id="layout-extras"
+                  aria-label="Extra certificates"
+                  value={extraCertificateIds}
+                  onChange={changeExtras}
+                  options={certOptions}
+                  placeholder="Add certificates"
+                  emptyText="No certificate matches."
+                  disabled={readOnly}
+                />
+              </Field>
+            </FormSection>
+            {formError && (
+              <p role="alert" className="flex items-center gap-1.5 text-sm">
+                <CircleAlert className="size-4 text-failed" aria-hidden />
+                {formError}
+              </p>
+            )}
+          </div>
+        </SheetBody>
+        <SheetFooter>
           {readOnly ? (
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Close

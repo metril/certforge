@@ -14,7 +14,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { FormSection } from '@/components/FormSection';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, useSheetGuard } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, useSheetGuard, SheetBody } from '@/components/ui/sheet';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
 import { advancedSchema, authMethodsOf, hasAdvancedValue, inferMethod, methodKeys, methodSchema } from '@/forms/authMethods';
 import { can } from '@/lib/permissions';
@@ -132,72 +132,84 @@ export function CredentialSheet({ orgId, open, onOpenChange, provider, credentia
 
   return (
     <Sheet guard={guard} open={open} form dirty={dirty} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
+      <SheetContent side="right" size="md">
         <SheetHeader>
           <SheetTitle>{credential ? `Edit ${credential.name}` : `Add ${provider?.name ?? 'DNS'} credential`}</SheetTitle>
           <SheetDescription className="sr-only">DNS provider credential</SheetDescription>
         </SheetHeader>
         <form
-          className="grid gap-5 px-4"
+          className="flex min-h-0 flex-1 flex-col"
           onSubmit={(e) => {
             e.preventDefault();
             void submit();
           }}
         >
-          <div className="flex items-center gap-2 text-sm">
-            <span className="font-semibold">{provider?.name}</span>
-            <span className="font-mono text-xs text-ink-muted">{provider?.code}</span>
-            <HelpTip id="dns.provider" />
-            {!credential && onChangeProvider && (
-              <Button type="button" variant="link" size="sm" className="ml-auto px-0" onClick={onChangeProvider}>
-                Change provider
-              </Button>
-            )}
-          </div>
-          <Field id="cred-name" label="Name" error={submitted && !name.trim() ? 'Required' : serverError?.field === 'name' ? serverError.message : null}>
-            <Input id="cred-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Cloudflare prod" />
-          </Field>
-          {methods.length > 1 && (
-            <div className="grid gap-1.5">
-              <div className="flex items-center gap-1.5 text-sm font-medium">
-                Authenticate with <HelpTip id="dns.authMethod" />
-              </div>
-              <SegmentedControl
-                aria-label="Authenticate with"
-                value={method?.id ?? ''}
-                onChange={switchMethod}
-                options={methods.map((m) => ({ value: m.id, label: m.label }))}
-              />
+          <SheetBody>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-semibold">{provider?.name}</span>
+              <span className="font-mono text-xs text-ink-muted">{provider?.code}</span>
+              <HelpTip id="dns.provider" />
+              {!credential && onChangeProvider && (
+                <Button type="button" variant="link" size="sm" className="ml-auto px-0" onClick={onChangeProvider}>
+                  Change provider
+                </Button>
+              )}
             </div>
-          )}
-          {method && method.fields.length === 0 && method.optional.length === 0 ? (
-            <p className="text-sm text-ink-muted">Uses the server&apos;s own environment credentials.</p>
-          ) : (
-            <SchemaForm key={method?.id} ref={formRef} schema={mainSchema} value={method ? pick(mainKeys) : config} onChange={method ? mergeOwn(mainKeys) : setConfig} storedSecrets={storedSecrets} onRevealSecret={onRevealSecret} revealDisabledReason={revealDisabledReason} />
-          )}
-          {advKeys.length > 0 && (
-            <FormSection
-              title="Advanced"
-              collapsible
-              defaultOpen={advOpen}
-              count={advKeys.filter((k) => config[k] !== undefined && config[k] !== '').length}
-              forceOpen={!!serverError?.field && advKeys.includes(serverError.field)}
-            >
-              <SchemaForm ref={advFormRef} schema={advSchema} value={pick(advKeys)} onChange={mergeOwn(advKeys)} storedSecrets={storedSecrets} onRevealSecret={onRevealSecret} revealDisabledReason={revealDisabledReason} />
-            </FormSection>
-          )}
-          {showSecretsNotice && (
-            <p className="text-xs text-ink-muted">Connection settings changed — stored secrets above must be re-entered before saving.</p>
-          )}
-          {serverError && serverError.field !== 'name' && (
-            // Fix round 1: same CircleAlert + text-failed treatment as
-            // TestCredentialDialog's inline error, not a plain unstyled line.
-            <p role="alert" className="flex items-center gap-1.5 text-sm">
-              <CircleAlert className="size-4 text-failed" aria-hidden />
-              {serverError.message}
-            </p>
-          )}
-          <SheetFooter className="px-0">
+            <Field id="cred-name" label="Name" error={submitted && !name.trim() ? 'Required' : serverError?.field === 'name' ? serverError.message : null}>
+              <Input id="cred-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Cloudflare prod" />
+            </Field>
+            {methods.length > 1 && (
+              <div className="grid gap-1.5">
+                <div className="flex items-center gap-1.5 text-sm font-medium">
+                  Authenticate with <HelpTip id="dns.authMethod" />
+                </div>
+                <SegmentedControl aria-label="Authenticate with" value={method?.id ?? ''} onChange={switchMethod} options={methods.map((m) => ({ value: m.id, label: m.label }))} />
+              </div>
+            )}
+            {method && method.fields.length === 0 && method.optional.length === 0 ? (
+              <p className="text-sm text-ink-muted">Uses the server&apos;s own environment credentials.</p>
+            ) : (
+              <SchemaForm
+                key={method?.id}
+                ref={formRef}
+                schema={mainSchema}
+                value={method ? pick(mainKeys) : config}
+                onChange={method ? mergeOwn(mainKeys) : setConfig}
+                storedSecrets={storedSecrets}
+                onRevealSecret={onRevealSecret}
+                revealDisabledReason={revealDisabledReason}
+              />
+            )}
+            {advKeys.length > 0 && (
+              <FormSection
+                title="Advanced"
+                collapsible
+                defaultOpen={advOpen}
+                count={advKeys.filter((k) => config[k] !== undefined && config[k] !== '').length}
+                forceOpen={!!serverError?.field && advKeys.includes(serverError.field)}
+              >
+                <SchemaForm
+                  ref={advFormRef}
+                  schema={advSchema}
+                  value={pick(advKeys)}
+                  onChange={mergeOwn(advKeys)}
+                  storedSecrets={storedSecrets}
+                  onRevealSecret={onRevealSecret}
+                  revealDisabledReason={revealDisabledReason}
+                />
+              </FormSection>
+            )}
+            {showSecretsNotice && <p className="text-xs text-ink-muted">Connection settings changed — stored secrets above must be re-entered before saving.</p>}
+            {serverError && serverError.field !== 'name' && (
+              // Fix round 1: same CircleAlert + text-failed treatment as
+              // TestCredentialDialog's inline error, not a plain unstyled line.
+              <p role="alert" className="flex items-center gap-1.5 text-sm">
+                <CircleAlert className="size-4 text-failed" aria-hidden />
+                {serverError.message}
+              </p>
+            )}
+          </SheetBody>
+          <SheetFooter>
             <Button type="submit" disabled={save.isPending}>
               Save credential
             </Button>

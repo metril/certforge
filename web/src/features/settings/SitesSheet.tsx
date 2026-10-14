@@ -8,7 +8,7 @@ import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { EmptyState } from '@/components/EmptyState';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetBody } from '@/components/ui/sheet';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { IconButton } from '@/components/IconButton';
@@ -58,80 +58,80 @@ export function SitesSheet({ org, onClose }: { org: Org | null; onClose: () => v
 
   return (
     <Sheet open={org !== null} form dirty={dirty} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent className="grid content-start gap-4 sm:max-w-md">
+      <SheetContent size="md">
         <SheetHeader>
           <SheetTitle>Sites of {org?.name}</SheetTitle>
         </SheetHeader>
-        {q.isPending && <p className="text-sm text-ink-muted">Loading…</p>}
-        {q.isError && (
-          <p role="alert" className="text-xs">
-            {errorMessage(q.error)}
-          </p>
-        )}
-        {q.data?.length === 0 && (
-          <EmptyState message="No sites yet.">
-            {canWrite && (
-              <Button size="sm" variant="outline" onClick={() => newSiteRef.current?.focus()}>
-                Add a site
-              </Button>
-            )}
-          </EmptyState>
-        )}
-        <ul className="grid">
-          {(q.data ?? []).map((s) => (
-            <li key={s.id} className="flex h-9 items-center gap-2 border-b border-border text-sm">
-              {renaming?.id === s.id ? (
-                <form onSubmit={rename} className="flex flex-1 gap-2">
-                  <Input aria-label={`Name of ${s.name}`} value={renaming.name} autoFocus onChange={(e) => setRenaming({ ...renaming, name: e.target.value })} />
-                  <Button type="submit" size="sm" disabled={!renaming.name.trim() || update.isPending}>
-                    Save
-                  </Button>
-                </form>
-              ) : (
-                <>
-                  <span className="truncate">{s.name}</span>
-                  {canWrite && (
-                    <span className="ml-auto flex">
-                      <IconButton variant="ghost" size="icon" label={`Rename ${s.name}`} onClick={() => setRenaming({ id: s.id, name: s.name })}>
-                        <Pencil className="size-4" aria-hidden />
-                      </IconButton>
-                      <IconButton variant="ghost" size="icon" label={`Delete ${s.name}`} onClick={() => setDeleting(s)}>
-                        <Trash2 className="size-4" aria-hidden />
-                      </IconButton>
-                    </span>
-                  )}
-                </>
+        <SheetBody>
+          {q.isPending && <p className="text-sm text-ink-muted">Loading…</p>}
+          {q.isError && (
+            <p role="alert" className="text-xs">
+              {errorMessage(q.error)}
+            </p>
+          )}
+          {q.data?.length === 0 && (
+            <EmptyState message="No sites yet.">
+              {canWrite && (
+                <Button size="sm" variant="outline" onClick={() => newSiteRef.current?.focus()}>
+                  Add a site
+                </Button>
               )}
-            </li>
-          ))}
-        </ul>
-        {canWrite && (
-          <form onSubmit={add} className="flex gap-2">
-            <Input ref={newSiteRef} aria-label="New site" placeholder="Berlin" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
-            <Button type="submit" disabled={!name.trim() || create.isPending}>
-              Add
-            </Button>
-          </form>
-        )}
-        {error && (
-          <p role="alert" className="flex items-center gap-1 text-xs">
-            <CircleAlert className="size-3.5 text-failed" aria-hidden />
-            {error}
-          </p>
-        )}
-        <ConfirmDestructive
-          open={deleting !== null}
-          onOpenChange={(o) => !o && setDeleting(null)}
-          title={`Delete ${deleting?.name ?? ''}`}
-          consequence={`Role bindings scoped to this site are removed with it. Clients at this site are kept but detached from it.${
-            deleting && deleting.clientCount > 0
-              ? ` ${deleting.clientCount} ${deleting.clientCount === 1 ? 'client' : 'clients'} will be detached from this site.`
-              : ''
-          }`}
-          confirmText={deleting?.name ?? ''}
-          actionLabel="Delete"
-          onConfirm={() => del.mutateAsync(deleting!.id)}
-        />
+            </EmptyState>
+          )}
+          <ul className="grid">
+            {(q.data ?? []).map((s) => (
+              <li key={s.id} className="flex h-9 items-center gap-2 border-b border-border text-sm">
+                {renaming?.id === s.id ? (
+                  <form onSubmit={rename} className="flex flex-1 gap-2">
+                    <Input aria-label={`Name of ${s.name}`} value={renaming.name} autoFocus onChange={(e) => setRenaming({ ...renaming, name: e.target.value })} />
+                    <Button type="submit" size="sm" disabled={!renaming.name.trim() || update.isPending}>
+                      Save
+                    </Button>
+                  </form>
+                ) : (
+                  <>
+                    <span className="truncate">{s.name}</span>
+                    {canWrite && (
+                      <span className="ml-auto flex">
+                        <IconButton variant="ghost" size="icon" label={`Rename ${s.name}`} onClick={() => setRenaming({ id: s.id, name: s.name })}>
+                          <Pencil className="size-4" aria-hidden />
+                        </IconButton>
+                        <IconButton variant="ghost" size="icon" label={`Delete ${s.name}`} onClick={() => setDeleting(s)}>
+                          <Trash2 className="size-4" aria-hidden />
+                        </IconButton>
+                      </span>
+                    )}
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+          {canWrite && (
+            <form onSubmit={add} className="flex gap-2">
+              <Input ref={newSiteRef} aria-label="New site" placeholder="Berlin" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
+              <Button type="submit" disabled={!name.trim() || create.isPending}>
+                Add
+              </Button>
+            </form>
+          )}
+          {error && (
+            <p role="alert" className="flex items-center gap-1 text-xs">
+              <CircleAlert className="size-3.5 text-failed" aria-hidden />
+              {error}
+            </p>
+          )}
+          <ConfirmDestructive
+            open={deleting !== null}
+            onOpenChange={(o) => !o && setDeleting(null)}
+            title={`Delete ${deleting?.name ?? ''}`}
+            consequence={`Role bindings scoped to this site are removed with it. Clients at this site are kept but detached from it.${
+              deleting && deleting.clientCount > 0 ? ` ${deleting.clientCount} ${deleting.clientCount === 1 ? 'client' : 'clients'} will be detached from this site.` : ''
+            }`}
+            confirmText={deleting?.name ?? ''}
+            actionLabel="Delete"
+            onConfirm={() => del.mutateAsync(deleting!.id)}
+          />
+        </SheetBody>
       </SheetContent>
     </Sheet>
   );

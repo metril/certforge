@@ -12,7 +12,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { PermissionTip } from '@/components/PermissionTip';
 import { PrimaryCell } from '@/components/PrimaryCell';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetBody } from '@/components/ui/sheet';
 import { Switch } from '@/components/ui/switch';
 import { canWriteChannel, toChannelInput, TYPE_META } from '@/lib/channels';
 import { KIND_LABEL } from '@/lib/events';
@@ -196,14 +196,16 @@ export function ChannelsPage() {
         )}
         {editNotFound && (
           <Sheet open onOpenChange={(o) => !o && openSheet(undefined)}>
-            <SheetContent side="right" className="w-full sm:max-w-lg">
+            <SheetContent side="right" size="xl">
               <SheetHeader>
                 <SheetTitle>Channel not found</SheetTitle>
                 <SheetDescription>It may have been deleted.</SheetDescription>
               </SheetHeader>
-              <div className="px-4">
-                <Button onClick={() => openSheet(undefined)}>Back to channels</Button>
-              </div>
+              <SheetBody>
+                <div>
+                  <Button onClick={() => openSheet(undefined)}>Back to channels</Button>
+                </div>
+              </SheetBody>
             </SheetContent>
           </Sheet>
         )}

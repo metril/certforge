@@ -9,7 +9,7 @@ import { HelpTip } from '@/components/HelpTip';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, useSheetGuard } from '@/components/ui/sheet';
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, useSheetGuard, SheetBody } from '@/components/ui/sheet';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
 import { fieldErrorFromMessage, secretKeys, withSecretSentinels } from '@/forms/uiSchema';
 import { useMe } from '@/lib/org';
@@ -78,77 +78,79 @@ export function CredentialSheet({ orgId, credential, kinds, readOnly, onOpenChan
 
   return (
     <Sheet guard={guard} open form={!readOnly} dirty={dirty} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
+      <SheetContent side="right" size="md">
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
           <SheetDescription className="sr-only">Deploy credential</SheetDescription>
         </SheetHeader>
         <form
-          className="grid gap-5 px-4"
+          className="flex min-h-0 flex-1 flex-col"
           onSubmit={(e) => {
             e.preventDefault();
             void submit();
           }}
         >
-          <Field id="dcred-name" label="Name" error={nameError}>
-            <Input
-              id="dcred-name"
-              value={name}
-              placeholder="lab ssh key"
-              autoComplete="off"
-              disabled={readOnly}
-              onChange={(e) => {
-                setName(e.target.value);
-                setNameError(null);
-              }}
-            />
-          </Field>
-          <Field id="dcred-kind" label="Kind" help="deployCred.kind">
-            <SegmentedControl<string>
-              id="dcred-kind"
-              aria-label="Kind"
-              value={kind}
-              onChange={(v) => {
-                setKind(v);
-                setConfig({});
-                setExtra(null);
-              }}
-              options={kinds.map((k) => ({
-                value: k.code,
-                label: CREDENTIAL_KIND_LABEL[k.code] ?? k.name,
-                disabled: !!credential || readOnly,
-                hint: credential ? 'Fixed once the credential exists.' : undefined,
-              }))}
-            />
-          </Field>
-          <div className="grid gap-1.5">
-            <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
-              Fields
-              {secretKeys(schema).length > 0 && <HelpTip id="target.secrets" />}
-            </span>
-            <SchemaForm
-              key={kind}
-              ref={formRef}
-              schema={schema}
-              value={config}
-              onChange={(v) => {
-                setConfig(v);
-                setExtra(null);
-              }}
-              storedSecrets={credential?.kind === kind ? storedSecrets : []}
-              readonly={readOnly}
-              extraErrors={extra ?? undefined}
-              onRevealSecret={onRevealSecret}
-              revealDisabledReason={revealDisabledReason}
-            />
-          </div>
-          {formError && (
-            <p role="alert" className="flex items-center gap-1.5 text-sm">
-              <CircleAlert className="size-4 text-failed" aria-hidden />
-              {formError}
-            </p>
-          )}
-          <SheetFooter className="flex-row justify-end gap-2 px-0">
+          <SheetBody>
+            <Field id="dcred-name" label="Name" error={nameError}>
+              <Input
+                id="dcred-name"
+                value={name}
+                placeholder="lab ssh key"
+                autoComplete="off"
+                disabled={readOnly}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setNameError(null);
+                }}
+              />
+            </Field>
+            <Field id="dcred-kind" label="Kind" help="deployCred.kind">
+              <SegmentedControl<string>
+                id="dcred-kind"
+                aria-label="Kind"
+                value={kind}
+                onChange={(v) => {
+                  setKind(v);
+                  setConfig({});
+                  setExtra(null);
+                }}
+                options={kinds.map((k) => ({
+                  value: k.code,
+                  label: CREDENTIAL_KIND_LABEL[k.code] ?? k.name,
+                  disabled: !!credential || readOnly,
+                  hint: credential ? 'Fixed once the credential exists.' : undefined,
+                }))}
+              />
+            </Field>
+            <div className="grid gap-1.5">
+              <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
+                Fields
+                {secretKeys(schema).length > 0 && <HelpTip id="target.secrets" />}
+              </span>
+              <SchemaForm
+                key={kind}
+                ref={formRef}
+                schema={schema}
+                value={config}
+                onChange={(v) => {
+                  setConfig(v);
+                  setExtra(null);
+                }}
+                storedSecrets={credential?.kind === kind ? storedSecrets : []}
+                readonly={readOnly}
+                extraErrors={extra ?? undefined}
+                onRevealSecret={onRevealSecret}
+                revealDisabledReason={revealDisabledReason}
+              />
+            </div>
+            {formError && (
+              <p role="alert" className="flex items-center gap-1.5 text-sm">
+                <CircleAlert className="size-4 text-failed" aria-hidden />
+                {formError}
+              </p>
+            )}
+          </SheetBody>
+          <SheetFooter>
             {readOnly ? (
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Close

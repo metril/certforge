@@ -14,7 +14,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard, SheetBody } from '@/components/ui/sheet';
 import { ArgvField, argvErrors } from '@/forms/widgets/ArgvField';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
 import { fieldErrorFromMessage } from '@/forms/uiSchema';
@@ -116,149 +116,166 @@ export function ActionSheet({ orgId, action, kinds, readOnly, onOpenChange }: Pr
 
   return (
     <Sheet guard={guard} open form={!readOnly} dirty={dirty} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
+      <SheetContent side="right" size="xl">
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
           <SheetDescription className="sr-only">A reusable step a grant runs around a deploy</SheetDescription>
         </SheetHeader>
-        <div className="grid gap-5 px-4">
-          <Field id="action-name" label="Name" error={nameError}>
-            <Input
-              id="action-name"
-              value={name}
-              placeholder="reload nginx"
-              autoComplete="off"
-              disabled={readOnly}
-              onChange={(e) => {
-                setName(e.target.value);
-                setNameError(null);
-              }}
-            />
-          </Field>
-          <Field id="action-kind" label="Kind" help="action.kind">
-            {kinds.length <= 5 ? (
-              <SegmentedControl<string>
-                id="action-kind"
-                aria-label="Kind"
-                value={kind}
-                onChange={changeKind}
-                options={kinds.map((k) => ({
-                  value: k.code,
-                  label: (
-                    <span className="inline-flex items-center gap-1.5">
-                      {k.name}
-                      <RunsOnChip mode={k.runsOn} />
-                    </span>
-                  ),
-                  disabled: readOnly,
-                }))}
-              />
-            ) : (
-              <Combobox
-                id="action-kind"
-                aria-label="Kind"
-                value={kind}
-                onChange={changeKind}
-                options={kinds.map((k) => ({ value: k.code, label: k.name, hint: RUNS_ON_META[k.runsOn].label }))}
-                placeholder="Pick a kind"
-                emptyText="No kind matches."
-                disabled={readOnly}
-              />
-            )}
-          </Field>
-          <Field id="action-phase" label="Phase" help="action.phase">
-            <SegmentedControl<ActionPhase>
-              id="action-phase"
-              aria-label="Phase"
-              value={phase}
-              onChange={setPhase}
-              options={(['pre_deploy', 'post_deploy'] as const).map((p) => ({ value: p, label: PHASE_LABEL[p], disabled: readOnly }))}
-            />
-          </Field>
-          {kind === 'exec' ? (
-            <div className="grid gap-1.5">
-              <span className="flex items-center gap-1.5 text-sm font-medium">
-                Command <HelpTip id="hook.argv" />
-              </span>
-              <ArgvField id="action-argv" value={argv} onChange={setArgv} errors={show ? argvErrs : []} disabled={readOnly} />
-            </div>
-          ) : kind === 'restart' ? (
-            <div className="grid gap-2">
-              <Field id="action-target" label="Target" help="hook.target" error={show ? targetError : null}>
-                <div className="flex gap-2">
-                  <Input
-                    id="action-target"
-                    value={restartTarget}
-                    placeholder="docker:nginx or systemd:nginx.service"
-                    autoComplete="off"
-                    spellCheck={false}
-                    className="font-mono"
-                    disabled={readOnly}
-                    onChange={(e) => setRestartTarget(e.target.value)}
-                  />
-                  {!readOnly && (
-                    <Button type="button" variant="outline" aria-expanded={browse} onClick={() => setBrowse((b) => !b)}>
-                      Browse
-                    </Button>
-                  )}
-                </div>
-              </Field>
-              {browse && !readOnly && (
-                <RestartTargetPicker
-                  orgId={orgId}
-                  onPick={(t) => {
-                    setRestartTarget(t);
-                    setBrowse(false);
+        <SheetBody>
+          <div className="grid gap-4">
+            <FormSection title="General" columns={2}>
+              <Field id="action-name" label="Name" error={nameError}>
+                <Input
+                  id="action-name"
+                  value={name}
+                  placeholder="reload nginx"
+                  autoComplete="off"
+                  disabled={readOnly}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    setNameError(null);
                   }}
                 />
-              )}
-            </div>
-          ) : (
-            <div className="grid gap-1.5">
-              <span className="text-sm font-semibold">Settings</span>
-              <SchemaForm
-                key={kind}
-                ref={formRef}
-                schema={schema}
-                value={config}
-                onChange={(v) => {
-                  setConfig(v);
-                  setExtra(null);
-                }}
-                storedSecrets={stored}
-                readonly={readOnly}
-                extraErrors={extra ?? undefined}
-                uiSchemaOverrides={uiOverrides}
-                formContext={formContext}
-              />
-            </div>
-          )}
-          <FormSection title="Limits">
-            <Field id="action-timeout" label="Timeout" help="hook.timeout" error={show ? timeoutError : null}>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="action-timeout"
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  max={3600}
-                  className="w-28"
-                  value={timeout}
-                  disabled={readOnly}
-                  onChange={(e) => setTimeoutText(e.target.value)}
+              </Field>
+              <Field id="action-kind" label="Kind" help="action.kind" className="sm:col-span-2">
+                {kinds.length <= 5 ? (
+                  <SegmentedControl<string>
+                    id="action-kind"
+                    aria-label="Kind"
+                    value={kind}
+                    onChange={changeKind}
+                    options={kinds.map((k) => ({
+                      value: k.code,
+                      label: (
+                        <span className="inline-flex items-center gap-1.5">
+                          {k.name}
+                          <RunsOnChip mode={k.runsOn} />
+                        </span>
+                      ),
+                      disabled: readOnly,
+                    }))}
+                  />
+                ) : (
+                  <Combobox
+                    id="action-kind"
+                    aria-label="Kind"
+                    value={kind}
+                    onChange={changeKind}
+                    options={kinds.map((k) => ({ value: k.code, label: k.name, hint: RUNS_ON_META[k.runsOn].label }))}
+                    placeholder="Pick a kind"
+                    emptyText="No kind matches."
+                    disabled={readOnly}
+                  />
+                )}
+              </Field>
+              <Field id="action-phase" label="Phase" help="action.phase">
+                <SegmentedControl<ActionPhase>
+                  id="action-phase"
+                  aria-label="Phase"
+                  value={phase}
+                  onChange={setPhase}
+                  options={(['pre_deploy', 'post_deploy'] as const).map((p) => ({ value: p, label: PHASE_LABEL[p], disabled: readOnly }))}
                 />
-                <span className="text-sm text-ink-muted">seconds</span>
-              </div>
-            </Field>
-            {meta.runsOn !== 'agent' && <SwitchField id="action-optional" label="Optional" help="action.optional" checked={optional} onCheckedChange={setOptional} onText="Failure does not fail the deploy" offText="Failure fails the deploy" disabled={readOnly} />}
-          </FormSection>
-          {formError && (
-            <p role="alert" className="text-sm">
-              {formError}
-            </p>
-          )}
-        </div>
-        <SheetFooter className="flex-row justify-end gap-2">
+              </Field>
+            </FormSection>
+            <FormSection title="Settings">
+              {kind === 'exec' ? (
+                <div className="grid gap-1.5">
+                  <span className="flex items-center gap-1.5 text-sm font-medium">
+                    Command <HelpTip id="hook.argv" />
+                  </span>
+                  <ArgvField id="action-argv" value={argv} onChange={setArgv} errors={show ? argvErrs : []} disabled={readOnly} />
+                </div>
+              ) : kind === 'restart' ? (
+                <div className="grid gap-2">
+                  <Field id="action-target" label="Target" help="hook.target" error={show ? targetError : null}>
+                    <div className="flex gap-2">
+                      <Input
+                        id="action-target"
+                        value={restartTarget}
+                        placeholder="docker:nginx or systemd:nginx.service"
+                        autoComplete="off"
+                        spellCheck={false}
+                        className="font-mono"
+                        disabled={readOnly}
+                        onChange={(e) => setRestartTarget(e.target.value)}
+                      />
+                      {!readOnly && (
+                        <Button type="button" variant="outline" aria-expanded={browse} onClick={() => setBrowse((b) => !b)}>
+                          Browse
+                        </Button>
+                      )}
+                    </div>
+                  </Field>
+                  {browse && !readOnly && (
+                    <RestartTargetPicker
+                      orgId={orgId}
+                      onPick={(t) => {
+                        setRestartTarget(t);
+                        setBrowse(false);
+                      }}
+                    />
+                  )}
+                </div>
+              ) : (
+                <div className="grid gap-1.5">
+                  <SchemaForm
+                    key={kind}
+                    ref={formRef}
+                    schema={schema}
+                    value={config}
+                    onChange={(v) => {
+                      setConfig(v);
+                      setExtra(null);
+                    }}
+                    storedSecrets={stored}
+                    readonly={readOnly}
+                    extraErrors={extra ?? undefined}
+                    uiSchemaOverrides={uiOverrides}
+                    formContext={formContext}
+                    columns={2}
+                  />
+                </div>
+              )}
+            </FormSection>
+            <FormSection title="Limits" columns={2}>
+              <Field id="action-timeout" label="Timeout" help="hook.timeout" error={show ? timeoutError : null}>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="action-timeout"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={3600}
+                    className="w-28"
+                    value={timeout}
+                    disabled={readOnly}
+                    onChange={(e) => setTimeoutText(e.target.value)}
+                  />
+                  <span className="text-sm text-ink-muted">seconds</span>
+                </div>
+              </Field>
+              {meta.runsOn !== 'agent' && (
+                <SwitchField
+                  id="action-optional"
+                  label="Optional"
+                  help="action.optional"
+                  checked={optional}
+                  onCheckedChange={setOptional}
+                  onText="Failure does not fail the deploy"
+                  offText="Failure fails the deploy"
+                  disabled={readOnly}
+                />
+              )}
+            </FormSection>
+            {formError && (
+              <p role="alert" className="text-sm">
+                {formError}
+              </p>
+            )}
+          </div>
+        </SheetBody>
+        <SheetFooter>
           {readOnly ? (
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Close

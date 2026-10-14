@@ -1,3 +1,4 @@
+import { FormSection } from '@/components/FormSection';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CircleAlert } from 'lucide-react';
@@ -12,7 +13,7 @@ import { Field } from '@/components/Field';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, useSheetGuard } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, useSheetGuard, SheetBody } from '@/components/ui/sheet';
 import { GLOBAL, keyState, scopeLabel } from '@/lib/apiKeys';
 import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
@@ -95,85 +96,91 @@ export function BindingSheet({ open, onOpenChange, fixedType }: Props) {
 
   return (
     <Sheet guard={guard} open={open} form dirty={open && dirty} onOpenChange={onOpenChange}>
-      <SheetContent className="grid content-start gap-6 overflow-y-auto sm:max-w-md">
+      <SheetContent size="xl">
         <SheetHeader>
           <SheetTitle>{fixedType === 'oidc_group' ? 'Add group mapping' : 'Add binding'}</SheetTitle>
         </SheetHeader>
-        {!fixedType && (
-          <Field id="binding-type" label="Subject" help="binding.subjectType">
-            <SegmentedControl<SubjectType>
-              aria-label="Subject type"
-              value={type}
-              onChange={(v) => {
-                setType(v);
-                setSubject('');
-                setScope(v === 'apikey' ? undefined : initialScope);
-              }}
-              options={[
-                { value: 'user', label: 'User', disabled: !canUser, hint: canUser ? undefined : help['binding.userDisabled'].text },
-                { value: 'oidc_group', label: 'Group', disabled: !canGroup, hint: canGroup ? undefined : help['binding.groupDisabled'].text },
-                { value: 'apikey', label: 'API key', disabled: !canApiKey, hint: canApiKey ? undefined : help['binding.apikeyDisabled'].text },
-              ]}
-            />
-          </Field>
-        )}
-        {type === 'user' && (
-          <Field id="binding-user" label="User">
-            <Combobox
-              id="binding-user"
-              aria-label="User"
-              value={subject || undefined}
-              onChange={(v) => setSubject(v ?? '')}
-              options={(users.data ?? []).map((u) => ({ value: u.id, label: u.displayName, hint: u.email ?? undefined, keywords: [u.email ?? ''] }))}
-              placeholder="Pick a user"
-              emptyText="No user matches."
-            />
-          </Field>
-        )}
-        {type === 'oidc_group' && (
-          <Field id="binding-group" label="Group" help="binding.group">
-            <Input id="binding-group" className="font-mono" placeholder="platform-admins" value={subject} onChange={(e) => setSubject(e.target.value)} />
-          </Field>
-        )}
-        {type === 'apikey' && (
-          <Field id="binding-apikey" label="API key" help="binding.apikey">
-            <Combobox
-              id="binding-apikey"
-              aria-label="API key"
-              mono
-              value={subject || undefined}
-              onChange={(v) => {
-                setSubject(v ?? '');
-                const key = bindableKeys.find((k) => k.id === v);
-                setScope(key ? (key.orgId ?? GLOBAL) : undefined);
-              }}
-              options={bindableKeys.map((k) => ({ value: k.id, label: k.name, hint: k.prefix, keywords: [k.prefix] }))}
-              placeholder="Pick a key"
-              emptyText="No API key matches."
-            />
-          </Field>
-        )}
-        <Field id="binding-role" label="Role" help="binding.role">
-          <SegmentedControl<Role> aria-label="Role" value={role} onChange={setRole} options={ROLES.map((r) => ({ value: r, label: ROLE_LABEL[r] }))} />
-        </Field>
-        <Field id="binding-scope" label="Scope" help="binding.scope">
-          <Combobox
-            id="binding-scope"
-            aria-label="Scope"
-            value={scope}
-            onChange={setScope}
-            options={type === 'apikey' ? (scope ? [{ value: scope, label: scopeLabel(me, scope === GLOBAL ? null : scope) }] : []) : scopes}
-            placeholder={type === 'apikey' ? 'Pick a key first' : 'Pick an org'}
-            emptyText="No org matches."
-            disabled={type === 'apikey'}
-          />
-        </Field>
-        {error && (
-          <p role="alert" className="flex items-center gap-1 text-xs">
-            <CircleAlert className="size-3.5 text-failed" aria-hidden />
-            {error}
-          </p>
-        )}
+        <SheetBody>
+          <FormSection title="Subject">
+            {!fixedType && (
+              <Field id="binding-type" label="Subject" help="binding.subjectType" className="sm:col-span-2">
+                <SegmentedControl<SubjectType>
+                  aria-label="Subject type"
+                  value={type}
+                  onChange={(v) => {
+                    setType(v);
+                    setSubject('');
+                    setScope(v === 'apikey' ? undefined : initialScope);
+                  }}
+                  options={[
+                    { value: 'user', label: 'User', disabled: !canUser, hint: canUser ? undefined : help['binding.userDisabled'].text },
+                    { value: 'oidc_group', label: 'Group', disabled: !canGroup, hint: canGroup ? undefined : help['binding.groupDisabled'].text },
+                    { value: 'apikey', label: 'API key', disabled: !canApiKey, hint: canApiKey ? undefined : help['binding.apikeyDisabled'].text },
+                  ]}
+                />
+              </Field>
+            )}
+            {type === 'user' && (
+              <Field id="binding-user" label="User">
+                <Combobox
+                  id="binding-user"
+                  aria-label="User"
+                  value={subject || undefined}
+                  onChange={(v) => setSubject(v ?? '')}
+                  options={(users.data ?? []).map((u) => ({ value: u.id, label: u.displayName, hint: u.email ?? undefined, keywords: [u.email ?? ''] }))}
+                  placeholder="Pick a user"
+                  emptyText="No user matches."
+                />
+              </Field>
+            )}
+            {type === 'oidc_group' && (
+              <Field id="binding-group" label="Group" help="binding.group">
+                <Input id="binding-group" className="font-mono" placeholder="platform-admins" value={subject} onChange={(e) => setSubject(e.target.value)} />
+              </Field>
+            )}
+            {type === 'apikey' && (
+              <Field id="binding-apikey" label="API key" help="binding.apikey">
+                <Combobox
+                  id="binding-apikey"
+                  aria-label="API key"
+                  mono
+                  value={subject || undefined}
+                  onChange={(v) => {
+                    setSubject(v ?? '');
+                    const key = bindableKeys.find((k) => k.id === v);
+                    setScope(key ? (key.orgId ?? GLOBAL) : undefined);
+                  }}
+                  options={bindableKeys.map((k) => ({ value: k.id, label: k.name, hint: k.prefix, keywords: [k.prefix] }))}
+                  placeholder="Pick a key"
+                  emptyText="No API key matches."
+                />
+              </Field>
+            )}
+          </FormSection>
+          <FormSection title="Access" columns={2}>
+            <Field id="binding-role" label="Role" help="binding.role" className="sm:col-span-2">
+              <SegmentedControl<Role> aria-label="Role" value={role} onChange={setRole} options={ROLES.map((r) => ({ value: r, label: ROLE_LABEL[r] }))} />
+            </Field>
+            <Field id="binding-scope" label="Scope" help="binding.scope">
+              <Combobox
+                id="binding-scope"
+                aria-label="Scope"
+                value={scope}
+                onChange={setScope}
+                options={type === 'apikey' ? (scope ? [{ value: scope, label: scopeLabel(me, scope === GLOBAL ? null : scope) }] : []) : scopes}
+                placeholder={type === 'apikey' ? 'Pick a key first' : 'Pick an org'}
+                emptyText="No org matches."
+                disabled={type === 'apikey'}
+              />
+            </Field>
+          </FormSection>
+          {error && (
+            <p role="alert" className="flex items-center gap-1 text-xs">
+              <CircleAlert className="size-3.5 text-failed" aria-hidden />
+              {error}
+            </p>
+          )}
+        </SheetBody>
         <SheetFooter>
           <Button disabled={!subject.trim() || !scope || create.isPending} onClick={() => void save()}>
             Save

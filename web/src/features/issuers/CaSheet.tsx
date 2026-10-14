@@ -1,3 +1,4 @@
+import { FormSection } from '@/components/FormSection';
 import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
@@ -11,7 +12,7 @@ import { PermissionTip } from '@/components/PermissionTip';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard, SheetBody } from '@/components/ui/sheet';
 import type { SchemaFormHandle } from '@/forms/SchemaForm';
 import { KIND_FULL_LABEL } from '@/lib/caKinds';
 import { help } from '@/lib/help';
@@ -138,66 +139,67 @@ export function CaSheet({ orgId, open, ca, initialKind = 'acme', onOpenChange }:
 
   return (
     <Sheet guard={guard} open={open} form dirty={dirty} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
+      <SheetContent side="right" size="xl">
         <SheetHeader>
           <SheetTitle>{ca ? `Edit ${ca.name}` : 'Add certificate authority'}</SheetTitle>
           <SheetDescription className="sr-only">Certificate authority settings</SheetDescription>
         </SheetHeader>
         <form
-          className="grid gap-5 px-4"
+          className="flex min-h-0 flex-1 flex-col"
           onSubmit={(e) => {
             e.preventDefault();
             void submit();
           }}
         >
-          <Field id="ca-type" label="Type" help="ca.type">
-            <span className="inline-flex items-center gap-1.5">
-              <SegmentedControl<CaType>
-                id="ca-type"
-                aria-label="Type"
-                value={draft.kind}
-                onChange={(kind) => setDraft((d) => ({ ...d, kind }))}
-                options={KIND_OPTIONS.map((k) => ({
-                  value: k,
-                  label: KIND_FULL_LABEL[k],
-                  disabled: !!ca,
-                  hint: ca ? help['ca.typeLocked'].text : undefined,
-                }))}
+          <SheetBody>
+            <FormSection title="General" columns={2}>
+              <Field id="ca-type" label="Type" help="ca.type" className="sm:col-span-2">
+                <span className="inline-flex items-center gap-1.5">
+                  <SegmentedControl<CaType>
+                    id="ca-type"
+                    aria-label="Type"
+                    value={draft.kind}
+                    onChange={(kind) => setDraft((d) => ({ ...d, kind }))}
+                    options={KIND_OPTIONS.map((k) => ({ value: k, label: KIND_FULL_LABEL[k], disabled: !!ca, hint: ca ? help['ca.typeLocked'].text : undefined }))}
+                  />
+                  {draft.kind === 'vaultpki' && <HelpTip id="ca.vaultPki" />}
+                  {draft.kind === 'adcs' && <HelpTip id="ca.adcs" />}
+                </span>
+              </Field>
+              <Field id="ca-name" label="Name" error={submitted && !nameOk ? 'Required' : serverError?.field === 'name' ? serverError.message : null}>
+                <Input
+                  id="ca-name"
+                  value={draft.name}
+                  onChange={(e) => {
+                    setNameTouched(true);
+                    setDraft((d) => ({ ...d, name: e.target.value }));
+                  }}
+                  placeholder="Let's Encrypt"
+                />
+              </Field>
+            </FormSection>
+            <FormSection title="Settings">
+              <CaKindBody
+                orgId={orgId}
+                draft={draft}
+                setDraft={setDraft}
+                ca={ca}
+                presets={presets}
+                signers={signers}
+                submitted={submitted}
+                serverError={serverError}
+                extraErrors={configError}
+                formRef={formRef}
+                nameTouched={nameTouched}
               />
-              {draft.kind === 'vaultpki' && <HelpTip id="ca.vaultPki" />}
-              {draft.kind === 'adcs' && <HelpTip id="ca.adcs" />}
-            </span>
-          </Field>
-          <Field id="ca-name" label="Name" error={submitted && !nameOk ? 'Required' : serverError?.field === 'name' ? serverError.message : null}>
-            <Input
-              id="ca-name"
-              value={draft.name}
-              onChange={(e) => {
-                setNameTouched(true);
-                setDraft((d) => ({ ...d, name: e.target.value }));
-              }}
-              placeholder="Let's Encrypt"
-            />
-          </Field>
-          <CaKindBody
-            orgId={orgId}
-            draft={draft}
-            setDraft={setDraft}
-            ca={ca}
-            presets={presets}
-            signers={signers}
-            submitted={submitted}
-            serverError={serverError}
-            extraErrors={configError}
-            formRef={formRef}
-            nameTouched={nameTouched}
-          />
-          {bannerError && (
-            <p role="alert" className="text-xs">
-              {bannerError}
-            </p>
-          )}
-          <SheetFooter className="flex-row justify-end gap-2 px-0">
+            </FormSection>
+            {bannerError && (
+              <p role="alert" className="text-xs">
+                {bannerError}
+              </p>
+            )}
+          </SheetBody>
+          <SheetFooter>
             {draft.kind === 'adcs' && (
               <span className="mr-auto inline-flex items-center gap-1.5">
                 <AdcsTestButton canWrite={canWrite} request={adcsRequest} onClick={() => setTesting(true)} />

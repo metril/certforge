@@ -317,6 +317,7 @@ function LocalCaBody({
         storedSecrets={ca?.storedSecrets}
         extraErrors={extraErrors}
         uiSchemaOverrides={uiSchemaOverrides}
+        columns={2}
       />
     </>
   );
@@ -391,6 +392,7 @@ function AdcsBody({
       extraErrors={extraErrors}
       uiSchemaOverrides={ADCS_UI}
       formContext={formContext}
+      columns={2}
     />
   );
 }
@@ -416,13 +418,7 @@ function VaultPkiBody({
 
   return (
     <>
-      <SchemaForm
-        ref={formRef}
-        schema={schema}
-        value={draft.vaultpki.config}
-        onChange={(v) => setDraft((d) => ({ ...d, vaultpki: { config: v } }))}
-        extraErrors={extraErrors}
-      />
+      <SchemaForm ref={formRef} schema={schema} value={draft.vaultpki.config} onChange={(v) => setDraft((d) => ({ ...d, vaultpki: { config: v } }))} extraErrors={extraErrors} columns={2} />
       {notConfigured && (
         <p className="flex items-center gap-1.5 text-xs text-ink-muted">
           <TriangleAlert className="size-3.5 text-expiring" aria-hidden />

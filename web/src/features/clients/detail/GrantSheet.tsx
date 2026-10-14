@@ -19,10 +19,9 @@ import { ToneChip } from '@/components/StatusChip';
 import { SwitchField } from '@/components/SwitchField';
 import { PermissionTip } from '@/components/PermissionTip';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard, SheetBody } from '@/components/ui/sheet';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
 import { fieldErrorFromMessage } from '@/forms/uiSchema';
-import { HelpTip } from '@/components/HelpTip';
 import { StepsPicker } from '@/features/delivery/StepsPicker';
 import { help } from '@/lib/help';
 import { useMe, useOrg } from '@/lib/org';
@@ -149,145 +148,144 @@ export function GrantSheet({ orgId, client, grants, editing, removed = false, on
 
   return (
     <Sheet guard={guard} open form dirty={dirty} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
+      <SheetContent side="right" size="xl">
         <SheetHeader>
           <SheetTitle>{editing ? `Edit ${editing.certificateName}` : 'Grant certificate'}</SheetTitle>
           <SheetDescription className="sr-only">For client {client.name}</SheetDescription>
         </SheetHeader>
-        {removed ? (
-          <p role="alert" className="flex items-center gap-1.5 px-4 text-sm">
-            <CircleAlert className="size-4 shrink-0 text-failed" aria-hidden />
-            This grant was removed. Close this sheet to continue.
-          </p>
-        ) : (
-        <div className="grid gap-5 px-4">
-          {editing ? (
-            <div className="grid gap-1 text-sm">
-              <span className="text-ink-muted">Certificate</span>
-              <span className="font-semibold">{editing.certificateName}</span>
-            </div>
-          ) : (
-            <Field id="grant-certs" label="Certificates" help="grant.certificates" error={errors.certs}>
-              <QueryField label="certificates" q={certs}>
-                <MultiCombobox
-                  id="grant-certs"
-                  aria-label="Certificates"
-                  value={certIds}
-                  onChange={(v) => {
-                    setCertIds(v);
-                    setErrors((e) => ({ ...e, certs: undefined }));
-                  }}
-                  options={certOptions}
-                  placeholder="Pick certificates"
-                  emptyText="No certificate to grant."
-                />
-              </QueryField>
-            </Field>
-          )}
-          <Field id="grant-delivery" label="Delivery" help="grant.delivery">
-            <div className="flex flex-wrap items-center gap-2">
-              <SegmentedControl<GrantDelivery>
-                id="grant-delivery"
-                aria-label="Delivery"
-                value={delivery}
-                onChange={setDelivery}
-                options={[
-                  { value: 'push', label: 'Push' },
-                  { value: 'pull', label: 'Pull' },
-                ]}
-              />
-              {delivery === 'pull' && <ToneChip tone="expiring" icon={TriangleAlert} label="No push" help="grant.pullWarning" />}
-            </div>
-          </Field>
-          <Field id="grant-layout" label="Layout" help="grant.layout" optional>
-            <QueryField label="layouts" q={layoutsQ}>
-              <Combobox
-                id="grant-layout"
-                aria-label="Layout"
-                clearable
-                value={layoutId}
-                onChange={(v) => {
-                  setLayoutId(v);
-                  setErrors((e) => ({ ...e, where: undefined }));
-                }}
-                options={layouts.map((l) => ({ value: l.id, label: l.name, hint: plural(l.files.length, 'file') }))}
-                placeholder="No layout"
-                emptyText="No layouts yet."
-              />
-            </QueryField>
-          </Field>
-          <Field id="grant-target" label="Deploy target" help="grant.target" optional error={errors.where}>
-            <QueryField label="deploy targets" q={targetsQ}>
-              <Combobox
-                id="grant-target"
-                aria-label="Deploy target"
-                clearable
-                value={targetId}
-                onChange={(v) => {
-                  const nextType = targets.find((t) => t.id === v)?.type;
-                  if (nextType !== selectedTarget?.type) {
-                    setTargetOptions({});
-                    setOptsExtra(null);
-                  }
-                  setTargetId(v);
-                  setErrors((e) => ({ ...e, where: undefined }));
-                }}
-                options={targets.map((t) =>
-                  t.runsOn === 'server'
-                    ? { value: t.id, label: t.name, disabled: true, hint: help['grant.serverTarget'].text }
-                    : { value: t.id, label: t.name, hint: typeName(t.type) },
-                )}
-                placeholder="No target"
-                emptyText="No deploy targets yet."
-              />
-            </QueryField>
-          </Field>
-          {showOpts && (
-            <div className="grid gap-1.5">
-              <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
-                Target options
-                <HelpTip id="grant.targetOptions" />
-              </span>
-              <SchemaForm
-                ref={optsRef}
-                schema={grantSchema}
-                value={targetOptions}
-                onChange={(v) => {
-                  setTargetOptions(v);
-                  setOptsExtra(null);
-                }}
-                extraErrors={optsExtra ?? undefined}
-              />
-            </div>
-          )}
-          <FormSection title="Advanced" collapsible count={(steps.length > 0 ? 1 : 0) + (autoRemediate ? 1 : 0)}>
-            <StepsPicker orgId={orgId} runsOn="agent" value={steps} onChange={setSteps} restartTargets={client.restartTargets} newActionHref={`/o/${orgSlug}/delivery/actions?edit=new`} />
-            <SwitchField
-              id="grant-auto"
-              label="Auto-remediate"
-              help="grant.autoRemediate"
-              checked={autoRemediate}
-              onCheckedChange={setAutoRemediate}
-              onText="Reinstall on drift"
-              offText="Report only"
-            />
-          </FormSection>
-          {failures.length > 0 && (
-            <ul role="alert" aria-label="Not granted" className="grid gap-1 rounded-md border border-failed p-3 text-sm">
-              {failures.map((f) => (
-                <li key={f.certificateId}>{`${certName(f.certificateId)}: ${f.message}`}</li>
-              ))}
-            </ul>
-          )}
-          {formError && (
-            <p role="alert" className="flex items-center gap-1 text-sm text-failed">
-              <CircleAlert className="size-3.5 shrink-0" aria-hidden />
-              {formError}
+        <SheetBody>
+          {removed ? (
+            <p role="alert" className="flex items-center gap-1.5 text-sm">
+              <CircleAlert className="size-4 shrink-0 text-failed" aria-hidden />
+              This grant was removed. Close this sheet to continue.
             </p>
+          ) : (
+            <div className="grid gap-4">
+              <FormSection title="General" columns={2}>
+                {editing ? (
+                  <div className="grid gap-1 text-sm sm:col-span-2">
+                    <span className="text-ink-muted">Certificate</span>
+                    <span className="font-semibold">{editing.certificateName}</span>
+                  </div>
+                ) : (
+                  <Field id="grant-certs" label="Certificates" help="grant.certificates" className="sm:col-span-2" error={errors.certs}>
+                    <QueryField label="certificates" q={certs}>
+                      <MultiCombobox
+                        id="grant-certs"
+                        aria-label="Certificates"
+                        value={certIds}
+                        onChange={(v) => {
+                          setCertIds(v);
+                          setErrors((e) => ({ ...e, certs: undefined }));
+                        }}
+                        options={certOptions}
+                        placeholder="Pick certificates"
+                        emptyText="No certificate to grant."
+                      />
+                    </QueryField>
+                  </Field>
+                )}
+                <Field id="grant-delivery" label="Delivery" help="grant.delivery">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <SegmentedControl<GrantDelivery>
+                      id="grant-delivery"
+                      aria-label="Delivery"
+                      value={delivery}
+                      onChange={setDelivery}
+                      options={[
+                        { value: 'push', label: 'Push' },
+                        { value: 'pull', label: 'Pull' },
+                      ]}
+                    />
+                    {delivery === 'pull' && <ToneChip tone="expiring" icon={TriangleAlert} label="No push" help="grant.pullWarning" />}
+                  </div>
+                </Field>
+                <Field id="grant-layout" label="Layout" help="grant.layout" optional>
+                  <QueryField label="layouts" q={layoutsQ}>
+                    <Combobox
+                      id="grant-layout"
+                      aria-label="Layout"
+                      clearable
+                      value={layoutId}
+                      onChange={(v) => {
+                        setLayoutId(v);
+                        setErrors((e) => ({ ...e, where: undefined }));
+                      }}
+                      options={layouts.map((l) => ({ value: l.id, label: l.name, hint: plural(l.files.length, 'file') }))}
+                      placeholder="No layout"
+                      emptyText="No layouts yet."
+                    />
+                  </QueryField>
+                </Field>
+                <Field id="grant-target" label="Deploy target" help="grant.target" optional error={errors.where} className="sm:col-span-2">
+                  <QueryField label="deploy targets" q={targetsQ}>
+                    <Combobox
+                      id="grant-target"
+                      aria-label="Deploy target"
+                      clearable
+                      value={targetId}
+                      onChange={(v) => {
+                        const nextType = targets.find((t) => t.id === v)?.type;
+                        if (nextType !== selectedTarget?.type) {
+                          setTargetOptions({});
+                          setOptsExtra(null);
+                        }
+                        setTargetId(v);
+                        setErrors((e) => ({ ...e, where: undefined }));
+                      }}
+                      options={targets.map((t) =>
+                        t.runsOn === 'server' ? { value: t.id, label: t.name, disabled: true, hint: help['grant.serverTarget'].text } : { value: t.id, label: t.name, hint: typeName(t.type) },
+                      )}
+                      placeholder="No target"
+                      emptyText="No deploy targets yet."
+                    />
+                  </QueryField>
+                </Field>
+              </FormSection>
+              {showOpts && (
+                <FormSection title="Target options" help="grant.targetOptions">
+                  <SchemaForm
+                    ref={optsRef}
+                    schema={grantSchema}
+                    value={targetOptions}
+                    onChange={(v) => {
+                      setTargetOptions(v);
+                      setOptsExtra(null);
+                    }}
+                    extraErrors={optsExtra ?? undefined}
+                    columns={2}
+                  />
+                </FormSection>
+              )}
+              <FormSection title="Advanced" collapsible count={(steps.length > 0 ? 1 : 0) + (autoRemediate ? 1 : 0)}>
+                <StepsPicker orgId={orgId} runsOn="agent" value={steps} onChange={setSteps} restartTargets={client.restartTargets} newActionHref={`/o/${orgSlug}/delivery/actions?edit=new`} />
+                <SwitchField
+                  id="grant-auto"
+                  label="Auto-remediate"
+                  help="grant.autoRemediate"
+                  checked={autoRemediate}
+                  onCheckedChange={setAutoRemediate}
+                  onText="Reinstall on drift"
+                  offText="Report only"
+                />
+              </FormSection>
+              {failures.length > 0 && (
+                <ul role="alert" aria-label="Not granted" className="grid gap-1 rounded-md border border-failed p-3 text-sm">
+                  {failures.map((f) => (
+                    <li key={f.certificateId}>{`${certName(f.certificateId)}: ${f.message}`}</li>
+                  ))}
+                </ul>
+              )}
+              {formError && (
+                <p role="alert" className="flex items-center gap-1 text-sm text-failed">
+                  <CircleAlert className="size-3.5 shrink-0" aria-hidden />
+                  {formError}
+                </p>
+              )}
+            </div>
           )}
-        </div>
-        )}
-        <SheetFooter className="flex-row justify-end gap-2">
+        </SheetBody>
+        <SheetFooter>
           <SheetClose asChild>
             <Button variant="outline">Cancel</Button>
           </SheetClose>

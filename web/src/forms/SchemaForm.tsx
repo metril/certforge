@@ -51,9 +51,14 @@ type Props = {
   /** Extra formContext entries for custom widgets (e.g. the AD CS template
    * picker's loaded templates and Load action). */
   formContext?: Record<string, unknown>;
+  /** Two columns from `sm` up (xl sheets); wide fields span both. */
+  columns?: 1 | 2;
 };
 
-export const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm({ schema, value, onChange, storedSecrets, readonly = false, extraErrors, uiSchemaOverrides, onRevealSecret, revealDisabledReason, formContext: extraContext }, ref) {
+export const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm(
+  { schema, value, onChange, storedSecrets, readonly = false, extraErrors, uiSchemaOverrides, onRevealSecret, revealDisabledReason, formContext: extraContext, columns = 1 },
+  ref,
+) {
   const formRef = useRef<Form>(null);
   const uiSchema = useMemo(() => {
     const base = buildUiSchema(schema, { storedSecrets });
@@ -74,7 +79,7 @@ export const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaFor
   const serverPath = useMemo(() => serverPathKeys(schema), [schema]);
   // formData: the live value, for a widget that reads a sibling field (the
   // CA bundle's Fetch prefills its server from the form's URL field).
-  const formContext = useMemo(() => ({ ...extraContext, onRevealSecret, revealDisabledReason, formData: value }), [extraContext, onRevealSecret, revealDisabledReason, value]);
+  const formContext = useMemo(() => ({ ...extraContext, onRevealSecret, revealDisabledReason, formData: value, columns }), [extraContext, onRevealSecret, revealDisabledReason, value, columns]);
   useImperativeHandle(ref, () => ({ validate: () => formRef.current?.validateForm() ?? false }), []);
   return (
     <ThemedForm

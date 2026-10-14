@@ -10,7 +10,7 @@ import { Field } from '@/components/Field';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, useSheetGuard } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, useSheetGuard, SheetBody } from '@/components/ui/sheet';
 import { GLOBAL } from '@/lib/apiKeys';
 import { useMe } from '@/lib/org';
 import { API_KEY_SCOPES, can, canGrantScope } from '@/lib/permissions';
@@ -126,45 +126,42 @@ export function ApiKeySheet({ open, onOpenChange, onCreated }: { open: boolean; 
 
   return (
     <Sheet guard={guard} open={open} form dirty={open && dirty} onOpenChange={onOpenChange}>
-      <SheetContent className="grid content-start gap-6 overflow-y-auto sm:max-w-md">
+      <SheetContent size="md">
         <SheetHeader>
           <SheetTitle>New API key</SheetTitle>
         </SheetHeader>
-        <Field id="key-name" label="Name">
-          <Input id="key-name" placeholder="ci-deploy" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
-        </Field>
-        <Field id="key-org" label="Scope" help="apikey.org">
-          <Combobox id="key-org" aria-label="Scope" value={scope} onChange={changeScope} options={scopes} placeholder="Pick an org" emptyText="No org matches." />
-        </Field>
-        <Field id="key-scopes" label="Permissions" help="apikey.scopes">
-          <ChipSet<ApiKeyScope>
-            id="key-scopes"
-            aria-label="Permissions"
-            value={picked}
-            onChange={setPicked}
-            options={API_KEY_SCOPES.map((s) => ({ value: s, label: s, disabled: !grantable(s), hint: grantable(s) ? undefined : 'Your role here does not include this.' }))}
-          />
-        </Field>
-        <Field id="key-expiry" label="Expires" help="apikey.expiry">
-          <SegmentedControl<Expiry>
-            aria-label="Expires"
-            value={expiry}
-            onChange={setExpiry}
-            options={expiryOptions(cap)}
-          />
-          {cap > 0 && <p className="text-xs text-ink-muted">Server policy: a key lasts at most {cap} days.</p>}
-        </Field>
-        {expiry === 'custom' && (
-          <Field id="key-expiry-date" label="Expiry date" error={customPast ? "Pick a date that hasn't passed." : customOverCap ? `Pick a date within ${cap} days.` : null}>
-            <Input id="key-expiry-date" type="date" value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
+        <SheetBody>
+          <Field id="key-name" label="Name">
+            <Input id="key-name" placeholder="ci-deploy" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
           </Field>
-        )}
-        {error && (
-          <p role="alert" className="flex items-center gap-1 text-xs">
-            <CircleAlert className="size-3.5 text-failed" aria-hidden />
-            {error}
-          </p>
-        )}
+          <Field id="key-org" label="Scope" help="apikey.org">
+            <Combobox id="key-org" aria-label="Scope" value={scope} onChange={changeScope} options={scopes} placeholder="Pick an org" emptyText="No org matches." />
+          </Field>
+          <Field id="key-scopes" label="Permissions" help="apikey.scopes">
+            <ChipSet<ApiKeyScope>
+              id="key-scopes"
+              aria-label="Permissions"
+              value={picked}
+              onChange={setPicked}
+              options={API_KEY_SCOPES.map((s) => ({ value: s, label: s, disabled: !grantable(s), hint: grantable(s) ? undefined : 'Your role here does not include this.' }))}
+            />
+          </Field>
+          <Field id="key-expiry" label="Expires" help="apikey.expiry">
+            <SegmentedControl<Expiry> aria-label="Expires" value={expiry} onChange={setExpiry} options={expiryOptions(cap)} />
+            {cap > 0 && <p className="text-xs text-ink-muted">Server policy: a key lasts at most {cap} days.</p>}
+          </Field>
+          {expiry === 'custom' && (
+            <Field id="key-expiry-date" label="Expiry date" error={customPast ? "Pick a date that hasn't passed." : customOverCap ? `Pick a date within ${cap} days.` : null}>
+              <Input id="key-expiry-date" type="date" value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
+            </Field>
+          )}
+          {error && (
+            <p role="alert" className="flex items-center gap-1 text-xs">
+              <CircleAlert className="size-3.5 text-failed" aria-hidden />
+              {error}
+            </p>
+          )}
+        </SheetBody>
         <SheetFooter>
           <Button disabled={!name.trim() || !scope || picked.filter(grantable).length === 0 || customInvalid || create.isPending} onClick={() => void submit()}>
             Create

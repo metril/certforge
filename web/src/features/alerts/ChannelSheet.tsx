@@ -1,3 +1,4 @@
+import { Card, CardBody } from '@/components/Card';
 import { useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
@@ -16,7 +17,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard, SheetBody } from '@/components/ui/sheet';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
 import { fieldErrorFromMessage } from '@/forms/uiSchema';
 import { canWriteChannel, TYPE_META } from '@/lib/channels';
@@ -181,99 +182,110 @@ export function ChannelSheet({ orgId, open, channel, onOpenChange }: Props) {
 
   return (
     <Sheet guard={guard} open={open} form dirty={formDirty} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
+      <SheetContent side="right" size="xl">
         <SheetHeader>
           <SheetTitle>{channel ? channel.name : 'New channel'}</SheetTitle>
           <SheetDescription className="sr-only">Notification channel settings</SheetDescription>
         </SheetHeader>
-        <div className="grid gap-3 px-4">
-          {!canWrite && <ReadOnlyNotice reason={writeReason ?? 'Needs the alerts:write permission'} />}
-          <ChannelTest channel={channel} orgId={orgId} dirty={dirty} canWrite={canWrite} />
-        </div>
         <form
-          className="grid gap-5 px-4"
+          className="flex min-h-0 flex-1 flex-col"
           onSubmit={(e) => {
             e.preventDefault();
             void submit();
           }}
         >
-          <Field id="channel-name" label="Name" error={submitted && !nameOk ? 'Required' : null}>
-            <Input id="channel-name" value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="ops-webhook" disabled={!canWrite} />
-          </Field>
-          <Field id="channel-type" label="Type" help="channel.type">
-            <span className="flex items-start gap-1.5">
-              <SegmentedControl<ChannelType>
-                id="channel-type"
-                aria-label="Type"
-                value={draft.type}
-                onChange={(type) => setDraft((d) => ({ ...d, type }))}
-                options={TYPE_ORDER.map((t) => {
-                  const Icon = TYPE_META[t].icon;
-                  return {
-                    value: t,
-                    label: isSmUp ? (
-                      <span className="inline-flex items-center gap-1.5">
-                        <Icon className="size-4" aria-hidden />
-                        {TYPE_META[t].label}
-                      </span>
-                    ) : (
-                      <>
-                        <Icon className="size-4" aria-hidden />
-                        <span className="sr-only">{TYPE_META[t].label}</span>
-                      </>
-                    ),
-                    disabled: !!channel || !canWrite,
-                    hint: !canWrite && !channel ? (writeReason ?? 'Needs the alerts:write permission') : !isSmUp ? TYPE_META[t].label : undefined,
-                  };
-                })}
-              />
-              <span className="flex h-9 shrink-0 items-center">
-                <HelpTip id={`notifier.${draft.type}` as HelpKey} />
-              </span>
-            </span>
-          </Field>
-          <SchemaForm
-            ref={formRef}
-            schema={schema}
-            value={draft.configs[draft.type]}
-            onChange={(v) => setConfig(draft.type, v)}
-            storedSecrets={storedSecrets}
-            readonly={!canWrite}
-            extraErrors={configError}
-            formContext={formContext}
-          />
-          <EventKindPicker value={draft.events} onChange={(events) => setDraft((d) => ({ ...d, events }))} disabled={!canWrite} />
-          <SwitchField
-            id="channel-enabled"
-            label="Enabled"
-            help="channel.enabled"
-            checked={draft.enabled}
-            disabled={!canWrite}
-            onCheckedChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
-          />
-          <FormSection title="Advanced" collapsible count={(draft.minSeverity !== 'info' ? 1 : 0) + (draft.allOrgs ? 1 : 0)}>
-            <Field id="channel-severity" label="Minimum severity" help="channel.minSeverity">
-              <SegmentedControl<Severity>
-                id="channel-severity"
-                aria-label="Minimum severity"
-                value={draft.minSeverity}
-                onChange={(minSeverity) => setDraft((d) => ({ ...d, minSeverity }))}
-                options={SEVERITY_ORDER.map((s) => ({ value: s, label: SEVERITY_META[s].label, disabled: !canWrite }))}
-              />
-            </Field>
-            <PermissionTip allowed={isGlobalAdmin(me)} action="alerts:write" reason="Needs a global admin">
+          <SheetBody>
+            <div className="grid gap-3">
+              {!canWrite && <ReadOnlyNotice reason={writeReason ?? 'Needs the alerts:write permission'} />}
+              <ChannelTest channel={channel} orgId={orgId} dirty={dirty} canWrite={canWrite} />
+            </div>
+            <FormSection title="General" columns={2}>
+              <Field id="channel-name" label="Name" error={submitted && !nameOk ? 'Required' : null}>
+                <Input id="channel-name" value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="ops-webhook" disabled={!canWrite} />
+              </Field>
+              <Field id="channel-type" label="Type" help="channel.type" className="sm:col-span-2">
+                <span className="flex items-start gap-1.5">
+                  <SegmentedControl<ChannelType>
+                    id="channel-type"
+                    aria-label="Type"
+                    value={draft.type}
+                    onChange={(type) => setDraft((d) => ({ ...d, type }))}
+                    options={TYPE_ORDER.map((t) => {
+                      const Icon = TYPE_META[t].icon;
+                      return {
+                        value: t,
+                        label: isSmUp ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <Icon className="size-4" aria-hidden />
+                            {TYPE_META[t].label}
+                          </span>
+                        ) : (
+                          <>
+                            <Icon className="size-4" aria-hidden />
+                            <span className="sr-only">{TYPE_META[t].label}</span>
+                          </>
+                        ),
+                        disabled: !!channel || !canWrite,
+                        hint: !canWrite && !channel ? (writeReason ?? 'Needs the alerts:write permission') : !isSmUp ? TYPE_META[t].label : undefined,
+                      };
+                    })}
+                  />
+                  <span className="flex h-9 shrink-0 items-center">
+                    <HelpTip id={`notifier.${draft.type}` as HelpKey} />
+                  </span>
+                </span>
+              </Field>
               <SwitchField
-                id="channel-allOrgs"
-                label="All orgs"
-                onText="Every org's events"
-                offText="This org only"
-                checked={draft.allOrgs}
-                disabled={!isGlobalAdmin(me) || !canWrite}
-                onCheckedChange={(allOrgs) => setDraft((d) => ({ ...d, allOrgs }))}
+                id="channel-enabled"
+                label="Enabled"
+                help="channel.enabled"
+                checked={draft.enabled}
+                disabled={!canWrite}
+                onCheckedChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
               />
-            </PermissionTip>
-          </FormSection>
-          <SheetFooter className="flex-row justify-between gap-2 px-0">
+            </FormSection>
+            <FormSection title="Settings">
+              <SchemaForm
+                ref={formRef}
+                schema={schema}
+                value={draft.configs[draft.type]}
+                onChange={(v) => setConfig(draft.type, v)}
+                storedSecrets={storedSecrets}
+                readonly={!canWrite}
+                extraErrors={configError}
+                formContext={formContext}
+                columns={2}
+              />
+            </FormSection>
+            <Card>
+              <CardBody>
+                <EventKindPicker value={draft.events} onChange={(events) => setDraft((d) => ({ ...d, events }))} disabled={!canWrite} />
+              </CardBody>
+            </Card>
+            <FormSection title="Advanced" collapsible count={(draft.minSeverity !== 'info' ? 1 : 0) + (draft.allOrgs ? 1 : 0)}>
+              <Field id="channel-severity" label="Minimum severity" help="channel.minSeverity">
+                <SegmentedControl<Severity>
+                  id="channel-severity"
+                  aria-label="Minimum severity"
+                  value={draft.minSeverity}
+                  onChange={(minSeverity) => setDraft((d) => ({ ...d, minSeverity }))}
+                  options={SEVERITY_ORDER.map((s) => ({ value: s, label: SEVERITY_META[s].label, disabled: !canWrite }))}
+                />
+              </Field>
+              <PermissionTip allowed={isGlobalAdmin(me)} action="alerts:write" reason="Needs a global admin">
+                <SwitchField
+                  id="channel-allOrgs"
+                  label="All orgs"
+                  onText="Every org's events"
+                  offText="This org only"
+                  checked={draft.allOrgs}
+                  disabled={!isGlobalAdmin(me) || !canWrite}
+                  onCheckedChange={(allOrgs) => setDraft((d) => ({ ...d, allOrgs }))}
+                />
+              </PermissionTip>
+            </FormSection>
+          </SheetBody>
+          <SheetFooter className="justify-between">
             {channel ? (
               <PermissionTip allowed={canWrite} action="alerts:write" reason={writeReason}>
                 <Button type="button" variant="destructive" disabled={!canWrite} onClick={() => setConfirmingDelete(true)}>

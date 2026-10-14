@@ -197,3 +197,18 @@ export function fieldErrorFromMessage(schema: RJSFSchema, message: string): Erro
   }
   return null;
 }
+
+// Fields that read better across both columns of a two-column form.
+const WIDE_KEY = /^(path\w*|\w+Path|url|endpoint|argv|command|hosts|bundle|caBundle|description|notes)$/;
+
+/** Whether a property spans both columns of a `columns={2}` SchemaForm. */
+export function isWideField(key: string, p: RJSFSchema, ui: UiSchema | undefined): boolean {
+  const opts = (ui?.['ui:options'] ?? {}) as { wide?: boolean; multiline?: boolean };
+  if (opts.wide === true || opts.multiline === true) return true;
+  if (p.type === 'array' || p.type === 'object') return true;
+  const widget = ui?.['ui:widget'];
+  if (widget === 'textarea' || widget === 'caBundle' || widget === 'sshHostKey') return true;
+  if (ui?.['ui:field']) return true;
+  if (p.type === 'string' && p.format === 'uri') return true;
+  return p.type === 'string' && (WIDE_KEY.test(key) || URL_KEYS.includes(key));
+}

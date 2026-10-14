@@ -5,7 +5,7 @@ import { useUploadVersion } from '@/api/queries/certificates';
 import { HelpTip } from '@/components/HelpTip';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard, SheetBody } from '@/components/ui/sheet';
 import { UploadFields, type UploadFieldErrors } from '@/features/certificates/upload/UploadFields';
 import { emptyUploadValue, p12TooLarge, toUploadBody, type UploadValue } from '@/features/certificates/upload/uploadBody';
 import { isUploadFieldName, uploadErrorOutcome } from '@/features/certificates/upload/uploadErrors';
@@ -57,29 +57,31 @@ export function UploadVersionSheet({ orgId, id, onOpenChange }: Props) {
 
   return (
     <Sheet guard={guard} open form dirty={dirty} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-md">
+      <SheetContent side="right" size="sm">
         <SheetHeader className="flex-row items-center gap-1.5">
           <SheetTitle>Upload new version</SheetTitle>
           <HelpTip id="cert.uploadVersion" />
           <SheetDescription className="sr-only">Add a new version to this certificate</SheetDescription>
         </SheetHeader>
-        <div className="grid gap-5 px-4">
-          <UploadFields value={value} onChange={setValue} errors={fieldErrors} disabled={upload.isPending} />
-          {olderNote && (
-            <div className="grid gap-2">
+        <SheetBody>
+          <div className="grid gap-5">
+            <UploadFields value={value} onChange={setValue} errors={fieldErrors} disabled={upload.isPending} />
+            {olderNote && (
+              <div className="grid gap-2">
+                <p role="alert" className="text-sm">
+                  {olderNote}
+                </p>
+                <SwitchField id="upload-allow-older" label="Allow an older certificate" help="cert.allowOlder" checked={allowOlder} onCheckedChange={setAllowOlder} disabled={upload.isPending} />
+              </div>
+            )}
+            {formError && (
               <p role="alert" className="text-sm">
-                {olderNote}
+                {formError}
               </p>
-              <SwitchField id="upload-allow-older" label="Allow an older certificate" help="cert.allowOlder" checked={allowOlder} onCheckedChange={setAllowOlder} disabled={upload.isPending} />
-            </div>
-          )}
-          {formError && (
-            <p role="alert" className="text-sm">
-              {formError}
-            </p>
-          )}
-        </div>
-        <SheetFooter className="flex-row justify-end gap-2">
+            )}
+          </div>
+        </SheetBody>
+        <SheetFooter>
           <SheetClose asChild>
             <Button variant="outline">Cancel</Button>
           </SheetClose>

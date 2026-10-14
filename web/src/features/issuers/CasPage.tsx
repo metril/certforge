@@ -14,7 +14,7 @@ import { FilterField } from '@/components/FilterToolbar';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { ToneChip } from '@/components/StatusChip';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetBody } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { caTone, isPrivate, KIND_LABEL, kindOf } from '@/lib/caKinds';
 import { useMe, useOrg } from '@/lib/org';
@@ -212,14 +212,16 @@ export function CasPage() {
         )}
         {notFound && (
           <Sheet open onOpenChange={(o) => !o && (editNotFound ? openSheet(undefined) : openView(undefined))}>
-            <SheetContent side="right" className="w-full sm:max-w-lg">
+            <SheetContent side="right" size="xl">
               <SheetHeader>
                 <SheetTitle>CA not found</SheetTitle>
                 <SheetDescription>It may have been deleted.</SheetDescription>
               </SheetHeader>
-              <div className="px-4">
-                <Button onClick={() => (editNotFound ? openSheet(undefined) : openView(undefined))}>Back to CAs</Button>
-              </div>
+              <SheetBody>
+                <div>
+                  <Button onClick={() => (editNotFound ? openSheet(undefined) : openView(undefined))}>Back to CAs</Button>
+                </div>
+              </SheetBody>
             </SheetContent>
           </Sheet>
         )}

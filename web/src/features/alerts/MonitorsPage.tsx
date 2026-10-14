@@ -14,7 +14,7 @@ import { PrimaryCell } from '@/components/PrimaryCell';
 import { PermissionTip } from '@/components/PermissionTip';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetBody } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { help } from '@/lib/help';
 import { failedWithoutData } from '@/lib/queryState';
@@ -234,51 +234,55 @@ export function MonitorsPage() {
         )}
         {managed && (
           <Sheet open onOpenChange={(o) => !o && openSheet(undefined)}>
-            <SheetContent side="right" className="w-full sm:max-w-lg">
+            <SheetContent side="right" size="xl">
               <SheetHeader>
                 <SheetTitle>Managed by a server grant</SheetTitle>
                 <SheetDescription>{managed.name}</SheetDescription>
               </SheetHeader>
-              <dl className="grid gap-2 px-4 text-sm">
-                <div>
-                  <dt className="text-xs text-ink-muted">Endpoint</dt>
-                  <dd className="font-mono">
-                    {managed.host}:{managed.port}
-                  </dd>
+              <SheetBody>
+                <dl className="grid gap-2 text-sm">
+                  <div>
+                    <dt className="text-xs text-ink-muted">Endpoint</dt>
+                    <dd className="font-mono">
+                      {managed.host}:{managed.port}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-ink-muted">Interval</dt>
+                    <dd>{fmtInterval(managed.intervalSeconds)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-ink-muted">Expected certificate</dt>
+                    <dd>{managed.expectedCertificateName ?? 'Any current certificate in the org'}</dd>
+                  </div>
+                </dl>
+                <p className="text-sm text-ink-muted">This monitor is edited on its grant: Delivery, then the target, then Grants.</p>
+                <div className="flex gap-2">
+                  <Button asChild>
+                    <Link to="/o/$org/delivery/targets" params={{ org: org.slug }}>
+                      Go to Delivery targets
+                    </Link>
+                  </Button>
+                  <Button variant="outline" onClick={() => openSheet(undefined)}>
+                    Close
+                  </Button>
                 </div>
-                <div>
-                  <dt className="text-xs text-ink-muted">Interval</dt>
-                  <dd>{fmtInterval(managed.intervalSeconds)}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-ink-muted">Expected certificate</dt>
-                  <dd>{managed.expectedCertificateName ?? 'Any current certificate in the org'}</dd>
-                </div>
-              </dl>
-              <p className="px-4 text-sm text-ink-muted">This monitor is edited on its grant: Delivery, then the target, then Grants.</p>
-              <div className="flex gap-2 px-4">
-                <Button asChild>
-                  <Link to="/o/$org/delivery/targets" params={{ org: org.slug }}>
-                    Go to Delivery targets
-                  </Link>
-                </Button>
-                <Button variant="outline" onClick={() => openSheet(undefined)}>
-                  Close
-                </Button>
-              </div>
+              </SheetBody>
             </SheetContent>
           </Sheet>
         )}
         {editNotFound && (
           <Sheet open onOpenChange={(o) => !o && openSheet(undefined)}>
-            <SheetContent side="right" className="w-full sm:max-w-lg">
+            <SheetContent side="right" size="xl">
               <SheetHeader>
                 <SheetTitle>Monitor not found</SheetTitle>
                 <SheetDescription>It may have been deleted.</SheetDescription>
               </SheetHeader>
-              <div className="px-4">
-                <Button onClick={() => openSheet(undefined)}>Back to monitors</Button>
-              </div>
+              <SheetBody>
+                <div>
+                  <Button onClick={() => openSheet(undefined)}>Back to monitors</Button>
+                </div>
+              </SheetBody>
             </SheetContent>
           </Sheet>
         )}

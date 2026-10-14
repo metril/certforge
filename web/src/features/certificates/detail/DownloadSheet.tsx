@@ -13,7 +13,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetBody } from '@/components/ui/sheet';
 import { help } from '@/lib/help';
 import { generatePassword } from '@/lib/password';
 import { fmtDate } from '@/lib/time';
@@ -128,180 +128,172 @@ export function DownloadSheet({ orgId, cert, initialVersionId, canExportKey, onO
 
   return (
     <Sheet open onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-md">
+      <SheetContent side="right" size="md">
         <SheetHeader>
           <SheetTitle>Download</SheetTitle>
           <SheetDescription className="sr-only">Choose version, format, and parts</SheetDescription>
         </SheetHeader>
-        <div className="grid gap-5 px-4">
-          <Field id="dl-version" label="Version">
-            <Combobox
-              id="dl-version"
-              mono
-              disabled={isLoading}
-              value={versionId}
-              onChange={setVersionId}
-              options={versions.map((v) => ({
-                value: v.id,
-                label: `${v.serial}${v.id === cert.currentVersion?.id ? ' (current)' : ''}`,
-                hint: `expires ${fmtDate(v.notAfter)}`,
-              }))}
-              placeholder="Choose version"
-              emptyText="No versions"
-            />
-          </Field>
-          <Field id="dl-format" label="Format" help="download.format">
-            <SegmentedControl<Format>
-              id="dl-format"
-              aria-label="Format"
-              size="sm"
-              value={format}
-              onChange={changeFormat}
-              options={[
-                { value: 'pem', label: 'PEM' },
-                { value: 'der', label: 'DER' },
-                { value: 'p12', label: 'PKCS#12', disabled: !canKey, hint: canKey ? undefined : keyHint },
-                { value: 'jks', label: 'JKS', disabled: !canKey, hint: canKey ? undefined : keyHint },
-              ]}
-            />
-          </Field>
-          {(format === 'pem' || format === 'der') && (
-            <Field id="dl-parts" label="Parts" help={format === 'pem' ? 'download.parts' : 'download.derParts'}>
-              <ChipSet<Part>
-                id="dl-parts"
-                aria-label="Parts"
-                value={parts}
-                onChange={setParts}
-                options={
-                  format === 'pem'
-                    ? [
-                        { value: 'cert', label: 'cert' },
-                        { value: 'chain', label: 'chain' },
-                        { value: 'fullchain', label: 'fullchain' },
-                        { value: 'key', label: 'key', disabled: !canKey, hint: canKey ? undefined : keyHint },
-                        { value: 'combined', label: 'combined', disabled: !canKey, hint: canKey ? undefined : keyHint },
-                      ]
-                    : [
-                        { value: 'cert', label: 'cert' },
-                        { value: 'chain', label: 'chain' },
-                        { value: 'key', label: 'key', disabled: !canKey, hint: canKey ? undefined : keyHint },
-                      ]
-                }
+        <SheetBody>
+          <div className="grid gap-5">
+            <Field id="dl-version" label="Version">
+              <Combobox
+                id="dl-version"
+                mono
+                disabled={isLoading}
+                value={versionId}
+                onChange={setVersionId}
+                options={versions.map((v) => ({ value: v.id, label: `${v.serial}${v.id === cert.currentVersion?.id ? ' (current)' : ''}`, hint: `expires ${fmtDate(v.notAfter)}` }))}
+                placeholder="Choose version"
+                emptyText="No versions"
               />
             </Field>
-          )}
-          {isKeyBundle && (
-            <>
-              <Field id="dl-password" label="Password" help="download.password" error={passwordFieldError}>
-                {own ? (
-                  <div className="flex items-center gap-2">
+            <Field id="dl-format" label="Format" help="download.format">
+              <SegmentedControl<Format>
+                id="dl-format"
+                aria-label="Format"
+                size="sm"
+                value={format}
+                onChange={changeFormat}
+                options={[
+                  { value: 'pem', label: 'PEM' },
+                  { value: 'der', label: 'DER' },
+                  { value: 'p12', label: 'PKCS#12', disabled: !canKey, hint: canKey ? undefined : keyHint },
+                  { value: 'jks', label: 'JKS', disabled: !canKey, hint: canKey ? undefined : keyHint },
+                ]}
+              />
+            </Field>
+            {(format === 'pem' || format === 'der') && (
+              <Field id="dl-parts" label="Parts" help={format === 'pem' ? 'download.parts' : 'download.derParts'}>
+                <ChipSet<Part>
+                  id="dl-parts"
+                  aria-label="Parts"
+                  value={parts}
+                  onChange={setParts}
+                  options={
+                    format === 'pem'
+                      ? [
+                          { value: 'cert', label: 'cert' },
+                          { value: 'chain', label: 'chain' },
+                          { value: 'fullchain', label: 'fullchain' },
+                          { value: 'key', label: 'key', disabled: !canKey, hint: canKey ? undefined : keyHint },
+                          { value: 'combined', label: 'combined', disabled: !canKey, hint: canKey ? undefined : keyHint },
+                        ]
+                      : [
+                          { value: 'cert', label: 'cert' },
+                          { value: 'chain', label: 'chain' },
+                          { value: 'key', label: 'key', disabled: !canKey, hint: canKey ? undefined : keyHint },
+                        ]
+                  }
+                />
+              </Field>
+            )}
+            {isKeyBundle && (
+              <>
+                <Field id="dl-password" label="Password" help="download.password" error={passwordFieldError}>
+                  {own ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="dl-password"
+                        type={reveal ? 'text' : 'password'}
+                        className="font-mono text-xs"
+                        autoComplete="new-password"
+                        value={ownPassword}
+                        onChange={(e) => {
+                          setOwnPassword(e.target.value);
+                          setServerError(null);
+                        }}
+                      />
+                      <IconButton type="button" variant="ghost" size="icon" label={reveal ? 'Hide password' : 'Show password'} onClick={() => setReveal((r) => !r)}>
+                        {reveal ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
+                      </IconButton>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Input id="dl-password" type="text" readOnly aria-label="Generated password" className="font-mono text-xs" value={password} />
+                      <IconButton type="button" variant="ghost" size="icon" label="Copy password" onClick={() => void copy()}>
+                        {copyStatus === 'copied' && <Check className="size-4 text-valid" aria-hidden />}
+                        {copyStatus === 'failed' && <TriangleAlert className="size-4 text-failed" aria-hidden />}
+                        {copyStatus === 'idle' && <Copy className="size-4" aria-hidden />}
+                      </IconButton>
+                      <IconButton
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        label="Regenerate password"
+                        onClick={() => {
+                          setPassword(generatePassword());
+                          setDone(false);
+                        }}
+                      >
+                        <RefreshCw className="size-4" aria-hidden />
+                      </IconButton>
+                    </div>
+                  )}
+                </Field>
+                <SwitchField
+                  id="dl-own-password"
+                  label="Use my own password"
+                  help="download.ownPassword"
+                  checked={own}
+                  onCheckedChange={(v) => {
+                    setOwn(v);
+                    setDone(false);
+                    setServerError(null);
+                  }}
+                  onText="Own"
+                  offText="Generated"
+                />
+                {format === 'p12' && (
+                  <Field id="dl-encoding" label="Encoding" help="download.encoding">
+                    <SegmentedControl<P12Encoding>
+                      id="dl-encoding"
+                      aria-label="Encoding"
+                      value={encoding}
+                      onChange={setEncoding}
+                      options={[
+                        { value: 'modern', label: 'Modern' },
+                        { value: 'legacy', label: 'Legacy' },
+                      ]}
+                    />
+                  </Field>
+                )}
+                {format === 'jks' && (
+                  <Field id="dl-alias" label="Alias" help="download.alias" optional error={aliasFieldError}>
                     <Input
-                      id="dl-password"
-                      type={reveal ? 'text' : 'password'}
-                      className="font-mono text-xs"
-                      autoComplete="new-password"
-                      value={ownPassword}
+                      id="dl-alias"
+                      placeholder="tomcat"
+                      value={alias}
                       onChange={(e) => {
-                        setOwnPassword(e.target.value);
+                        setAlias(e.target.value);
                         setServerError(null);
                       }}
                     />
-                    <IconButton
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      label={reveal ? 'Hide password' : 'Show password'}
-                      onClick={() => setReveal((r) => !r)}
-                    >
-                      {reveal ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
-                    </IconButton>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <Input id="dl-password" type="text" readOnly aria-label="Generated password" className="font-mono text-xs" value={password} />
-                    <IconButton type="button" variant="ghost" size="icon" label="Copy password" onClick={() => void copy()}>
-                      {copyStatus === 'copied' && <Check className="size-4 text-valid" aria-hidden />}
-                      {copyStatus === 'failed' && <TriangleAlert className="size-4 text-failed" aria-hidden />}
-                      {copyStatus === 'idle' && <Copy className="size-4" aria-hidden />}
-                    </IconButton>
-                    <IconButton
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      label="Regenerate password"
-                      onClick={() => {
-                        setPassword(generatePassword());
-                        setDone(false);
-                      }}
-                    >
-                      <RefreshCw className="size-4" aria-hidden />
-                    </IconButton>
-                  </div>
+                  </Field>
                 )}
-              </Field>
-              <SwitchField
-                id="dl-own-password"
-                label="Use my own password"
-                help="download.ownPassword"
-                checked={own}
-                onCheckedChange={(v) => {
-                  setOwn(v);
-                  setDone(false);
-                  setServerError(null);
-                }}
-                onText="Own"
-                offText="Generated"
-              />
-              {format === 'p12' && (
-                <Field id="dl-encoding" label="Encoding" help="download.encoding">
-                  <SegmentedControl<P12Encoding>
-                    id="dl-encoding"
-                    aria-label="Encoding"
-                    value={encoding}
-                    onChange={setEncoding}
-                    options={[
-                      { value: 'modern', label: 'Modern' },
-                      { value: 'legacy', label: 'Legacy' },
-                    ]}
-                  />
-                </Field>
-              )}
-              {format === 'jks' && (
-                <Field id="dl-alias" label="Alias" help="download.alias" optional error={aliasFieldError}>
-                  <Input
-                    id="dl-alias"
-                    placeholder="tomcat"
-                    value={alias}
-                    onChange={(e) => {
-                      setAlias(e.target.value);
-                      setServerError(null);
-                    }}
-                  />
-                </Field>
-              )}
-            </>
-          )}
-          {keyBearing && (
-            <div className="flex items-center gap-1.5 text-sm text-ink-muted">
-              <Lock className="size-4" aria-hidden />
-              Recorded in the audit log
-              <HelpTip id="download.key" />
-            </div>
-          )}
-          {done && (
-            <p role="status" className="text-sm text-valid">
-              Downloaded. Copy the password now; it is not shown again once this sheet closes.
-            </p>
-          )}
-          <Button disabled={disabled} onClick={() => void run()}>
-            {label}
-          </Button>
-          {done && (
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Done
+              </>
+            )}
+            {keyBearing && (
+              <div className="flex items-center gap-1.5 text-sm text-ink-muted">
+                <Lock className="size-4" aria-hidden />
+                Recorded in the audit log
+                <HelpTip id="download.key" />
+              </div>
+            )}
+            {done && (
+              <p role="status" className="text-sm text-valid">
+                Downloaded. Copy the password now; it is not shown again once this sheet closes.
+              </p>
+            )}
+            <Button disabled={disabled} onClick={() => void run()}>
+              {label}
             </Button>
-          )}
-        </div>
+            {done && (
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Done
+              </Button>
+            )}
+          </div>
+        </SheetBody>
       </SheetContent>
     </Sheet>
   );

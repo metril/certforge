@@ -203,10 +203,10 @@ it('secrets tip only when schema has secrets', async () => {
   server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, testSecretSchema], notifiers: [], signers: [] })));
   const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
   const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
-  const settingsLabel = () => within(sheet).getByText('Settings').closest('span')!;
+  const settingsLabel = () => within(sheet).getByText('Connection').closest('h3')!;
   expect(within(settingsLabel()).queryByRole('button', { name: 'Help' })).not.toBeInTheDocument();
   await user.click(within(sheet).getByRole('radio', { name: /^Test secret/ }));
-  expect(within(settingsLabel()).getByRole('button', { name: 'Help' })).toBeInTheDocument();
+  expect(within(settingsLabel()).getByRole('button', { name: 'Help: Connection' })).toBeInTheDocument();
 });
 
 it('target secrets not cached', async () => {

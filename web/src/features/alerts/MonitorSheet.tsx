@@ -19,7 +19,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard, SheetBody } from '@/components/ui/sheet';
 import { fieldErrorFromMessage } from '@/forms/uiSchema';
 import { INTERVALS, fmtInterval } from '@/lib/monitors';
 import { useMe } from '@/lib/org';
@@ -143,7 +143,7 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
 
   return (
     <Sheet guard={guard} open={open} form dirty={dirty} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
+      <SheetContent side="right" size="xl">
         <SheetHeader className="flex-row items-start justify-between gap-2">
           <div>
             <SheetTitle>{monitor ? monitor.name : 'New monitor'}</SheetTitle>
@@ -167,152 +167,139 @@ export function MonitorSheet({ orgId, open, monitor, onOpenChange }: Props) {
             </span>
           )}
         </SheetHeader>
-        <div className="grid gap-5 px-4">
-          {!canWrite && <ReadOnlyNotice reason="Needs the alerts:write permission" />}
-          {monitor?.lastCheckedAt && (
-            <div className="grid grid-cols-1 gap-2 rounded-md border border-border p-3">
-              <span className="text-sm font-semibold">Last check</span>
-              <div className="grid gap-1.5 text-sm">
-                <span className="flex items-center gap-1.5">
-                  <MonitorStateChip state={monitor.state} enabled={monitor.enabled} lastError={monitor.lastError} notAfter={monitor.lastNotAfter} />
-                  <span className="text-xs text-ink-muted">{relTime(monitor.lastCheckedAt)}</span>
-                </span>
-                {monitor.lastFingerprint && (
+        <form
+          className="flex min-h-0 flex-1 flex-col"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submit();
+          }}
+        >
+          <SheetBody>
+            {!canWrite && <ReadOnlyNotice reason="Needs the alerts:write permission" />}
+            {monitor?.lastCheckedAt && (
+              <div className="grid grid-cols-1 gap-2 rounded-md border border-border p-3">
+                <span className="text-sm font-semibold">Last check</span>
+                <div className="grid gap-1.5 text-sm">
                   <span className="flex items-center gap-1.5">
-                    <span className="text-xs text-ink-muted">Fingerprint</span>
-                    <CopyField value={monitor.lastFingerprint} label="fingerprint" />
+                    <MonitorStateChip state={monitor.state} enabled={monitor.enabled} lastError={monitor.lastError} notAfter={monitor.lastNotAfter} />
+                    <span className="text-xs text-ink-muted">{relTime(monitor.lastCheckedAt)}</span>
                   </span>
-                )}
-                {monitor.lastIssuer && (
-                  <span className="flex items-start gap-1.5">
-                    <span className="shrink-0 text-xs text-ink-muted">Issuer</span>
-                    <span className="break-words font-mono text-xs">{monitor.lastIssuer}</span>
-                  </span>
-                )}
-                {monitor.lastNotAfter && (
+                  {monitor.lastFingerprint && (
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-xs text-ink-muted">Fingerprint</span>
+                      <CopyField value={monitor.lastFingerprint} label="fingerprint" />
+                    </span>
+                  )}
+                  {monitor.lastIssuer && (
+                    <span className="flex items-start gap-1.5">
+                      <span className="shrink-0 text-xs text-ink-muted">Issuer</span>
+                      <span className="break-words font-mono text-xs">{monitor.lastIssuer}</span>
+                    </span>
+                  )}
+                  {monitor.lastNotAfter && (
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-xs text-ink-muted">Expires</span>
+                      <ExpiryChip notAfter={monitor.lastNotAfter} />
+                    </span>
+                  )}
                   <span className="flex items-center gap-1.5">
-                    <span className="text-xs text-ink-muted">Expires</span>
-                    <ExpiryChip notAfter={monitor.lastNotAfter} />
+                    <span className="text-xs text-ink-muted">Expected</span>
+                    <span>{monitor.expectedCertificateName ?? 'Any CertForge certificate'}</span>
                   </span>
-                )}
-                <span className="flex items-center gap-1.5">
-                  <span className="text-xs text-ink-muted">Expected</span>
-                  <span>{monitor.expectedCertificateName ?? 'Any CertForge certificate'}</span>
-                </span>
-                {monitor.lastError && <span className="text-xs text-ink-muted">{monitor.lastError}</span>}
+                  {monitor.lastError && <span className="text-xs text-ink-muted">{monitor.lastError}</span>}
+                </div>
               </div>
-            </div>
-          )}
-          <form
-            className="grid gap-5"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void submit();
-            }}
-          >
-            <Field id="monitor-name" label="Name" error={(submitted && !nameOk ? 'Required' : null) ?? serverErrors.name}>
-              <Input
-                id="monitor-name"
-                value={draft.name}
-                onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-                placeholder="edge"
-                disabled={!canWrite}
-              />
-            </Field>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[2fr_1fr]">
-              <Field id="monitor-host" label="Host" error={(submitted && !hostOk ? 'Required' : null) ?? serverErrors.host}>
-                <Input
-                  id="monitor-host"
-                  className="font-mono text-xs"
-                  value={draft.host}
-                  onChange={(e) => setDraft((d) => ({ ...d, host: e.target.value }))}
-                  placeholder="edge.example.com"
-                  disabled={!canWrite}
-                />
+            )}
+            <FormSection title="Endpoint">
+              <Field id="monitor-name" label="Name" error={(submitted && !nameOk ? 'Required' : null) ?? serverErrors.name}>
+                <Input id="monitor-name" value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="edge" disabled={!canWrite} />
               </Field>
-              <Field id="monitor-port" label="Port" error={(submitted && !portOk ? 'Port must be 1-65535' : null) ?? serverErrors.port}>
-                <Input
-                  id="monitor-port"
-                  type="number"
-                  min={1}
-                  max={65535}
-                  value={draft.port}
-                  onChange={(e) => setDraft((d) => ({ ...d, port: e.target.value }))}
-                  disabled={!canWrite}
-                />
-              </Field>
-            </div>
-            <Field id="monitor-interval" label="Check interval" help="monitor.interval" error={serverErrors.intervalSeconds}>
-              <div className="grid gap-1">
-                <SegmentedControl
-                  id="monitor-interval"
-                  aria-label="Check interval"
-                  value={presetSelected ? String(draft.intervalSeconds) : ''}
-                  onChange={(v) => setDraft((d) => ({ ...d, intervalSeconds: Number(v) }))}
-                  options={INTERVAL_OPTIONS.map((o) => ({ ...o, disabled: !canWrite, hint: !canWrite ? 'Needs the alerts:write permission' : undefined }))}
-                />
-                {!presetSelected && <span className="text-xs text-ink-muted">Currently {fmtInterval(draft.intervalSeconds)}</span>}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[2fr_1fr]">
+                <Field id="monitor-host" label="Host" error={(submitted && !hostOk ? 'Required' : null) ?? serverErrors.host}>
+                  <Input
+                    id="monitor-host"
+                    className="font-mono text-xs"
+                    value={draft.host}
+                    onChange={(e) => setDraft((d) => ({ ...d, host: e.target.value }))}
+                    placeholder="edge.example.com"
+                    disabled={!canWrite}
+                  />
+                </Field>
+                <Field id="monitor-port" label="Port" error={(submitted && !portOk ? 'Port must be 1-65535' : null) ?? serverErrors.port}>
+                  <Input id="monitor-port" type="number" min={1} max={65535} value={draft.port} onChange={(e) => setDraft((d) => ({ ...d, port: e.target.value }))} disabled={!canWrite} />
+                </Field>
               </div>
-            </Field>
-            <SwitchField
-              id="monitor-enabled"
-              label="Enabled"
-              checked={draft.enabled}
-              disabled={!canWrite}
-              onCheckedChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
-            />
+            </FormSection>
+            <FormSection title="Schedule">
+              <Field id="monitor-interval" label="Check interval" help="monitor.interval" error={serverErrors.intervalSeconds}>
+                <div className="grid gap-1">
+                  <SegmentedControl
+                    id="monitor-interval"
+                    aria-label="Check interval"
+                    value={presetSelected ? String(draft.intervalSeconds) : ''}
+                    onChange={(v) => setDraft((d) => ({ ...d, intervalSeconds: Number(v) }))}
+                    options={INTERVAL_OPTIONS.map((o) => ({ ...o, disabled: !canWrite, hint: !canWrite ? 'Needs the alerts:write permission' : undefined }))}
+                  />
+                  {!presetSelected && <span className="text-xs text-ink-muted">Currently {fmtInterval(draft.intervalSeconds)}</span>}
+                </div>
+              </Field>
+              <SwitchField id="monitor-enabled" label="Enabled" checked={draft.enabled} disabled={!canWrite} onCheckedChange={(enabled) => setDraft((d) => ({ ...d, enabled }))} />
+            </FormSection>
             <FormSection
               title="Advanced"
               collapsible
+              columns={2}
               count={(draft.sni.trim() !== '' ? 1 : 0) + (draft.expectedCertificateId ? 1 : 0)}
               forceOpen={!!(serverErrors.sni || serverErrors.expectedCertificateId)}
             >
-            <Field id="monitor-sni" label="SNI" help="monitor.sni" optional error={serverErrors.sni}>
-              <Input
-                id="monitor-sni"
-                className="font-mono text-xs"
-                value={draft.sni}
-                placeholder={draft.host || 'host'}
-                onChange={(e) => setDraft((d) => ({ ...d, sni: e.target.value }))}
-                disabled={!canWrite}
-              />
-            </Field>
-            <Field id="monitor-expected" label="Expected certificate" help="monitor.expected" error={serverErrors.expectedCertificateId}>
-              <Combobox
-                id="monitor-expected"
-                aria-label="Expected certificate"
-                value={draft.expectedCertificateId ?? ANY_CERT}
-                onChange={(v) => setDraft((d) => ({ ...d, expectedCertificateId: !v || v === ANY_CERT ? null : v }))}
-                options={certOptions}
-                placeholder="Any CertForge certificate"
-                emptyText="No certificate matches."
-                disabled={!canWrite}
-              />
-            </Field>
+              <Field id="monitor-sni" label="SNI" help="monitor.sni" optional error={serverErrors.sni}>
+                <Input
+                  id="monitor-sni"
+                  className="font-mono text-xs"
+                  value={draft.sni}
+                  placeholder={draft.host || 'host'}
+                  onChange={(e) => setDraft((d) => ({ ...d, sni: e.target.value }))}
+                  disabled={!canWrite}
+                />
+              </Field>
+              <Field id="monitor-expected" label="Expected certificate" help="monitor.expected" error={serverErrors.expectedCertificateId} className="sm:col-span-2">
+                <Combobox
+                  id="monitor-expected"
+                  aria-label="Expected certificate"
+                  value={draft.expectedCertificateId ?? ANY_CERT}
+                  onChange={(v) => setDraft((d) => ({ ...d, expectedCertificateId: !v || v === ANY_CERT ? null : v }))}
+                  options={certOptions}
+                  placeholder="Any CertForge certificate"
+                  emptyText="No certificate matches."
+                  disabled={!canWrite}
+                />
+              </Field>
             </FormSection>
-            <SheetFooter className="flex-row justify-between gap-2 px-0">
-              {monitor ? (
-                <PermissionTip allowed={canWrite} action="alerts:write">
-                  <Button type="button" variant="destructive" disabled={!canWrite} onClick={() => setConfirmingDelete(true)}>
-                    Delete
-                  </Button>
-                </PermissionTip>
-              ) : (
-                <span />
-              )}
-              <span className="flex gap-2">
-                <SheetClose asChild>
-                  <Button type="button" variant="outline">Cancel</Button>
-                </SheetClose>
-                <PermissionTip allowed={canWrite} action="alerts:write">
-                  <Button type="submit" disabled={!canWrite || saving}>
-                    Save
-                  </Button>
-                </PermissionTip>
-              </span>
-            </SheetFooter>
-          </form>
-        </div>
+          </SheetBody>
+          <SheetFooter className="justify-between">
+            {monitor ? (
+              <PermissionTip allowed={canWrite} action="alerts:write">
+                <Button type="button" variant="destructive" disabled={!canWrite} onClick={() => setConfirmingDelete(true)}>
+                  Delete
+                </Button>
+              </PermissionTip>
+            ) : (
+              <span />
+            )}
+            <span className="flex gap-2">
+              <SheetClose asChild>
+                <Button type="button" variant="outline">
+                  Cancel
+                </Button>
+              </SheetClose>
+              <PermissionTip allowed={canWrite} action="alerts:write">
+                <Button type="submit" disabled={!canWrite || saving}>
+                  Save
+                </Button>
+              </PermissionTip>
+            </span>
+          </SheetFooter>
+        </form>
       </SheetContent>
       {monitor && (
         <ConfirmDestructive

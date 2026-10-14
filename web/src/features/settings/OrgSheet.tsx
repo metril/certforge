@@ -6,7 +6,7 @@ import type { Org } from '@/api/types';
 import { Field } from '@/components/Field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, useSheetGuard } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, useSheetGuard, SheetBody } from '@/components/ui/sheet';
 import { SLUG_RE, toSlug } from '@/features/setup/slug';
 
 export function OrgSheet({ org, onClose, onSaved }: { org: Org | 'new' | null; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -41,41 +41,43 @@ export function OrgSheet({ org, onClose, onSaved }: { org: Org | 'new' | null; o
 
   return (
     <Sheet guard={guard} open={org !== null} form dirty={dirty} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent className="grid content-start gap-6 sm:max-w-md">
+      <SheetContent size="md">
         <SheetHeader>
           <SheetTitle>{editing ? `Rename ${editing.name}` : 'New organization'}</SheetTitle>
         </SheetHeader>
-        <Field id="org-name" label="Name">
-          <Input
-            id="org-name"
-            placeholder="Home lab"
-            value={name}
-            maxLength={100}
-            onChange={(e) => {
-              setName(e.target.value);
-              if (!editing && !slugTouched) setSlug(toSlug(e.target.value));
-            }}
-          />
-        </Field>
-        <Field id="org-slug" label="Slug" help={editing ? 'org.slugPermanent' : 'setup.orgSlug'} error={slugError}>
-          <Input
-            id="org-slug"
-            className="font-mono"
-            placeholder="home-lab"
-            value={slug}
-            readOnly={!!editing}
-            onChange={(e) => {
-              setSlugTouched(true);
-              setSlug(e.target.value);
-            }}
-          />
-        </Field>
-        {error && (
-          <p role="alert" className="flex items-center gap-1 text-xs">
-            <CircleAlert className="size-3.5 text-failed" aria-hidden />
-            {error}
-          </p>
-        )}
+        <SheetBody>
+          <Field id="org-name" label="Name">
+            <Input
+              id="org-name"
+              placeholder="Home lab"
+              value={name}
+              maxLength={100}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (!editing && !slugTouched) setSlug(toSlug(e.target.value));
+              }}
+            />
+          </Field>
+          <Field id="org-slug" label="Slug" help={editing ? 'org.slugPermanent' : 'setup.orgSlug'} error={slugError}>
+            <Input
+              id="org-slug"
+              className="font-mono"
+              placeholder="home-lab"
+              value={slug}
+              readOnly={!!editing}
+              onChange={(e) => {
+                setSlugTouched(true);
+                setSlug(e.target.value);
+              }}
+            />
+          </Field>
+          {error && (
+            <p role="alert" className="flex items-center gap-1 text-xs">
+              <CircleAlert className="size-3.5 text-failed" aria-hidden />
+              {error}
+            </p>
+          )}
+        </SheetBody>
         <SheetFooter>
           <Button disabled={!name.trim() || !slug || !!slugError || save.isPending} onClick={() => void submit()}>
             {editing ? 'Save' : 'Create'}

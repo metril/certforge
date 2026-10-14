@@ -19,15 +19,18 @@ export type FormSectionProps = {
   count?: number;
   /** Collapsible only: keep open while true (e.g. a field inside has a validation error). */
   forceOpen?: boolean;
+  /** Body columns from `sm` up; children spanning both use `sm:col-span-2`. */
+  columns?: 1 | 2;
   children: ReactNode;
 };
 
 /** Titled form group; body is a `gap-4` grid. Top level it is a Card (title in the CardHeader); nested inside a Card it keeps the hairline top border. */
-export function FormSection({ title, help, summary, collapsible = false, defaultOpen = false, count = 0, forceOpen = false, children }: FormSectionProps) {
+export function FormSection({ title, help, summary, collapsible = false, defaultOpen = false, count = 0, forceOpen = false, columns = 1, children }: FormSectionProps) {
   const [openState, setOpen] = useState(defaultOpen);
   const open = openState || forceOpen;
   const titleId = useId();
   const inCard = useInCard();
+  const grid = columns === 2 ? 'grid gap-4 sm:grid-cols-2' : 'grid gap-4';
   const summaryEl = summary ? <div className="text-xs text-ink-muted">{summary}</div> : null;
   if (!collapsible) {
     const titleEl = (
@@ -40,7 +43,7 @@ export function FormSection({ title, help, summary, collapsible = false, default
       return (
         <Card role="region" aria-labelledby={titleId}>
           <CardHeader actions={summaryEl}>{titleEl}</CardHeader>
-          <CardBody className="grid gap-4">{children}</CardBody>
+          <CardBody className={grid}>{children}</CardBody>
         </Card>
       );
     }
@@ -50,7 +53,7 @@ export function FormSection({ title, help, summary, collapsible = false, default
           {titleEl}
           {summaryEl}
         </div>
-        {children}
+        <div className={grid}>{children}</div>
       </section>
     );
   }
@@ -76,7 +79,7 @@ export function FormSection({ title, help, summary, collapsible = false, default
             {trigger}
           </CardHeader>
           <CollapsibleContent>
-            <CardBody className="grid gap-4">{children}</CardBody>
+            <CardBody className={grid}>{children}</CardBody>
           </CollapsibleContent>
         </Card>
       </Collapsible>
@@ -89,7 +92,7 @@ export function FormSection({ title, help, summary, collapsible = false, default
           {trigger}
           {summaryEl}
         </div>
-        <CollapsibleContent className="grid gap-4">{children}</CollapsibleContent>
+        <CollapsibleContent className={grid}>{children}</CollapsibleContent>
       </section>
     </Collapsible>
   );

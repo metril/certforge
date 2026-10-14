@@ -11,7 +11,7 @@ import { PermissionTip } from '@/components/PermissionTip';
 import { ToneChip } from '@/components/StatusChip';
 import { ValidityBar } from '@/components/ValidityBar';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetBody } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { caTone, KIND_ICON, KIND_LABEL, kindOf } from '@/lib/caKinds';
 import { help } from '@/lib/help';
@@ -144,7 +144,7 @@ export function CaDetailSheet({ orgId, ca, onEdit, onOpenChange }: Props) {
 
   return (
     <Sheet open onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
+      <SheetContent side="right" size="xl">
         <SheetHeader>
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -160,128 +160,130 @@ export function CaDetailSheet({ orgId, ca, onEdit, onOpenChange }: Props) {
           </div>
           <SheetDescription className="sr-only">Private CA details</SheetDescription>
         </SheetHeader>
-        <div className="grid gap-5 px-4">
-          <section className="grid gap-2">
-            <h3 className="text-sm font-semibold">Issuing certificate</h3>
-            {ca.notBefore && ca.notAfter ? (
-              <ValidityBar notBefore={ca.notBefore} notAfter={ca.notAfter} tone={caTone(ca.notAfter)} size="full" />
-            ) : (
-              // ValidityBar's own "full" legend already renders "Expires
-              // <date> (<relDays>)" — this is only a fallback for the dates
-              // it needs being absent, using the same formatter so the two
-              // never show different day counts for the same instant
-              // (batch 4 review: relTime floors, relDays doesn't).
-              <div className="flex items-center gap-1.5 text-xs">
-                <span>
-                  Expires <span className="font-mono">{ca.notAfter ? fmtDate(ca.notAfter) : '–'}</span>
-                  {ca.notAfter && <span className="text-ink-muted"> ({relDays(ca.notAfter)})</span>}
-                </span>
-                <HelpTip id="ca.expiry" />
-              </div>
-            )}
-            {local && (
-              <>
-                <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-                  <Fact label="Subject">
-                    <span className="font-mono text-xs">
-                      CN={local.subject.commonName}
-                      {local.subject.organization ? `, O=${local.subject.organization}` : ''}
-                      {local.subject.country ? `, C=${local.subject.country}` : ''}
-                    </span>
-                  </Fact>
-                  <Fact label="Key type">{local.keyType}</Fact>
-                  <Fact label="Max leaf days">{local.maxLeafDays}</Fact>
-                </dl>
-                {local.imported && <ToneChip tone="neutral" icon={Import} label="Imported" />}
-              </>
-            )}
-            {vault && (
-              <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
-                <Fact label="Mount">
-                  <span className="font-mono text-xs">{vault.mount}</span>
-                </Fact>
-                <Fact label="Role">
-                  <span className="font-mono text-xs">{vault.role}</span>
-                </Fact>
-                <Fact label="TTL">
-                  <span className="font-mono text-xs">{vault.ttl ?? '–'}</span>
-                </Fact>
-              </dl>
-            )}
-            {adcsCfg && (
-              <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-                <Fact label="Template">
-                  <span className="font-mono text-xs">{adcsCfg.template}</span>
-                </Fact>
-                <Fact label="CES URL">
-                  <span className="break-all font-mono text-xs">{adcsCfg.cesUrl ?? '–'}</span>
-                </Fact>
-                <Fact label="Revocation">Manual in AD CS</Fact>
-              </dl>
-            )}
-          </section>
-
-          <section className="grid gap-2">
-            <h3 className="flex items-center gap-1.5 text-sm font-semibold">
-              Trust bundle <HelpTip id="ca.trustBundle" />
-            </h3>
-            <Button type="button" variant="outline" size="sm" className="w-fit" onClick={downloadTrustBundle}>
-              <Download className="size-3.5" aria-hidden />
-              Download
-            </Button>
-          </section>
-
-          {kind === 'localca' && local && (
+        <SheetBody>
+          <div className="grid gap-5">
             <section className="grid gap-2">
-              <h3 className="flex items-center gap-1.5 text-sm font-semibold">
-                CRL <HelpTip id="ca.crl" />
-              </h3>
-              {!local.crl ? (
-                <ToneChip tone="neutral" icon={CircleOff} label="CRL off" />
-              ) : ca.crlUrl ? (
-                <CopyField value={ca.crlUrl} label="CRL URL" />
+              <h3 className="text-sm font-semibold">Issuing certificate</h3>
+              {ca.notBefore && ca.notAfter ? (
+                <ValidityBar notBefore={ca.notBefore} notAfter={ca.notAfter} tone={caTone(ca.notAfter)} size="full" />
               ) : (
-                <p className="flex items-center gap-1 text-xs">
-                  <CircleAlert className="size-3.5 text-failed" aria-hidden />
-                  Set the base URL in{' '}
-                  <Link to="/settings/$section" params={{ section: 'general' }} className="underline underline-offset-2">
-                    Settings → General
-                  </Link>
-                  .
-                </p>
-              )}
-              <p className="text-xs text-ink-muted">
-                Revoked <span className="font-mono">{local.revokedCount}</span>
-              </p>
-              {local.retired && local.retired.length > 0 && (
-                <div className="grid gap-1.5">
-                  <h4 className="flex items-center gap-1.5 text-xs font-semibold text-ink-muted">
-                    Retired issuers <HelpTip id="ca.retired" />
-                  </h4>
-                  <div className="flex flex-wrap gap-1.5">
-                    {local.retired.map((r) => (
-                      <RetiredChip key={r.serial} retired={r} onCopy={copyRetiredCrl} />
-                    ))}
-                  </div>
+                // ValidityBar's own "full" legend already renders "Expires
+                // <date> (<relDays>)" — this is only a fallback for the dates
+                // it needs being absent, using the same formatter so the two
+                // never show different day counts for the same instant
+                // (batch 4 review: relTime floors, relDays doesn't).
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span>
+                    Expires <span className="font-mono">{ca.notAfter ? fmtDate(ca.notAfter) : '–'}</span>
+                    {ca.notAfter && <span className="text-ink-muted"> ({relDays(ca.notAfter)})</span>}
+                  </span>
+                  <HelpTip id="ca.expiry" />
                 </div>
               )}
+              {local && (
+                <>
+                  <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+                    <Fact label="Subject">
+                      <span className="font-mono text-xs">
+                        CN={local.subject.commonName}
+                        {local.subject.organization ? `, O=${local.subject.organization}` : ''}
+                        {local.subject.country ? `, C=${local.subject.country}` : ''}
+                      </span>
+                    </Fact>
+                    <Fact label="Key type">{local.keyType}</Fact>
+                    <Fact label="Max leaf days">{local.maxLeafDays}</Fact>
+                  </dl>
+                  {local.imported && <ToneChip tone="neutral" icon={Import} label="Imported" />}
+                </>
+              )}
+              {vault && (
+                <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
+                  <Fact label="Mount">
+                    <span className="font-mono text-xs">{vault.mount}</span>
+                  </Fact>
+                  <Fact label="Role">
+                    <span className="font-mono text-xs">{vault.role}</span>
+                  </Fact>
+                  <Fact label="TTL">
+                    <span className="font-mono text-xs">{vault.ttl ?? '–'}</span>
+                  </Fact>
+                </dl>
+              )}
+              {adcsCfg && (
+                <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+                  <Fact label="Template">
+                    <span className="font-mono text-xs">{adcsCfg.template}</span>
+                  </Fact>
+                  <Fact label="CES URL">
+                    <span className="break-all font-mono text-xs">{adcsCfg.cesUrl ?? '–'}</span>
+                  </Fact>
+                  <Fact label="Revocation">Manual in AD CS</Fact>
+                </dl>
+              )}
             </section>
-          )}
 
-          {kind === 'adcs' && (
-            <section className="flex items-center gap-1.5">
-              <AdcsTestButton canWrite={canWrite} request={adcsRequest} onClick={() => setTesting(true)} />
-              <HelpTip id="ca.adcsTest" />
+            <section className="grid gap-2">
+              <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+                Trust bundle <HelpTip id="ca.trustBundle" />
+              </h3>
+              <Button type="button" variant="outline" size="sm" className="w-fit" onClick={downloadTrustBundle}>
+                <Download className="size-3.5" aria-hidden />
+                Download
+              </Button>
             </section>
-          )}
 
-          {kind === 'localca' && (
-            <section className="flex items-center gap-1.5">
-              <RotateButton canWrite={canWrite} imported={!!local?.imported} onClick={() => setConfirmingRotate(true)} />
-              <HelpTip id="ca.rotate" />
-            </section>
-          )}
-        </div>
+            {kind === 'localca' && local && (
+              <section className="grid gap-2">
+                <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+                  CRL <HelpTip id="ca.crl" />
+                </h3>
+                {!local.crl ? (
+                  <ToneChip tone="neutral" icon={CircleOff} label="CRL off" />
+                ) : ca.crlUrl ? (
+                  <CopyField value={ca.crlUrl} label="CRL URL" />
+                ) : (
+                  <p className="flex items-center gap-1 text-xs">
+                    <CircleAlert className="size-3.5 text-failed" aria-hidden />
+                    Set the base URL in{' '}
+                    <Link to="/settings/$section" params={{ section: 'general' }} className="underline underline-offset-2">
+                      Settings → General
+                    </Link>
+                    .
+                  </p>
+                )}
+                <p className="text-xs text-ink-muted">
+                  Revoked <span className="font-mono">{local.revokedCount}</span>
+                </p>
+                {local.retired && local.retired.length > 0 && (
+                  <div className="grid gap-1.5">
+                    <h4 className="flex items-center gap-1.5 text-xs font-semibold text-ink-muted">
+                      Retired issuers <HelpTip id="ca.retired" />
+                    </h4>
+                    <div className="flex flex-wrap gap-1.5">
+                      {local.retired.map((r) => (
+                        <RetiredChip key={r.serial} retired={r} onCopy={copyRetiredCrl} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {kind === 'adcs' && (
+              <section className="flex items-center gap-1.5">
+                <AdcsTestButton canWrite={canWrite} request={adcsRequest} onClick={() => setTesting(true)} />
+                <HelpTip id="ca.adcsTest" />
+              </section>
+            )}
+
+            {kind === 'localca' && (
+              <section className="flex items-center gap-1.5">
+                <RotateButton canWrite={canWrite} imported={!!local?.imported} onClick={() => setConfirmingRotate(true)} />
+                <HelpTip id="ca.rotate" />
+              </section>
+            )}
+          </div>
+        </SheetBody>
       </SheetContent>
       {testing && adcsRequest && <AdcsTestDialog orgId={orgId} name={ca.name} request={adcsRequest} onOpenChange={setTesting} />}
       <ConfirmDestructive
