@@ -2,6 +2,24 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.38.0](https://github.com/metril/certforge/compare/v0.37.0...v0.38.0) (2026-10-14)
+
+
+### Features
+
+* **web:** deploy targets as full pages (new, edit, tabbed detail) ([a92700c](https://github.com/metril/certforge/commit/a92700cf623dd1ae2cf45eaa1d7d1b7c98ef5755))
+* **web:** file layouts as full pages ([ff9acd5](https://github.com/metril/certforge/commit/ff9acd589fb9a7423094e5ca755ea5620e047862))
+* **web:** full-page editors for targets, layouts, monitors and CA detail ([dd1ebd1](https://github.com/metril/certforge/commit/dd1ebd1eaa3b29f94c90baf0a14ac56ab2bce5a6))
+* **web:** monitors as full pages ([4fe848f](https://github.com/metril/certforge/commit/4fe848fed73c90147cb031b1883123cab8ce4f67))
+* **web:** private CA detail as a tabbed page; docs for Phase 2 ([b940828](https://github.com/metril/certforge/commit/b9408281463e6fc27a2b4dbb53332c2714c4da75))
+* **web:** shared NavGuard and FormPage for full-page editors ([212dc6e](https://github.com/metril/certforge/commit/212dc6ee343284cceed65e4af602f1c8ef5bf31c))
+
+
+### Bug Fixes
+
+* **web:** monitor pages review follow-ups ([aecf066](https://github.com/metril/certforge/commit/aecf06639e870400c1fbe4df03fa3d2c34a7b6b1))
+* **web:** target pages review follow-ups ([050d3ba](https://github.com/metril/certforge/commit/050d3ba46ed90122501134de74339a2648efeea4))
+
 ## [0.37.0](https://github.com/metril/certforge/compare/v0.36.2...v0.37.0) (2026-10-14)
 
 
