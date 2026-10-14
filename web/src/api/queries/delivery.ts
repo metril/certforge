@@ -43,6 +43,13 @@ export const deployTargetsQuery = (orgId: string) =>
     queryFn: async () => (await call(api.GET('/orgs/{orgId}/deploy-targets', { params: { path: { orgId } } }))).items,
   });
 
+// The targets using one deploy credential (GET /orgs/{orgId}/deploy-targets?credentialId=).
+export const credentialTargetsQuery = (orgId: string, credentialId: string) =>
+  queryOptions({
+    queryKey: ['deploy-targets', orgId, 'credential', credentialId],
+    queryFn: async () => (await call(api.GET('/orgs/{orgId}/deploy-targets', { params: { path: { orgId }, query: { credentialId } } }))).items,
+  });
+
 // `TargetSheet` calls these directly (not through a mutation) so a target
 // secret never sits in TanStack Query's mutation cache — it invalidates
 // itself only after mapping a secret error onto the form.

@@ -367,3 +367,34 @@ func TestDeployCredentialSSHKeyCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestListDeployTargetsFiltersByCredential(t *testing.T) {
+	f := newAgentFixture(t)
+	f.registerTestSecret("test-secret", targets.Either, targets.Never)
+	admin := f.as("org-admin")
+	tok := f.createCred(t, "tok", "token", map[string]interface{}{"token": "s3cret-value"})
+	cfg := map[string]interface{}{"url": "https://a.example.test"}
+	if _, err := f.createTargetWith(admin, "with-cred", gen.RunsOn("server"), cfg, &tok.Id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.createTargetWith(admin, "plain", gen.RunsOn("server"), map[string]interface{}{"url": "https://b.example.test", "token": "own"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	list := func(ctx context.Context, id *uuid.UUID) []gen.DeployTarget {
+		res, err := f.srv.ListDeployTargets(ctx, gen.ListDeployTargetsRequestObject{OrgId: f.org, Params: gen.ListDeployTargetsParams{CredentialId: id}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.(gen.ListDeployTargets200JSONResponse).Items
+	}
+	if got := list(admin, &tok.Id); len(got) != 1 || got[0].Name != "with-cred" {
+		t.Fatalf("filtered = %+v", got)
+	}
+	other := uuid.New()
+	if got := list(admin, &other); len(got) != 0 {
+		t.Fatalf("unknown credential = %+v", got)
+	}
+	if got := list(admin, nil); len(got) != 2 {
+		t.Fatalf("unfiltered = %d, want 2", len(got))
+	}
+}

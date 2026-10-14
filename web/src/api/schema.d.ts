@@ -728,6 +728,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orgs/{orgId}/dns-credentials/{id}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * What uses a DNS credential
+         * @description The certificates whose verification rules reference the credential, and how many org default sets do. Needs dnscreds:read and certs:read.
+         */
+        get: operations["getDNSCredentialUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orgs/{orgId}/dns-credentials/{id}/test": {
         parameters: {
             query?: never;
@@ -3245,6 +3270,21 @@ export interface components {
             caId: string;
             /** @description Contact email. */
             email: string;
+        };
+        /** @description What references a DNS credential. */
+        DNSCredentialUsage: {
+            /** @description Certificates referencing it, by name. */
+            certificates: {
+                /**
+                 * Format: uuid
+                 * @description Certificate id.
+                 */
+                id: string;
+                /** @description Certificate name. */
+                name: string;
+            }[];
+            /** @description Number of org default sets referencing it. */
+            defaults: number;
         };
         /** @description A DNS provider credential. Secret values are never returned. */
         DNSCredential: {
@@ -7240,6 +7280,35 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
+    getDNSCredentialUsage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+                /** @description Resource id. */
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Usage. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DNSCredentialUsage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
     testDNSCredential: {
         parameters: {
             query?: never;
@@ -9233,7 +9302,10 @@ export interface operations {
     };
     listDeployTargets: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Only targets using this deploy credential. */
+                credentialId?: string;
+            };
             header?: never;
             path: {
                 /** @description Org id. */

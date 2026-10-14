@@ -671,3 +671,38 @@ func TestVaultSettingsAddressHiddenFromReaders(t *testing.T) {
 		}
 	}
 }
+
+func TestDNSCredentialUsageListsCertificates(t *testing.T) {
+	f := newAPIFixture(t)
+	res, err := f.srv.CreateDNSCredential(f.as("operator"), gen.CreateDNSCredentialRequestObject{OrgId: f.org,
+		Body: &gen.DNSCredentialInput{Name: "cf", ProviderCode: "cloudflare", Config: map[string]string{"CF_API_EMAIL": "a@example.test", "CF_DNS_API_TOKEN": "t0p"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cred := res.(gen.CreateDNSCredential201JSONResponse)
+	usage := func(ctx context.Context) (gen.DNSCredentialUsage, error) {
+		r, err := f.srv.GetDNSCredentialUsage(ctx, gen.GetDNSCredentialUsageRequestObject{OrgId: f.org, Id: cred.Id})
+		if err != nil {
+			return gen.DNSCredentialUsage{}, err
+		}
+		return gen.DNSCredentialUsage(r.(gen.GetDNSCredentialUsage200JSONResponse)), nil
+	}
+	if u, err := usage(f.as("operator")); err != nil || len(u.Certificates) != 0 || u.Defaults != 0 {
+		t.Fatalf("empty usage = %+v, %v", u, err)
+	}
+	id := cred.Id
+	if _, err := f.srv.CreateCertificate(f.as("operator"), gen.CreateCertificateRequestObject{OrgId: f.org,
+		Body: &gen.CertificateInput{Name: "web", CommonName: "web.example.test",
+			VerificationRules: &[]gen.VerificationRule{{Match: "*.example.test", Method: "dns-01", DnsCredentialId: &id}}}}); err != nil {
+		t.Fatal(err)
+	}
+	u, err := usage(f.as("operator"))
+	if err != nil || len(u.Certificates) != 1 || u.Certificates[0].Name != "web" {
+		t.Fatalf("usage = %+v, %v", u, err)
+	}
+	if _, err := f.srv.GetDNSCredentialUsage(f.as("operator"), gen.GetDNSCredentialUsageRequestObject{OrgId: f.org, Id: uuid.New()}); err == nil {
+		t.Fatal("unknown credential should 404")
+	} else {
+		wantStatus(t, err, http.StatusNotFound)
+	}
+}

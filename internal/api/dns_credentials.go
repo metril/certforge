@@ -7,10 +7,13 @@ import (
 	"net/http"
 	"time"
 
+	openapi_types "github.com/oapi-codegen/runtime/types"
+
 	"github.com/metril/certforge/internal/api/gen"
 	"github.com/metril/certforge/internal/audit"
 	"github.com/metril/certforge/internal/authz"
 	"github.com/metril/certforge/internal/challenge"
+	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/issuance"
 )
 
@@ -111,6 +114,37 @@ func (s *Server) GetDNSCredential(ctx context.Context, r gen.GetDNSCredentialReq
 		return nil, mapErr(err)
 	}
 	return gen.GetDNSCredential200JSONResponse(dnsCredOut(c)), nil
+}
+
+// GetDNSCredentialUsage lists the certificates that reference a credential and
+// counts the org default sets that do. Certificate names need certs:read too.
+func (s *Server) GetDNSCredentialUsage(ctx context.Context, r gen.GetDNSCredentialUsageRequestObject) (gen.GetDNSCredentialUsageResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionDNSCredsRead, &r.OrgId); err != nil {
+		return nil, err
+	}
+	if _, err := authorize(ctx, authz.ActionCertsRead, &r.OrgId); err != nil {
+		return nil, err
+	}
+	if _, err := s.d.Issuance.Store.GetDNSCredential(ctx, r.OrgId, r.Id); err != nil {
+		return nil, mapErr(err)
+	}
+	rows, err := s.queries().ListDNSCredentialCertificates(ctx, sqlcgen.ListDNSCredentialCertificatesParams{OrgID: r.OrgId, ID: r.Id})
+	if err != nil {
+		return nil, err
+	}
+	defaults, err := s.queries().CountDNSCredentialDefaults(ctx, sqlcgen.CountDNSCredentialDefaultsParams{OrgID: r.OrgId, ID: r.Id})
+	if err != nil {
+		return nil, err
+	}
+	out := gen.GetDNSCredentialUsage200JSONResponse{Defaults: int(defaults)}
+	out.Certificates = make([]struct {
+		Id   openapi_types.UUID `json:"id"`
+		Name string             `json:"name"`
+	}, len(rows))
+	for i, c := range rows {
+		out.Certificates[i].Id, out.Certificates[i].Name = c.ID, c.Name
+	}
+	return out, nil
 }
 
 // RevealDNSCredentialSecret returns one stored secret field in plaintext. Like

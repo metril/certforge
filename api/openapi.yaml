@@ -997,6 +997,23 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/dns-credentials/{id}/usage:
+    parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
+    get:
+      operationId: getDNSCredentialUsage
+      tags: [issuers]
+      summary: What uses a DNS credential
+      description: The certificates whose verification rules reference the credential, and how many org default sets do. Needs dnscreds:read and certs:read.
+      responses:
+        "200":
+          description: Usage.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DNSCredentialUsage"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/dns-credentials/{id}/test:
     parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
     post:
@@ -2328,6 +2345,8 @@ paths:
       tags: [delivery]
       summary: List deploy targets
       description: Needs delivery:read.
+      parameters:
+        - {name: credentialId, in: query, required: false, description: Only targets using this deploy credential., schema: {type: string, format: uuid}}
       responses:
         "200":
           description: Targets sorted by name.
@@ -4033,6 +4052,22 @@ components:
       properties:
         caId: {type: string, format: uuid, description: CA to register with.}
         email: {type: string, description: Contact email.}
+    DNSCredentialUsage:
+      type: object
+      description: What references a DNS credential.
+      required: [certificates, defaults]
+      properties:
+        certificates:
+          type: array
+          description: Certificates referencing it, by name.
+          items:
+            type: object
+            description: A certificate.
+            required: [id, name]
+            properties:
+              id: {type: string, format: uuid, description: Certificate id.}
+              name: {type: string, description: Certificate name.}
+        defaults: {type: integer, description: Number of org default sets referencing it.}
     DNSCredential:
       type: object
       description: A DNS provider credential. Secret values are never returned.

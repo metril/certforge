@@ -458,3 +458,14 @@ it('?edit=<unknown id> drops the param instead of opening a sheet', async () => 
   await waitFor(() => expect(router.state.location.search).toEqual({}));
   expect(screen.queryByRole('dialog')).toBeNull();
 });
+
+it('the used-by count opens a popover of certificates and default sets', async () => {
+  creds = [cred];
+  server.use(
+    http.get(url('/orgs/org-1/dns-credentials/d-1/usage'), () => HttpResponse.json({ certificates: [{ id: 'c-7', name: 'www' }], defaults: 1 })),
+  );
+  const { user } = renderRoute('/o/acme/issuers/dns');
+  await user.click(await screen.findByRole('button', { name: 'Used by 2' }));
+  expect(await screen.findByRole('link', { name: 'www' })).toHaveAttribute('href', '/o/acme/certificates/c-7/overview');
+  expect(screen.getByText('1 default set in Settings')).toBeInTheDocument();
+});

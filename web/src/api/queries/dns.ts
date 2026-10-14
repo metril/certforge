@@ -10,6 +10,13 @@ export const dnsCredentialsQuery = (orgId: string) =>
     queryFn: () => call(api.GET('/orgs/{orgId}/dns-credentials', { params: { path: { orgId } } })),
   });
 
+// The certificates and default sets that reference one credential.
+export const dnsCredentialUsageQuery = (orgId: string, id: string) =>
+  queryOptions({
+    queryKey: ['dns', orgId, 'usage', id],
+    queryFn: () => call(api.GET('/orgs/{orgId}/dns-credentials/{id}/usage', { params: { path: { orgId, id } } })),
+  });
+
 export function useSaveCredential(orgId: string) {
   const qc = useQueryClient();
   return useMutation({
