@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Link } from '@tanstack/react-router';
+import { Link, useMatches } from '@tanstack/react-router';
 import { PageHeader } from '@/components/PageHeader';
 import { TAB_ACTIVE, TAB_LINK, TabLabel } from '@/components/TabLabel';
 import { useOrg } from '@/lib/org';
@@ -14,6 +14,9 @@ const DELIVERY_TABS = [
 
 export function DeliveryLayout({ children }: { children: ReactNode }) {
   const { slug: org } = useOrg();
+  // Target create / edit / detail pages bring their own header and breadcrumb.
+  const own = useMatches().some((m) => m.staticData?.ownHeader);
+  if (own) return <>{children}</>;
   return (
     <>
       <PageHeader

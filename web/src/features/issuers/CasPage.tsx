@@ -21,7 +21,6 @@ import { useMe, useOrg } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import type { Tone } from '@/lib/status';
 import { relTime } from '@/lib/time';
-import { CaDetailSheet } from './CaDetailSheet';
 import { CaSheet } from './CaSheet';
 import { IssuersHeader } from './IssuersLayout';
 import { IconButton } from '@/components/IconButton';
@@ -58,26 +57,18 @@ export function CasPage() {
   // cas:write is global-only (internal/authz/authz.go): only a global
   // binding grants it, so orgId here is purely documentation of that.
   const canWrite = can(me, 'cas:write', org.id);
-  const { edit, view, kind, type } = useSearch({ from: '/_app/o/$org/issuers/cas' });
-  const navigate = useNavigate({ from: '/o/$org/issuers/cas' });
+  const { edit, kind, type } = useSearch({ from: '/_app/o/$org/issuers/cas/' });
+  const navigate = useNavigate({ from: '/o/$org/issuers/cas/' });
   const { data: cas = [], isPending, isError, error, refetch } = useQuery(casQuery(org.id));
   const del = useDeleteCa(org.id);
   const [deleting, setDeleting] = useState<CA | null>(null);
-  // Fix round 1 (#7): closing replaces the history entry so Back doesn't
-  // reopen the sheet; opening still pushes a normal entry. Opening either
-  // sheet closes the other (task-2-brief).
+  // Closing replaces the history entry so Back doesn't reopen the sheet.
   const openSheet = (id: string | undefined, newKind?: CaType) =>
-    void navigate({ search: (prev) => ({ ...prev, edit: id, view: undefined, kind: newKind }), replace: id === undefined });
-  const openView = (id: string | undefined) =>
-    void navigate({ search: (prev) => ({ ...prev, edit: undefined, view: id }), replace: id === undefined });
+    void navigate({ search: (prev) => ({ ...prev, edit: id, kind: newKind }), replace: id === undefined });
+  const openView = (id: string) => void navigate({ to: '/o/$org/issuers/cas/$id/$tab', params: { org: org.slug, id, tab: 'overview' } });
   const setFilter = (v: CaType | 'all') => void navigate({ search: (prev) => ({ ...prev, type: v === 'all' ? undefined : v }) });
   const editing = cas.find((c) => c.id === edit);
-  // A private CA's detail sheet (task 3); an acme id in ?view= (never
-  // produced by this page's own navigation) also falls through to notFound.
-  const viewing = cas.find((c) => c.id === view && isPrivate(c));
-  const editNotFound = !isPending && !isError && !!edit && edit !== 'new' && !editing;
-  const viewNotFound = !isPending && !isError && !!view && !viewing;
-  const notFound = editNotFound || viewNotFound;
+  const notFound = !isPending && !isError && !!edit && edit !== 'new' && !editing;
   const filtered = type ? cas.filter((c) => kindOf(c) === type) : cas;
 
   const showList = !isPending && !isError && cas.length > 0;
@@ -201,17 +192,8 @@ export function CasPage() {
           // Mount only once the CA is loaded so the form initializes from it.
           <CaSheet key={edit} orgId={org.id} open ca={editing} initialKind={kind} onOpenChange={(o) => !o && openSheet(undefined)} />
         )}
-        {viewing && (
-          <CaDetailSheet
-            key={view}
-            orgId={org.id}
-            ca={viewing}
-            onEdit={() => openSheet(viewing.id)}
-            onOpenChange={(o) => !o && openView(undefined)}
-          />
-        )}
         {notFound && (
-          <Sheet open onOpenChange={(o) => !o && (editNotFound ? openSheet(undefined) : openView(undefined))}>
+          <Sheet open onOpenChange={(o) => !o && openSheet(undefined)}>
             <SheetContent side="right" size="xl">
               <SheetHeader>
                 <SheetTitle>CA not found</SheetTitle>
@@ -219,7 +201,7 @@ export function CasPage() {
               </SheetHeader>
               <SheetBody>
                 <div>
-                  <Button onClick={() => (editNotFound ? openSheet(undefined) : openView(undefined))}>Back to CAs</Button>
+                  <Button onClick={() => openSheet(undefined)}>Back to CAs</Button>
                 </div>
               </SheetBody>
             </SheetContent>

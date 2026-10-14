@@ -64,19 +64,21 @@ it('opens from the nav and lists targets with type, location and use', async () 
 it('adds a Traefik target from its schema form', async () => {
   const { user, router } = renderRoute('/o/acme/delivery/targets');
   await user.click(await screen.findByRole('button', { name: 'Add target' }));
-  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  await screen.findByRole('heading', { name: 'Add deploy target' });
+  const sheet = document.body;
   await user.type(within(sheet).getByLabelText('Name'), 'edge-2');
   await user.type(within(sheet).getByLabelText('Directory on the agent'), '/etc/traefik/dynamic');
   expect(within(sheet).queryByRole('switch', { name: 'Default certificate' })).not.toBeInTheDocument();
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(posted).toMatchObject({ name: 'edge-2', type: 'traefik', config: { dir: '/etc/traefik/dynamic' } }));
   expect((posted as { config: object }).config).not.toHaveProperty('defaultCert');
-  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('edit'));
+  await waitFor(() => expect(router.state.location.pathname).not.toBe('/o/acme/delivery/targets/new'));
 });
 
 it('shows the Traefik ACME service URL field from its schema and saves it under config.acmeServiceUrl', async () => {
-  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  const { user } = renderRoute('/o/acme/delivery/targets/new');
+  await screen.findByRole('heading', { name: 'Add deploy target' });
+  const sheet = document.body;
   await user.type(within(sheet).getByLabelText('Name'), 'edge-3');
   await user.type(within(sheet).getByLabelText('Directory on the agent'), '/etc/traefik/dynamic');
   await user.type(within(sheet).getByLabelText('ACME service URL'), 'http://agent.internal:8080');
@@ -85,13 +87,14 @@ it('shows the Traefik ACME service URL field from its schema and saves it under 
 });
 
 it('refuses a relative directory before sending', async () => {
-  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  const { user } = renderRoute('/o/acme/delivery/targets/new');
+  await screen.findByRole('heading', { name: 'Add deploy target' });
+  const sheet = document.body;
   await user.type(within(sheet).getByLabelText('Name'), 'bad');
   await user.type(within(sheet).getByLabelText('Directory on the agent'), 'traefik');
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
   await within(sheet).findByText(/does not match pattern/i);
-  expect(screen.getByRole('dialog', { name: 'Add deploy target' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Add deploy target' })).toBeInTheDocument();
   expect(posted).toBeUndefined();
 });
 
@@ -119,7 +122,8 @@ it('is read-only for a viewer', async () => {
   const { user } = renderRoute('/o/acme/delivery/targets');
   expect(await screen.findByRole('button', { name: 'Add target' })).toBeDisabled();
   await user.click(screen.getByRole('button', { name: 'View edge traefik' }));
-  const sheet = await screen.findByRole('dialog', { name: 'edge traefik' });
+  await screen.findByRole('heading', { name: 'edge traefik' });
+  const sheet = document.body;
   expect(within(sheet).getByLabelText('Name')).toBeDisabled();
   expect(within(sheet).queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
 });
@@ -137,8 +141,9 @@ it('edits a target with a PATCH carrying name, type and config', async () => {
       return HttpResponse.json(makeTarget({ name: 'renamed' }));
     }),
   );
-  const { user } = renderRoute('/o/acme/delivery/targets?edit=t-2');
-  const sheet = await screen.findByRole('dialog', { name: 'Edit spare' });
+  const { user } = renderRoute('/o/acme/delivery/targets/t-2/edit');
+  await screen.findByRole('heading', { name: 'Edit spare' });
+  const sheet = document.body;
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(patched).toMatchObject({ name: 'spare', type: 'traefik', config: { dir: '/srv/traefik' } }));
   expect(Object.keys(patched as object).sort()).toEqual(['config', 'name', 'type']);
@@ -150,8 +155,9 @@ it('shows stores as chips and a field description as a tooltip', async () => {
       HttpResponse.json({ items: [makeTarget({ config: { dir: '/etc/traefik/dynamic', stores: ['default', 'internal'] } })] }),
     ),
   );
-  const { user } = renderRoute('/o/acme/delivery/targets?edit=t-1');
-  const sheet = await screen.findByRole('dialog', { name: 'Edit edge traefik' });
+  const { user } = renderRoute('/o/acme/delivery/targets/t-1/edit');
+  await screen.findByRole('heading', { name: 'Edit edge traefik' });
+  const sheet = document.body;
   expect(within(sheet).getByText('default')).toBeInTheDocument();
   expect(within(sheet).getByText('internal')).toBeInTheDocument();
   const dirLabel = within(sheet).getByText('Directory on the agent');
@@ -167,24 +173,24 @@ it('surfaces a failed meta/schemas fetch with a retry and a disabled, explained 
   expect(screen.getByRole('button', { name: 'Add target' })).toBeDisabled();
 });
 
-it('clears an unknown ?edit= id and reports it', async () => {
-  renderRoute('/o/acme/delivery/targets?edit=nope');
+it('sends an unknown target id back to the list with a toast', async () => {
+  renderRoute('/o/acme/delivery/targets/nope/edit');
   await screen.findByRole('table', { name: 'Deploy targets' });
-  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(await screen.findByText('Deploy target not found.')).toBeInTheDocument();
 });
 
-it('never opens the add sheet for a viewer, even with ?edit=new', async () => {
+it('never opens the add page for a viewer', async () => {
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))));
-  renderRoute('/o/acme/delivery/targets?edit=new');
+  renderRoute('/o/acme/delivery/targets/new');
   await screen.findByRole('table', { name: 'Deploy targets' });
-  expect(screen.queryByRole('dialog', { name: 'Add deploy target' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Add deploy target' })).not.toBeInTheDocument();
 });
 
 it('puts a name-conflict 409 under Name and any other 409 in the page alert', async () => {
   server.use(http.post(url('/orgs/org-1/deploy-targets'), () => problem(409, 'A deploy target named "edge traefik" already exists.')));
-  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  const { user } = renderRoute('/o/acme/delivery/targets/new');
+  await screen.findByRole('heading', { name: 'Add deploy target' });
+  const sheet = document.body;
   await user.type(within(sheet).getByLabelText('Name'), 'edge traefik');
   await user.type(within(sheet).getByLabelText('Directory on the agent'), '/etc/traefik/dynamic');
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
@@ -204,16 +210,18 @@ it('puts a name-conflict 409 under Name and any other 409 in the page alert', as
 // chip itself; this just proves every meta type still gets one.
 it('type segments list every meta type', async () => {
   server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema], notifiers: [], signers: [] })));
-  renderRoute('/o/acme/delivery/targets?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  renderRoute('/o/acme/delivery/targets/new');
+  await screen.findByRole('heading', { name: 'Add deploy target' });
+  const sheet = document.body;
   expect(within(sheet).getByRole('radio', { name: /^Traefik \(file provider\)/ })).toBeInTheDocument();
   expect(within(sheet).getByRole('radio', { name: /^Vault KV/ })).toBeInTheDocument();
 });
 
 it('creates a vault-kv target with its default config', async () => {
   server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema], notifiers: [], signers: [] })));
-  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  const { user } = renderRoute('/o/acme/delivery/targets/new');
+  await screen.findByRole('heading', { name: 'Add deploy target' });
+  const sheet = document.body;
   await user.type(within(sheet).getByLabelText('Name'), 'vault-store');
   // RunsOnChip's own visible/aria-label text ("Server") joins the type
   // name in the radio's accessible name now, so an exact "Vault KV" match
@@ -228,8 +236,9 @@ it('disables includeKey without keys:export, with a tooltip naming it', async ()
     http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'operator', orgId: org.id }]))),
     http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema], notifiers: [], signers: [] })),
   );
-  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  const { user } = renderRoute('/o/acme/delivery/targets/new');
+  await screen.findByRole('heading', { name: 'Add deploy target' });
+  const sheet = document.body;
   await user.click(within(sheet).getByRole('radio', { name: /^Vault KV/ }));
   const sw = await within(sheet).findByRole('switch', { name: 'Include private key' });
   expect(sw).toBeDisabled();
@@ -248,7 +257,7 @@ it('shows Server for a vault-kv row and a Grants action that opens its detail', 
   expect(within(row).getByText('Server')).toBeInTheDocument();
   expect(within(rowOf('edge traefik')).getByText('Agent')).toBeInTheDocument();
   await user.click(within(row).getByRole('button', { name: `Grants ${targetVaultKv.name}` }));
-  expect(router.state.location.search).toMatchObject({ view: targetVaultKv.id });
+  expect(router.state.location.pathname).toBe(`/o/acme/delivery/targets/${targetVaultKv.id}/grants`);
 });
 
 it('rows show runs-on chip', async () => {

@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import { useCopy } from '@/lib/useCopy';
 import { IconButton } from '@/components/IconButton';
 
-export function CopyField({ value, label, display, className }: { value: string; label: string; display?: string; className?: string }) {
+export function CopyField({ value, label, display, className, wrap }: { value: string; label: string; display?: string; className?: string; wrap?: boolean }) {
   const { status, copy } = useCopy(value);
   return (
     <span className={cn('inline-flex max-w-full min-w-0 items-center gap-1', className)}>
@@ -14,7 +14,7 @@ export function CopyField({ value, label, display, className }: { value: string;
               below its content's intrinsic width — it also needs `min-w-0`
               on the element itself, not just the row it sits in. The full
               value (not just the visible/truncated text) shows on hover. */}
-          <code tabIndex={0} className="min-w-0 truncate font-mono text-xs">
+          <code tabIndex={0} className={cn('min-w-0 font-mono text-xs', wrap ? 'break-all' : 'truncate')}>
             {display ?? value}
           </code>
         </TooltipTrigger>

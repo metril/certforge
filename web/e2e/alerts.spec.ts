@@ -105,7 +105,7 @@ test('monitor check', async ({ page }) => {
 
   await page.goto(`/o/${E2E.orgSlug}/alerts/monitors`);
   await page.getByRole('button', { name: 'Add monitor' }).click();
-  const sheet = page.getByRole('dialog', { name: 'New monitor' });
+  const sheet = page.getByRole('main');
   await expect(sheet).toBeVisible();
 
   await sheet.getByLabel('Name', { exact: true }).click();
@@ -114,7 +114,6 @@ test('monitor check', async ({ page }) => {
   await sheet.getByLabel('Port', { exact: true }).fill('8443');
   await sheet.getByRole('radio', { name: '5 m', exact: true }).click();
   await sheet.getByRole('button', { name: 'Save' }).click();
-  await expect(sheet).toBeHidden();
 
   const table = page.getByRole('table', { name: 'Monitors' });
   const row = table.getByRole('row', { name: /^e2e-listener/ });
@@ -132,8 +131,8 @@ test('monitor check', async ({ page }) => {
   // can land on the Check now button column and run it instead of opening
   // the sheet).
   await row.getByText('e2e-listener', { exact: true }).click();
-  const edit = page.getByRole('dialog', { name: 'e2e-listener' });
-  await expect(edit).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'e2e-listener' })).toBeVisible();
+  const edit = page.getByRole('complementary', { name: 'Summary' });
   await edit.getByRole('button', { name: 'Check now' }).click();
   // The e2e Traefik :8443 default certificate is set up only by the Go e2e
   // (6a-facts.md), so this Playwright monitor targets the always-up agent
@@ -220,9 +219,8 @@ test('alerts and integrations/backup screens do not scroll sideways at 375 px', 
   await page.goto(`/o/${E2E.orgSlug}/alerts/monitors`);
   await noScroll();
   await page.getByText('e2e-listener-375', { exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'e2e-listener-375' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'e2e-listener-375' })).toBeVisible();
   await noScroll();
-  await page.keyboard.press('Escape');
 
   await page.goto(`/o/${E2E.orgSlug}/alerts/events`);
   await noScroll();

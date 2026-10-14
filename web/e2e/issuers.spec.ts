@@ -69,8 +69,8 @@ test('CA kind switching', async ({ page }) => {
 
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await table.getByRole('row', { name: /^e2e-local/ }).click();
-  const detail = page.getByRole('dialog', { name: 'e2e-local' });
-  await expect(detail).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'e2e-local' })).toBeVisible();
+  const detail = page.getByRole('main');
   // Batch 4 review: the detail sheet's own plain-text expiry line only
   // renders when ValidityBar can't (missing dates), so this now matches
   // exactly one element — ValidityBar's own "full" legend.
@@ -81,6 +81,7 @@ test('CA kind switching', async ({ page }) => {
   const download = await dl;
   expect(download.suggestedFilename()).toMatch(/-ca\.pem$/);
 
+  await detail.getByRole('link', { name: 'CRL', exact: true }).click();
   const crlValue = (await detail.locator('code').first().textContent())?.trim() ?? '';
   expect(crlValue).toContain('/crl/');
   await detail.getByRole('button', { name: 'Copy CRL URL' }).click();
@@ -88,11 +89,13 @@ test('CA kind switching', async ({ page }) => {
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(crlValue);
   }).toPass({ timeout: 5_000 });
 
+  await detail.getByRole('link', { name: 'Overview', exact: true }).click();
   await detail.getByRole('button', { name: 'Rotate issuing certificate' }).click();
   const confirmDialog = page.getByRole('dialog', { name: 'Rotate issuing certificate?' });
   await confirmDialog.getByRole('textbox').fill('Rotate');
   await confirmDialog.getByRole('button', { name: 'Rotate' }).click();
   await expect(confirmDialog).toBeHidden();
+  await detail.getByRole('link', { name: 'CRL', exact: true }).click();
   await expect(detail.getByText('Retired issuers')).toBeVisible({ timeout: 30_000 });
   await expect(detail.getByRole('button', { name: /^[0-9a-fA-F]{8} until /i })).toHaveCount(1);
   await snap(page, 'ca-detail');
@@ -235,20 +238,22 @@ test('server grant', async ({ page }) => {
 
   await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
   await page.getByRole('button', { name: 'Add target' }).click();
-  const targetSheet = page.getByRole('dialog', { name: 'Add deploy target' });
+  const targetSheet = page.getByRole('main');
   await targetSheet.getByLabel('Name', { exact: true }).fill('e2e-vault-kv');
   // The segment's accessible name is the type name plus its RunsOnChip
   // label ("Vault KV" + "Server"), not the old parenthetical text.
   await pickTargetType(targetSheet, /^Vault KV/);
   await targetSheet.getByRole('button', { name: 'Save' }).click();
-  await expect(targetSheet).toBeHidden();
+  await expect(targetSheet.getByRole('button', { name: 'Save' })).toBeHidden();
+  // A new target lands on its page, an edit on the list: go to the list.
+  await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
 
   const targetsTable = page.getByRole('table', { name: 'Deploy targets' });
   const targetRow = targetsTable.getByRole('row', { name: /^e2e-vault-kv/ });
   await expect(targetRow).toBeVisible();
   await targetRow.getByRole('button', { name: 'Grants e2e-vault-kv' }).click();
 
-  const targetDetail = page.getByRole('dialog', { name: 'e2e-vault-kv' });
+  const targetDetail = page.getByRole('main');
   await expect(targetDetail).toBeVisible();
   await targetDetail.getByRole('button', { name: 'New server grant' }).click();
   await targetDetail.getByRole('combobox', { name: 'Certificate' }).click();
@@ -298,7 +303,7 @@ test('server grant with verify creates a grant-owned monitor', async ({ page }) 
 
   await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
   await page.getByRole('table', { name: 'Deploy targets' }).getByRole('button', { name: 'Grants e2e-drift-truenas' }).click();
-  const targetDetail = page.getByRole('dialog', { name: 'e2e-drift-truenas' });
+  const targetDetail = page.getByRole('main');
   await expect(targetDetail).toBeVisible();
   await targetDetail.getByRole('button', { name: 'New server grant' }).click();
   await targetDetail.getByRole('combobox', { name: 'Certificate' }).click();
@@ -309,7 +314,6 @@ test('server grant with verify creates a grant-owned monitor', async ({ page }) 
   await targetDetail.getByRole('button', { name: 'Grant' }).click();
   await expect(targetDetail.getByRole('table', { name: 'Grants' }).getByRole('row', { name: /e2e-drift-cert/ })).toBeVisible({ timeout: 60_000 });
 
-  await page.keyboard.press('Escape');
   await page.goto(`/o/${E2E.orgSlug}/alerts/monitors`);
   const monitorRow = page.getByRole('row').filter({ hasText: 'drift-nas.e2e.test' });
   await expect(monitorRow).toBeVisible();
@@ -350,18 +354,16 @@ test('issuers, delivery and vault settings screens do not scroll sideways at 375
   await expect(page.getByRole('heading', { level: 1, name: 'Issuers' })).toBeVisible();
   await noScroll();
   await page.getByRole('table').getByRole('row', { name: /^e2e-local-375/ }).click();
-  await expect(page.getByRole('dialog', { name: 'e2e-local-375' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'e2e-local-375' })).toBeVisible();
   await noScroll();
-  await page.keyboard.press('Escape');
 
   await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
   await noScroll();
   // Below md the list stacks as cards inside `<ul aria-label="Deploy targets">`;
   // a listitem has no accessible name, so target the unique Grants button.
   await page.getByRole('list', { name: 'Deploy targets' }).getByRole('button', { name: 'Grants e2e-vault-kv-375' }).click();
-  await expect(page.getByRole('dialog', { name: 'e2e-vault-kv-375' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'e2e-vault-kv-375' })).toBeVisible();
   await noScroll();
-  await page.keyboard.press('Escape');
 
   for (const path of ['/issuers/accounts', '/issuers/dns']) {
     await page.goto(`/o/${E2E.orgSlug}${path}`);

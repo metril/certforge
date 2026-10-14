@@ -44,8 +44,9 @@ beforeEach(() => {
 
 it('type segments show runs-on chip', async () => {
   server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema, testSecretSchema], notifiers: [], signers: [] })));
-  renderRoute('/o/acme/delivery/targets?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  renderRoute('/o/acme/delivery/targets/new');
+  await screen.findByRole('heading', { name: 'Add deploy target' });
+  const sheet = document.body;
   expect(within(within(sheet).getByRole('radio', { name: /^Vault KV/ })).getByText('Server')).toBeInTheDocument();
   expect(within(within(sheet).getByRole('radio', { name: /^Traefik/ })).getByText('Agent')).toBeInTheDocument();
   expect(within(within(sheet).getByRole('radio', { name: /^Test secret/ })).getByText('Server or agent')).toBeInTheDocument();
@@ -54,8 +55,9 @@ it('type segments show runs-on chip', async () => {
 it('runs-on chip compact below sm', async () => {
   stubViewport(false);
   server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema], notifiers: [], signers: [] })));
-  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  const { user } = renderRoute('/o/acme/delivery/targets/new');
+  await screen.findByRole('heading', { name: 'Add deploy target' });
+  const sheet = document.body;
   const vaultRadio = within(sheet).getByRole('radio', { name: /^Vault KV/ });
   expect(within(vaultRadio).queryByText('Server')).not.toBeInTheDocument();
   // The chip's own tooltip trigger is a descendant of the radio, so hovering
@@ -69,8 +71,9 @@ it('runs-on chip compact below sm', async () => {
 
 it('forced type disables other segment with tooltip', async () => {
   server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema], notifiers: [], signers: [] })));
-  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  const { user } = renderRoute('/o/acme/delivery/targets/new');
+  await screen.findByRole('heading', { name: 'Add deploy target' });
+  const sheet = document.body;
   // traefik (agent-only) is the default type: its own Server segment is forced off.
   const serverOpt = within(sheet).getByRole('radio', { name: 'Server' });
   expect(serverOpt).toBeDisabled();
@@ -81,8 +84,9 @@ it('forced type disables other segment with tooltip', async () => {
 
 it('either type defaults to agent and can pick server', async () => {
   server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, testSecretSchema], notifiers: [], signers: [] })));
-  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  const { user } = renderRoute('/o/acme/delivery/targets/new');
+  await screen.findByRole('heading', { name: 'Add deploy target' });
+  const sheet = document.body;
   await user.click(within(sheet).getByRole('radio', { name: /^Test secret/ }));
   expect(within(sheet).getByRole('radio', { name: 'Agent' })).toHaveAttribute('aria-checked', 'true');
   await user.click(within(sheet).getByRole('radio', { name: 'Server' }));
@@ -91,8 +95,9 @@ it('either type defaults to agent and can pick server', async () => {
 
 it('type change resets config and runs-on', async () => {
   server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema], notifiers: [], signers: [] })));
-  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  const { user } = renderRoute('/o/acme/delivery/targets/new');
+  await screen.findByRole('heading', { name: 'Add deploy target' });
+  const sheet = document.body;
   await user.type(within(sheet).getByLabelText('Directory on the agent'), '/etc/traefik/dynamic');
   await user.click(within(sheet).getByRole('radio', { name: /^Vault KV/ }));
   expect(within(sheet).queryByLabelText('Directory on the agent')).not.toBeInTheDocument();
@@ -101,8 +106,9 @@ it('type change resets config and runs-on', async () => {
 });
 
 it('create posts runsOn', async () => {
-  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  const { user } = renderRoute('/o/acme/delivery/targets/new');
+  await screen.findByRole('heading', { name: 'Add deploy target' });
+  const sheet = document.body;
   await user.type(within(sheet).getByLabelText('Name'), 'edge-2');
   await user.type(within(sheet).getByLabelText('Directory on the agent'), '/etc/traefik/dynamic');
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
@@ -110,8 +116,9 @@ it('create posts runsOn', async () => {
 });
 
 it('runsOn locked on edit and absent from PATCH', async () => {
-  const { user } = renderRoute('/o/acme/delivery/targets?edit=t-1');
-  const sheet = await screen.findByRole('dialog', { name: 'Edit edge traefik' });
+  const { user } = renderRoute('/o/acme/delivery/targets/t-1/edit');
+  await screen.findByRole('heading', { name: 'Edit edge traefik' });
+  const sheet = document.body;
   expect(within(sheet).getByRole('radio', { name: 'Agent' })).toBeDisabled();
   expect(within(sheet).getByRole('radio', { name: 'Server' })).toBeDisabled();
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
@@ -124,8 +131,9 @@ it('secret field masked when stored', async () => {
     http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [testSecretSchema], notifiers: [], signers: [] })),
     http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [targetTestSecret] })),
   );
-  renderRoute(`/o/acme/delivery/targets?edit=${targetTestSecret.id}`);
-  const sheet = await screen.findByRole('dialog', { name: `Edit ${targetTestSecret.name}` });
+  renderRoute(`/o/acme/delivery/targets/${targetTestSecret.id}/edit`);
+  await screen.findByRole('heading', { name: `Edit ${targetTestSecret.name}` });
+  const sheet = document.body;
   expect(await within(sheet).findByText('Stored')).toBeInTheDocument();
   expect(within(sheet).queryByLabelText('Token')).not.toBeInTheDocument();
 });
@@ -135,8 +143,9 @@ it('edit sends sentinel for stored secrets', async () => {
     http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [testSecretSchema], notifiers: [], signers: [] })),
     http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [targetTestSecret] })),
   );
-  const { user } = renderRoute(`/o/acme/delivery/targets?edit=${targetTestSecret.id}`);
-  const sheet = await screen.findByRole('dialog', { name: `Edit ${targetTestSecret.name}` });
+  const { user } = renderRoute(`/o/acme/delivery/targets/${targetTestSecret.id}/edit`);
+  await screen.findByRole('heading', { name: `Edit ${targetTestSecret.name}` });
+  const sheet = document.body;
   await user.clear(within(sheet).getByLabelText('URL'));
   await user.type(within(sheet).getByLabelText('URL'), 'https://sink2.test');
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
@@ -148,8 +157,9 @@ it('stored secret with schema default sends sentinel', async () => {
     http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [testSecretSchema], notifiers: [], signers: [] })),
     http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [targetTestSecret] })),
   );
-  const { user } = renderRoute(`/o/acme/delivery/targets?edit=${targetTestSecret.id}`);
-  const sheet = await screen.findByRole('dialog', { name: `Edit ${targetTestSecret.name}` });
+  const { user } = renderRoute(`/o/acme/delivery/targets/${targetTestSecret.id}/edit`);
+  await screen.findByRole('heading', { name: `Edit ${targetTestSecret.name}` });
+  const sheet = document.body;
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(patched).toMatchObject({ config: { token: '__unchanged__' } }));
 });
@@ -159,16 +169,18 @@ it('replace sends new secret; remove sends empty', async () => {
     http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [testSecretSchema], notifiers: [], signers: [] })),
     http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [targetTestSecret] })),
   );
-  const { user, router } = renderRoute(`/o/acme/delivery/targets?edit=${targetTestSecret.id}`);
-  const sheet = await screen.findByRole('dialog', { name: `Edit ${targetTestSecret.name}` });
+  const { user, router } = renderRoute(`/o/acme/delivery/targets/${targetTestSecret.id}/edit`);
+  await screen.findByRole('heading', { name: `Edit ${targetTestSecret.name}` });
+  const sheet = document.body;
   await user.click(within(sheet).getByRole('button', { name: 'Replace Token' }));
   await user.type(within(sheet).getByLabelText('Token'), 'new-secret');
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(patched).toMatchObject({ config: { token: 'new-secret' } }));
-  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('edit'));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/delivery/targets'));
 
-  await router.navigate({ to: '/o/$org/delivery/targets', params: { org: 'acme' }, search: { edit: targetTestSecret.id } });
-  const sheet2 = await screen.findByRole('dialog', { name: `Edit ${targetTestSecret.name}` });
+  await router.navigate({ to: '/o/$org/delivery/targets/$id/edit', params: { org: 'acme', id: targetTestSecret.id } });
+  await screen.findByRole('heading', { name: `Edit ${targetTestSecret.name}` });
+  const sheet2 = document.body;
   await user.click(within(sheet2).getByRole('button', { name: 'Remove Token' }));
   await user.click(within(sheet2).getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(patched).toMatchObject({ config: { token: '' } }));
@@ -179,8 +191,9 @@ it('server segment disabled without keys:export for always types', async () => {
     http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'operator', orgId: org.id }]))),
     http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, testSecretSchema], notifiers: [], signers: [] })),
   );
-  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  const { user } = renderRoute('/o/acme/delivery/targets/new');
+  await screen.findByRole('heading', { name: 'Add deploy target' });
+  const sheet = document.body;
   await user.click(within(sheet).getByRole('radio', { name: /^Test secret/ }));
   const serverOpt = within(sheet).getByRole('radio', { name: 'Server' });
   expect(serverOpt).toBeDisabled();
@@ -194,15 +207,17 @@ it('includeKey on a server target gates save', async () => {
     http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema], notifiers: [], signers: [] })),
     http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [{ ...targetVaultKv, config: { ...targetVaultKv.config, includeKey: true } }] })),
   );
-  renderRoute(`/o/acme/delivery/targets?edit=${targetVaultKv.id}`);
-  const sheet = await screen.findByRole('dialog', { name: `Edit ${targetVaultKv.name}` });
+  renderRoute(`/o/acme/delivery/targets/${targetVaultKv.id}/edit`);
+  await screen.findByRole('heading', { name: `Edit ${targetVaultKv.name}` });
+  const sheet = document.body;
   expect(within(sheet).getByRole('button', { name: 'Save' })).toBeDisabled();
 });
 
 it('secrets tip only when schema has secrets', async () => {
   server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, testSecretSchema], notifiers: [], signers: [] })));
-  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  const { user } = renderRoute('/o/acme/delivery/targets/new');
+  await screen.findByRole('heading', { name: 'Add deploy target' });
+  const sheet = document.body;
   const settingsLabel = () => within(sheet).getByText('Connection').closest('h3')!;
   expect(within(settingsLabel()).queryByRole('button', { name: 'Help' })).not.toBeInTheDocument();
   await user.click(within(sheet).getByRole('radio', { name: /^Test secret/ }));
@@ -211,8 +226,9 @@ it('secrets tip only when schema has secrets', async () => {
 
 it('target secrets not cached', async () => {
   server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [testSecretSchema], notifiers: [], signers: [] })));
-  const { user, queryClient, router } = renderRoute('/o/acme/delivery/targets?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  const { user, queryClient, router } = renderRoute('/o/acme/delivery/targets/new');
+  await screen.findByRole('heading', { name: 'Add deploy target' });
+  const sheet = document.body;
   await user.type(within(sheet).getByLabelText('Name'), 'sink');
   await user.click(within(sheet).getByRole('radio', { name: /^Test secret/ }));
   await user.type(within(sheet).getByLabelText('URL'), 'https://sink.test');
@@ -228,8 +244,9 @@ it('target secrets not cached', async () => {
 
 it('pikvm form shows host, host key and key passphrase but no files', async () => {
   server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, pikvmSchema], notifiers: [], signers: [] })));
-  const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  const { user } = renderRoute('/o/acme/delivery/targets/new');
+  await screen.findByRole('heading', { name: 'Add deploy target' });
+  const sheet = document.body;
   await user.click(within(sheet).getByRole('radio', { name: /^PiKVM/ }));
   expect(await within(sheet).findByLabelText('Host')).toBeInTheDocument();
   expect(within(sheet).getByLabelText('Host key')).toBeInTheDocument();
@@ -240,16 +257,18 @@ it('pikvm form shows host, host key and key passphrase but no files', async () =
 
 it('type field is radios with few types and a combobox with many', async () => {
   server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, vaultKvSchema, testSecretSchema], notifiers: [], signers: [] })));
-  const few = renderRoute('/o/acme/delivery/targets?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  const few = renderRoute('/o/acme/delivery/targets/new');
+  await screen.findByRole('heading', { name: 'Add deploy target' });
+  const sheet = document.body;
   expect(within(sheet).getByRole('radio', { name: /^Vault KV/ })).toBeInTheDocument();
   expect(within(sheet).queryByRole('combobox', { name: 'Type' })).not.toBeInTheDocument();
   few.unmount();
 
   const many = Array.from({ length: 7 }, (_, i) => ({ ...traefikSchema, code: `t${i}`, name: `Type ${i}` }));
   server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: many, notifiers: [], signers: [] })));
-  renderRoute('/o/acme/delivery/targets?edit=new');
-  const sheet2 = await screen.findByRole('dialog', { name: 'Add deploy target' });
+  renderRoute('/o/acme/delivery/targets/new');
+  await screen.findByRole('heading', { name: 'Add deploy target' });
+  const sheet2 = document.body;
   expect(await within(sheet2).findByRole('combobox', { name: 'Type' })).toBeInTheDocument();
   expect(within(sheet2).queryByRole('radio', { name: /^Type 0/ })).not.toBeInTheDocument();
 });
@@ -267,8 +286,9 @@ describe('saved credentials', () => {
 
   it('picking a credential hides its fields and posts credentialId without them', async () => {
     useSsh(undefined, pikvmSchema);
-    const { user } = renderRoute('/o/acme/delivery/targets?edit=new');
-    const sheet = await screen.findByRole('dialog', { name: 'Add deploy target' });
+    const { user } = renderRoute('/o/acme/delivery/targets/new');
+    await screen.findByRole('heading', { name: 'Add deploy target' });
+  const sheet = document.body;
     expect(within(sheet).queryByRole('combobox', { name: 'Credential' })).not.toBeInTheDocument();
     await user.click(within(sheet).getByRole('radio', { name: /^PiKVM/ }));
     await user.type(within(sheet).getByLabelText('Name'), 'kvm');
@@ -294,8 +314,9 @@ describe('saved credentials', () => {
   it('an operator cannot attach a credential or move a credential-backed target', async () => {
     useSsh([sshTarget]);
     server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'operator', orgId: org.id }]))));
-    const { user } = renderRoute('/o/acme/delivery/targets?edit=t-ssh');
-    const sheet = await screen.findByRole('dialog', { name: 'Edit kvm' });
+    const { user } = renderRoute('/o/acme/delivery/targets/t-ssh/edit');
+    await screen.findByRole('heading', { name: 'Edit kvm' });
+  const sheet = document.body;
     const select = await within(sheet).findByRole('combobox', { name: 'Credential' });
     expect(select).toBeDisabled();
     expect(select).toHaveTextContent('lab ssh');
@@ -310,8 +331,9 @@ describe('saved credentials', () => {
 
   it('editing keeps the credential', async () => {
     useSsh([sshTarget]);
-    const { user } = renderRoute('/o/acme/delivery/targets?edit=t-ssh');
-    const sheet = await screen.findByRole('dialog', { name: 'Edit kvm' });
+    const { user } = renderRoute('/o/acme/delivery/targets/t-ssh/edit');
+    await screen.findByRole('heading', { name: 'Edit kvm' });
+  const sheet = document.body;
     await within(sheet).findByRole('combobox', { name: 'Credential' });
     await user.click(within(sheet).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(patched).toMatchObject({ credentialId: 'dc-1', config: { host: 'kvm.lan' } }));
@@ -319,8 +341,9 @@ describe('saved credentials', () => {
 
   it('detaching shows the credential fields again and sends null', async () => {
     useSsh([sshTarget]);
-    const { user } = renderRoute('/o/acme/delivery/targets?edit=t-ssh');
-    const sheet = await screen.findByRole('dialog', { name: 'Edit kvm' });
+    const { user } = renderRoute('/o/acme/delivery/targets/t-ssh/edit');
+    await screen.findByRole('heading', { name: 'Edit kvm' });
+  const sheet = document.body;
     await user.click(await within(sheet).findByRole('combobox', { name: 'Credential' }));
     await user.click(await screen.findByRole('option', { name: 'Enter manually' }));
     await user.type(within(sheet).getByLabelText('Username'), 'root');
@@ -330,13 +353,16 @@ describe('saved credentials', () => {
 
   it('prefill from the credential is not an edit and Enter manually frees the fields', async () => {
     useSsh([sshTarget]);
-    const { user } = renderRoute('/o/acme/delivery/targets?edit=t-ssh');
-    const sheet = await screen.findByRole('dialog', { name: 'Edit kvm' });
+    const { user, router } = renderRoute('/o/acme/delivery/targets/t-ssh/edit');
+    await screen.findByRole('heading', { name: 'Edit kvm' });
+    const sheet = document.body;
     expect(await within(sheet).findByLabelText('Username')).toHaveValue('root');
-    await user.keyboard('{Escape}');
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit kvm' })).not.toBeInTheDocument());
-    renderRoute('/o/acme/delivery/targets?edit=t-ssh');
-    const again = await screen.findByRole('dialog', { name: 'Edit kvm' });
+    // Prefill is not an edit: leaving the page raises no discard prompt.
+    await router.navigate({ to: '/o/$org/delivery/targets', params: { org: 'acme' } });
+    expect(screen.queryByText('Discard changes?')).not.toBeInTheDocument();
+    await router.navigate({ to: '/o/$org/delivery/targets/$id/edit', params: { org: 'acme', id: 't-ssh' } });
+    await screen.findByRole('heading', { name: 'Edit kvm' });
+    const again = document.body;
     await user.click(await within(again).findByRole('combobox', { name: 'Credential' }));
     await user.click(await screen.findByRole('option', { name: 'Enter manually' }));
     const u = within(again).getByLabelText('Username');
@@ -344,10 +370,11 @@ describe('saved credentials', () => {
     expect(u).toHaveValue('');
   });
 
-  it('the detail sheet links to the credential', async () => {
+  it('the detail page links to the credential', async () => {
     useSsh([sshTarget]);
-    renderRoute('/o/acme/delivery/targets?view=t-ssh');
-    const sheet = await screen.findByRole('dialog', { name: /kvm/ });
+    renderRoute('/o/acme/delivery/targets/t-ssh/grants');
+    await screen.findByRole('heading', { name: /kvm/ });
+  const sheet = document.body;
     const link = await within(sheet).findByRole('link', { name: 'lab ssh' });
     expect(link).toHaveAttribute('href', '/o/acme/delivery/credentials?edit=dc-1');
   });

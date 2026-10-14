@@ -4,17 +4,9 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 import { XIcon } from "lucide-react"
 import { Dialog as SheetPrimitive } from "radix-ui"
-import { useBlocker, useRouter } from "@tanstack/react-router"
-import { Button } from "@/components/ui/button"
+import { useRouter } from "@tanstack/react-router"
+import { DiscardDialog, NavGuard, type NavLoc as Loc } from "@/components/NavGuard"
 import { IconButton } from "@/components/IconButton"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 
 const SheetFormContext = React.createContext(false)
 
@@ -52,86 +44,11 @@ function useSheetGuard(onOpenChange: (open: boolean) => void): SheetGuard {
 // unchanged (same route) leaves the sheet open, so it is never blocked.
 const SHEET_KEYS = ['edit', 'view'] as const
 
-type Loc = { routeId: string; params: unknown; search: Record<string, unknown> }
-
 function keepsSheetOpen(cur: Loc, next: Loc) {
   return (
     cur.routeId === next.routeId &&
     JSON.stringify(cur.params) === JSON.stringify(next.params) &&
     SHEET_KEYS.every((k) => cur.search[k] === next.search[k])
-  )
-}
-
-function DiscardDialog({
-  open,
-  onCancel,
-  onDiscard,
-}: {
-  open: boolean
-  onCancel: () => void
-  onDiscard: () => void
-}) {
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Discard changes?</DialogTitle>
-          <DialogDescription>Your unsaved changes will be lost.</DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button variant="destructive" onClick={onDiscard}>
-            Discard
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-/** Blocks router navigation (Back/Forward, links, navigate()) and tab
- * reload/close while a dirty form sheet is open, and owns the single
- * "Discard changes?" dialog shared with the Escape/X/Cancel guard. A
- * sheet's own save/delete close (`useSheetGuard().close`) and the guard's
- * confirmed discard lift the block through `bypass`. */
-function NavGuard({
-  active,
-  confirming,
-  setConfirming,
-  bypass,
-  onDiscard,
-}: {
-  active: boolean
-  confirming: boolean
-  setConfirming: (c: boolean) => void
-  bypass: React.MutableRefObject<boolean>
-  onDiscard: () => void
-}) {
-  const resolver = useBlocker({
-    shouldBlockFn: ({ current, next }) =>
-      !bypass.current && !keepsSheetOpen(current as Loc, next as Loc),
-    withResolver: true,
-    disabled: !active,
-    enableBeforeUnload: active,
-  })
-  const blocked = resolver.status === 'blocked'
-  const cancel = () => {
-    if (blocked) resolver.reset()
-    setConfirming(false)
-  }
-  return (
-    <DiscardDialog
-      open={active && (blocked || confirming)}
-      onCancel={cancel}
-      onDiscard={() => {
-        bypass.current = true
-        setConfirming(false)
-        if (blocked) resolver.proceed()
-        else onDiscard()
-      }}
-    />
   )
 }
 
@@ -158,6 +75,7 @@ function Sheet({ form = false, dirty = false, guard, onOpenChange, ...props }: S
       />
       {router && form ? (
         <NavGuard
+          keepsOpen={keepsSheetOpen}
           active={guarded && open}
           confirming={confirming}
           setConfirming={setConfirming}
@@ -319,4 +237,5 @@ const SheetDescription = React.forwardRef<
 })
 SheetDescription.displayName = "SheetDescription"
 
-export { Sheet, DiscardDialog, useSheetGuard, SheetTrigger, SheetClose, SheetContent, SheetHeader, SheetBody, SheetFooter, SheetTitle, SheetDescription }
+export { DiscardDialog }
+export { Sheet, useSheetGuard, SheetTrigger, SheetClose, SheetContent, SheetHeader, SheetBody, SheetFooter, SheetTitle, SheetDescription }

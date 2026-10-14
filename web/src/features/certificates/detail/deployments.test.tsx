@@ -49,10 +49,10 @@ it('shows the layout and deploy target of each grant, linking to Delivery', asyn
   renderRoute('/o/acme/certificates/c-1/deployments');
   const list = await screen.findByRole('list', { name: 'Deployments' });
   const web = within(list).getByRole('link', { name: 'web-1' }).closest('li')!;
-  expect(within(web).getByRole('link', { name: 'nginx' })).toHaveAttribute('href', '/o/acme/delivery/layouts?edit=l-1');
+  expect(within(web).getByRole('link', { name: 'nginx' })).toHaveAttribute('href', '/o/acme/delivery/layouts/l-1/edit');
   expect(within(web).queryByRole('link', { name: 'edge traefik' })).not.toBeInTheDocument();
   const db = within(list).getByRole('link', { name: 'db-1' }).closest('li')!;
-  expect(within(db).getByRole('link', { name: 'edge traefik' })).toHaveAttribute('href', '/o/acme/delivery/targets?edit=t-1');
+  expect(within(db).getByRole('link', { name: 'edge traefik' })).toHaveAttribute('href', '/o/acme/delivery/targets/t-1/overview');
   expect(within(db).queryByRole('link', { name: 'nginx' })).not.toBeInTheDocument();
 });
 

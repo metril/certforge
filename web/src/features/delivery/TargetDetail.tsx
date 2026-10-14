@@ -1,7 +1,7 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
-import { KeyRound, KeySquare, Lock, Pencil, Plus, RotateCw, Trash2 } from 'lucide-react';
+import { Link, Navigate, useNavigate } from '@tanstack/react-router';
+import { ChevronLeft, KeyRound, KeySquare, Lock, Pencil, Plus, RotateCw, Trash2 } from 'lucide-react';
 import { layoutsQuery, targetHookRunsInfinite } from '@/api/queries/delivery';
 import { deployCredentialsQuery } from '@/api/queries/deployCredentials';
 import { targetGrantsQuery, useDeleteGrant, useRedeployGrant } from '@/api/queries/grants';
@@ -15,9 +15,9 @@ import { RunsOnChip } from '@/components/RunsOnChip';
 import { ServerDeploymentChip } from '@/components/ServerDeploymentChip';
 import { ToneChip } from '@/components/StatusChip';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { PageHeader } from '@/components/PageHeader';
+import { TAB_ACTIVE, TAB_LINK } from '@/components/TabLabel';
 import { ActionRunsList } from '@/features/clients/detail/ActionRunsTab';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetBody } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { errorMessage } from '@/api/errors';
@@ -27,12 +27,16 @@ import { can } from '@/lib/permissions';
 import { needsKey, typeMeta } from '@/lib/targets';
 import { relTime } from '@/lib/time';
 import { useMediaQuery } from '@/lib/useMediaQuery';
+import { TargetForm } from './TargetForm';
+import type { TargetTab } from './tabs';
 import { PfSenseUsage } from './PfSenseUsage';
 import { ServerGrantForm } from './ServerGrantForm';
 import { failedWithoutData } from '@/lib/queryState';
 import { IconButton } from '@/components/IconButton';
 
-type Props = { orgId: string; orgSlug: string; target: DeployTarget; types: ProviderSchema[]; onEdit: () => void; onOpenChange: (open: boolean) => void };
+type Props = { orgId: string; orgSlug: string; target: DeployTarget; types: ProviderSchema[]; tab: TargetTab };
+
+const TAB_LABEL: Record<TargetTab, string> = { overview: 'Overview', grants: 'Grants', runs: 'Action runs' };
 
 type Mode = { kind: 'list' } | { kind: 'form'; editing?: Grant };
 
@@ -42,16 +46,19 @@ function TargetRuns({ orgId, targetId }: { orgId: string; targetId: string }) {
   return <ActionRunsList q={q} nameOf={() => 'SSH command'} empty={<EmptyState message="No action runs yet." />} />;
 }
 
-export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpenChange }: Props) {
+export function TargetDetail({ orgId, orgSlug, target, types, tab }: Props) {
   const me = useMe();
+  const navigate = useNavigate();
   const canWrite = can(me, 'clients:write', orgId);
   const canExportKeys = can(me, 'keys:export', orgId);
   const canDelivery = can(me, 'delivery:write', orgId);
   const isMdUp = useMediaQuery('(min-width: 768px)');
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
   const [removing, setRemoving] = useState<Grant | null>(null);
-  const q = useQuery(targetGrantsQuery(orgId, target.id));
-  const layoutsQ = useQuery(layoutsQuery(orgId));
+  useEffect(() => setMode({ kind: 'list' }), [tab]);
+  const grantsTab = target.runsOn === 'server' && tab === 'grants';
+  const q = useQuery({ ...targetGrantsQuery(orgId, target.id), enabled: grantsTab });
+  const layoutsQ = useQuery({ ...layoutsQuery(orgId), enabled: grantsTab });
   const layouts = layoutsQ.data ?? [];
   const credsQ = useQuery({ ...deployCredentialsQuery(orgId), enabled: !!target.credentialId });
   const credName = credsQ.data?.find((c) => c.id === target.credentialId)?.name;
@@ -179,77 +186,81 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
     );
   };
 
+  // Grants and action runs belong to server-run targets only.
+  if (tab !== 'overview' && target.runsOn !== 'server') return <Navigate to="/o/$org/delivery/targets/$id/$tab" params={{ org: orgSlug, id: target.id, tab: 'overview' }} replace />;
+  const tabs = (target.runsOn === 'server' ? (['overview', 'grants', 'runs'] as const) : (['overview'] as const)).map((x) => (
+    <Link key={x} to="/o/$org/delivery/targets/$id/$tab" params={{ org: orgSlug, id: target.id, tab: x }} className={TAB_LINK} activeProps={TAB_ACTIVE}>
+      {TAB_LABEL[x]}
+    </Link>
+  ));
+
   return (
-    <Sheet open onOpenChange={onOpenChange}>
-      <SheetContent side="right" size="xl">
-        <SheetHeader>
-          <div className="flex items-start justify-between gap-2 pr-8">
-            <div className="flex flex-wrap items-center gap-2">
-              <SheetTitle>{target.name}</SheetTitle>
-              <span className="text-xs text-ink-muted">{typeName}</span>
-              <RunsOnChip mode="server" />
-              {keyed && <ToneChip tone="neutral" icon={KeyRound} label="Includes key" />}
-              {target.credentialId && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Link
-                      to="/o/$org/delivery/credentials"
-                      params={{ org: orgSlug }}
-                      search={{ edit: target.credentialId }}
-                      className="inline-flex max-w-48 items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-xs hover:bg-subtle"
-                    >
-                      <KeySquare className="size-3.5 shrink-0" aria-hidden />
-                      <span className="truncate">{credName ?? 'Saved credential'}</span>
-                    </Link>
-                  </TooltipTrigger>
-                  <TooltipContent>{help['target.credential'].text}</TooltipContent>
-                </Tooltip>
-              )}
-              {target.storedSecrets.length > 0 && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <ToneChip tone="neutral" icon={Lock} label="Stored secrets" />
-                  </TooltipTrigger>
-                  <TooltipContent>{help['target.secrets'].text}</TooltipContent>
-                </Tooltip>
-              )}
-            </div>
-            <PermissionTip allowed={canDelivery} action="delivery:write">
-              <Button type="button" variant="outline" size="sm" disabled={!canDelivery} onClick={onEdit}>
-                <Pencil className="size-3.5" aria-hidden />
-                Edit
-              </Button>
-            </PermissionTip>
-          </div>
-          <SheetDescription className="sr-only">{typeName} deploy target</SheetDescription>
-        </SheetHeader>
-        <SheetBody>
-          <div className="grid gap-4">
-            {mode.kind === 'form' ? (
-              <ServerGrantForm orgId={orgId} orgSlug={orgSlug} targetId={target.id} editing={mode.editing} onBack={backToList} onDone={backToList} />
-            ) : (
-              <Tabs defaultValue="grants">
-                <TabsList>
-                  <TabsTrigger value="grants">Grants</TabsTrigger>
-                  <TabsTrigger value="runs">Action runs</TabsTrigger>
-                </TabsList>
-                <TabsContent value="grants" className="grid gap-4 pt-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="flex items-center gap-1.5 text-sm font-semibold">
-                      Grants <HelpTip id="grant.server" />
-                    </h3>
-                    {(q.data?.length ?? 0) > 0 && newGrantButton}
-                  </div>
-                  {grantsList()}
-                </TabsContent>
-                <TabsContent value="runs" className="pt-3">
-                  <TargetRuns orgId={orgId} targetId={target.id} />
-                </TabsContent>
-              </Tabs>
+    <>
+      <Link to="/o/$org/delivery/targets" params={{ org: orgSlug }} className="mb-2 inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink">
+        <ChevronLeft className="size-4" aria-hidden />
+        Deploy targets
+      </Link>
+      <PageHeader
+        title={target.name}
+        tabs={tabs}
+        tabsLabel="Target sections"
+        actions={
+          <PermissionTip allowed={canDelivery} action="delivery:write">
+            <Button type="button" variant="outline" size="sm" disabled={!canDelivery} onClick={() => void navigate({ to: '/o/$org/delivery/targets/$id/edit', params: { org: orgSlug, id: target.id } })}>
+              <Pencil className="size-3.5" aria-hidden />
+              Edit
+            </Button>
+          </PermissionTip>
+        }
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-ink-muted">{typeName}</span>
+          <RunsOnChip mode={target.runsOn} />
+            {keyed && <ToneChip tone="neutral" icon={KeyRound} label="Includes key" />}
+            {target.credentialId && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link
+                    to="/o/$org/delivery/credentials"
+                    params={{ org: orgSlug }}
+                    search={{ edit: target.credentialId }}
+                    className="inline-flex max-w-48 items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-xs hover:bg-subtle"
+                  >
+                    <KeySquare className="size-3.5 shrink-0" aria-hidden />
+                    <span className="truncate">{credName ?? 'Saved credential'}</span>
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>{help['target.credential'].text}</TooltipContent>
+              </Tooltip>
             )}
-          </div>
-        </SheetBody>
-      </SheetContent>
+            {target.storedSecrets.length > 0 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <ToneChip tone="neutral" icon={Lock} label="Stored secrets" />
+                </TooltipTrigger>
+                <TooltipContent>{help['target.secrets'].text}</TooltipContent>
+              </Tooltip>
+            )}
+        </div>
+      </PageHeader>
+      <div className="grid gap-4">
+        {tab === 'overview' && <TargetForm orgId={orgId} orgSlug={orgSlug} target={target} types={types} readOnly />}
+        {tab === 'grants' &&
+          (mode.kind === 'form' ? (
+            <ServerGrantForm orgId={orgId} orgSlug={orgSlug} targetId={target.id} editing={mode.editing} onBack={backToList} onDone={backToList} />
+          ) : (
+            <div className="grid gap-4">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+                  Grants <HelpTip id="grant.server" />
+                </h3>
+                {(q.data?.length ?? 0) > 0 && newGrantButton}
+              </div>
+              {grantsList()}
+            </div>
+          ))}
+        {tab === 'runs' && <TargetRuns orgId={orgId} targetId={target.id} />}
+      </div>
       <ConfirmDestructive
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}
@@ -259,6 +270,6 @@ export function TargetDetailSheet({ orgId, orgSlug, target, types, onEdit, onOpe
         actionLabel="Remove"
         onConfirm={() => del.mutateAsync({ id: removing!.id })}
       />
-    </Sheet>
+    </>
   );
 }

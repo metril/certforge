@@ -82,11 +82,11 @@ test('screens', async ({ page }) => {
   // The New layout sheet with a PKCS#12 file.
   await page.goto(`/o/${E2E.orgSlug}/delivery/layouts`);
   await page.getByRole('button', { name: 'New layout' }).click();
-  const layout = page.getByRole('dialog', { name: 'New layout' });
+  const layout = page.getByRole('main');
   await layout.getByLabel('Name', { exact: true }).fill('screens-p12');
   await layout.getByRole('radiogroup', { name: 'Format of file 1' }).getByRole('radio', { name: 'PKCS#12' }).click();
   await snap(page, 'layout-p12');
-  await page.keyboard.press('Escape');
+  await layout.getByRole('button', { name: 'Cancel' }).click();
   await page.getByRole('dialog', { name: 'Discard changes?' }).getByRole('button', { name: 'Discard' }).click();
 
   // Settings → Issuance defaults, Global scope then Organization scope.

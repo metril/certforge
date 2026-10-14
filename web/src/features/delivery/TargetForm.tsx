@@ -1,6 +1,7 @@
 import { useDirty } from '@/lib/useDirty';
 import { useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
 import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
 import { CircleAlert, Cpu, Server as ServerIcon } from 'lucide-react';
 import { toast } from 'sonner';
@@ -17,9 +18,11 @@ import { RunsOnChip } from '@/components/RunsOnChip';
 import { SegmentedControl, type SegmentOption } from '@/components/SegmentedControl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetClose, useSheetGuard, SheetBody } from '@/components/ui/sheet';
+import { FormActions, FormPage } from '@/components/FormPage';
+import { useNavBypass } from '@/components/NavGuard';
 import { FormSection } from '@/components/FormSection';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
+import { plural } from '@/api/queries/certificates';
 import { fieldErrorFromMessage, secretKeys } from '@/forms/uiSchema';
 import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
@@ -32,10 +35,12 @@ function omitKeys(o: Record<string, unknown>, keys: string[]): Record<string, un
   return Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k)));
 }
 
-type Props = { orgId: string; target?: DeployTarget; types: ProviderSchema[]; readOnly: boolean; onOpenChange: (open: boolean) => void };
+type Props = { orgId: string; orgSlug: string; target?: DeployTarget; types: ProviderSchema[]; /** Read-only: just the sections, no page chrome (the detail Overview tab). */ readOnly?: boolean };
 
-export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Props) {
-  const guard = useSheetGuard(onOpenChange);
+/** Create / edit form for a deploy target: a full page (FormPage) or, read-only, bare sections. */
+export function TargetForm({ orgId, orgSlug, target, types, readOnly = false }: Props) {
+  const bypass = useNavBypass();
+  const navigate = useNavigate();
   const me = useMe();
   const qc = useQueryClient();
   const isSmUp = useMediaQuery('(min-width: 640px)');
@@ -107,7 +112,7 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
   // Server is picked (UI conventions "either default"); optional-policy
   // gating (includeKey) happens on the switch itself, not here.
   const keyGateServer = meta.runsOn === 'either' && meta.keyPolicy === 'always' && !canExportKeys;
-  const title = target ? (readOnly ? target.name : `Edit ${target.name}`) : 'Add deploy target';
+  const title = target ? `Edit ${target.name}` : 'Add deploy target';
 
   function runsOnOption(mode: 'server' | 'agent'): Pick<SegmentOption<'server' | 'agent'>, 'disabled' | 'hint'> {
     if (locked) return { disabled: true, hint: help['target.runsOnLocked'].text };
@@ -160,11 +165,12 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
     try {
       const body = toTargetInput({ name, type, runsOn, config: omitKeys(config, supplied) }, schema, storedSecrets, !target);
       if (credKinds.length > 0) body.credentialId = credentialId;
-      if (target) await updateDeployTarget(orgId, target.id, body);
-      else await createDeployTarget(orgId, body);
+      const saved = target ? await updateDeployTarget(orgId, target.id, body) : await createDeployTarget(orgId, body);
       toast.success('Deploy target saved');
       await Promise.all([qc.invalidateQueries({ queryKey: ['deploy-targets', orgId] }), invalidateGrants(qc, orgId)]);
-      guard.close();
+      bypass.current = true;
+      // New: on to the target's page. Edit: back to the list the user came from.
+      void navigate(target ? { to: '/o/$org/delivery/targets', params: { org: orgSlug } } : { to: '/o/$org/delivery/targets/$id/$tab', params: { org: orgSlug, id: saved.id, tab: 'overview' } });
     } catch (e) {
       const msg = errorMessage(e);
       const field = fieldErrorFromMessage(schema, msg);
@@ -181,169 +187,192 @@ export function TargetSheet({ orgId, target, types, readOnly, onOpenChange }: Pr
     }
   };
 
+  const sections = (
+    <>
+      <FormSection title="General" columns={2}>
+      <Field id="target-name" label="Name" error={nameError}>
+        <Input
+          id="target-name"
+          value={name}
+          placeholder="edge traefik"
+          autoComplete="off"
+          disabled={readOnly}
+          onChange={(e) => {
+            setName(e.target.value);
+            setNameError(null);
+          }}
+        />
+      </Field>
+      <Field id="target-type" label="Type" help={typeHelpKey(type)} className={types.length <= 5 ? 'sm:col-span-2' : undefined}>
+        {types.length <= 5 ? (
+          <SegmentedControl<string>
+            id="target-type"
+            aria-label="Type"
+            value={type}
+            onChange={changeType}
+            options={types.map((t) => ({
+              value: t.code,
+              label: (
+                <span className="inline-flex items-center gap-1.5">
+                  {t.name}
+                  <RunsOnChip mode={t.runsOn ?? 'agent'} compact={!isSmUp} />
+                </span>
+              ),
+              disabled: locked,
+            }))}
+          />
+        ) : (
+          <Combobox
+            id="target-type"
+            aria-label="Type"
+            value={type}
+            onChange={changeType}
+            options={types.map((t) => ({ value: t.code, label: t.name, hint: RUNS_ON_META[t.runsOn ?? 'agent'].label }))}
+            placeholder="Pick a type"
+            emptyText="No type matches."
+            disabled={locked}
+          />
+        )}
+      </Field>
+      <Field id="target-runs-on" label="Runs on" help="target.runsOn">
+        <SegmentedControl<'server' | 'agent'>
+          id="target-runs-on"
+          aria-label="Runs on"
+          value={runsOn}
+          onChange={setRunsOn}
+          options={[
+            {
+              value: 'server',
+              label: (
+                <>
+                  <ServerIcon className="size-4" aria-hidden />
+                  Server
+                </>
+              ),
+              ...runsOnOption('server'),
+            },
+            {
+              value: 'agent',
+              label: (
+                <>
+                  <Cpu className="size-4" aria-hidden />
+                  Agent
+                </>
+              ),
+              ...runsOnOption('agent'),
+            },
+          ]}
+        />
+      </Field>
+      {credKinds.length > 0 && (
+        <Field id="target-credential" label="Credential" help="target.credential">
+          {(() => {
+            const select = (
+              <Combobox
+                id="target-credential"
+                aria-label="Credential"
+                value={credentialId ?? 'manual'}
+                onChange={pickCredential}
+                options={[{ value: 'manual', label: 'Enter manually' }, ...credentials.map((c) => ({ value: c.id, label: c.name, hint: CREDENTIAL_KIND_LABEL[c.kind] ?? c.kind }))]}
+                placeholder="Enter manually"
+                emptyText="No saved credential matches."
+                disabled={readOnly || !canCredWrite}
+              />
+            );
+            if (readOnly || canCredWrite) return select;
+            return (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span tabIndex={0} className="grid">
+                    {select}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Needs the deploycreds:write permission</TooltipContent>
+              </Tooltip>
+            );
+          })()}
+        </Field>
+      )}
+    </FormSection>
+    <FormSection title="Connection" help={secretKeys(schema).length > 0 ? 'target.secrets' : undefined}>
+      {credPending ? (
+        <p className="py-4 text-sm text-ink-muted">Loading…</p>
+      ) : (
+        <SchemaForm
+          key={credentialId ?? 'manual'}
+          ref={formRef}
+          schema={schema}
+          value={formValue}
+          onChange={(v) => {
+            setConfig(omitKeys(v, supplied));
+            setExtra(null);
+          }}
+          storedSecrets={formStored}
+          readonly={readOnly}
+          extraErrors={extra ?? undefined}
+          uiSchemaOverrides={uiOverrides}
+          formContext={formContext}
+          columns={2}
+        />
+      )}
+    </FormSection>
+    </>
+  );
+  if (readOnly) return <div className="grid gap-4">{sections}</div>;
+
+  const credName = credential?.name;
+  const rail = (
+    <dl className="grid gap-3 text-sm">
+      <div className="grid min-w-0 gap-1">
+        <dt className="text-xs text-ink-muted">Type</dt>
+        <dd className="flex flex-wrap items-center gap-2">
+          {meta.name}
+          <RunsOnChip mode={runsOn} />
+        </dd>
+      </div>
+      {credKinds.length > 0 && (
+        <div className="grid min-w-0 gap-1">
+          <dt className="text-xs text-ink-muted">Credential</dt>
+          <dd className="min-w-0 break-words">{credName ?? 'Entered manually'}</dd>
+        </div>
+      )}
+      {target && (
+        <div className="grid min-w-0 gap-1">
+          <dt className="text-xs text-ink-muted">Used by</dt>
+          <dd>{plural(target.grantCount, 'grant')}</dd>
+        </div>
+      )}
+    </dl>
+  );
+  const backTo = { label: 'Deploy targets', link: { to: '/o/$org/delivery/targets', params: { org: orgSlug } } as const };
+
   return (
-    <Sheet guard={guard} open form={!readOnly} dirty={dirty} onOpenChange={onOpenChange}>
-      <SheetContent side="right" size="xl">
-        <SheetHeader>
-          <SheetTitle>{title}</SheetTitle>
-          <SheetDescription className="sr-only">Deploy target settings</SheetDescription>
-        </SheetHeader>
-        <SheetBody>
-          <div className="grid gap-4">
-            <FormSection title="General" columns={2}>
-              <Field id="target-name" label="Name" error={nameError}>
-                <Input
-                  id="target-name"
-                  value={name}
-                  placeholder="edge traefik"
-                  autoComplete="off"
-                  disabled={readOnly}
-                  onChange={(e) => {
-                    setName(e.target.value);
-                    setNameError(null);
-                  }}
-                />
-              </Field>
-              <Field id="target-type" label="Type" help={typeHelpKey(type)} className={types.length <= 5 ? 'sm:col-span-2' : undefined}>
-                {types.length <= 5 ? (
-                  <SegmentedControl<string>
-                    id="target-type"
-                    aria-label="Type"
-                    value={type}
-                    onChange={changeType}
-                    options={types.map((t) => ({
-                      value: t.code,
-                      label: (
-                        <span className="inline-flex items-center gap-1.5">
-                          {t.name}
-                          <RunsOnChip mode={t.runsOn ?? 'agent'} compact={!isSmUp} />
-                        </span>
-                      ),
-                      disabled: locked,
-                    }))}
-                  />
-                ) : (
-                  <Combobox
-                    id="target-type"
-                    aria-label="Type"
-                    value={type}
-                    onChange={changeType}
-                    options={types.map((t) => ({ value: t.code, label: t.name, hint: RUNS_ON_META[t.runsOn ?? 'agent'].label }))}
-                    placeholder="Pick a type"
-                    emptyText="No type matches."
-                    disabled={locked}
-                  />
-                )}
-              </Field>
-              <Field id="target-runs-on" label="Runs on" help="target.runsOn">
-                <SegmentedControl<'server' | 'agent'>
-                  id="target-runs-on"
-                  aria-label="Runs on"
-                  value={runsOn}
-                  onChange={setRunsOn}
-                  options={[
-                    {
-                      value: 'server',
-                      label: (
-                        <>
-                          <ServerIcon className="size-4" aria-hidden />
-                          Server
-                        </>
-                      ),
-                      ...runsOnOption('server'),
-                    },
-                    {
-                      value: 'agent',
-                      label: (
-                        <>
-                          <Cpu className="size-4" aria-hidden />
-                          Agent
-                        </>
-                      ),
-                      ...runsOnOption('agent'),
-                    },
-                  ]}
-                />
-              </Field>
-              {credKinds.length > 0 && (
-                <Field id="target-credential" label="Credential" help="target.credential">
-                  {(() => {
-                    const select = (
-                      <Combobox
-                        id="target-credential"
-                        aria-label="Credential"
-                        value={credentialId ?? 'manual'}
-                        onChange={pickCredential}
-                        options={[{ value: 'manual', label: 'Enter manually' }, ...credentials.map((c) => ({ value: c.id, label: c.name, hint: CREDENTIAL_KIND_LABEL[c.kind] ?? c.kind }))]}
-                        placeholder="Enter manually"
-                        emptyText="No saved credential matches."
-                        disabled={readOnly || !canCredWrite}
-                      />
-                    );
-                    if (readOnly || canCredWrite) return select;
-                    return (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span tabIndex={0} className="grid">
-                            {select}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>Needs the deploycreds:write permission</TooltipContent>
-                      </Tooltip>
-                    );
-                  })()}
-                </Field>
-              )}
-            </FormSection>
-            <FormSection title="Connection" help={secretKeys(schema).length > 0 ? 'target.secrets' : undefined}>
-              {credPending ? (
-                <p className="py-4 text-sm text-ink-muted">Loading…</p>
-              ) : (
-                <SchemaForm
-                  key={credentialId ?? 'manual'}
-                  ref={formRef}
-                  schema={schema}
-                  value={formValue}
-                  onChange={(v) => {
-                    setConfig(omitKeys(v, supplied));
-                    setExtra(null);
-                  }}
-                  storedSecrets={formStored}
-                  readonly={readOnly}
-                  extraErrors={extra ?? undefined}
-                  uiSchemaOverrides={uiOverrides}
-                  formContext={formContext}
-                  columns={2}
-                />
-              )}
-            </FormSection>
-            {formError && (
-              <p role="alert" className="flex items-center gap-1.5 text-sm">
-                <CircleAlert className="size-4 text-failed" aria-hidden />
-                {formError}
-              </p>
-            )}
-          </div>
-        </SheetBody>
-        <SheetFooter>
-          {readOnly ? (
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Close
-            </Button>
-          ) : (
-            <>
-              <SheetClose asChild>
-                <Button variant="outline">Cancel</Button>
-              </SheetClose>
-              <PermissionTip allowed={!blocked && !credBlocked} action={blocked ? 'keys:export' : 'deploycreds:write'}>
-                <Button disabled={blocked || credBlocked || saving || credPending} onClick={() => void submit()}>
-                  Save
-                </Button>
-              </PermissionTip>
-            </>
-          )}
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+    <FormPage
+      title={title}
+      backTo={backTo}
+      dirty={dirty}
+      bypass={bypass}
+      rail={rail}
+      actions={
+        <FormActions
+          onCancel={() => void navigate(backTo.link)}
+          save={
+            <PermissionTip allowed={!blocked && !credBlocked} action={blocked ? 'keys:export' : 'deploycreds:write'}>
+              <Button disabled={blocked || credBlocked || saving || credPending} onClick={() => void submit()}>
+                Save
+              </Button>
+            </PermissionTip>
+          }
+        />
+      }
+    >
+      {sections}
+      {formError && (
+        <p role="alert" className="flex items-center gap-1.5 text-sm">
+          <CircleAlert className="size-4 text-failed" aria-hidden />
+          {formError}
+        </p>
+      )}
+    </FormPage>
   );
 }

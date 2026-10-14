@@ -27,7 +27,6 @@ import { Route as AppOOrgOverviewRouteImport } from './routes/_app/o/$org/overvi
 import { Route as AppOOrgAlertsIndexRouteImport } from './routes/_app/o/$org/alerts/index'
 import { Route as AppOOrgAlertsChannelsRouteImport } from './routes/_app/o/$org/alerts/channels'
 import { Route as AppOOrgAlertsEventsRouteImport } from './routes/_app/o/$org/alerts/events'
-import { Route as AppOOrgAlertsMonitorsRouteImport } from './routes/_app/o/$org/alerts/monitors'
 import { Route as AppOOrgCertificatesIndexRouteImport } from './routes/_app/o/$org/certificates/index'
 import { Route as AppOOrgCertificatesImportRouteImport } from './routes/_app/o/$org/certificates/import'
 import { Route as AppOOrgCertificatesNewRouteImport } from './routes/_app/o/$org/certificates/new'
@@ -37,17 +36,26 @@ import { Route as AppOOrgClientsNewRouteImport } from './routes/_app/o/$org/clie
 import { Route as AppOOrgDeliveryIndexRouteImport } from './routes/_app/o/$org/delivery/index'
 import { Route as AppOOrgDeliveryActionsRouteImport } from './routes/_app/o/$org/delivery/actions'
 import { Route as AppOOrgDeliveryCredentialsRouteImport } from './routes/_app/o/$org/delivery/credentials'
-import { Route as AppOOrgDeliveryLayoutsRouteImport } from './routes/_app/o/$org/delivery/layouts'
-import { Route as AppOOrgDeliveryTargetsRouteImport } from './routes/_app/o/$org/delivery/targets'
 import { Route as AppOOrgIssuersIndexRouteImport } from './routes/_app/o/$org/issuers/index'
 import { Route as AppOOrgIssuersAccountsRouteImport } from './routes/_app/o/$org/issuers/accounts'
-import { Route as AppOOrgIssuersCasRouteImport } from './routes/_app/o/$org/issuers/cas'
 import { Route as AppOOrgIssuersDnsRouteImport } from './routes/_app/o/$org/issuers/dns'
+import { Route as AppOOrgAlertsMonitorsIndexRouteImport } from './routes/_app/o/$org/alerts/monitors/index'
+import { Route as AppOOrgAlertsMonitorsNewRouteImport } from './routes/_app/o/$org/alerts/monitors/new'
 import { Route as AppOOrgCertificatesIdIndexRouteImport } from './routes/_app/o/$org/certificates/$id/index'
 import { Route as AppOOrgCertificatesIdTabRouteImport } from './routes/_app/o/$org/certificates/$id/$tab'
 import { Route as AppOOrgCertificatesIdEditRouteImport } from './routes/_app/o/$org/certificates/$id/edit'
 import { Route as AppOOrgClientsIdIndexRouteImport } from './routes/_app/o/$org/clients/$id/index'
 import { Route as AppOOrgClientsIdTabRouteImport } from './routes/_app/o/$org/clients/$id/$tab'
+import { Route as AppOOrgDeliveryLayoutsIndexRouteImport } from './routes/_app/o/$org/delivery/layouts/index'
+import { Route as AppOOrgDeliveryLayoutsNewRouteImport } from './routes/_app/o/$org/delivery/layouts/new'
+import { Route as AppOOrgDeliveryTargetsIndexRouteImport } from './routes/_app/o/$org/delivery/targets/index'
+import { Route as AppOOrgDeliveryTargetsNewRouteImport } from './routes/_app/o/$org/delivery/targets/new'
+import { Route as AppOOrgIssuersCasIndexRouteImport } from './routes/_app/o/$org/issuers/cas/index'
+import { Route as AppOOrgAlertsMonitorsIdEditRouteImport } from './routes/_app/o/$org/alerts/monitors/$id/edit'
+import { Route as AppOOrgDeliveryLayoutsIdEditRouteImport } from './routes/_app/o/$org/delivery/layouts/$id/edit'
+import { Route as AppOOrgDeliveryTargetsIdTabRouteImport } from './routes/_app/o/$org/delivery/targets/$id/$tab'
+import { Route as AppOOrgDeliveryTargetsIdEditRouteImport } from './routes/_app/o/$org/delivery/targets/$id/edit'
+import { Route as AppOOrgIssuersCasIdTabRouteImport } from './routes/_app/o/$org/issuers/cas/$id/$tab'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -138,11 +146,6 @@ const AppOOrgAlertsEventsRoute = AppOOrgAlertsEventsRouteImport.update({
   path: '/events',
   getParentRoute: () => AppOOrgAlertsRouteRoute,
 } as any)
-const AppOOrgAlertsMonitorsRoute = AppOOrgAlertsMonitorsRouteImport.update({
-  id: '/monitors',
-  path: '/monitors',
-  getParentRoute: () => AppOOrgAlertsRouteRoute,
-} as any)
 const AppOOrgCertificatesIndexRoute =
   AppOOrgCertificatesIndexRouteImport.update({
     id: '/certificates/',
@@ -192,16 +195,6 @@ const AppOOrgDeliveryCredentialsRoute =
     path: '/credentials',
     getParentRoute: () => AppOOrgDeliveryRouteRoute,
   } as any)
-const AppOOrgDeliveryLayoutsRoute = AppOOrgDeliveryLayoutsRouteImport.update({
-  id: '/layouts',
-  path: '/layouts',
-  getParentRoute: () => AppOOrgDeliveryRouteRoute,
-} as any)
-const AppOOrgDeliveryTargetsRoute = AppOOrgDeliveryTargetsRouteImport.update({
-  id: '/targets',
-  path: '/targets',
-  getParentRoute: () => AppOOrgDeliveryRouteRoute,
-} as any)
 const AppOOrgIssuersIndexRoute = AppOOrgIssuersIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -212,16 +205,23 @@ const AppOOrgIssuersAccountsRoute = AppOOrgIssuersAccountsRouteImport.update({
   path: '/accounts',
   getParentRoute: () => AppOOrgIssuersRouteRoute,
 } as any)
-const AppOOrgIssuersCasRoute = AppOOrgIssuersCasRouteImport.update({
-  id: '/cas',
-  path: '/cas',
-  getParentRoute: () => AppOOrgIssuersRouteRoute,
-} as any)
 const AppOOrgIssuersDnsRoute = AppOOrgIssuersDnsRouteImport.update({
   id: '/dns',
   path: '/dns',
   getParentRoute: () => AppOOrgIssuersRouteRoute,
 } as any)
+const AppOOrgAlertsMonitorsIndexRoute =
+  AppOOrgAlertsMonitorsIndexRouteImport.update({
+    id: '/monitors/',
+    path: '/monitors/',
+    getParentRoute: () => AppOOrgAlertsRouteRoute,
+  } as any)
+const AppOOrgAlertsMonitorsNewRoute =
+  AppOOrgAlertsMonitorsNewRouteImport.update({
+    id: '/monitors/new',
+    path: '/monitors/new',
+    getParentRoute: () => AppOOrgAlertsRouteRoute,
+  } as any)
 const AppOOrgCertificatesIdIndexRoute =
   AppOOrgCertificatesIdIndexRouteImport.update({
     id: '/certificates/$id/',
@@ -250,6 +250,64 @@ const AppOOrgClientsIdTabRoute = AppOOrgClientsIdTabRouteImport.update({
   path: '/clients/$id/$tab',
   getParentRoute: () => AppOOrgRouteRoute,
 } as any)
+const AppOOrgDeliveryLayoutsIndexRoute =
+  AppOOrgDeliveryLayoutsIndexRouteImport.update({
+    id: '/layouts/',
+    path: '/layouts/',
+    getParentRoute: () => AppOOrgDeliveryRouteRoute,
+  } as any)
+const AppOOrgDeliveryLayoutsNewRoute =
+  AppOOrgDeliveryLayoutsNewRouteImport.update({
+    id: '/layouts/new',
+    path: '/layouts/new',
+    getParentRoute: () => AppOOrgDeliveryRouteRoute,
+  } as any)
+const AppOOrgDeliveryTargetsIndexRoute =
+  AppOOrgDeliveryTargetsIndexRouteImport.update({
+    id: '/targets/',
+    path: '/targets/',
+    getParentRoute: () => AppOOrgDeliveryRouteRoute,
+  } as any)
+const AppOOrgDeliveryTargetsNewRoute =
+  AppOOrgDeliveryTargetsNewRouteImport.update({
+    id: '/targets/new',
+    path: '/targets/new',
+    getParentRoute: () => AppOOrgDeliveryRouteRoute,
+  } as any)
+const AppOOrgIssuersCasIndexRoute = AppOOrgIssuersCasIndexRouteImport.update({
+  id: '/cas/',
+  path: '/cas/',
+  getParentRoute: () => AppOOrgIssuersRouteRoute,
+} as any)
+const AppOOrgAlertsMonitorsIdEditRoute =
+  AppOOrgAlertsMonitorsIdEditRouteImport.update({
+    id: '/monitors/$id/edit',
+    path: '/monitors/$id/edit',
+    getParentRoute: () => AppOOrgAlertsRouteRoute,
+  } as any)
+const AppOOrgDeliveryLayoutsIdEditRoute =
+  AppOOrgDeliveryLayoutsIdEditRouteImport.update({
+    id: '/layouts/$id/edit',
+    path: '/layouts/$id/edit',
+    getParentRoute: () => AppOOrgDeliveryRouteRoute,
+  } as any)
+const AppOOrgDeliveryTargetsIdTabRoute =
+  AppOOrgDeliveryTargetsIdTabRouteImport.update({
+    id: '/targets/$id/$tab',
+    path: '/targets/$id/$tab',
+    getParentRoute: () => AppOOrgDeliveryRouteRoute,
+  } as any)
+const AppOOrgDeliveryTargetsIdEditRoute =
+  AppOOrgDeliveryTargetsIdEditRouteImport.update({
+    id: '/targets/$id/edit',
+    path: '/targets/$id/edit',
+    getParentRoute: () => AppOOrgDeliveryRouteRoute,
+  } as any)
+const AppOOrgIssuersCasIdTabRoute = AppOOrgIssuersCasIdTabRouteImport.update({
+  id: '/cas/$id/$tab',
+  path: '/cas/$id/$tab',
+  getParentRoute: () => AppOOrgIssuersRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -268,28 +326,36 @@ export interface FileRoutesByFullPath {
   '/o/$org/': typeof AppOOrgIndexRoute
   '/o/$org/alerts/channels': typeof AppOOrgAlertsChannelsRoute
   '/o/$org/alerts/events': typeof AppOOrgAlertsEventsRoute
-  '/o/$org/alerts/monitors': typeof AppOOrgAlertsMonitorsRoute
   '/o/$org/certificates/import': typeof AppOOrgCertificatesImportRoute
   '/o/$org/certificates/new': typeof AppOOrgCertificatesNewRoute
   '/o/$org/certificates/upload': typeof AppOOrgCertificatesUploadRoute
   '/o/$org/clients/new': typeof AppOOrgClientsNewRoute
   '/o/$org/delivery/actions': typeof AppOOrgDeliveryActionsRoute
   '/o/$org/delivery/credentials': typeof AppOOrgDeliveryCredentialsRoute
-  '/o/$org/delivery/layouts': typeof AppOOrgDeliveryLayoutsRoute
-  '/o/$org/delivery/targets': typeof AppOOrgDeliveryTargetsRoute
   '/o/$org/issuers/accounts': typeof AppOOrgIssuersAccountsRoute
-  '/o/$org/issuers/cas': typeof AppOOrgIssuersCasRoute
   '/o/$org/issuers/dns': typeof AppOOrgIssuersDnsRoute
   '/o/$org/alerts/': typeof AppOOrgAlertsIndexRoute
   '/o/$org/certificates/': typeof AppOOrgCertificatesIndexRoute
   '/o/$org/clients/': typeof AppOOrgClientsIndexRoute
   '/o/$org/delivery/': typeof AppOOrgDeliveryIndexRoute
   '/o/$org/issuers/': typeof AppOOrgIssuersIndexRoute
+  '/o/$org/alerts/monitors/new': typeof AppOOrgAlertsMonitorsNewRoute
   '/o/$org/certificates/$id/$tab': typeof AppOOrgCertificatesIdTabRoute
   '/o/$org/certificates/$id/edit': typeof AppOOrgCertificatesIdEditRoute
   '/o/$org/clients/$id/$tab': typeof AppOOrgClientsIdTabRoute
+  '/o/$org/delivery/layouts/new': typeof AppOOrgDeliveryLayoutsNewRoute
+  '/o/$org/delivery/targets/new': typeof AppOOrgDeliveryTargetsNewRoute
+  '/o/$org/alerts/monitors/': typeof AppOOrgAlertsMonitorsIndexRoute
   '/o/$org/certificates/$id/': typeof AppOOrgCertificatesIdIndexRoute
   '/o/$org/clients/$id/': typeof AppOOrgClientsIdIndexRoute
+  '/o/$org/delivery/layouts/': typeof AppOOrgDeliveryLayoutsIndexRoute
+  '/o/$org/delivery/targets/': typeof AppOOrgDeliveryTargetsIndexRoute
+  '/o/$org/issuers/cas/': typeof AppOOrgIssuersCasIndexRoute
+  '/o/$org/alerts/monitors/$id/edit': typeof AppOOrgAlertsMonitorsIdEditRoute
+  '/o/$org/delivery/layouts/$id/edit': typeof AppOOrgDeliveryLayoutsIdEditRoute
+  '/o/$org/delivery/targets/$id/$tab': typeof AppOOrgDeliveryTargetsIdTabRoute
+  '/o/$org/delivery/targets/$id/edit': typeof AppOOrgDeliveryTargetsIdEditRoute
+  '/o/$org/issuers/cas/$id/$tab': typeof AppOOrgIssuersCasIdTabRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -304,28 +370,36 @@ export interface FileRoutesByTo {
   '/o/$org': typeof AppOOrgIndexRoute
   '/o/$org/alerts/channels': typeof AppOOrgAlertsChannelsRoute
   '/o/$org/alerts/events': typeof AppOOrgAlertsEventsRoute
-  '/o/$org/alerts/monitors': typeof AppOOrgAlertsMonitorsRoute
   '/o/$org/certificates/import': typeof AppOOrgCertificatesImportRoute
   '/o/$org/certificates/new': typeof AppOOrgCertificatesNewRoute
   '/o/$org/certificates/upload': typeof AppOOrgCertificatesUploadRoute
   '/o/$org/clients/new': typeof AppOOrgClientsNewRoute
   '/o/$org/delivery/actions': typeof AppOOrgDeliveryActionsRoute
   '/o/$org/delivery/credentials': typeof AppOOrgDeliveryCredentialsRoute
-  '/o/$org/delivery/layouts': typeof AppOOrgDeliveryLayoutsRoute
-  '/o/$org/delivery/targets': typeof AppOOrgDeliveryTargetsRoute
   '/o/$org/issuers/accounts': typeof AppOOrgIssuersAccountsRoute
-  '/o/$org/issuers/cas': typeof AppOOrgIssuersCasRoute
   '/o/$org/issuers/dns': typeof AppOOrgIssuersDnsRoute
   '/o/$org/alerts': typeof AppOOrgAlertsIndexRoute
   '/o/$org/certificates': typeof AppOOrgCertificatesIndexRoute
   '/o/$org/clients': typeof AppOOrgClientsIndexRoute
   '/o/$org/delivery': typeof AppOOrgDeliveryIndexRoute
   '/o/$org/issuers': typeof AppOOrgIssuersIndexRoute
+  '/o/$org/alerts/monitors/new': typeof AppOOrgAlertsMonitorsNewRoute
   '/o/$org/certificates/$id/$tab': typeof AppOOrgCertificatesIdTabRoute
   '/o/$org/certificates/$id/edit': typeof AppOOrgCertificatesIdEditRoute
   '/o/$org/clients/$id/$tab': typeof AppOOrgClientsIdTabRoute
+  '/o/$org/delivery/layouts/new': typeof AppOOrgDeliveryLayoutsNewRoute
+  '/o/$org/delivery/targets/new': typeof AppOOrgDeliveryTargetsNewRoute
+  '/o/$org/alerts/monitors': typeof AppOOrgAlertsMonitorsIndexRoute
   '/o/$org/certificates/$id': typeof AppOOrgCertificatesIdIndexRoute
   '/o/$org/clients/$id': typeof AppOOrgClientsIdIndexRoute
+  '/o/$org/delivery/layouts': typeof AppOOrgDeliveryLayoutsIndexRoute
+  '/o/$org/delivery/targets': typeof AppOOrgDeliveryTargetsIndexRoute
+  '/o/$org/issuers/cas': typeof AppOOrgIssuersCasIndexRoute
+  '/o/$org/alerts/monitors/$id/edit': typeof AppOOrgAlertsMonitorsIdEditRoute
+  '/o/$org/delivery/layouts/$id/edit': typeof AppOOrgDeliveryLayoutsIdEditRoute
+  '/o/$org/delivery/targets/$id/$tab': typeof AppOOrgDeliveryTargetsIdTabRoute
+  '/o/$org/delivery/targets/$id/edit': typeof AppOOrgDeliveryTargetsIdEditRoute
+  '/o/$org/issuers/cas/$id/$tab': typeof AppOOrgIssuersCasIdTabRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -346,28 +420,36 @@ export interface FileRoutesById {
   '/_app/o/$org/': typeof AppOOrgIndexRoute
   '/_app/o/$org/alerts/channels': typeof AppOOrgAlertsChannelsRoute
   '/_app/o/$org/alerts/events': typeof AppOOrgAlertsEventsRoute
-  '/_app/o/$org/alerts/monitors': typeof AppOOrgAlertsMonitorsRoute
   '/_app/o/$org/certificates/import': typeof AppOOrgCertificatesImportRoute
   '/_app/o/$org/certificates/new': typeof AppOOrgCertificatesNewRoute
   '/_app/o/$org/certificates/upload': typeof AppOOrgCertificatesUploadRoute
   '/_app/o/$org/clients/new': typeof AppOOrgClientsNewRoute
   '/_app/o/$org/delivery/actions': typeof AppOOrgDeliveryActionsRoute
   '/_app/o/$org/delivery/credentials': typeof AppOOrgDeliveryCredentialsRoute
-  '/_app/o/$org/delivery/layouts': typeof AppOOrgDeliveryLayoutsRoute
-  '/_app/o/$org/delivery/targets': typeof AppOOrgDeliveryTargetsRoute
   '/_app/o/$org/issuers/accounts': typeof AppOOrgIssuersAccountsRoute
-  '/_app/o/$org/issuers/cas': typeof AppOOrgIssuersCasRoute
   '/_app/o/$org/issuers/dns': typeof AppOOrgIssuersDnsRoute
   '/_app/o/$org/alerts/': typeof AppOOrgAlertsIndexRoute
   '/_app/o/$org/certificates/': typeof AppOOrgCertificatesIndexRoute
   '/_app/o/$org/clients/': typeof AppOOrgClientsIndexRoute
   '/_app/o/$org/delivery/': typeof AppOOrgDeliveryIndexRoute
   '/_app/o/$org/issuers/': typeof AppOOrgIssuersIndexRoute
+  '/_app/o/$org/alerts/monitors/new': typeof AppOOrgAlertsMonitorsNewRoute
   '/_app/o/$org/certificates/$id/$tab': typeof AppOOrgCertificatesIdTabRoute
   '/_app/o/$org/certificates/$id/edit': typeof AppOOrgCertificatesIdEditRoute
   '/_app/o/$org/clients/$id/$tab': typeof AppOOrgClientsIdTabRoute
+  '/_app/o/$org/delivery/layouts/new': typeof AppOOrgDeliveryLayoutsNewRoute
+  '/_app/o/$org/delivery/targets/new': typeof AppOOrgDeliveryTargetsNewRoute
+  '/_app/o/$org/alerts/monitors/': typeof AppOOrgAlertsMonitorsIndexRoute
   '/_app/o/$org/certificates/$id/': typeof AppOOrgCertificatesIdIndexRoute
   '/_app/o/$org/clients/$id/': typeof AppOOrgClientsIdIndexRoute
+  '/_app/o/$org/delivery/layouts/': typeof AppOOrgDeliveryLayoutsIndexRoute
+  '/_app/o/$org/delivery/targets/': typeof AppOOrgDeliveryTargetsIndexRoute
+  '/_app/o/$org/issuers/cas/': typeof AppOOrgIssuersCasIndexRoute
+  '/_app/o/$org/alerts/monitors/$id/edit': typeof AppOOrgAlertsMonitorsIdEditRoute
+  '/_app/o/$org/delivery/layouts/$id/edit': typeof AppOOrgDeliveryLayoutsIdEditRoute
+  '/_app/o/$org/delivery/targets/$id/$tab': typeof AppOOrgDeliveryTargetsIdTabRoute
+  '/_app/o/$org/delivery/targets/$id/edit': typeof AppOOrgDeliveryTargetsIdEditRoute
+  '/_app/o/$org/issuers/cas/$id/$tab': typeof AppOOrgIssuersCasIdTabRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -388,28 +470,36 @@ export interface FileRouteTypes {
     | '/o/$org/'
     | '/o/$org/alerts/channels'
     | '/o/$org/alerts/events'
-    | '/o/$org/alerts/monitors'
     | '/o/$org/certificates/import'
     | '/o/$org/certificates/new'
     | '/o/$org/certificates/upload'
     | '/o/$org/clients/new'
     | '/o/$org/delivery/actions'
     | '/o/$org/delivery/credentials'
-    | '/o/$org/delivery/layouts'
-    | '/o/$org/delivery/targets'
     | '/o/$org/issuers/accounts'
-    | '/o/$org/issuers/cas'
     | '/o/$org/issuers/dns'
     | '/o/$org/alerts/'
     | '/o/$org/certificates/'
     | '/o/$org/clients/'
     | '/o/$org/delivery/'
     | '/o/$org/issuers/'
+    | '/o/$org/alerts/monitors/new'
     | '/o/$org/certificates/$id/$tab'
     | '/o/$org/certificates/$id/edit'
     | '/o/$org/clients/$id/$tab'
+    | '/o/$org/delivery/layouts/new'
+    | '/o/$org/delivery/targets/new'
+    | '/o/$org/alerts/monitors/'
     | '/o/$org/certificates/$id/'
     | '/o/$org/clients/$id/'
+    | '/o/$org/delivery/layouts/'
+    | '/o/$org/delivery/targets/'
+    | '/o/$org/issuers/cas/'
+    | '/o/$org/alerts/monitors/$id/edit'
+    | '/o/$org/delivery/layouts/$id/edit'
+    | '/o/$org/delivery/targets/$id/$tab'
+    | '/o/$org/delivery/targets/$id/edit'
+    | '/o/$org/issuers/cas/$id/$tab'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -424,28 +514,36 @@ export interface FileRouteTypes {
     | '/o/$org'
     | '/o/$org/alerts/channels'
     | '/o/$org/alerts/events'
-    | '/o/$org/alerts/monitors'
     | '/o/$org/certificates/import'
     | '/o/$org/certificates/new'
     | '/o/$org/certificates/upload'
     | '/o/$org/clients/new'
     | '/o/$org/delivery/actions'
     | '/o/$org/delivery/credentials'
-    | '/o/$org/delivery/layouts'
-    | '/o/$org/delivery/targets'
     | '/o/$org/issuers/accounts'
-    | '/o/$org/issuers/cas'
     | '/o/$org/issuers/dns'
     | '/o/$org/alerts'
     | '/o/$org/certificates'
     | '/o/$org/clients'
     | '/o/$org/delivery'
     | '/o/$org/issuers'
+    | '/o/$org/alerts/monitors/new'
     | '/o/$org/certificates/$id/$tab'
     | '/o/$org/certificates/$id/edit'
     | '/o/$org/clients/$id/$tab'
+    | '/o/$org/delivery/layouts/new'
+    | '/o/$org/delivery/targets/new'
+    | '/o/$org/alerts/monitors'
     | '/o/$org/certificates/$id'
     | '/o/$org/clients/$id'
+    | '/o/$org/delivery/layouts'
+    | '/o/$org/delivery/targets'
+    | '/o/$org/issuers/cas'
+    | '/o/$org/alerts/monitors/$id/edit'
+    | '/o/$org/delivery/layouts/$id/edit'
+    | '/o/$org/delivery/targets/$id/$tab'
+    | '/o/$org/delivery/targets/$id/edit'
+    | '/o/$org/issuers/cas/$id/$tab'
   id:
     | '__root__'
     | '/_app'
@@ -465,28 +563,36 @@ export interface FileRouteTypes {
     | '/_app/o/$org/'
     | '/_app/o/$org/alerts/channels'
     | '/_app/o/$org/alerts/events'
-    | '/_app/o/$org/alerts/monitors'
     | '/_app/o/$org/certificates/import'
     | '/_app/o/$org/certificates/new'
     | '/_app/o/$org/certificates/upload'
     | '/_app/o/$org/clients/new'
     | '/_app/o/$org/delivery/actions'
     | '/_app/o/$org/delivery/credentials'
-    | '/_app/o/$org/delivery/layouts'
-    | '/_app/o/$org/delivery/targets'
     | '/_app/o/$org/issuers/accounts'
-    | '/_app/o/$org/issuers/cas'
     | '/_app/o/$org/issuers/dns'
     | '/_app/o/$org/alerts/'
     | '/_app/o/$org/certificates/'
     | '/_app/o/$org/clients/'
     | '/_app/o/$org/delivery/'
     | '/_app/o/$org/issuers/'
+    | '/_app/o/$org/alerts/monitors/new'
     | '/_app/o/$org/certificates/$id/$tab'
     | '/_app/o/$org/certificates/$id/edit'
     | '/_app/o/$org/clients/$id/$tab'
+    | '/_app/o/$org/delivery/layouts/new'
+    | '/_app/o/$org/delivery/targets/new'
+    | '/_app/o/$org/alerts/monitors/'
     | '/_app/o/$org/certificates/$id/'
     | '/_app/o/$org/clients/$id/'
+    | '/_app/o/$org/delivery/layouts/'
+    | '/_app/o/$org/delivery/targets/'
+    | '/_app/o/$org/issuers/cas/'
+    | '/_app/o/$org/alerts/monitors/$id/edit'
+    | '/_app/o/$org/delivery/layouts/$id/edit'
+    | '/_app/o/$org/delivery/targets/$id/$tab'
+    | '/_app/o/$org/delivery/targets/$id/edit'
+    | '/_app/o/$org/issuers/cas/$id/$tab'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -623,13 +729,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppOOrgAlertsEventsRouteImport
       parentRoute: typeof AppOOrgAlertsRouteRoute
     }
-    '/_app/o/$org/alerts/monitors': {
-      id: '/_app/o/$org/alerts/monitors'
-      path: '/monitors'
-      fullPath: '/o/$org/alerts/monitors'
-      preLoaderRoute: typeof AppOOrgAlertsMonitorsRouteImport
-      parentRoute: typeof AppOOrgAlertsRouteRoute
-    }
     '/_app/o/$org/certificates/': {
       id: '/_app/o/$org/certificates/'
       path: '/certificates'
@@ -693,20 +792,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppOOrgDeliveryCredentialsRouteImport
       parentRoute: typeof AppOOrgDeliveryRouteRoute
     }
-    '/_app/o/$org/delivery/layouts': {
-      id: '/_app/o/$org/delivery/layouts'
-      path: '/layouts'
-      fullPath: '/o/$org/delivery/layouts'
-      preLoaderRoute: typeof AppOOrgDeliveryLayoutsRouteImport
-      parentRoute: typeof AppOOrgDeliveryRouteRoute
-    }
-    '/_app/o/$org/delivery/targets': {
-      id: '/_app/o/$org/delivery/targets'
-      path: '/targets'
-      fullPath: '/o/$org/delivery/targets'
-      preLoaderRoute: typeof AppOOrgDeliveryTargetsRouteImport
-      parentRoute: typeof AppOOrgDeliveryRouteRoute
-    }
     '/_app/o/$org/issuers/': {
       id: '/_app/o/$org/issuers/'
       path: '/'
@@ -721,19 +806,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppOOrgIssuersAccountsRouteImport
       parentRoute: typeof AppOOrgIssuersRouteRoute
     }
-    '/_app/o/$org/issuers/cas': {
-      id: '/_app/o/$org/issuers/cas'
-      path: '/cas'
-      fullPath: '/o/$org/issuers/cas'
-      preLoaderRoute: typeof AppOOrgIssuersCasRouteImport
-      parentRoute: typeof AppOOrgIssuersRouteRoute
-    }
     '/_app/o/$org/issuers/dns': {
       id: '/_app/o/$org/issuers/dns'
       path: '/dns'
       fullPath: '/o/$org/issuers/dns'
       preLoaderRoute: typeof AppOOrgIssuersDnsRouteImport
       parentRoute: typeof AppOOrgIssuersRouteRoute
+    }
+    '/_app/o/$org/alerts/monitors/': {
+      id: '/_app/o/$org/alerts/monitors/'
+      path: '/monitors'
+      fullPath: '/o/$org/alerts/monitors/'
+      preLoaderRoute: typeof AppOOrgAlertsMonitorsIndexRouteImport
+      parentRoute: typeof AppOOrgAlertsRouteRoute
+    }
+    '/_app/o/$org/alerts/monitors/new': {
+      id: '/_app/o/$org/alerts/monitors/new'
+      path: '/monitors/new'
+      fullPath: '/o/$org/alerts/monitors/new'
+      preLoaderRoute: typeof AppOOrgAlertsMonitorsNewRouteImport
+      parentRoute: typeof AppOOrgAlertsRouteRoute
     }
     '/_app/o/$org/certificates/$id/': {
       id: '/_app/o/$org/certificates/$id/'
@@ -770,21 +862,95 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppOOrgClientsIdTabRouteImport
       parentRoute: typeof AppOOrgRouteRoute
     }
+    '/_app/o/$org/delivery/layouts/': {
+      id: '/_app/o/$org/delivery/layouts/'
+      path: '/layouts'
+      fullPath: '/o/$org/delivery/layouts/'
+      preLoaderRoute: typeof AppOOrgDeliveryLayoutsIndexRouteImport
+      parentRoute: typeof AppOOrgDeliveryRouteRoute
+    }
+    '/_app/o/$org/delivery/layouts/new': {
+      id: '/_app/o/$org/delivery/layouts/new'
+      path: '/layouts/new'
+      fullPath: '/o/$org/delivery/layouts/new'
+      preLoaderRoute: typeof AppOOrgDeliveryLayoutsNewRouteImport
+      parentRoute: typeof AppOOrgDeliveryRouteRoute
+    }
+    '/_app/o/$org/delivery/targets/': {
+      id: '/_app/o/$org/delivery/targets/'
+      path: '/targets'
+      fullPath: '/o/$org/delivery/targets/'
+      preLoaderRoute: typeof AppOOrgDeliveryTargetsIndexRouteImport
+      parentRoute: typeof AppOOrgDeliveryRouteRoute
+    }
+    '/_app/o/$org/delivery/targets/new': {
+      id: '/_app/o/$org/delivery/targets/new'
+      path: '/targets/new'
+      fullPath: '/o/$org/delivery/targets/new'
+      preLoaderRoute: typeof AppOOrgDeliveryTargetsNewRouteImport
+      parentRoute: typeof AppOOrgDeliveryRouteRoute
+    }
+    '/_app/o/$org/issuers/cas/': {
+      id: '/_app/o/$org/issuers/cas/'
+      path: '/cas'
+      fullPath: '/o/$org/issuers/cas/'
+      preLoaderRoute: typeof AppOOrgIssuersCasIndexRouteImport
+      parentRoute: typeof AppOOrgIssuersRouteRoute
+    }
+    '/_app/o/$org/alerts/monitors/$id/edit': {
+      id: '/_app/o/$org/alerts/monitors/$id/edit'
+      path: '/monitors/$id/edit'
+      fullPath: '/o/$org/alerts/monitors/$id/edit'
+      preLoaderRoute: typeof AppOOrgAlertsMonitorsIdEditRouteImport
+      parentRoute: typeof AppOOrgAlertsRouteRoute
+    }
+    '/_app/o/$org/delivery/layouts/$id/edit': {
+      id: '/_app/o/$org/delivery/layouts/$id/edit'
+      path: '/layouts/$id/edit'
+      fullPath: '/o/$org/delivery/layouts/$id/edit'
+      preLoaderRoute: typeof AppOOrgDeliveryLayoutsIdEditRouteImport
+      parentRoute: typeof AppOOrgDeliveryRouteRoute
+    }
+    '/_app/o/$org/delivery/targets/$id/$tab': {
+      id: '/_app/o/$org/delivery/targets/$id/$tab'
+      path: '/targets/$id/$tab'
+      fullPath: '/o/$org/delivery/targets/$id/$tab'
+      preLoaderRoute: typeof AppOOrgDeliveryTargetsIdTabRouteImport
+      parentRoute: typeof AppOOrgDeliveryRouteRoute
+    }
+    '/_app/o/$org/delivery/targets/$id/edit': {
+      id: '/_app/o/$org/delivery/targets/$id/edit'
+      path: '/targets/$id/edit'
+      fullPath: '/o/$org/delivery/targets/$id/edit'
+      preLoaderRoute: typeof AppOOrgDeliveryTargetsIdEditRouteImport
+      parentRoute: typeof AppOOrgDeliveryRouteRoute
+    }
+    '/_app/o/$org/issuers/cas/$id/$tab': {
+      id: '/_app/o/$org/issuers/cas/$id/$tab'
+      path: '/cas/$id/$tab'
+      fullPath: '/o/$org/issuers/cas/$id/$tab'
+      preLoaderRoute: typeof AppOOrgIssuersCasIdTabRouteImport
+      parentRoute: typeof AppOOrgIssuersRouteRoute
+    }
   }
 }
 
 interface AppOOrgAlertsRouteRouteChildren {
   AppOOrgAlertsChannelsRoute: typeof AppOOrgAlertsChannelsRoute
   AppOOrgAlertsEventsRoute: typeof AppOOrgAlertsEventsRoute
-  AppOOrgAlertsMonitorsRoute: typeof AppOOrgAlertsMonitorsRoute
   AppOOrgAlertsIndexRoute: typeof AppOOrgAlertsIndexRoute
+  AppOOrgAlertsMonitorsNewRoute: typeof AppOOrgAlertsMonitorsNewRoute
+  AppOOrgAlertsMonitorsIndexRoute: typeof AppOOrgAlertsMonitorsIndexRoute
+  AppOOrgAlertsMonitorsIdEditRoute: typeof AppOOrgAlertsMonitorsIdEditRoute
 }
 
 const AppOOrgAlertsRouteRouteChildren: AppOOrgAlertsRouteRouteChildren = {
   AppOOrgAlertsChannelsRoute: AppOOrgAlertsChannelsRoute,
   AppOOrgAlertsEventsRoute: AppOOrgAlertsEventsRoute,
-  AppOOrgAlertsMonitorsRoute: AppOOrgAlertsMonitorsRoute,
   AppOOrgAlertsIndexRoute: AppOOrgAlertsIndexRoute,
+  AppOOrgAlertsMonitorsNewRoute: AppOOrgAlertsMonitorsNewRoute,
+  AppOOrgAlertsMonitorsIndexRoute: AppOOrgAlertsMonitorsIndexRoute,
+  AppOOrgAlertsMonitorsIdEditRoute: AppOOrgAlertsMonitorsIdEditRoute,
 }
 
 const AppOOrgAlertsRouteRouteWithChildren =
@@ -793,17 +959,27 @@ const AppOOrgAlertsRouteRouteWithChildren =
 interface AppOOrgDeliveryRouteRouteChildren {
   AppOOrgDeliveryActionsRoute: typeof AppOOrgDeliveryActionsRoute
   AppOOrgDeliveryCredentialsRoute: typeof AppOOrgDeliveryCredentialsRoute
-  AppOOrgDeliveryLayoutsRoute: typeof AppOOrgDeliveryLayoutsRoute
-  AppOOrgDeliveryTargetsRoute: typeof AppOOrgDeliveryTargetsRoute
   AppOOrgDeliveryIndexRoute: typeof AppOOrgDeliveryIndexRoute
+  AppOOrgDeliveryLayoutsNewRoute: typeof AppOOrgDeliveryLayoutsNewRoute
+  AppOOrgDeliveryTargetsNewRoute: typeof AppOOrgDeliveryTargetsNewRoute
+  AppOOrgDeliveryLayoutsIndexRoute: typeof AppOOrgDeliveryLayoutsIndexRoute
+  AppOOrgDeliveryTargetsIndexRoute: typeof AppOOrgDeliveryTargetsIndexRoute
+  AppOOrgDeliveryLayoutsIdEditRoute: typeof AppOOrgDeliveryLayoutsIdEditRoute
+  AppOOrgDeliveryTargetsIdTabRoute: typeof AppOOrgDeliveryTargetsIdTabRoute
+  AppOOrgDeliveryTargetsIdEditRoute: typeof AppOOrgDeliveryTargetsIdEditRoute
 }
 
 const AppOOrgDeliveryRouteRouteChildren: AppOOrgDeliveryRouteRouteChildren = {
   AppOOrgDeliveryActionsRoute: AppOOrgDeliveryActionsRoute,
   AppOOrgDeliveryCredentialsRoute: AppOOrgDeliveryCredentialsRoute,
-  AppOOrgDeliveryLayoutsRoute: AppOOrgDeliveryLayoutsRoute,
-  AppOOrgDeliveryTargetsRoute: AppOOrgDeliveryTargetsRoute,
   AppOOrgDeliveryIndexRoute: AppOOrgDeliveryIndexRoute,
+  AppOOrgDeliveryLayoutsNewRoute: AppOOrgDeliveryLayoutsNewRoute,
+  AppOOrgDeliveryTargetsNewRoute: AppOOrgDeliveryTargetsNewRoute,
+  AppOOrgDeliveryLayoutsIndexRoute: AppOOrgDeliveryLayoutsIndexRoute,
+  AppOOrgDeliveryTargetsIndexRoute: AppOOrgDeliveryTargetsIndexRoute,
+  AppOOrgDeliveryLayoutsIdEditRoute: AppOOrgDeliveryLayoutsIdEditRoute,
+  AppOOrgDeliveryTargetsIdTabRoute: AppOOrgDeliveryTargetsIdTabRoute,
+  AppOOrgDeliveryTargetsIdEditRoute: AppOOrgDeliveryTargetsIdEditRoute,
 }
 
 const AppOOrgDeliveryRouteRouteWithChildren =
@@ -811,16 +987,18 @@ const AppOOrgDeliveryRouteRouteWithChildren =
 
 interface AppOOrgIssuersRouteRouteChildren {
   AppOOrgIssuersAccountsRoute: typeof AppOOrgIssuersAccountsRoute
-  AppOOrgIssuersCasRoute: typeof AppOOrgIssuersCasRoute
   AppOOrgIssuersDnsRoute: typeof AppOOrgIssuersDnsRoute
   AppOOrgIssuersIndexRoute: typeof AppOOrgIssuersIndexRoute
+  AppOOrgIssuersCasIndexRoute: typeof AppOOrgIssuersCasIndexRoute
+  AppOOrgIssuersCasIdTabRoute: typeof AppOOrgIssuersCasIdTabRoute
 }
 
 const AppOOrgIssuersRouteRouteChildren: AppOOrgIssuersRouteRouteChildren = {
   AppOOrgIssuersAccountsRoute: AppOOrgIssuersAccountsRoute,
-  AppOOrgIssuersCasRoute: AppOOrgIssuersCasRoute,
   AppOOrgIssuersDnsRoute: AppOOrgIssuersDnsRoute,
   AppOOrgIssuersIndexRoute: AppOOrgIssuersIndexRoute,
+  AppOOrgIssuersCasIndexRoute: AppOOrgIssuersCasIndexRoute,
+  AppOOrgIssuersCasIdTabRoute: AppOOrgIssuersCasIdTabRoute,
 }
 
 const AppOOrgIssuersRouteRouteWithChildren =

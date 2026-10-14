@@ -520,8 +520,7 @@ it('private row opens view', async () => {
   const { router, user } = renderRoute('/o/acme/issuers/cas');
   const nameCells = await screen.findAllByText('Internal CA');
   await user.click(nameCells[0]!);
-  await waitFor(() => expect(router.state.location.search).toMatchObject({ view: 'ca-local-1' }));
-  expect(router.state.location.search).not.toHaveProperty('edit');
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/issuers/cas/ca-local-1/overview'));
 });
 
 it('read-only user sees disabled Save', async () => {

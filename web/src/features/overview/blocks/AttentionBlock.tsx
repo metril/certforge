@@ -138,7 +138,7 @@ export function AttentionBlock({ certs, now }: { certs: CertBrief[]; now: number
                   return (
                     <li key={`${kind}-${m.id}`} className={row}>
                       <ToneChip tone={k.tone} icon={Radar} label={k.label} />
-                      <Link to="/o/$org/alerts/monitors" params={{ org: org.slug }} search={{ edit: m.id }} className="truncate font-semibold hover:underline">
+                      <Link to="/o/$org/alerts/monitors/$id/edit" params={{ org: org.slug, id: m.id }} className="truncate font-semibold hover:underline">
                         {m.name}
                       </Link>
                       <span className="flex min-w-0 flex-wrap items-center gap-2 truncate text-ink-muted">

@@ -24,12 +24,11 @@ import { can } from '@/lib/permissions';
 import { relTime } from '@/lib/time';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { AlertsHeader } from './AlertsLayout';
-import { MonitorSheet } from './MonitorSheet';
 import { MonitorStateChip } from './MonitorStateChip';
 import { IconButton } from '@/components/IconButton';
 
 const col = columnHelper<Monitor>();
-const MONITOR_LIMIT = 500;
+export const MONITOR_LIMIT = 500;
 
 function CheckNowButton({ monitor, orgId }: { monitor: Monitor; orgId: string }) {
   const me = useMe();
@@ -174,32 +173,23 @@ export function MonitorsPage() {
   const org = useOrg();
   const me = useMe();
   const isMdUp = useMediaQuery('(min-width: 768px)');
-  const { edit } = useSearch({ from: '/_app/o/$org/alerts/monitors' });
-  const navigate = useNavigate({ from: '/o/$org/alerts/monitors' });
+  const { managed: managedId } = useSearch({ from: '/_app/o/$org/alerts/monitors/' });
+  const navigate = useNavigate();
   const q = useQuery(monitorsQuery(org.id));
   const monitors = q.data ?? [];
   const canWrite = can(me, 'alerts:write', org.id);
   const atLimit = monitors.length >= MONITOR_LIMIT;
   const addAllowed = canWrite && !atLimit;
-  // A grant-owned monitor is edited through its grant: rows are inert and ?edit= opens a read-only sheet.
-  const rowClick = (id: string) => {
-    if (!monitors.find((m) => m.id === id)?.grantId) openSheet(id);
-  };
-  const openSheet = (id: string | undefined) => {
-    void navigate({
-      search: (prev) => ({ ...prev, edit: id }),
-      replace: id === undefined,
-    });
-  };
+  // A grant-owned monitor is edited through its grant: its rows are inert and `?managed=` opens a read-only sheet.
+  const openManaged = (id: string | undefined) => void navigate({ to: '/o/$org/alerts/monitors', params: { org: org.slug }, search: id ? { managed: id } : {}, replace: id === undefined });
+  const openEdit = (id: string) => void navigate({ to: '/o/$org/alerts/monitors/$id/edit', params: { org: org.slug, id } });
+  const rowClick = (id: string) => (monitors.find((m) => m.id === id)?.grantId ? undefined : openEdit(id));
   const columns = useMemo(() => monitorColumns(org.id), [org.id]);
-  const found = monitors.find((m) => m.id === edit);
-  const editing = found && !found.grantId ? found : undefined;
-  const managed = found?.grantId ? found : undefined;
-  const editNotFound = !q.isPending && !q.isError && !!edit && edit !== 'new' && !found;
+  const managed = monitors.find((m) => m.id === managedId && m.grantId);
 
   const add = (
     <PermissionTip allowed={addAllowed} action="alerts:write" reason={!canWrite ? undefined : atLimit ? help['monitor.limit'].text : undefined}>
-      <Button disabled={!addAllowed} onClick={() => openSheet('new')}>
+      <Button disabled={!addAllowed} onClick={() => void navigate({ to: '/o/$org/alerts/monitors/new', params: { org: org.slug } })}>
         <Plus className="size-4" aria-hidden />
         Add monitor
       </Button>
@@ -223,17 +213,14 @@ export function MonitorsPage() {
             ) : (
               <div className="grid gap-2">
                 {monitors.map((m) => (
-                  <MonitorCard key={m.id} monitor={m} orgId={org.id} onOpen={() => openSheet(m.id)} />
+                  <MonitorCard key={m.id} monitor={m} orgId={org.id} onOpen={() => rowClick(m.id)} />
                 ))}
               </div>
             )}
           </>
         )}
-        {(edit === 'new' || editing) && (
-          <MonitorSheet key={edit} orgId={org.id} open monitor={editing} onOpenChange={(o) => !o && openSheet(undefined)} />
-        )}
         {managed && (
-          <Sheet open onOpenChange={(o) => !o && openSheet(undefined)}>
+          <Sheet open onOpenChange={(o) => !o && openManaged(undefined)}>
             <SheetContent side="right" size="xl">
               <SheetHeader>
                 <SheetTitle>Managed by a server grant</SheetTitle>
@@ -263,24 +250,9 @@ export function MonitorsPage() {
                       Go to Delivery targets
                     </Link>
                   </Button>
-                  <Button variant="outline" onClick={() => openSheet(undefined)}>
+                  <Button variant="outline" onClick={() => openManaged(undefined)}>
                     Close
                   </Button>
-                </div>
-              </SheetBody>
-            </SheetContent>
-          </Sheet>
-        )}
-        {editNotFound && (
-          <Sheet open onOpenChange={(o) => !o && openSheet(undefined)}>
-            <SheetContent side="right" size="xl">
-              <SheetHeader>
-                <SheetTitle>Monitor not found</SheetTitle>
-                <SheetDescription>It may have been deleted.</SheetDescription>
-              </SheetHeader>
-              <SheetBody>
-                <div>
-                  <Button onClick={() => openSheet(undefined)}>Back to monitors</Button>
                 </div>
               </SheetBody>
             </SheetContent>

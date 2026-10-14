@@ -5,12 +5,9 @@ import { beforeEach, it, expect, vi } from 'vitest';
 import type { DnsCredential } from '@/api/types';
 import { server } from '@/test/server';
 import { authHandlers, me, presets, caLocalImported, cloudflare, makeChannel, makeLayout, makeMonitor, makeTarget, metaNotifiers, org, targetTestSecret, testSecretSchema, traefikSchema, url } from '@/test/fixtures';
-import { renderUI } from '@/test/render';
-import { TargetSheet } from '@/features/delivery/TargetSheet';
-import { LayoutSheet } from '@/features/delivery/LayoutSheet';
+import { renderRoute, renderUI } from '@/test/render';
 import { CaSheet } from '@/features/issuers/CaSheet';
 import { CredentialSheet } from '@/features/issuers/CredentialSheet';
-import { MonitorSheet } from '@/features/alerts/MonitorSheet';
 import { ChannelSheet } from '@/features/alerts/ChannelSheet';
 
 vi.mock('@/lib/org', async (orig) => ({ ...(await orig<typeof import('@/lib/org')>()), useMe: () => me }));
@@ -44,26 +41,30 @@ async function expectCleanEscape(ui: ReactElement, ready: RegExp | string) {
   await waitFor(() => expect(screen.getByText('closed')).toBeInTheDocument());
 }
 
-it('TargetSheet with stored secrets closes clean', async () => {
-  await expectCleanEscape(
-    <Host>{(_o, set) => <TargetSheet orgId={org.id} target={targetTestSecret} types={[testSecretSchema as never]} readOnly={false} onOpenChange={set} />}</Host>,
-    'Edit test sink',
-  );
-});
+// The target edit page opens clean: leaving it raises no discard prompt.
+async function expectCleanLeave(id: string, heading: string) {
+  server.use(http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [targetTestSecret, makeTarget()] })));
+  const { router } = renderRoute(`/o/acme/delivery/targets/${id}/edit`);
+  await screen.findByRole('heading', { name: heading });
+  await new Promise((r) => setTimeout(r, 100));
+  await router.navigate({ to: '/o/$org/delivery/targets', params: { org: 'acme' } });
+  expect(screen.queryByText('Discard changes?')).not.toBeInTheDocument();
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/delivery/targets'));
+}
 
-it('TargetSheet plain closes clean', async () => {
-  await expectCleanEscape(
-    <Host>{(_o, set) => <TargetSheet orgId={org.id} target={makeTarget()} types={[traefikSchema as never]} readOnly={false} onOpenChange={set} />}</Host>,
-    'Edit edge traefik',
-  );
-});
+it('target edit page with stored secrets leaves clean', () => expectCleanLeave(targetTestSecret.id, 'Edit test sink'));
 
-it('LayoutSheet with stored password closes clean', async () => {
+it('target edit page plain leaves clean', () => expectCleanLeave('t-1', 'Edit edge traefik'));
+
+it('layout edit page with stored password leaves clean', async () => {
   const files = [{ path: '/a.p12', format: 'p12', parts: ['fullchain', 'key'], owner: 'root', group: 'root', mode: '0640' }] as never;
-  await expectCleanEscape(
-    <Host>{(_o, set) => <LayoutSheet orgId={org.id} layout={makeLayout({ passwordSet: true, files })} readOnly={false} onOpenChange={set} />}</Host>,
-    'Edit nginx',
-  );
+  server.use(http.get(url('/orgs/org-1/layouts'), () => HttpResponse.json({ items: [makeLayout({ passwordSet: true, files })] })));
+  const { router } = renderRoute('/o/acme/delivery/layouts/l-1/edit');
+  await screen.findByRole('heading', { name: 'Edit nginx' });
+  await new Promise((r) => setTimeout(r, 100));
+  await router.navigate({ to: '/o/$org/delivery/layouts', params: { org: 'acme' } });
+  expect(screen.queryByText('Discard changes?')).not.toBeInTheDocument();
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/delivery/layouts'));
 });
 
 it('CaSheet (imported private CA) closes clean', async () => {
@@ -75,8 +76,14 @@ it('CredentialSheet with stored secret closes clean', async () => {
   await expectCleanEscape(<Host>{(o, set) => <CredentialSheet orgId={org.id} open={o} provider={cloudflare} credential={credential} onOpenChange={set} />}</Host>, 'Edit cf');
 });
 
-it('MonitorSheet closes clean', async () => {
-  await expectCleanEscape(<Host>{(o, set) => <MonitorSheet orgId={org.id} open={o} monitor={makeMonitor()} onOpenChange={set} />}</Host>, 'edge');
+it('monitor edit page leaves clean', async () => {
+  server.use(http.get(url('/orgs/org-1/monitors'), () => HttpResponse.json([makeMonitor()])));
+  const { router } = renderRoute('/o/acme/alerts/monitors/mon-1/edit');
+  await screen.findByRole('heading', { name: 'edge' });
+  await new Promise((r) => setTimeout(r, 100));
+  await router.navigate({ to: '/o/$org/alerts/monitors', params: { org: 'acme' } });
+  expect(screen.queryByText('Discard changes?')).not.toBeInTheDocument();
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/alerts/monitors'));
 });
 
 it('ChannelSheet with stored secret closes clean', async () => {
