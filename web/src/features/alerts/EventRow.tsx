@@ -1,6 +1,7 @@
 import { Globe } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
 import type { NotifyEvent } from '@/api/types';
+import { EntityLink } from '@/components/EntityLink';
 import { ToneChip } from '@/components/StatusChip';
 import { KIND_LABEL, SEVERITY_META } from '@/lib/events';
 import { fmtDateTime, relTime } from '@/lib/time';
@@ -44,6 +45,12 @@ export function ResourceLink({ event, org, className = linkCls }: { event: Notif
         <Link to="/settings/$section" params={{ section: 'backup' }} className={className}>
           {resource.name}
         </Link>
+      );
+    case 'grant':
+      return (
+        <EntityLink kind="grant" id={resource.id} className={className}>
+          {resource.name}
+        </EntityLink>
       );
     default:
       return <span className={className.replace('hover:underline', '')}>{resource.name}</span>;

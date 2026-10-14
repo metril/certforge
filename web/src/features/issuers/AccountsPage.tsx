@@ -8,6 +8,7 @@ import { ApiError, errorMessage } from '@/api/errors';
 import { Combobox } from '@/components/Combobox';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { CopyField } from '@/components/CopyField';
+import { EntityLink } from '@/components/EntityLink';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { Field } from '@/components/Field';
@@ -150,7 +151,14 @@ export function AccountsPage() {
                 {accounts.map((a) => (
                   <TableRow key={a.id}>
                     <TableCell className="py-1.5">
-                      <PrimaryCell primary={a.email} meta={[caName(a.caId)]} />
+                      <PrimaryCell
+                        primary={a.email}
+                        lead={
+                          <EntityLink kind="ca" id={a.caId}>
+                            {caName(a.caId)}
+                          </EntityLink>
+                        }
+                      />
                     </TableCell>
                     <TableCell className="py-1">
                       {a.status === 'valid' ? (

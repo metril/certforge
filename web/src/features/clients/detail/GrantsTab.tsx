@@ -26,6 +26,7 @@ import { usePendingIds } from '@/lib/usePendingIds';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import { ClientWriteTip, clientWriteReason } from './ClientWriteTip';
+import { StepsPopover } from '@/features/delivery/StepsPopover';
 import { FileCompare } from './FileCompare';
 import { failedWithoutData } from '@/lib/queryState';
 import { IconButton } from '@/components/IconButton';
@@ -284,7 +285,9 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
                   <TableCell className="py-1">{DELIVERY_LABEL[g.delivery]}</TableCell>
                   <TableCell className="truncate py-1">{layoutName(g.layoutId)}</TableCell>
                   <TableCell className="truncate py-1">{targetCell(g)}</TableCell>
-                  <TableCell className="py-1 tabular-nums">{g.steps.length || '–'}</TableCell>
+                  <TableCell className="py-1 tabular-nums">
+                    <StepsPopover steps={g.steps} />
+                  </TableCell>
                   <TableCell className="py-1">{g.autoRemediate ? 'On' : 'Off'}</TableCell>
                   <TableCell className="py-1">{stateCell(g)}</TableCell>
                   <TableCell className="py-1 text-right">{actions(g)}</TableCell>
@@ -314,7 +317,7 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
               </div>
               <span className="flex min-w-0 items-center gap-1.5 text-xs text-ink-muted">
                 <span className="min-w-0 truncate">
-                {DELIVERY_LABEL[g.delivery]} · {layoutName(g.layoutId)} · {targetName(g.deployTargetId)} · {g.steps.length || '–'} steps · Auto-remediate {g.autoRemediate ? 'On' : 'Off'}
+                {DELIVERY_LABEL[g.delivery]} · {layoutName(g.layoutId)} · {targetName(g.deployTargetId)} · <StepsPopover steps={g.steps} label={`${g.steps.length || '–'} steps`} /> · Auto-remediate {g.autoRemediate ? 'On' : 'Off'}
                 </span>
                 {g.runsOn !== 'server' && optionsMeta(g)}
               </span>

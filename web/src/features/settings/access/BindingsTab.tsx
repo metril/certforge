@@ -8,6 +8,7 @@ import { useRefreshMe } from '@/api/queries/auth';
 import { bindingsQuery, useDeleteBinding } from '@/api/queries/bindings';
 import type { ApiKey, Me, RoleBinding, SubjectType, UserDetail } from '@/api/types';
 import { usersQuery } from '@/api/queries/users';
+import { EntityLink } from '@/components/EntityLink';
 import { Combobox } from '@/components/Combobox';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { columnHelper, DataTable } from '@/components/DataTable';
@@ -69,12 +70,16 @@ function matchesQuery(b: RoleBinding, resolved: Resolved, q: string): boolean {
   return [resolved.primary, resolved.secondary, b.subject, b.subjectLabel].some((s) => s?.toLowerCase().includes(needle));
 }
 
-function SubjectDisplay({ type, resolved }: { type: SubjectType; resolved: Resolved }) {
+function SubjectDisplay({ type, subject, resolved }: { type: SubjectType; subject: string; resolved: Resolved }) {
   const Icon = TYPE_ICON[type];
   return (
     <span className="flex min-w-0 items-center gap-2">
       <Icon className="size-4 shrink-0 text-ink-muted" aria-label={type} />
-      <span className={cn('truncate', resolved.mono && 'font-mono text-xs')}>{resolved.primary}</span>
+      <span className={cn('truncate', resolved.mono && 'font-mono text-xs')}>
+        <EntityLink kind={type === 'user' ? 'user' : 'apiKey'} id={type === 'oidc_group' ? null : subject}>
+          {resolved.primary}
+        </EntityLink>
+      </span>
       {resolved.secondary && <span className="truncate font-mono text-xs text-ink-muted">{resolved.secondary}</span>}
     </span>
   );
@@ -84,7 +89,7 @@ function BindingCard({ b, me, resolved, onRemove }: { b: RoleBinding; me: Me; re
   return (
     <div className="grid grid-cols-1 gap-2 rounded-md border border-border bg-panel p-3">
       <div className="flex items-center justify-between gap-2">
-        <SubjectDisplay type={b.subjectType} resolved={resolved} />
+        <SubjectDisplay type={b.subjectType} subject={b.subject} resolved={resolved} />
         {canManage(me, b) && (
           <IconButton variant="ghost" size="icon" label={`Remove ${b.subjectLabel} ${b.role}`} onClick={onRemove}>
             <Trash2 className="size-4" aria-hidden />
@@ -148,7 +153,7 @@ export function BindingsTab() {
         header: 'Subject',
         meta: { help: 'binding.subjectType' },
         cell: ({ row }) => (
-          <SubjectDisplay type={row.original.subjectType} resolved={resolveSubject(row.original, userById, keyById)} />
+          <SubjectDisplay type={row.original.subjectType} subject={row.original.subject} resolved={resolveSubject(row.original, userById, keyById)} />
         ),
       }),
       col.accessor('role', { header: 'Role', meta: { help: 'binding.role' }, cell: (c) => ROLE_LABEL[c.getValue()] }),

@@ -5,6 +5,7 @@ import { Ban, CircleCheck, CircleX, Plus, Search } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
 import { apiKeysQuery, useRevokeApiKey } from '@/api/queries/apiKeys';
 import type { ApiKey, ApiKeyCreated } from '@/api/types';
+import { EntityLink } from '@/components/EntityLink';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { columnHelper, DataTable } from '@/components/DataTable';
 import { EmptyState } from '@/components/EmptyState';
@@ -54,7 +55,11 @@ function KeyCard({ k, canWrite, onRevoke }: { k: ApiKey; canWrite: boolean; onRe
         ))}
       </div>
       <div className="flex items-center justify-between text-xs text-ink-muted">
-        <span>{k.createdByName}</span>
+        <span>
+          <EntityLink kind="user" id={k.createdBy}>
+            {k.createdByName}
+          </EntityLink>
+        </span>
         <span>{k.expiresAt ? fmtDate(k.expiresAt) : 'Never'}</span>
       </div>
       <span className="text-xs text-ink-muted">Last used {k.lastUsedAt ? fmtDateTime(k.lastUsedAt) : 'never'}</span>
@@ -113,7 +118,14 @@ export function ApiKeysTab() {
         ),
       }),
       col.accessor('orgId', { header: 'Scope', cell: (c) => scopeLabel(me, c.getValue()) }),
-      col.accessor('createdByName', { header: 'Created by' }),
+      col.accessor('createdByName', {
+        header: 'Created by',
+        cell: ({ row }) => (
+          <EntityLink kind="user" id={row.original.createdBy}>
+            {row.original.createdByName}
+          </EntityLink>
+        ),
+      }),
       col.accessor('expiresAt', { header: 'Expires', cell: (c) => (c.getValue() ? fmtDate(c.getValue()!) : 'Never') }),
       col.accessor('lastUsedAt', { header: 'Last used', cell: (c) => (c.getValue() ? fmtDateTime(c.getValue()!) : '–') }),
       col.display({

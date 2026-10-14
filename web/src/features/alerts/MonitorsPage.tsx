@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { errorMessage } from '@/api/errors';
 import { useCheckMonitor, monitorsQuery } from '@/api/queries/monitors';
 import type { Monitor } from '@/api/types';
+import { EntityLink } from '@/components/EntityLink';
 import { CopyField } from '@/components/CopyField';
 import { columnHelper, DataTable } from '@/components/DataTable';
 import { EmptyState } from '@/components/EmptyState';
@@ -247,7 +248,15 @@ export function MonitorsPage() {
                   </div>
                   <div>
                     <dt className="text-xs text-ink-muted">Expected certificate</dt>
-                    <dd>{managed.expectedCertificateName ?? 'Any current certificate in the org'}</dd>
+                    <dd>
+                      {managed.expectedCertificateName ? (
+                        <EntityLink kind="certificate" id={managed.expectedCertificateId}>
+                          {managed.expectedCertificateName}
+                        </EntityLink>
+                      ) : (
+                        'Any current certificate in the org'
+                      )}
+                    </dd>
                   </div>
                 </dl>
                 <p className="text-sm text-ink-muted">This monitor is edited on its grant: Delivery, then the target, then Grants.</p>

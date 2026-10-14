@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { useInfiniteQuery, type InfiniteData, type UseInfiniteQueryResult } from '@tanstack/react-query';
 import { Ban, ChevronDown, CircleAlert, CircleCheck, Clock } from 'lucide-react';
 import { errorMessage } from '@/api/errors';
+import { EntityLink } from '@/components/EntityLink';
 import { hookRunsInfinite } from '@/api/queries/clients';
 import type { ActionRun, ActionRunList } from '@/api/types';
 import { EmptyState } from '@/components/EmptyState';
@@ -122,7 +123,9 @@ export function ActionRunsList({
                   {relTime(r.ranAt, q.dataUpdatedAt)}
                 </time>
                 <span title={name} className={cn('truncate', !r.actionName && !r.actionId && nameOf(r) === 'Deleted action' && 'text-ink-muted')}>
-                  {name}
+                  <EntityLink kind="action" id={r.actionId}>
+                    {name}
+                  </EntityLink>
                 </span>
                 <span className="text-xs text-ink-muted">{kindLabel(r.actionKind)}</span>
                 <span className="text-xs">{PHASE_LABEL[r.phase]}</span>

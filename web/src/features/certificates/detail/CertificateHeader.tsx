@@ -8,6 +8,7 @@ import { casQuery } from '@/api/queries/cas';
 import { certificateQuery, useDeleteCertificates, useRenewCertificates } from '@/api/queries/certificates';
 import type { Certificate, EffectiveMap } from '@/api/types';
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
+import { EntityLink } from '@/components/EntityLink';
 import { PermissionTip } from '@/components/PermissionTip';
 import { StatusChip, ToneChip } from '@/components/StatusChip';
 import { CertValidity } from '@/components/ValidityBar';
@@ -148,11 +149,27 @@ export function CertificateHeader({ cert, orgId, orgSlug, canRenew, canDelete, c
       <dl className="flex flex-wrap gap-x-8 gap-y-1 text-sm">
         <div className="flex gap-2">
           <dt className="text-ink-muted">CA</dt>
-          <dd>{cert.managed ? (caName ?? '–') : '–'}</dd>
+          <dd>
+            {cert.managed && caName ? (
+              <EntityLink kind="ca" id={eff?.caId?.value} orgId={orgId}>
+                {caName}
+              </EntityLink>
+            ) : (
+              '–'
+            )}
+          </dd>
         </div>
         <div className="flex gap-2">
           <dt className="text-ink-muted">Account</dt>
-          <dd className="font-mono text-xs leading-5">{account ?? '–'}</dd>
+          <dd className="font-mono text-xs leading-5">
+            {account ? (
+              <EntityLink kind="acmeAccount" id={eff?.accountId?.value} orgId={orgId}>
+                {account}
+              </EntityLink>
+            ) : (
+              '–'
+            )}
+          </dd>
         </div>
         <div className="flex gap-2">
           <dt className="text-ink-muted">Next renewal</dt>

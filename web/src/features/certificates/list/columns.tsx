@@ -2,6 +2,7 @@ import { columnHelper } from '@/components/DataTable';
 import { plural } from '@/api/queries/certificates';
 import type { Certificate } from '@/api/types';
 import { GrantsPopover } from '@/features/delivery/GrantsPopover';
+import { EntityLink } from '@/components/EntityLink';
 import { PrimaryCell } from '@/components/PrimaryCell';
 import { StatusChip } from '@/components/StatusChip';
 import { CertValidity } from '@/components/ValidityBar';
@@ -20,6 +21,24 @@ export function certMeta(c: Certificate, ca: string | undefined, withGrants = tr
   return [c.commonName, ca, withGrants && c.grantCount ? plural(c.grantCount, 'grant') : '', names].filter(Boolean) as string[];
 }
 
+/** Interactive lead-in of the Name cell: the CA (a link) and the grants popover. */
+function CertLead({ cert, ca, orgId }: { cert: Certificate; ca: string | undefined; orgId?: string }) {
+  const caId = cert.effective?.caId?.value ?? undefined;
+  const grants = cert.grantCount ? <GrantsPopover count={cert.grantCount} filter={{ certificateId: cert.id }} /> : null;
+  if (!ca && !grants) return null;
+  return (
+    <>
+      {ca && (
+        <EntityLink kind="ca" id={caId} orgId={orgId}>
+          {ca}
+        </EntityLink>
+      )}
+      {ca && grants && ' · '}
+      {grants}
+    </>
+  );
+}
+
 export function certColumns(
   org: string | ((c: Certificate) => string),
   caName: (id: string | undefined) => string | undefined,
@@ -34,8 +53,8 @@ export function certColumns(
         <PrimaryCell
           primary={row.original.name}
           link={{ to: '/o/$org/certificates/$id/$tab', params: { org: slugOf(row.original), id: row.original.id, tab: 'overview' } }}
-          meta={certMeta(row.original, caName(row.original.effective?.caId?.value ?? undefined), false)}
-          lead={row.original.grantCount ? <GrantsPopover count={row.original.grantCount} filter={{ certificateId: row.original.id }} /> : undefined}
+          meta={certMeta(row.original, undefined, false)}
+          lead={<CertLead cert={row.original} ca={caName(row.original.effective?.caId?.value ?? undefined)} orgId={row.original.orgId} />}
         />
       ),
     }),

@@ -29,6 +29,7 @@ import { caBundleScope, can } from '@/lib/permissions';
 import { stripSecretDefaults, storedSecretsFor, settledConfig } from '@/lib/secretForm';
 import { RUNS_ON_META, credentialKindsOf, defaultRunsOn, forcedRunsOn, keyGateBlocks, locationChanged, toTargetInput, typeHelpKey, typeMeta, unrequireFields } from '@/lib/targets';
 import { useMediaQuery } from '@/lib/useMediaQuery';
+import { EntityLink } from '@/components/EntityLink';
 import { GrantsPopover } from './GrantsPopover';
 
 function omitKeys(o: Record<string, unknown>, keys: string[]): Record<string, unknown> {
@@ -333,7 +334,15 @@ export function TargetForm({ orgId, orgSlug, target, types, readOnly = false }: 
       {credKinds.length > 0 && (
         <div className="grid min-w-0 gap-1">
           <dt className="text-xs text-ink-muted">Credential</dt>
-          <dd className="min-w-0 break-words">{credName ?? 'Entered manually'}</dd>
+          <dd className="min-w-0 break-words">
+            {credential ? (
+              <EntityLink kind="deployCredential" id={credential.id}>
+                {credName}
+              </EntityLink>
+            ) : (
+              'Entered manually'
+            )}
+          </dd>
         </div>
       )}
       {target && (

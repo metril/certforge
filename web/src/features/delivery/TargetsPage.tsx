@@ -12,6 +12,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { HintLabel } from '@/components/HintLabel';
 import { PermissionTip } from '@/components/PermissionTip';
+import { EntityLink } from '@/components/EntityLink';
 import { PrimaryCell } from '@/components/PrimaryCell';
 import { RunsOnChip } from '@/components/RunsOnChip';
 import { Button } from '@/components/ui/button';
@@ -42,10 +43,11 @@ export function TargetsPage() {
   const typeName = (code: string) => types.find((t) => t.code === code)?.name ?? code;
   const targets = q.data ?? [];
   // Muted second line (table row and mobile card): type, where it writes, and a note when it holds stored secrets.
-  const targetMeta = (t: DeployTarget) => [
+  // The table row links the credential from the lead-in instead (`withCred` false).
+  const targetMeta = (t: DeployTarget, withCred = true) => [
     typeName(t.type),
     targetLocation(t.config as Record<string, unknown>),
-    t.credentialId ? `uses ${credName(t.credentialId)}` : t.storedSecrets.length > 0 ? 'secrets stored' : '',
+    t.credentialId ? (withCred ? `uses ${credName(t.credentialId)}` : '') : t.storedSecrets.length > 0 ? 'secrets stored' : '',
   ];
   const add = metaQ.isError ? (
     <Tooltip>
@@ -100,7 +102,18 @@ export function TargetsPage() {
                 {targets.map((t) => (
                   <TableRow key={t.id}>
                     <TableCell className="py-1.5">
-                      <PrimaryCell primary={t.name} link={{ to: '/o/$org/delivery/targets/$id/$tab', params: { org: org.slug, id: t.id, tab: 'overview' } }} meta={targetMeta(t)} />
+                      <PrimaryCell primary={t.name} link={{ to: '/o/$org/delivery/targets/$id/$tab', params: { org: org.slug, id: t.id, tab: 'overview' } }} meta={targetMeta(t, false)}
+                        lead={
+                          t.credentialId ? (
+                            <>
+                              uses{' '}
+                              <EntityLink kind="deployCredential" id={t.credentialId}>
+                                {credName(t.credentialId)}
+                              </EntityLink>
+                            </>
+                          ) : undefined
+                        }
+                      />
                     </TableCell>
                     <TableCell className="py-1">
                       <RunsOnChip mode={t.runsOn} />

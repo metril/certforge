@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate, type LinkProps } from '@tanstack/react-router';
+import { Link, useMatch, useNavigate, useParams, useRouter, type LinkProps } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { errorMessage } from '@/api/errors';
 import { grantsListQuery } from '@/api/queries/grants';
 import type { Grant } from '@/api/types';
-import { ALL_ORGS_SLUG, useMe, useOrg, useOrgSlugOf } from '@/lib/org';
+import type { Me } from '@/api/types';
+import { cn } from '@/lib/utils';
+import { useOrgSlugOf } from '@/lib/org';
 import { can, canAnywhere, type Action } from '@/lib/permissions';
 
 export type EntityKind =
@@ -125,7 +127,7 @@ function GrantLink({ id, orgId, children, className }: { id: string; orgId: stri
     }
   };
   return (
-    <button type="button" className={`${linkCls} ${className ?? ''}`} onClick={() => void go()}>
+    <button type="button" className={cn(linkCls, className)} onClick={() => void go()}>
       {children}
     </button>
   );
@@ -135,16 +137,31 @@ function GrantLink({ id, orgId, children, className }: { id: string; orgId: stri
  * A link to the object a record refers to. Plain text when the id is empty,
  * the kind has no destination, or the viewer cannot read the target.
  */
-export function EntityLink({ kind, id, orgId, className, children }: { kind: EntityKind; id: string | null | undefined; orgId?: string | null; className?: string; children: ReactNode }) {
-  const me = useMe();
-  const current = useOrg();
+type Props = { kind: EntityKind; id: string | null | undefined; orgId?: string | null; className?: string; children: ReactNode };
+
+export function EntityLink(props: Props) {
+  // Rendered outside a router (a bare component test) there is nothing to link within.
+  const router = useRouter({ warn: false });
+  if (!router || !props.id) return <>{props.children}</>;
+  return <InApp {...props} />;
+}
+
+function InApp(props: Props) {
+  const app = useMatch({ from: '/_app', shouldThrow: false });
+  if (!app) return <>{props.children}</>;
+  return <Resolved {...props} me={app.context.me} />;
+}
+
+function Resolved({ kind, id, orgId, className, children, me }: Props & { me: Me }) {
   const slugOf = useOrgSlugOf();
-  const scopeId = orgId ?? (current.slug === ALL_ORGS_SLUG ? undefined : current.id);
+  // Outside an org route (Settings) the caller names the org; under All orgs there is none.
+  const { org: slug } = useParams({ strict: false }) as { org?: string };
+  const scopeId = orgId ?? me.orgs.find((o) => o.slug === slug)?.id;
   if (!id) return <>{children}</>;
   if (kind === 'user' || kind === 'apiKey') {
     if (!canAnywhere(me, kind === 'user' ? 'users:read' : 'apikeys:read')) return <>{children}</>;
     return (
-      <Link {...(entityTarget(kind, id, '') as LinkProps)} className={`${linkCls} ${className ?? ''}`}>
+      <Link {...(entityTarget(kind, id, '') as LinkProps)} className={cn(linkCls, className)}>
         {children}
       </Link>
     );
@@ -157,7 +174,7 @@ export function EntityLink({ kind, id, orgId, className, children }: { kind: Ent
       </GrantLink>
     );
   return (
-    <Link {...(entityTarget(kind, id, slugOf(scopeId)) as LinkProps)} className={`${linkCls} ${className ?? ''}`}>
+    <Link {...(entityTarget(kind, id, slugOf(scopeId)) as LinkProps)} className={cn(linkCls, className)}>
       {children}
     </Link>
   );
