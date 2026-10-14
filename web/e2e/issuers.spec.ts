@@ -69,8 +69,8 @@ test('CA kind switching', async ({ page }) => {
 
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await table.getByRole('row', { name: /^e2e-local/ }).click();
-  const detail = page.getByRole('dialog', { name: 'e2e-local' });
-  await expect(detail).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'e2e-local' })).toBeVisible();
+  const detail = page.getByRole('main');
   // Batch 4 review: the detail sheet's own plain-text expiry line only
   // renders when ValidityBar can't (missing dates), so this now matches
   // exactly one element — ValidityBar's own "full" legend.
@@ -81,6 +81,7 @@ test('CA kind switching', async ({ page }) => {
   const download = await dl;
   expect(download.suggestedFilename()).toMatch(/-ca\.pem$/);
 
+  await detail.getByRole('link', { name: 'CRL', exact: true }).click();
   const crlValue = (await detail.locator('code').first().textContent())?.trim() ?? '';
   expect(crlValue).toContain('/crl/');
   await detail.getByRole('button', { name: 'Copy CRL URL' }).click();
@@ -88,11 +89,13 @@ test('CA kind switching', async ({ page }) => {
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(crlValue);
   }).toPass({ timeout: 5_000 });
 
+  await detail.getByRole('link', { name: 'Overview', exact: true }).click();
   await detail.getByRole('button', { name: 'Rotate issuing certificate' }).click();
   const confirmDialog = page.getByRole('dialog', { name: 'Rotate issuing certificate?' });
   await confirmDialog.getByRole('textbox').fill('Rotate');
   await confirmDialog.getByRole('button', { name: 'Rotate' }).click();
   await expect(confirmDialog).toBeHidden();
+  await detail.getByRole('link', { name: 'CRL', exact: true }).click();
   await expect(detail.getByText('Retired issuers')).toBeVisible({ timeout: 30_000 });
   await expect(detail.getByRole('button', { name: /^[0-9a-fA-F]{8} until /i })).toHaveCount(1);
   await snap(page, 'ca-detail');
@@ -351,9 +354,8 @@ test('issuers, delivery and vault settings screens do not scroll sideways at 375
   await expect(page.getByRole('heading', { level: 1, name: 'Issuers' })).toBeVisible();
   await noScroll();
   await page.getByRole('table').getByRole('row', { name: /^e2e-local-375/ }).click();
-  await expect(page.getByRole('dialog', { name: 'e2e-local-375' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'e2e-local-375' })).toBeVisible();
   await noScroll();
-  await page.keyboard.press('Escape');
 
   await page.goto(`/o/${E2E.orgSlug}/delivery/targets`);
   await noScroll();

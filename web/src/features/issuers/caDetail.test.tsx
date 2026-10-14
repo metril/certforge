@@ -38,11 +38,13 @@ beforeEach(() => {
 
 it('localca details and crl copy', async () => {
   cas = [caLocal];
-  const { user } = renderRoute('/o/acme/issuers/cas?view=ca-local-1');
-  const sheet = await screen.findByRole('dialog', { name: 'Internal CA' });
+  const { user } = renderRoute('/o/acme/issuers/cas/ca-local-1/overview');
+  await screen.findByRole('heading', { name: 'Internal CA' });
+  const sheet = document.body;
   expect(within(sheet).getByText('Built-in CA')).toBeInTheDocument();
   expect(within(sheet).getByText('CN=Internal CA, O=Acme, C=US')).toBeInTheDocument();
   expect(within(sheet).getByText('397')).toBeInTheDocument(); // max leaf days
+  await user.click(within(sheet).getByRole('link', { name: 'CRL' }));
   expect(within(sheet).getByText('1')).toBeInTheDocument(); // revokedCount
   await within(sheet).findByText('https://certs.example.com/crl/ca-local-1.crl');
   await user.click(within(sheet).getByRole('button', { name: 'Copy CRL URL' }));
@@ -51,27 +53,31 @@ it('localca details and crl copy', async () => {
 
 it('never-rotated localca has no retired issuers section', async () => {
   cas = [caLocalNeverRotated];
-  renderRoute('/o/acme/issuers/cas?view=ca-local-3');
-  const sheet = await screen.findByRole('dialog', { name: 'Never Rotated CA' });
+  renderRoute('/o/acme/issuers/cas/ca-local-3/crl');
+  await screen.findByRole('heading', { name: 'Never Rotated CA' });
+  const sheet = document.body;
   expect(within(sheet).queryByText('Retired issuers')).not.toBeInTheDocument();
 });
 
 it('validity bar for both kinds', async () => {
   cas = [caLocal, caVaultPki];
-  const first = renderRoute('/o/acme/issuers/cas?view=ca-local-1');
-  const localSheet = await screen.findByRole('dialog', { name: 'Internal CA' });
+  const first = renderRoute('/o/acme/issuers/cas/ca-local-1/overview');
+  await screen.findByRole('heading', { name: 'Internal CA' });
+  const localSheet = document.body;
   expect(within(localSheet).getByRole('img')).toHaveAccessibleName(new RegExp(caLocal.notBefore!.slice(0, 4)));
   first.unmount();
 
-  renderRoute('/o/acme/issuers/cas?view=ca-vault-1');
-  const vaultSheet = await screen.findByRole('dialog', { name: 'Vault PKI' });
+  renderRoute('/o/acme/issuers/cas/ca-vault-1/overview');
+  await screen.findByRole('heading', { name: 'Vault PKI' });
+  const vaultSheet = document.body;
   expect(within(vaultSheet).getByRole('img')).toHaveAccessibleName(new RegExp(caVaultPki.notBefore!.slice(0, 4)));
 });
 
 it('adcs details show template, CES URL and manual revocation', async () => {
   cas = [caAdcs];
-  renderRoute('/o/acme/issuers/cas?view=ca-adcs-1');
-  const sheet = await screen.findByRole('dialog', { name: 'Corp AD CS' });
+  renderRoute('/o/acme/issuers/cas/ca-adcs-1/overview');
+  await screen.findByRole('heading', { name: 'Corp AD CS' });
+  const sheet = document.body;
   expect(within(sheet).getByText('AD CS')).toBeInTheDocument();
   expect(within(sheet).getByText('CertForgeWeb')).toBeInTheDocument();
   expect(within(sheet).getByText(/Corp_CA_CES_UsernamePassword/)).toBeInTheDocument();
@@ -80,8 +86,9 @@ it('adcs details show template, CES URL and manual revocation', async () => {
 
 it('trust bundle download', async () => {
   cas = [caLocal];
-  const { user } = renderRoute('/o/acme/issuers/cas?view=ca-local-1');
-  const sheet = await screen.findByRole('dialog', { name: 'Internal CA' });
+  const { user } = renderRoute('/o/acme/issuers/cas/ca-local-1/overview');
+  await screen.findByRole('heading', { name: 'Internal CA' });
+  const sheet = document.body;
   await user.click(within(sheet).getByRole('button', { name: /Download/ }));
   expect(clicked?.download).toBe('internal-ca-ca.pem');
   await expect(capturedBlob!.text()).resolves.toBe(caLocal.trustBundlePem);
@@ -89,8 +96,9 @@ it('trust bundle download', async () => {
 
 it('vault trust download', async () => {
   cas = [caVaultPki];
-  const { user } = renderRoute('/o/acme/issuers/cas?view=ca-vault-1');
-  const sheet = await screen.findByRole('dialog', { name: 'Vault PKI' });
+  const { user } = renderRoute('/o/acme/issuers/cas/ca-vault-1/overview');
+  await screen.findByRole('heading', { name: 'Vault PKI' });
+  const sheet = document.body;
   await user.click(within(sheet).getByRole('button', { name: /Download/ }));
   expect(clicked?.download).toBe('vault-pki-ca.pem');
   await expect(capturedBlob!.text()).resolves.toBe(caVaultPki.trustBundlePem);
@@ -98,8 +106,9 @@ it('vault trust download', async () => {
 
 it('retired chip copies its crl url', async () => {
   cas = [caLocal];
-  const { user } = renderRoute('/o/acme/issuers/cas?view=ca-local-1');
-  const sheet = await screen.findByRole('dialog', { name: 'Internal CA' });
+  const { user } = renderRoute('/o/acme/issuers/cas/ca-local-1/crl');
+  await screen.findByRole('heading', { name: 'Internal CA' });
+  const sheet = document.body;
   await user.click(within(sheet).getByRole('button', { name: /aa11bb22/ }));
   expect(await navigator.clipboard.readText()).toBe('https://certs.example.com/crl/ca-local-1/aa11bb22.crl');
   await screen.findByText('CRL URL copied');
@@ -107,8 +116,9 @@ it('retired chip copies its crl url', async () => {
 
 it('retired chip without crl url disabled', async () => {
   cas = [caLocal];
-  const { user } = renderRoute('/o/acme/issuers/cas?view=ca-local-1');
-  const sheet = await screen.findByRole('dialog', { name: 'Internal CA' });
+  const { user } = renderRoute('/o/acme/issuers/cas/ca-local-1/crl');
+  await screen.findByRole('heading', { name: 'Internal CA' });
+  const sheet = document.body;
   const chip = within(sheet).getByRole('button', { name: /cc33dd44/ });
   expect(chip).toBeDisabled();
   await user.hover(chip);
@@ -119,8 +129,9 @@ it('retired chip without crl url disabled', async () => {
 
 it('rotate confirms and posts', async () => {
   cas = [caLocal];
-  const { user } = renderRoute('/o/acme/issuers/cas?view=ca-local-1');
-  const sheet = await screen.findByRole('dialog', { name: 'Internal CA' });
+  const { user } = renderRoute('/o/acme/issuers/cas/ca-local-1/overview');
+  await screen.findByRole('heading', { name: 'Internal CA' });
+  const sheet = document.body;
   await user.click(within(sheet).getByRole('button', { name: 'Rotate issuing certificate' }));
   const dialog = await screen.findByRole('dialog', { name: 'Rotate issuing certificate?' });
   await user.type(within(dialog).getByRole('textbox'), 'Rotate');
@@ -130,8 +141,9 @@ it('rotate confirms and posts', async () => {
 
 it('imported cannot rotate', async () => {
   cas = [caLocalImported];
-  const { user } = renderRoute('/o/acme/issuers/cas?view=ca-local-2');
-  const sheet = await screen.findByRole('dialog', { name: 'Imported CA' });
+  const { user } = renderRoute('/o/acme/issuers/cas/ca-local-2/overview');
+  await screen.findByRole('heading', { name: 'Imported CA' });
+  const sheet = document.body;
   const rotateBtn = within(sheet).getByRole('button', { name: 'Rotate issuing certificate' });
   expect(rotateBtn).toBeDisabled();
   await user.hover(rotateBtn);
@@ -143,26 +155,27 @@ it('imported cannot rotate', async () => {
 it('rotate needs cas:write', async () => {
   cas = [caLocal];
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'org-admin', orgId: 'org-1' }]))));
-  renderRoute('/o/acme/issuers/cas?view=ca-local-1');
-  const sheet = await screen.findByRole('dialog', { name: 'Internal CA' });
+  renderRoute('/o/acme/issuers/cas/ca-local-1/overview');
+  await screen.findByRole('heading', { name: 'Internal CA' });
+  const sheet = document.body;
   expect(within(sheet).getByRole('button', { name: 'Rotate issuing certificate' })).toBeDisabled();
   expect(within(sheet).getByRole('button', { name: 'Edit' })).toBeDisabled();
 });
 
 it('crl missing base url', async () => {
   cas = [{ ...caLocal, crlUrl: undefined }];
-  renderRoute('/o/acme/issuers/cas?view=ca-local-1');
-  const sheet = await screen.findByRole('dialog', { name: 'Internal CA' });
+  renderRoute('/o/acme/issuers/cas/ca-local-1/crl');
+  await screen.findByRole('heading', { name: 'Internal CA' });
+  const sheet = document.body;
   expect(within(sheet).getByText(/Set the base URL/)).toBeInTheDocument();
-  expect(within(sheet).getByRole('link', { name: /Settings/ })).toBeInTheDocument();
+  expect(within(sheet).getByRole('link', { name: /Settings → General/ })).toBeInTheDocument();
 });
 
 it('unknown id shows not found', async () => {
   cas = [ca];
-  const { router, user } = renderRoute('/o/acme/issuers/cas?view=nope');
-  const dialog = await screen.findByRole('dialog', { name: 'CA not found' });
-  await user.click(within(dialog).getByRole('button', { name: 'Back to CAs' }));
-  await waitFor(() => expect(router.state.location.search).toEqual({}));
+  const { router } = renderRoute('/o/acme/issuers/cas/nope/overview');
+  await screen.findByText('CA not found.');
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/issuers/cas'));
 });
 
 it('opens the private CA detail from the keyboard on its focused row', async () => {
@@ -171,7 +184,7 @@ it('opens the private CA detail from the keyboard on its focused row', async () 
   const row = (await screen.findByText('Internal CA')).closest('tr')!;
   row.focus();
   await user.keyboard('{Enter}');
-  expect(await screen.findByRole('dialog', { name: 'Internal CA' })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'Internal CA' })).toBeInTheDocument();
 });
 
 it('adcs test reports an unusable template', async () => {
@@ -183,8 +196,9 @@ it('adcs test reports an unusable template', async () => {
       return HttpResponse.json({ ok: true, templates: [], selected: { name: 'CertForgeWeb', usable: false, reason: 'requires CA manager approval' } });
     }),
   );
-  const { user } = renderRoute('/o/acme/issuers/cas?view=ca-adcs-1');
-  const sheet = await screen.findByRole('dialog', { name: 'Corp AD CS' });
+  const { user } = renderRoute('/o/acme/issuers/cas/ca-adcs-1/overview');
+  await screen.findByRole('heading', { name: 'Corp AD CS' });
+  const sheet = document.body;
   await user.click(within(sheet).getByRole('button', { name: 'Test' }));
   const dialog = await screen.findByRole('dialog', { name: 'Test Corp AD CS' });
   await user.click(within(dialog).getByRole('button', { name: 'Run test' }));
@@ -196,7 +210,8 @@ it('adcs test reports an unusable template', async () => {
 it('adcs test needs cas:write', async () => {
   cas = [caAdcs];
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'org-admin', orgId: 'org-1' }]))));
-  renderRoute('/o/acme/issuers/cas?view=ca-adcs-1');
-  const sheet = await screen.findByRole('dialog', { name: 'Corp AD CS' });
+  renderRoute('/o/acme/issuers/cas/ca-adcs-1/overview');
+  await screen.findByRole('heading', { name: 'Corp AD CS' });
+  const sheet = document.body;
   expect(within(sheet).getByRole('button', { name: 'Test' })).toBeDisabled();
 });
