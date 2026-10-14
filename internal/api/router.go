@@ -34,6 +34,12 @@ func NewRouter(d Deps) http.Handler {
 		d.LoginLimiter = authn.NewLimiter(authn.DefaultLoginPerMinute, authn.DefaultLoginBurst)
 		loginLimiterSettings = d.AuthSettings
 	}
+	if d.HookIPLimiter == nil {
+		d.HookIPLimiter = authn.NewLimiter(hookIPPerMinute, hookIPBurst)
+	}
+	if d.HookGrantLimiter == nil {
+		d.HookGrantLimiter = authn.NewLimiter(hookGrantPerMinute, hookGrantBurst)
+	}
 	s := &Server{d: d}
 	r := chi.NewRouter()
 	r.Use(recoverer(d.Log), metrics.Middleware, securityHeaders)
@@ -49,6 +55,12 @@ func NewRouter(d Deps) http.Handler {
 	// only in narrow unit-test fixtures that never hit these routes.
 	if d.Issuance != nil {
 		r.Get("/crl/*", crlHandler(d.Issuance.Store, newCRLCache()))
+	}
+	// Public check-now webhook for server grants (token-authenticated, out of
+	// the OpenAPI document; docs/reference/api.md). withClientIP is applied
+	// here because the root has none, so the limiter sees the real client.
+	if d.Dispatcher != nil {
+		r.With(withClientIP(d.AuthSettings)).Post("/hooks/v1/grants/{grantId}/check", s.checkHook)
 	}
 	webHandler := webui.Handler()
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {

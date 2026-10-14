@@ -351,7 +351,8 @@ SELECT g.id, g.deploy_target_id, g.cert_id, ce.name AS certificate_name, g.deliv
        g.output_spec_id, g.steps, g.auto_remediate, g.target_options, g.created_at, g.updated_at,
        o.name AS layout_name, t.name AS deploy_target_name,
        sd.status, sd.version_id, sd.last_error, sd.deployed_at, sd.updated_at AS deployment_updated_at,
-       m.id AS monitor_id, m.host, m.port, m.sni, m.interval_seconds, m.post_deploy_delay_seconds
+       m.id AS monitor_id, m.host, m.port, m.sni, m.interval_seconds, m.post_deploy_delay_seconds,
+       EXISTS (SELECT 1 FROM grant_check_tokens ct WHERE ct.grant_id = g.id)::bool AS check_token_set
 FROM client_cert_grants g
 JOIN deploy_targets t ON t.id = g.deploy_target_id
 JOIN certificates ce ON ce.id = g.cert_id
@@ -394,3 +395,20 @@ WHERE g.removed_at IS NULL AND g.client_id IS NULL AND a.config->>'targetId' = s
 SELECT DISTINCT (deploy_target_id IS NOT NULL)::bool AS server FROM client_cert_grants
 WHERE steps @> jsonb_build_array(jsonb_build_object('group', sqlc.arg(group_id)::uuid))
   AND removed_at IS NULL;
+
+-- name: UpsertGrantCheckToken :exec
+-- Generate or rotate: replaces any earlier token for the grant.
+INSERT INTO grant_check_tokens (grant_id, prefix, secret_hash, created_by)
+VALUES (sqlc.arg(grant_id), sqlc.arg(prefix), sqlc.arg(secret_hash), sqlc.narg(created_by))
+ON CONFLICT (grant_id) DO UPDATE
+SET prefix = EXCLUDED.prefix, secret_hash = EXCLUDED.secret_hash, created_by = EXCLUDED.created_by,
+    created_at = now(), last_used_at = NULL;
+
+-- name: GetGrantCheckTokenByPrefix :one
+SELECT grant_id, secret_hash FROM grant_check_tokens WHERE prefix = $1;
+
+-- name: DeleteGrantCheckToken :execrows
+DELETE FROM grant_check_tokens WHERE grant_id = $1;
+
+-- name: TouchGrantCheckToken :exec
+UPDATE grant_check_tokens SET last_used_at = now() WHERE grant_id = $1;

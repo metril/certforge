@@ -2396,6 +2396,9 @@ type Grant struct {
 	// CertificateName Certificate name.
 	CertificateName string `json:"certificateName"`
 
+	// CheckTokenSet Whether a check-now webhook token exists for the grant. Server grants only.
+	CheckTokenSet *bool `json:"checkTokenSet,omitempty"`
+
 	// ClientId Client; null for a server grant.
 	ClientId *openapi_types.UUID `json:"clientId"`
 
@@ -2446,6 +2449,15 @@ type Grant struct {
 
 	// Verify A TLS endpoint CertForge polls to confirm the deployed certificate is the one served; a grant-owned monitor, hourly. Null when none. Server grants only.
 	Verify *GrantVerify `json:"verify"`
+}
+
+// GrantCheckToken A check-now webhook token, shown once.
+type GrantCheckToken struct {
+	// Token The bearer token. Not retrievable again.
+	Token string `json:"token"`
+
+	// Url The webhook URL to POST to with the token as a bearer token.
+	Url string `json:"url"`
 }
 
 // GrantDelivery push nudges the agent over its socket on every change; pull waits for the agent's own schedule or a manual certforge-agent pull.
@@ -4801,6 +4813,12 @@ type ClientInterface interface {
 
 	UpdateGrant(ctx context.Context, orgId OrgId, id Id, body UpdateGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DeleteGrantCheckToken request
+	DeleteGrantCheckToken(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateGrantCheckToken request
+	CreateGrantCheckToken(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetGrantPfSenseUsage request
 	GetGrantPfSenseUsage(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -6723,6 +6741,30 @@ func (c *APIClient) UpdateGrantWithBody(ctx context.Context, orgId OrgId, id Id,
 
 func (c *APIClient) UpdateGrant(ctx context.Context, orgId OrgId, id Id, body UpdateGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateGrantRequest(c.Server, orgId, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) DeleteGrantCheckToken(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteGrantCheckTokenRequest(c.Server, orgId, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) CreateGrantCheckToken(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateGrantCheckTokenRequest(c.Server, orgId, id)
 	if err != nil {
 		return nil, err
 	}
@@ -13107,6 +13149,88 @@ func NewUpdateGrantRequestWithBody(server string, orgId OrgId, id Id, contentTyp
 	return req, nil
 }
 
+// NewDeleteGrantCheckTokenRequest generates requests for DeleteGrantCheckToken
+func NewDeleteGrantCheckTokenRequest(server string, orgId OrgId, id Id) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/grants/%s/check-token", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateGrantCheckTokenRequest generates requests for CreateGrantCheckToken
+func NewCreateGrantCheckTokenRequest(server string, orgId OrgId, id Id) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/grants/%s/check-token", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetGrantPfSenseUsageRequest generates requests for GetGrantPfSenseUsage
 func NewGetGrantPfSenseUsageRequest(server string, orgId OrgId, id Id) (*http.Request, error) {
 	var err error
@@ -15114,6 +15238,12 @@ type ClientWithResponsesInterface interface {
 	UpdateGrantWithBodyWithResponse(ctx context.Context, orgId OrgId, id Id, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateGrantResponse, error)
 
 	UpdateGrantWithResponse(ctx context.Context, orgId OrgId, id Id, body UpdateGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateGrantResponse, error)
+
+	// DeleteGrantCheckTokenWithResponse request
+	DeleteGrantCheckTokenWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*DeleteGrantCheckTokenResponse, error)
+
+	// CreateGrantCheckTokenWithResponse request
+	CreateGrantCheckTokenWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*CreateGrantCheckTokenResponse, error)
 
 	// GetGrantPfSenseUsageWithResponse request
 	GetGrantPfSenseUsageWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*GetGrantPfSenseUsageResponse, error)
@@ -18408,6 +18538,58 @@ func (r UpdateGrantResponse) StatusCode() int {
 	return 0
 }
 
+type DeleteGrantCheckTokenResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteGrantCheckTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteGrantCheckTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateGrantCheckTokenResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON201                   *GrantCheckToken
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON409 *Conflict
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateGrantCheckTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateGrantCheckTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetGrantPfSenseUsageResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
@@ -20740,6 +20922,24 @@ func (c *ClientWithResponses) UpdateGrantWithResponse(ctx context.Context, orgId
 		return nil, err
 	}
 	return ParseUpdateGrantResponse(rsp)
+}
+
+// DeleteGrantCheckTokenWithResponse request returning *DeleteGrantCheckTokenResponse
+func (c *ClientWithResponses) DeleteGrantCheckTokenWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*DeleteGrantCheckTokenResponse, error) {
+	rsp, err := c.DeleteGrantCheckToken(ctx, orgId, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteGrantCheckTokenResponse(rsp)
+}
+
+// CreateGrantCheckTokenWithResponse request returning *CreateGrantCheckTokenResponse
+func (c *ClientWithResponses) CreateGrantCheckTokenWithResponse(ctx context.Context, orgId OrgId, id Id, reqEditors ...RequestEditorFn) (*CreateGrantCheckTokenResponse, error) {
+	rsp, err := c.CreateGrantCheckToken(ctx, orgId, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateGrantCheckTokenResponse(rsp)
 }
 
 // GetGrantPfSenseUsageWithResponse request returning *GetGrantPfSenseUsageResponse
@@ -28513,6 +28713,114 @@ func ParseUpdateGrantResponse(rsp *http.Response) (*UpdateGrantResponse, error) 
 			return nil, err
 		}
 		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteGrantCheckTokenResponse parses an HTTP response from a DeleteGrantCheckTokenWithResponse call
+func ParseDeleteGrantCheckTokenResponse(rsp *http.Response) (*DeleteGrantCheckTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteGrantCheckTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateGrantCheckTokenResponse parses an HTTP response from a CreateGrantCheckTokenWithResponse call
+func ParseCreateGrantCheckTokenResponse(rsp *http.Response) (*CreateGrantCheckTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateGrantCheckTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest GrantCheckToken
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalError

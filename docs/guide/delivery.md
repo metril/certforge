@@ -338,6 +338,8 @@ A server grant can check the TLS endpoint a device serves and redeploy when it s
 
 **How it works.** The grant owns an external monitor whose expected certificate is the grant's certificate (see [Alerts](alerts.md#external-monitors)). Drift is found when the monitor sees a different leaf, so detection runs at the monitor's check interval. A successful deploy schedules a check after the grant's **Check after deploy** delay. Mismatches are ignored while a newer version is still pending.
 
+**Check hook.** A device that can run a command when its certificate changes can ask for an immediate check instead of waiting for the interval. On the target's **Grants** tab, open a grant's **Check hook** and generate a token; it is shown once, with the URL and a `curl` example. Call `POST /hooks/v1/grants/{grantId}/check` with `Authorization: Bearer <token>` and the endpoint is checked right away (see [API](../reference/api.md#routes-outside-the-api)). Generating again rotates the token; **Revoke** removes it. The hook only queues a check, so a leaked token cannot read or change anything. It needs a verify endpoint.
+
 | Status | Meaning |
 |---|---|
 | **Deployed** | The endpoint serves the grant's certificate. |

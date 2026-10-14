@@ -399,7 +399,7 @@ func serverGrantOut(r sqlcgen.ServerGrantViewsRow) gen.Grant {
 	return gen.Grant{Id: r.ID, ClientId: nil, ClientName: nil, CertificateId: r.CertID, CertificateName: r.CertificateName,
 		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, TargetOptions: opts, Steps: stepsOut(r.Steps),
 		AutoRemediate: r.AutoRemediate, Deployment: nil, RunsOn: gen.RunsOn("server"), ServerDeployment: sd,
-		Verify: verifyOut(r), MonitorId: r.MonitorID, LayoutName: r.LayoutName, DeployTargetName: &r.DeployTargetName, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
+		Verify: verifyOut(r), MonitorId: r.MonitorID, LayoutName: r.LayoutName, DeployTargetName: &r.DeployTargetName, CheckTokenSet: &r.CheckTokenSet, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
 }
 
 // verifyOut maps the grant-owned monitor's endpoint columns; nil when none.

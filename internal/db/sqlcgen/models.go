@@ -300,6 +300,15 @@ type ExternalMonitor struct {
 	PostDeployDelaySeconds int32      `json:"post_deploy_delay_seconds"`
 }
 
+type GrantCheckToken struct {
+	GrantID    uuid.UUID  `json:"grant_id"`
+	Prefix     string     `json:"prefix"`
+	SecretHash []byte     `json:"secret_hash"`
+	CreatedAt  time.Time  `json:"created_at"`
+	CreatedBy  *uuid.UUID `json:"created_by"`
+	LastUsedAt *time.Time `json:"last_used_at"`
+}
+
 type HookRun struct {
 	ID             uuid.UUID  `json:"id"`
 	ClientID       *uuid.UUID `json:"client_id"`
