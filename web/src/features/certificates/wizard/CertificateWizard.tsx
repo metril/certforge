@@ -235,6 +235,18 @@ export function CertificateWizard({ from, edit }: { from?: Certificate; edit?: C
                 {busy ? (edit ? 'Saving…' : 'Issuing…') : edit ? 'Save changes' : 'Issue certificate'}
               </Button>
             )}
+            <Button
+              variant="ghost"
+              className="ml-auto"
+              disabled={busy}
+              onClick={() =>
+                void (edit
+                  ? navigate({ to: '/o/$org/certificates/$id/$tab', params: { org: org.slug, id: edit.id, tab: 'settings' } })
+                  : navigate({ to: '/o/$org/certificates', params: { org: org.slug } }))
+              }
+            >
+              Cancel
+            </Button>
           </div>
         </div>
         <SummaryRail orgId={org.id} state={state} inherited={inherited} privateCa={privateCa} />

@@ -453,3 +453,17 @@ it('does not submit twice while navigation to the new certificate is pending', a
   await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/certificates/c-new/attempts'));
   expect(posts).toBe(1);
 });
+
+it('Cancel on a new certificate returns to the certificate list', async () => {
+  const { router, user } = renderRoute('/o/acme/certificates/new');
+  await user.click(await screen.findByRole('button', { name: 'Cancel' }));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/certificates'));
+});
+
+it('Cancel in edit mode returns to the certificate settings tab', async () => {
+  server.use(http.get(url('/orgs/org-1/certificates/c-1'), () => HttpResponse.json(makeCert())));
+  const { router, user } = renderRoute('/o/acme/certificates/c-1/edit');
+  await user.click(await screen.findByRole('button', { name: 'Cancel' }));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/certificates/c-1/settings'));
+  await screen.findByRole('navigation', { name: 'Breadcrumb' });
+});
