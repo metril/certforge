@@ -408,7 +408,7 @@ export const help = {
   'enroll.awaiting': { text: 'The agent holds the token and waits for an administrator to compare its verification code.', learnMore: 'guide/clients.md#enrollment' },
   'agents.requireApproval': { text: 'New agents wait for an admin to compare codes and approve them. Off: any valid token enrolls at once.', learnMore: 'reference/configuration.md#agents' },
   'settings.serverRemediationAttempts': { text: 'Redeploys tried for a server grant that keeps drifting on the same certificate before it fails.', learnMore: 'guide/delivery.md#drift-and-auto-remediation' },
-  'agents.fileWatch': { text: 'Agents report a changed installed file within seconds, not at the next heartbeat. Applies when an agent next connects; CF_AGENT_WATCH_FILES=false opts a host out.', learnMore: 'guide/agents.md#file-watching' },
+  'agents.fileWatch': { text: 'Agents report a changed installed file within seconds, not at the next heartbeat. Applies on next connect; CF_AGENT_WATCH_FILES=false opts a host out.', learnMore: 'guide/agents.md#file-watching' },
   'client.fileWatch': { text: 'Whether the agent watches its installed files, so drift shows up within seconds rather than at the next heartbeat.', learnMore: 'guide/agents.md#file-watching' },
   'agents.pendingTtlHours': { text: 'How long a request waits for approval before it expires. Its token expires with it.' },
   'agents.agentUrl': { text: 'Only new enrollments pick up a changed URL. Already-enrolled agents keep the URL they enrolled with; re-enroll them to move them.', learnMore: 'reference/configuration.md#agents' },
