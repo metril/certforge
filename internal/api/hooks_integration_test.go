@@ -164,6 +164,19 @@ func TestCheckHookMonitorGone(t *testing.T) {
 	}
 }
 
+// A soft-removed grant's token stops working.
+func TestCheckHookRemovedGrant(t *testing.T) {
+	e := newHookEnv(t)
+	g := e.grant(t, "web", true)
+	tok := e.token(t, g)
+	if _, err := e.f.pool.Exec(context.Background(), "UPDATE client_cert_grants SET removed_at = now() WHERE id = $1", g); err != nil {
+		t.Fatal(err)
+	}
+	if w := e.call(g, "Bearer "+tok); w.Code != 404 || e.jobs.count() != 0 {
+		t.Fatalf("%d jobs=%d", w.Code, e.jobs.count())
+	}
+}
+
 func TestCheckHookRateLimit(t *testing.T) {
 	e := newHookEnv(t)
 	g := e.grant(t, "web", true)

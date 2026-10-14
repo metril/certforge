@@ -83,7 +83,7 @@ func (s *Server) checkHook(w http.ResponseWriter, r *http.Request) {
 	if err := s.queries().TouchGrantCheckToken(ctx, grantID); err != nil {
 		s.d.Log.Warn("check hook touch failed", "grant", grantID, "err", err)
 	}
-	s.audit(ctx, audit.Event{Action: "grant.check_hook", ResourceType: "grant", ResourceID: grantID.String(),
+	s.audit(ctx, audit.Event{Action: "grant.check_hook", ResourceType: "grant", ResourceID: grantID.String(), OrgID: &row.OrgID,
 		ActorType: "token", ActorID: prefix, Details: map[string]any{"ip": ip}})
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)

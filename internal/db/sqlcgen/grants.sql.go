@@ -460,18 +460,24 @@ func (q *Queries) DeleteGrantRow(ctx context.Context, id uuid.UUID) error {
 }
 
 const getGrantCheckTokenByPrefix = `-- name: GetGrantCheckTokenByPrefix :one
-SELECT grant_id, secret_hash FROM grant_check_tokens WHERE prefix = $1
+SELECT ct.grant_id, ct.secret_hash, t.org_id
+FROM grant_check_tokens ct
+JOIN client_cert_grants g ON g.id = ct.grant_id AND g.removed_at IS NULL AND g.client_id IS NULL
+JOIN deploy_targets t ON t.id = g.deploy_target_id
+WHERE ct.prefix = $1
 `
 
 type GetGrantCheckTokenByPrefixRow struct {
 	GrantID    uuid.UUID `json:"grant_id"`
 	SecretHash []byte    `json:"secret_hash"`
+	OrgID      uuid.UUID `json:"org_id"`
 }
 
+// Live (not soft-removed) server grants only; org_id comes from the target.
 func (q *Queries) GetGrantCheckTokenByPrefix(ctx context.Context, prefix string) (GetGrantCheckTokenByPrefixRow, error) {
 	row := q.db.QueryRow(ctx, getGrantCheckTokenByPrefix, prefix)
 	var i GetGrantCheckTokenByPrefixRow
-	err := row.Scan(&i.GrantID, &i.SecretHash)
+	err := row.Scan(&i.GrantID, &i.SecretHash, &i.OrgID)
 	return i, err
 }
 

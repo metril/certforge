@@ -405,7 +405,12 @@ SET prefix = EXCLUDED.prefix, secret_hash = EXCLUDED.secret_hash, created_by = E
     created_at = now(), last_used_at = NULL;
 
 -- name: GetGrantCheckTokenByPrefix :one
-SELECT grant_id, secret_hash FROM grant_check_tokens WHERE prefix = $1;
+-- Live (not soft-removed) server grants only; org_id comes from the target.
+SELECT ct.grant_id, ct.secret_hash, t.org_id
+FROM grant_check_tokens ct
+JOIN client_cert_grants g ON g.id = ct.grant_id AND g.removed_at IS NULL AND g.client_id IS NULL
+JOIN deploy_targets t ON t.id = g.deploy_target_id
+WHERE ct.prefix = $1;
 
 -- name: DeleteGrantCheckToken :execrows
 DELETE FROM grant_check_tokens WHERE grant_id = $1;
