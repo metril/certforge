@@ -2,7 +2,8 @@ import { http, HttpResponse } from 'msw';
 import { expect, it } from 'vitest';
 import { server } from '@/test/server';
 import { makeGrant, problem, url } from '@/test/fixtures';
-import { createGrants } from './grants';
+import { QueryClient } from '@tanstack/react-query';
+import { createGrants, grantsListQuery } from './grants';
 
 it('posts one grant per certificate and keeps going after a failure', async () => {
   const seen: string[] = [];
@@ -18,4 +19,18 @@ it('posts one grant per certificate and keeps going after a failure', async () =
   expect(seen).toEqual(['c-1', 'c-2', 'c-3']);
   expect(r.created.map((g) => g.certificateId)).toEqual(['c-1', 'c-3']);
   expect(r.failed).toEqual([{ certificateId: 'c-2', message: 'www is already granted to web-1.', status: 409, title: 'Error' }]);
+});
+
+it('lists grants with the filter as query params', async () => {
+  let seen = '';
+  server.use(
+    http.get(url('/orgs/org-1/grants'), ({ request }) => {
+      seen = new URL(request.url).search;
+      return HttpResponse.json({ items: [makeGrant()] });
+    }),
+  );
+  const items = await new QueryClient().fetchQuery(grantsListQuery('org-1', { deployTargetId: 't-1', actionGroupId: 'ag-1' }));
+  expect(items).toHaveLength(1);
+  expect(new URLSearchParams(seen).get('deployTargetId')).toBe('t-1');
+  expect(new URLSearchParams(seen).get('actionGroupId')).toBe('ag-1');
 });

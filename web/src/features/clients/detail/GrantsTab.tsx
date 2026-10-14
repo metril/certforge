@@ -77,8 +77,30 @@ export function GrantsTab({ client, orgId, orgSlug, canWrite, open, onOpen, empt
       <TooltipContent>Needs the delivery:read permission</TooltipContent>
     </Tooltip>
   );
-  const layoutName = (id: string | null): ReactNode => (id ? (canDelivery ? (layouts.find((l) => l.id === id)?.name ?? '…') : noDelivery) : '–');
-  const targetName = (id: string | null): ReactNode => (id ? (canDelivery ? (targets.find((t) => t.id === id)?.name ?? '…') : noDelivery) : '–');
+  const layoutName = (id: string | null): ReactNode =>
+    id ? (
+      canDelivery ? (
+        <Link to="/o/$org/delivery/layouts/$id/edit" params={{ org: orgSlug, id }} className="hover:underline">
+          {layouts.find((l) => l.id === id)?.name ?? '…'}
+        </Link>
+      ) : (
+        noDelivery
+      )
+    ) : (
+      '–'
+    );
+  const targetName = (id: string | null): ReactNode =>
+    id ? (
+      canDelivery ? (
+        <Link to="/o/$org/delivery/targets/$id/$tab" params={{ org: orgSlug, id, tab: 'overview' }} className="hover:underline">
+          {targets.find((t) => t.id === id)?.name ?? '…'}
+        </Link>
+      ) : (
+        noDelivery
+      )
+    ) : (
+      '–'
+    );
   // Task 8: Grant.clientId/clientName/deployment are nullable for a
   // runsOn:'server' grant (5a-facts.md); this endpoint is client-scoped and
   // never actually returns one, but the table must render one safely rather

@@ -1,6 +1,8 @@
 import { Eye, Pencil, Send, Trash2 } from 'lucide-react';
 import { plural } from '@/api/queries/certificates';
+import type { GrantsFilter } from '@/api/queries/grants';
 import { IconButton } from '@/components/IconButton';
+import { GrantsPopover } from './GrantsPopover';
 
 type Props = {
   name: string;
@@ -37,6 +39,6 @@ export function RowActions({ name, grantCount, canWrite, onOpen, onDelete, onGra
   );
 }
 
-export function UsedBy({ count }: { count: number }) {
-  return count > 0 ? <span className="whitespace-nowrap">{plural(count, 'grant')}</span> : <span className="text-ink-muted">–</span>;
+export function UsedBy({ count, filter }: { count: number; filter: GrantsFilter }) {
+  return count > 0 ? <GrantsPopover count={count} filter={filter} /> : <span className="text-ink-muted">–</span>;
 }

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { ArrowDown, ArrowUp, Check, CircleAlert, Copy, Eye, EyeOff, Plus, TriangleAlert, X } from 'lucide-react';
-import { allCertificatesPickerQuery, plural } from '@/api/queries/certificates';
+import { allCertificatesPickerQuery } from '@/api/queries/certificates';
 import { useSaveLayout } from '@/api/queries/delivery';
 import { ApiError, errorMessage, fieldOfTitle } from '@/api/errors';
 import { UNCHANGED } from '@/api/types';
@@ -39,6 +39,7 @@ import {
   type FileErrors,
 } from './layoutFiles';
 import { IconButton } from '@/components/IconButton';
+import { GrantsPopover } from './GrantsPopover';
 
 const MAX_FILES = 20;
 const MAX_EXTRAS = 10;
@@ -198,7 +199,7 @@ export function LayoutForm({ orgId, orgSlug, layout, readOnly = false }: Props) 
       {layout && (
         <div className="grid min-w-0 gap-1">
           <dt className="text-xs text-ink-muted">Used by</dt>
-          <dd>{plural(layout.grantCount, 'grant')}</dd>
+          <dd><GrantsPopover count={layout.grantCount} filter={{ layoutId: layout.id }} /></dd>
         </div>
       )}
     </dl>
