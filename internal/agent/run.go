@@ -135,6 +135,14 @@ func (a *Agent) heartbeat(ctx context.Context, wc *watchCtl) agentproto.Heartbea
 	return hb
 }
 
+// pullHeartbeat is the heartbeat of a pull run, which never watches files;
+// it says so, so the server does not keep a stale "watching" status.
+func (a *Agent) pullHeartbeat(ctx context.Context) agentproto.Heartbeat {
+	hb := a.heartbeat(ctx, nil)
+	hb.FileWatch = &agentproto.FileWatchStatus{Reason: "pull mode"}
+	return hb
+}
+
 // capabilities lists what this agent tells the server it can do: traefik
 // always, hooks when CF_HOOK_ALLOW is set, restart when CF_RESTART_ALLOW is set, and http-01/tls-alpn-01 when the
 // matching challenge listener is configured.
@@ -202,7 +210,7 @@ func (a *Agent) pullOnce(ctx context.Context) error {
 		err = cl.Report(ctx, rep)
 	}
 	if err == nil {
-		err = cl.Heartbeat(ctx, a.heartbeat(ctx, nil))
+		err = cl.Heartbeat(ctx, a.pullHeartbeat(ctx))
 	}
 	if IsUnauthorized(err) {
 		return ErrRevoked

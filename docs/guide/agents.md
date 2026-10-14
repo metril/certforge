@@ -243,7 +243,7 @@ Each heartbeat (**Heartbeat interval (seconds)**, default 60) carries the SHA-25
 
 The agent watches the directories of its installed files with the operating system's file notifications (inotify on Linux) and sends a heartbeat about 2 seconds after a file is written, replaced, renamed or deleted. Its own writes during a reconcile do not trigger this. Between changes the heartbeat only checks each file's size and modification time and rehashes a file when either changed.
 
-- Turn it off for every agent with **Watch installed files** (`fileWatch`) under **Settings → Agents**. Agents then report only on the heartbeat interval.
+- Turn it off for every agent with **Watch installed files** (`fileWatch`) under **Settings → Agents**. Agents then report only on the heartbeat interval. A change takes effect when an agent next connects.
 - Turn it off for one host with `CF_AGENT_WATCH_FILES=false` in the agent's environment. This wins over the server setting.
 - The client page header shows **Watching files** or **File watch off**. The help beside it gives the reason: disabled in settings or the agent config, the watcher could not start (for example the inotify limit), or a directory could not be watched (network filesystems such as NFS and SMB send no notifications). The agent keeps reporting on the heartbeat interval in every case. An older agent shows nothing.
 

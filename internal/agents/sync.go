@@ -438,7 +438,8 @@ func (s *Service) storeRestartTargets(ctx context.Context, id uuid.UUID, in []ag
 }
 
 // storeFileWatch keeps the agent's file watcher health; an agent without a
-// watcher sends none and leaves the stored value alone.
+// watcher sends none and leaves the stored value alone: a downgraded agent
+// is rare, and a pull-mode agent says "pull mode" explicitly.
 func (s *Service) storeFileWatch(ctx context.Context, id uuid.UUID, fw *agentproto.FileWatchStatus) {
 	if fw == nil {
 		return

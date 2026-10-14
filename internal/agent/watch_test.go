@@ -174,3 +174,23 @@ func TestWatchCtlStatus(t *testing.T) {
 		t.Fatalf("local override %+v", st)
 	}
 }
+
+func TestWatcherSyncReaddsRecreatedDir(t *testing.T) {
+	base := t.TempDir()
+	d := filepath.Join(base, "out")
+	_ = os.Mkdir(d, 0o755)
+	p := filepath.Join(d, "a.pem")
+	fw, ch := startWatcher(t, p)
+	_ = os.RemoveAll(d)
+	_ = os.Mkdir(d, 0o755)
+	fw.Sync([]string{p})
+	if fw.Reason() != "" {
+		t.Fatalf("reason %q", fw.Reason())
+	}
+	time.Sleep(100 * time.Millisecond)
+	for len(ch) > 0 {
+		<-ch
+	}
+	_ = os.WriteFile(p, []byte("x"), 0o644)
+	expectSignal(t, ch, true)
+}

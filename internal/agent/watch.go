@@ -71,10 +71,10 @@ func (f *fileWatcher) Sync(paths []string) {
 	}
 	f.reason = ""
 	for d := range want {
-		if f.dirs[d] {
-			continue
-		}
+		// Add every time (it is idempotent): inotify drops the watch of a
+		// deleted directory, so a recreated one must be added again.
 		if err := f.w.Add(d); err != nil {
+			delete(f.dirs, d)
 			if f.reason == "" {
 				f.reason = fmt.Sprintf("cannot watch %s: %v", d, err)
 			}
