@@ -49,6 +49,14 @@ func (d DeployEvents) DeployFailed(ctx context.Context, f deploy.DeployFailure) 
 	return err
 }
 
+// DeployDrift implements deploy.Events: the server-run grant's deploy.drift
+// warning, sent after OnCheck's transaction commits. Same DedupeKey shape as
+// the agent-run alert and scan.go, so a repeat for one version never sends twice.
+func (d DeployEvents) DeployDrift(ctx context.Context, f deploy.DeployDrift) error {
+	_, err := d.E.Emit(ctx, nil, deployStateEvent(f.OrgID, f.GrantID, f.VersionID, "drift", f.CertName, f.TargetName, ""))
+	return err
+}
+
 // DeploymentChanged implements agents.DeploymentEvents: the agent-run
 // deploy.drift/deploy.failed alert, sent right after the report or heartbeat
 // commits. It shares scan.go's builder and so its DedupeKey, which makes the

@@ -310,3 +310,29 @@ func TestEnqueueGrantCheck(t *testing.T) {
 		t.Fatalf("checks = %v, want one for %v", f.ins.checks, f.monitor)
 	}
 }
+
+type fakeEvents struct{ drifts []DeployDrift }
+
+func (e *fakeEvents) DeployFailed(context.Context, DeployFailure) error { return nil }
+func (e *fakeEvents) DeployDrift(_ context.Context, d DeployDrift) error {
+	e.drifts = append(e.drifts, d)
+	return nil
+}
+
+// TestDriftSendsOneAlertPerEpisode: the first mismatch sends deploy.drift; a
+// repeat while drifted sends nothing, and neither does a missing Auditor.
+func TestDriftSendsOneAlertPerEpisode(t *testing.T) {
+	f := newDriftFixture(t, false, "deployed")
+	ev := &fakeEvents{}
+	f.disp.Events = ev
+	f.disp.Auditor = nil
+	f.check(t, "mismatch", "observed0123456789")
+	if len(ev.drifts) != 1 || ev.drifts[0].GrantID != f.grant || ev.drifts[0].VersionID != f.version ||
+		ev.drifts[0].CertName != "drift" || ev.drifts[0].TargetName != "drift-target" {
+		t.Fatalf("after first mismatch: %+v", ev.drifts)
+	}
+	f.check(t, "mismatch", "observed0123456789")
+	if len(ev.drifts) != 1 {
+		t.Fatalf("a repeated mismatch sent %d alerts, want 1", len(ev.drifts))
+	}
+}

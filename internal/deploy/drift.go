@@ -94,7 +94,7 @@ func (d *Dispatcher) OnCheck(ctx context.Context, tx pgx.Tx, monitorID uuid.UUID
 				}
 			}
 		}
-		if !firstSeen || d.Auditor == nil {
+		if !firstSeen {
 			return nil, nil
 		}
 		ev := audit.Event{
@@ -104,9 +104,20 @@ func (d *Dispatcher) OnCheck(ctx context.Context, tx pgx.Tx, monitorID uuid.UUID
 				"observedFingerprint": observedFP, "expectedFingerprint": expectedFP,
 			},
 		}
+		// row.VersionID equals CurrentVersionID here (both non-nil, checked above).
+		notice := DeployDrift{OrgID: row.OrgID, GrantID: row.GrantID, VersionID: *row.VersionID,
+			CertName: row.CertificateName, TargetName: row.TargetName}
 		return func() {
-			if err := d.Auditor.Record(context.WithoutCancel(ctx), ev); err != nil {
-				d.log().Error("audit record failed", "action", ev.Action, "err", err)
+			bg := context.WithoutCancel(ctx)
+			if d.Auditor != nil {
+				if err := d.Auditor.Record(bg, ev); err != nil {
+					d.log().Error("audit record failed", "action", ev.Action, "err", err)
+				}
+			}
+			if d.Events != nil {
+				if err := d.Events.DeployDrift(bg, notice); err != nil {
+					d.log().Error("deploy.drift emit failed", "grant", notice.GrantID, "err", err)
+				}
 			}
 		}, nil
 	}
