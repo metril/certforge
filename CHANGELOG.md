@@ -2,6 +2,15 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.37.0](https://github.com/metril/certforge/compare/v0.36.2...v0.37.0) (2026-10-14)
+
+
+### Features
+
+* **web:** sheet size prop, scrolling SheetBody and fixed header/footer ([806720c](https://github.com/metril/certforge/commit/806720c90e24e4dcb1aa2f2934cde0d19e7b918e))
+* **web:** wider sheets with fixed chrome and two-column fields ([b2e38b7](https://github.com/metril/certforge/commit/b2e38b7035e02a3d8d0036a2d59c8fd568bc441c))
+* **web:** wider sheets with sectioned two-column fields ([ab28e7a](https://github.com/metril/certforge/commit/ab28e7a2709e144af98681716380675650f0837f))
+
 ## [0.36.2](https://github.com/metril/certforge/compare/v0.36.1...v0.36.2) (2026-10-14)
 
 
