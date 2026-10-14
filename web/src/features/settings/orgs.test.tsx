@@ -171,3 +171,17 @@ it('hides org writes from non-admins', async () => {
   expect(screen.queryByRole('button', { name: 'Rename Acme' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Delete Acme' })).not.toBeInTheDocument();
 });
+
+it('opens the Sites sheet on the site named in the URL', async () => {
+  server.use(...authHandlers({ authed: true }), ...base);
+  renderRoute(`/settings/general?org=${org.slug}&site=s-1`);
+  const sheet = await screen.findByRole('dialog', { name: `Sites of ${org.name}` });
+  expect((await within(sheet).findByText('Berlin')).closest('li')).toHaveAttribute('aria-current', 'true');
+});
+
+it('says so and drops the param when the site is gone', async () => {
+  server.use(...authHandlers({ authed: true }), ...base);
+  const { router } = renderRoute(`/settings/general?org=${org.slug}&site=s-gone`);
+  expect(await screen.findByText('Site not found.')).toBeInTheDocument();
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty('site'));
+});

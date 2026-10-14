@@ -10,10 +10,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetBody } from '@/components/ui/sheet';
 import { useMe } from '@/lib/org';
+import { cn } from '@/lib/utils';
 import { can } from '@/lib/permissions';
 import { IconButton } from '@/components/IconButton';
 
-export function SitesSheet({ org, onClose }: { org: Org | null; onClose: () => void }) {
+export function SitesSheet({ org, onClose, focusSite, onMissing }: { org: Org | null; onClose: () => void; focusSite?: string; onMissing?: () => void }) {
   const me = useMe();
   const orgId = org?.id ?? '';
   const q = useQuery({ ...sitesQuery(orgId), enabled: !!org });
@@ -36,6 +37,13 @@ export function SitesSheet({ org, onClose }: { org: Org | null; onClose: () => v
     setRenaming(null);
     setError(null);
   }, [org?.id]);
+
+  // Opened on one site (a link to it): mark and scroll to it, or say it is gone.
+  useEffect(() => {
+    if (!focusSite || !q.data) return;
+    if (!q.data.some((s) => s.id === focusSite)) onMissing?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusSite, q.data]);
 
   const run = async (fn: () => Promise<unknown>) => {
     setError(null);
@@ -80,7 +88,12 @@ export function SitesSheet({ org, onClose }: { org: Org | null; onClose: () => v
           )}
           <ul className="grid">
             {(q.data ?? []).map((s) => (
-              <li key={s.id} className="flex h-9 items-center gap-2 border-b border-border text-sm">
+              <li
+                key={s.id}
+                ref={s.id === focusSite ? (el) => el?.scrollIntoView?.({ block: 'nearest' }) : undefined}
+                aria-current={s.id === focusSite ? 'true' : undefined}
+                className={cn('flex h-9 items-center gap-2 border-b border-border px-1 text-sm', s.id === focusSite && 'bg-accent')}
+              >
                 {renaming?.id === s.id ? (
                   <form onSubmit={rename} className="flex flex-1 gap-2">
                     <Input aria-label={`Name of ${s.name}`} value={renaming.name} autoFocus onChange={(e) => setRenaming({ ...renaming, name: e.target.value })} />

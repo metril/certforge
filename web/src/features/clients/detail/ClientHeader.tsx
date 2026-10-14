@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { Clock } from 'lucide-react';
 import type { Client } from '@/api/types';
 import { ConnectionDot } from '@/components/ConnectionDot';
+import { EntityLink } from '@/components/EntityLink';
 import { HelpTip } from '@/components/HelpTip';
 import { ToneChip } from '@/components/StatusChip';
 import { agentCertExpiring, headerConnectionLabel } from '@/lib/clientStatus';
@@ -40,7 +41,13 @@ export function ClientHeader({ client, siteName, actions }: { client: Client; si
           <span className="font-mono text-xs">{client.hostname || '–'}</span>
         </Fact>
         <Fact label="Site" help="client.site">
-          {siteName ?? '–'}
+          {siteName ? (
+            <EntityLink kind="site" id={client.siteId} orgId={client.orgId}>
+              {siteName}
+            </EntityLink>
+          ) : (
+            '–'
+          )}
         </Fact>
         <Fact label="Agent" help="client.agentVersion">
           {client.agentVersion ? <span className="font-mono text-xs">{`${client.agentVersion} · ${client.os}/${client.arch}`}</span> : '–'}

@@ -9,6 +9,7 @@ import type { Certificate, CertificateDeployment } from '@/api/types';
 import { ConnectionDot } from '@/components/ConnectionDot';
 import { DeploymentChip } from '@/components/DeploymentChip';
 import { EmptyState } from '@/components/EmptyState';
+import { EntityLink } from '@/components/EntityLink';
 import { ErrorState } from '@/components/ErrorState';
 import { HelpTip } from '@/components/HelpTip';
 import { Button } from '@/components/ui/button';
@@ -97,7 +98,11 @@ export function DeploymentsTab({ cert, orgId, orgSlug }: { cert: Certificate; or
               </Link>
               <ConnectionDot client={{ status: d.clientStatus, online: d.clientOnline, lastSeen: null }} kind={connectionKind(d)} />
             </span>
-            <span className="truncate">{siteName(d.siteId)}</span>
+            <span className="truncate">
+              <EntityLink kind="site" id={d.siteId} orgId={orgId}>
+                {siteName(d.siteId)}
+              </EntityLink>
+            </span>
             <span>{DELIVERY_LABEL[d.delivery]}</span>
             <DeliveryRef orgSlug={orgSlug} kind="layouts" id={d.layoutId} name={d.layoutName} />
             <DeliveryRef orgSlug={orgSlug} kind="targets" id={d.deployTargetId} name={d.deployTargetName} />

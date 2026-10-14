@@ -25,6 +25,7 @@ export type EntityKind =
   | 'channel'
   | 'user'
   | 'apiKey'
+  | 'site'
   | 'grant';
 
 /** The audit log's resourceType for each kind that has a destination. */
@@ -43,6 +44,7 @@ export const RESOURCE_KIND: Record<string, EntityKind> = {
   channel: 'channel',
   user: 'user',
   api_key: 'apiKey',
+  site: 'site',
   grant: 'grant',
 };
 
@@ -62,6 +64,7 @@ const READ: Record<Exclude<EntityKind, 'user' | 'apiKey'>, Action> = {
   deployCredential: 'deploycreds:read',
   monitor: 'alerts:read',
   channel: 'alerts:read',
+  site: 'sites:read',
   grant: 'clients:read',
 };
 
@@ -94,6 +97,9 @@ export function entityTarget(kind: Exclude<EntityKind, 'grant'>, id: string, org
       return { to: '/o/$org/alerts/monitors/$id/edit', params: p };
     case 'channel':
       return { to: '/o/$org/alerts/channels', params: { org }, search: { edit: id } };
+    case 'site':
+      // Sites have no page: Settings > General opens the org's Sites sheet on this one.
+      return { to: '/settings/$section', params: { section: 'general' }, search: { org, site: id } };
     case 'user':
       // Users and API keys are listed, not opened: land on the right tab.
       return { to: '/settings/$section', params: { section: 'access' }, search: { tab: 'users' } };

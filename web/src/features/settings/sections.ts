@@ -38,5 +38,7 @@ export const settingsSearch = z.object({
   scope: z.enum(['global', 'org']).optional().catch(undefined),
   // org: the organization (slug) whose defaults the org scope shows.
   org: z.string().optional().catch(undefined),
+  // site: opens the Sites sheet of `org` (slug) on this site (General).
+  site: z.string().optional().catch(undefined),
 });
 export type SettingsSearch = z.infer<typeof settingsSearch>;

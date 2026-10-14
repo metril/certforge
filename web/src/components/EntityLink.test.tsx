@@ -23,6 +23,7 @@ it('maps every kind to its route and search params', () => {
     ['channel', '/o/acme/alerts/channels?edit=x-1'],
     ['user', '/settings/access?tab=users'],
     ['apiKey', '/settings/access?tab=keys'],
+    ['site', '/settings/general?org=acme&site=x-1'],
   ];
   for (const [kind, want] of rows) expect(href(entityTarget(kind, 'x-1', 'acme'))).toBe(want);
 });

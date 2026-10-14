@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { plural } from '@/api/queries/certificates';
 import type { Client } from '@/api/types';
 import { ConnectionDot } from '@/components/ConnectionDot';
+import { EntityLink } from '@/components/EntityLink';
 import { GrantsPopover } from '@/features/delivery/GrantsPopover';
 import { PrimaryCell } from '@/components/PrimaryCell';
 import { ToneChip } from '@/components/StatusChip';
@@ -44,15 +45,33 @@ export function clientColumns({ slugOf, siteName, orgName }: { slugOf: (c: Clien
     col.accessor('name', {
       header: 'Name',
       meta: { sortKey: 'name', className: stickyCol },
-      cell: ({ row }) => (
+      cell: ({ row }) => {
+        const site = siteName?.(row.original.siteId);
+        // In one org the site name is a link, so it leads the meta line instead of sitting in its text.
+        const linked = !!site && site !== '–' && !!row.original.siteId;
+        const grants = row.original.grantCount > 0 ? <GrantsPopover count={row.original.grantCount} filter={{ clientId: row.original.id }} /> : undefined;
+        const lead =
+          grants || linked ? (
+            <>
+              {grants}
+              {grants && linked && ' · '}
+              {linked && (
+                <EntityLink kind="site" id={row.original.siteId} orgId={row.original.orgId}>
+                  {site}
+                </EntityLink>
+              )}
+            </>
+          ) : undefined;
+        return (
         <PrimaryCell
           primary={row.original.name}
           link={{ to: '/o/$org/clients/$id', params: { org: slugOf(row.original), id: row.original.id } }}
-          meta={clientMeta(row.original, siteName?.(row.original.siteId), false)}
-          lead={row.original.grantCount > 0 ? <GrantsPopover count={row.original.grantCount} filter={{ clientId: row.original.id }} /> : undefined}
+          meta={clientMeta(row.original, linked ? undefined : site, false)}
+          lead={lead}
           metaTitle={clientMetaTitle(row.original, siteName?.(row.original.siteId))}
         />
-      ),
+        );
+      },
     }),
     ...(orgName
       ? [
