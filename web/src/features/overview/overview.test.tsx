@@ -236,7 +236,7 @@ it('monitor row links and checks now', async () => {
   const { user } = renderRoute('/o/acme/overview');
   const queue = await screen.findByRole('region', { name: 'Needs attention' });
   const row = (await within(queue).findByRole('link', { name: 'edge' })).closest('li')!;
-  expect(within(row).getByRole('link', { name: 'edge' })).toHaveAttribute('href', '/o/acme/alerts/monitors?edit=mon-1');
+  expect(within(row).getByRole('link', { name: 'edge' })).toHaveAttribute('href', '/o/acme/alerts/monitors/mon-1/edit');
   expect(row).toHaveTextContent('edge.example.com:443');
   expect(row).toHaveTextContent(`Serving ${'ab'.repeat(8)}…; expected www.example.com`);
   await user.click(within(row).getByRole('button', { name: 'Check now' }));

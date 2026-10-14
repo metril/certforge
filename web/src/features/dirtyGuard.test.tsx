@@ -8,7 +8,6 @@ import { authHandlers, me, presets, caLocalImported, cloudflare, makeChannel, ma
 import { renderRoute, renderUI } from '@/test/render';
 import { CaSheet } from '@/features/issuers/CaSheet';
 import { CredentialSheet } from '@/features/issuers/CredentialSheet';
-import { MonitorSheet } from '@/features/alerts/MonitorSheet';
 import { ChannelSheet } from '@/features/alerts/ChannelSheet';
 
 vi.mock('@/lib/org', async (orig) => ({ ...(await orig<typeof import('@/lib/org')>()), useMe: () => me }));
@@ -77,8 +76,14 @@ it('CredentialSheet with stored secret closes clean', async () => {
   await expectCleanEscape(<Host>{(o, set) => <CredentialSheet orgId={org.id} open={o} provider={cloudflare} credential={credential} onOpenChange={set} />}</Host>, 'Edit cf');
 });
 
-it('MonitorSheet closes clean', async () => {
-  await expectCleanEscape(<Host>{(o, set) => <MonitorSheet orgId={org.id} open={o} monitor={makeMonitor()} onOpenChange={set} />}</Host>, 'edge');
+it('monitor edit page leaves clean', async () => {
+  server.use(http.get(url('/orgs/org-1/monitors'), () => HttpResponse.json([makeMonitor()])));
+  const { router } = renderRoute('/o/acme/alerts/monitors/mon-1/edit');
+  await screen.findByRole('heading', { name: 'edge' });
+  await new Promise((r) => setTimeout(r, 100));
+  await router.navigate({ to: '/o/$org/alerts/monitors', params: { org: 'acme' } });
+  expect(screen.queryByText('Discard changes?')).not.toBeInTheDocument();
+  await waitFor(() => expect(router.state.location.pathname).toBe('/o/acme/alerts/monitors'));
 });
 
 it('ChannelSheet with stored secret closes clean', async () => {

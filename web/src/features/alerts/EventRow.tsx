@@ -29,7 +29,7 @@ export function ResourceLink({ event, org, className = linkCls }: { event: Notif
       );
     case 'monitor':
       return (
-        <Link to="/o/$org/alerts/monitors" params={{ org }} search={{ edit: resource.id }} className={className}>
+        <Link to="/o/$org/alerts/monitors/$id/edit" params={{ org, id: resource.id }} className={className}>
           {resource.name}
         </Link>
       );

@@ -234,7 +234,7 @@ it('resource links by type', async () => {
   renderRoute('/o/acme/alerts/events');
   expect(await screen.findByRole('link', { name: 'www.example.com' })).toHaveAttribute('href', '/o/acme/certificates/cert-1/overview');
   expect(screen.getByRole('link', { name: 'edge-01' })).toHaveAttribute('href', '/o/acme/clients/client-1');
-  expect(screen.getByRole('link', { name: 'edge' })).toHaveAttribute('href', '/o/acme/alerts/monitors?edit=mon-1');
+  expect(screen.getByRole('link', { name: 'edge' })).toHaveAttribute('href', '/o/acme/alerts/monitors/mon-1/edit');
   expect(screen.getByRole('link', { name: 'ops-webhook' })).toHaveAttribute('href', '/o/acme/alerts/channels?edit=ch-1');
   expect(screen.getByRole('link', { name: 'certforge-20260101T000000Z.cfbak' })).toHaveAttribute('href', '/settings/backup');
   expect(screen.getByText('www -> edge-01')).toBeInTheDocument();

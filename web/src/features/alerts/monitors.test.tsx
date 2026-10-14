@@ -74,8 +74,9 @@ it('paused chip when disabled', async () => {
 });
 
 it('interval segmented posts seconds', async () => {
-  const { user } = renderRoute('/o/acme/alerts/monitors?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'New monitor' });
+  const { user } = renderRoute('/o/acme/alerts/monitors/new');
+  await screen.findByRole('heading', { name: 'New monitor' });
+  const sheet = document.body;
   await user.type(within(sheet).getByLabelText('Name'), 'edge');
   await user.type(within(sheet).getByLabelText('Host'), 'edge.example.com');
   await user.click(within(sheet).getByRole('radio', { name: '15 m' }));
@@ -86,8 +87,9 @@ it('interval segmented posts seconds', async () => {
 
 it('non-preset interval kept', async () => {
   monitors = [makeMonitor({ intervalSeconds: 5400 })];
-  const { user } = renderRoute('/o/acme/alerts/monitors?edit=mon-1');
-  const sheet = await screen.findByRole('dialog', { name: 'edge' });
+  const { user } = renderRoute('/o/acme/alerts/monitors/mon-1/edit');
+  await screen.findByRole('heading', { name: 'edge' });
+  const sheet = document.body;
   expect(within(sheet).getByText('Currently 90 m')).toBeInTheDocument();
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(patched).toBeDefined());
@@ -97,8 +99,9 @@ it('non-preset interval kept', async () => {
 it('expected certificate sends id or null', async () => {
   monitors = [makeMonitor({ expectedCertificateId: null, expectedCertificateName: null })];
   server.use(http.get(url('/orgs/:orgId/certificates'), () => HttpResponse.json({ items: [makeCert({ id: 'c-1', name: 'www' })], nextCursor: null })));
-  const { user, router } = renderRoute('/o/acme/alerts/monitors?edit=mon-1');
-  const sheet = await screen.findByRole('dialog', { name: 'edge' });
+  const { user, router } = renderRoute('/o/acme/alerts/monitors/mon-1/edit');
+  await screen.findByRole('heading', { name: 'edge' });
+  const sheet = document.body;
   await user.click(within(sheet).getByRole('button', { name: /^Advanced/ }));
   const combo = await within(sheet).findByRole('combobox', { name: 'Expected certificate' });
   await user.click(combo);
@@ -107,8 +110,9 @@ it('expected certificate sends id or null', async () => {
   await waitFor(() => expect(patched?.expectedCertificateId).toBe('c-1'));
   monitors = [{ ...monitors[0]!, expectedCertificateId: 'c-1', expectedCertificateName: 'www' }];
 
-  await router.navigate({ to: '/o/$org/alerts/monitors', params: { org: 'acme' }, search: { edit: 'mon-1' } });
-  const sheet2 = await screen.findByRole('dialog', { name: 'edge' });
+  await router.navigate({ to: '/o/$org/alerts/monitors/$id/edit', params: { org: 'acme', id: 'mon-1' } });
+  await screen.findByRole('heading', { name: 'edge' });
+  const sheet2 = document.body;
   await user.click(within(sheet2).getByRole('button', { name: /^Advanced/ }));
   await user.click(within(sheet2).getByRole('combobox', { name: 'Expected certificate' }));
   await user.click(await screen.findByText('Any CertForge certificate'));
@@ -149,8 +153,9 @@ it('last check rows show issuer, expiry and error', async () => {
       lastError: 'connection refused',
     }),
   ];
-  renderRoute('/o/acme/alerts/monitors?edit=mon-1');
-  const sheet = await screen.findByRole('dialog', { name: 'edge' });
+  renderRoute('/o/acme/alerts/monitors/mon-1/edit');
+  await screen.findByRole('heading', { name: 'edge' });
+  const sheet = document.body;
   expect(within(sheet).getByText(/Let's Encrypt/)).toBeInTheDocument();
   expect(within(sheet).getByText('connection refused')).toBeInTheDocument();
   expect(within(sheet).getAllByText('Any CertForge certificate').length).toBeGreaterThan(0);
@@ -158,9 +163,11 @@ it('last check rows show issuer, expiry and error', async () => {
 
 it('no last check block before first check', async () => {
   monitors = [makeMonitor({ lastCheckedAt: null })];
-  renderRoute('/o/acme/alerts/monitors?edit=mon-1');
-  const sheet = await screen.findByRole('dialog', { name: 'edge' });
-  expect(within(sheet).queryByText('Last check')).not.toBeInTheDocument();
+  renderRoute('/o/acme/alerts/monitors/mon-1/edit');
+  await screen.findByRole('heading', { name: 'edge' });
+  const sheet = document.body;
+  expect(within(sheet).getByText('Not checked yet.')).toBeInTheDocument();
+  expect(within(sheet).queryByText('Expected')).not.toBeInTheDocument();
 });
 
 it('reset toast when target changes', async () => {
@@ -171,8 +178,9 @@ it('reset toast when target changes', async () => {
   // text query unreliable across tests.
   const success = vi.spyOn(toast, 'success');
   monitors = [makeMonitor({ host: 'edge.example.com' })];
-  const { user } = renderRoute('/o/acme/alerts/monitors?edit=mon-1');
-  const sheet = await screen.findByRole('dialog', { name: 'edge' });
+  const { user } = renderRoute('/o/acme/alerts/monitors/mon-1/edit');
+  await screen.findByRole('heading', { name: 'edge' });
+  const sheet = document.body;
   const host = within(sheet).getByLabelText('Host');
   await user.clear(host);
   await user.type(host, 'other.example.com');
@@ -184,8 +192,9 @@ it('reset toast when target changes', async () => {
 
 it('limit 422 toasts', async () => {
   server.use(http.post(url('/orgs/:orgId/monitors'), () => problem(422, 'An organization can have at most 500 monitors.')));
-  const { user } = renderRoute('/o/acme/alerts/monitors?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'New monitor' });
+  const { user } = renderRoute('/o/acme/alerts/monitors/new');
+  await screen.findByRole('heading', { name: 'New monitor' });
+  const sheet = document.body;
   await user.type(within(sheet).getByLabelText('Name'), 'edge');
   await user.type(within(sheet).getByLabelText('Host'), 'edge.example.com');
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
@@ -240,8 +249,9 @@ it('card: copy fingerprint works by keyboard without opening the sheet', async (
 
 it('shows Enabled outside the collapsed Advanced section', async () => {
   monitors = [makeMonitor()];
-  renderRoute('/o/acme/alerts/monitors?edit=mon-1');
-  const sheet = await screen.findByRole('dialog', { name: 'edge' });
+  renderRoute('/o/acme/alerts/monitors/mon-1/edit');
+  await screen.findByRole('heading', { name: 'edge' });
+  const sheet = document.body;
   expect(within(sheet).getByRole('switch', { name: 'Enabled' })).toBeVisible();
   expect(within(sheet).getByRole('button', { name: /^Advanced/ })).toHaveAttribute('aria-expanded', 'false');
 });
@@ -249,8 +259,9 @@ it('shows Enabled outside the collapsed Advanced section', async () => {
 it('read-only without alerts:write makes every field non-editable', async () => {
   monitors = [makeMonitor()];
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))));
-  const { user } = renderRoute('/o/acme/alerts/monitors?edit=mon-1');
-  const sheet = await screen.findByRole('dialog', { name: 'edge' });
+  const { user } = renderRoute('/o/acme/alerts/monitors/mon-1/edit');
+  await screen.findByRole('heading', { name: 'edge' });
+  const sheet = document.body;
   expect(within(sheet).getByLabelText('Name')).toBeDisabled();
   expect(within(sheet).getByLabelText('Host')).toBeDisabled();
   expect(within(sheet).getByLabelText('Port')).toBeDisabled();
@@ -261,8 +272,9 @@ it('read-only without alerts:write makes every field non-editable', async () => 
 });
 
 it('port can be cleared and an out-of-range port blocks save', async () => {
-  const { user } = renderRoute('/o/acme/alerts/monitors?edit=new');
-  const sheet = await screen.findByRole('dialog', { name: 'New monitor' });
+  const { user } = renderRoute('/o/acme/alerts/monitors/new');
+  await screen.findByRole('heading', { name: 'New monitor' });
+  const sheet = document.body;
   await user.type(within(sheet).getByLabelText('Name'), 'edge');
   await user.type(within(sheet).getByLabelText('Host'), 'edge.example.com');
   const port = within(sheet).getByLabelText('Port');
@@ -284,13 +296,15 @@ it('port can be cleared and an out-of-range port blocks save', async () => {
 it('shows a read-only notice for a viewer and none for a writer', async () => {
   monitors = [makeMonitor()];
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'viewer', orgId: org.id }]))));
-  const first = renderRoute('/o/acme/alerts/monitors?edit=mon-1');
-  const sheet = await screen.findByRole('dialog', { name: 'edge' });
+  const first = renderRoute('/o/acme/alerts/monitors/mon-1/edit');
+  await screen.findByRole('heading', { name: 'edge' });
+  const sheet = document.body;
   expect(within(sheet).getByRole('status')).toHaveTextContent('Read-only: Needs the alerts:write permission');
   first.unmount();
   server.use(http.get(url('/auth/me'), () => HttpResponse.json(meWith([{ role: 'org-admin', orgId: org.id }]))));
-  renderRoute('/o/acme/alerts/monitors?edit=mon-1');
-  const sheet2 = await screen.findByRole('dialog', { name: 'edge' });
+  renderRoute('/o/acme/alerts/monitors/mon-1/edit');
+  await screen.findByRole('heading', { name: 'edge' });
+  const sheet2 = document.body;
   await within(sheet2).findByLabelText('Name');
   expect(within(sheet2).queryByText(/Read-only/)).not.toBeInTheDocument();
 });
@@ -321,9 +335,9 @@ it('grant-owned card title is plain text, not a button', async () => {
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
 
-it('?edit= on a grant-owned monitor shows a read-only sheet, not "not found"', async () => {
+it('?managed= on a grant-owned monitor shows a read-only sheet, not "not found"', async () => {
   monitors = [makeMonitor({ id: 'mon-g', name: 'fw verify', host: 'fw.example', port: 8443, grantId: 'g-1' })];
-  renderRoute('/o/acme/alerts/monitors?edit=mon-g');
+  renderRoute('/o/acme/alerts/monitors?managed=mon-g');
   const sheet = await screen.findByRole('dialog', { name: 'Managed by a server grant' });
   expect(within(sheet).getByText('fw.example:8443')).toBeInTheDocument();
   expect(within(sheet).getByRole('link', { name: 'Go to Delivery targets' })).toBeInTheDocument();
