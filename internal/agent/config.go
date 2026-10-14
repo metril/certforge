@@ -27,6 +27,7 @@ type Config struct {
 	PullInterval  time.Duration   // CF_AGENT_PULL_INTERVAL, 0 = socket only
 	HTTP01Listen  string          // CF_AGENT_HTTP01_LISTEN, host:port; empty disables serving http-01
 	TLSALPNListen string          // CF_AGENT_TLSALPN_LISTEN, host:port; empty disables serving tls-alpn-01
+	NoWatchFiles  bool            // CF_AGENT_WATCH_FILES=false: never watch files, whatever the server setting
 	Transport     string          // CF_AGENT_TRANSPORT: auto (default), mtls or proxy; only chooses which TLS roots are trusted
 	Version       string
 }
@@ -117,6 +118,13 @@ func LoadConfig(getenv func(string) string, version string) (Config, error) {
 		}
 	}
 	c.WriteAllow = writeAllow
+	if v := strings.TrimSpace(getenv("CF_AGENT_WATCH_FILES")); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return c, fmt.Errorf("CF_AGENT_WATCH_FILES: %q must be true or false", v)
+		}
+		c.NoWatchFiles = !b
+	}
 	if v := strings.TrimSpace(getenv("CF_AGENT_PULL_INTERVAL")); v != "" && v != "0" {
 		d, err := time.ParseDuration(v)
 		if err != nil || d < time.Minute {

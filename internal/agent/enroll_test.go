@@ -59,6 +59,7 @@ type fakeServer struct {
 	assignFail int                                  // the next GET assignments requests fail with 500
 	assignHits int                                  // GET assignments requests served or blocked
 	deny       bool                                 // GET assignments answers 401 "no client certificate"
+	assigned   *agentproto.Assignments              // non-nil: served by GET assignments instead of an empty set
 
 	tokens      map[string][]byte // lookup id -> token hash, for tokens f.token issued
 	hellos      map[string]*ecdh.PrivateKey
@@ -194,7 +195,13 @@ func newFakeServer(t *testing.T) *fakeServer {
 				return
 			}
 		}
-		_ = json.NewEncoder(w).Encode(agentproto.Assignments{Revision: 7})
+		as := agentproto.Assignments{Revision: 7}
+		f.with(func() {
+			if f.assigned != nil {
+				as = *f.assigned
+			}
+		})
+		_ = json.NewEncoder(w).Encode(as)
 	})
 	f.proto = &fakeProtocol{l: l, sessions: map[string]*fakeSession{}, enroll: f.serveEnroll}
 	f.srv = httptest.NewUnstartedServer(nil)

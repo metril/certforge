@@ -16,10 +16,12 @@ func TestMarshalRoundTrip(t *testing.T) {
 	for _, m := range []Message{
 		Hello{AgentVersion: "1.0.0", Hostname: "web-1", OS: "linux", Arch: "amd64", Capabilities: []string{"traefik"}},
 		Welcome{HeartbeatSeconds: 60, Revision: 3},
+		Welcome{HeartbeatSeconds: 60, Revision: 3, NoFileWatch: true},
 		Sync{Revision: 4},
 		TrustBundleUpdate{Bundle: "-----BEGIN CERTIFICATE-----\n"},
 		Revoked{},
 		Heartbeat{Installed: []InstalledFile{{GrantID: id, Path: "/etc/x.pem", SHA256: "ab", MTime: time.Unix(1700000000, 0).UTC()}}},
+		Heartbeat{Installed: []InstalledFile{}, FileWatch: &FileWatchStatus{Reason: "disabled"}},
 		DeployResult{Report: Report{Revision: 5, Results: []GrantResult{{GrantID: id, VersionID: id, State: StateOK}}}},
 	} {
 		b, err := Marshal(m)

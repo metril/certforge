@@ -67,6 +67,10 @@ WHERE id = $1 RETURNING *;
 -- name: SetClientRestartTargets :exec
 UPDATE clients SET restart_targets = $2 WHERE id = $1 AND restart_targets IS DISTINCT FROM $2;
 
+-- name: SetClientFileWatch :exec
+UPDATE clients SET file_watch_active = $2, file_watch_reason = $3
+WHERE id = $1 AND (file_watch_active IS DISTINCT FROM $2 OR file_watch_reason IS DISTINCT FROM $3);
+
 -- name: RenewClientCert :one
 UPDATE clients SET agent_cert_serial = sqlc.arg(agent_cert_serial), agent_cert_not_after = sqlc.arg(agent_cert_not_after),
        agent_ca_id = sqlc.arg(agent_ca_id), last_seen = now()
@@ -85,7 +89,7 @@ GROUP BY g.client_id;
 
 -- name: ListClients :many
 SELECT k.id, k.org_id, k.site_id, k.name, k.status, k.agent_cert_serial, k.agent_cert_not_after, k.agent_ca_id,
-       k.hostname, k.os, k.arch, k.agent_version, k.capabilities, k.restart_targets, k.last_seen, k.desired_revision,
+       k.hostname, k.os, k.arch, k.agent_version, k.capabilities, k.restart_targets, k.file_watch_active, k.file_watch_reason, k.last_seen, k.desired_revision,
        k.applied_revision, k.created_at, k.sort_key
 FROM (
   SELECT c.*, (CASE sqlc.arg(sort)::text

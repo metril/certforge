@@ -174,6 +174,8 @@ type Client struct {
 	AppliedRevision   int64      `json:"applied_revision"`
 	CreatedAt         time.Time  `json:"created_at"`
 	RestartTargets    []byte     `json:"restart_targets"`
+	FileWatchActive   *bool      `json:"file_watch_active"`
+	FileWatchReason   string     `json:"file_watch_reason"`
 }
 
 type ClientCertGrant struct {

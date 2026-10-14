@@ -4860,7 +4860,7 @@ components:
     Client:
       type: object
       description: A host running certforge-agent, enrolled into one org.
-      required: [id, orgId, siteId, name, status, connected, online, hostname, os, arch, agentVersion, capabilities, restartTargets, lastSeen, agentCertNotAfter, agentCaId, desiredRevision, appliedRevision, grantCount, driftCount, failedCount, createdAt]
+      required: [id, orgId, siteId, name, status, connected, online, hostname, os, arch, agentVersion, capabilities, restartTargets, fileWatch, lastSeen, agentCertNotAfter, agentCaId, desiredRevision, appliedRevision, grantCount, driftCount, failedCount, createdAt]
       properties:
         id: {type: string, format: uuid, description: Client id; the audit actor id of its agent.}
         orgId: {type: string, format: uuid, description: Owning org.}
@@ -4878,6 +4878,14 @@ components:
           type: array
           description: What the agent reported it could restart, refreshed on each heartbeat. Allowed entries are its CF_RESTART_ALLOW list; the rest are running Docker containers shown for reference only. Empty when the agent has no restart capability.
           items: {$ref: "#/components/schemas/RestartTarget"}
+        fileWatch:
+          type: object
+          nullable: true
+          description: The agent's file watcher, from its last heartbeat; null for an agent that has no watcher (older versions) or has not reported yet.
+          required: [active, reason]
+          properties:
+            active: {type: boolean, description: The agent is watching every installed file, so drift is reported within seconds.}
+            reason: {type: string, description: "Why it is not (disabled in settings or the agent config, the watcher could not start, or a directory could not be watched); empty when active."}
         lastSeen: {type: string, format: date-time, nullable: true, description: Last hello, heartbeat or report (written at most every 10 seconds).}
         agentCertNotAfter: {type: string, format: date-time, nullable: true, description: Expiry of the agent's client certificate; the agent renews at two thirds of its lifetime.}
         agentCaId: {type: string, format: uuid, nullable: true, description: Agent CA that signed the client's current certificate; null until enrolled.}

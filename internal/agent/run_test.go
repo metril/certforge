@@ -310,3 +310,61 @@ func TestRunPullsWithoutSocket(t *testing.T) {
 		}
 	})
 }
+
+// TestSessionFileChangeSendsHeartbeatBeforeTick: with the watcher on, an
+// installed file that changes is reported long before the next tick.
+func TestSessionFileChangeSendsHeartbeatBeforeTick(t *testing.T) {
+	shortDebounce(t)
+	f := newFakeServer(t)
+	a := testAgent(t, f)
+	dir := t.TempDir()
+	g, _ := layoutGrant(dir, "web")
+	p := g.Files[0].Path
+	_ = os.MkdirAll(filepath.Dir(p), 0o755)
+	_ = os.WriteFile(p, []byte("PEM-web"), 0o644)
+	a.ID.State.Grants[g.ID] = GrantState{VersionID: *g.VersionID, Files: g.Files}
+	f.with(func() { f.assigned = &agentproto.Assignments{Revision: 1, Grants: []agentproto.Assignment{g}} })
+	got := make(chan agentproto.Heartbeat, 1)
+	f.with(func() {
+		f.onWS = func(ctx context.Context, c *fakeWS) {
+			b, _ := agentproto.Marshal(agentproto.Welcome{HeartbeatSeconds: 3600})
+			_ = c.Write(ctx, websocket.MessageText, b)
+			changed := false
+			for {
+				_, b, err := c.Read(ctx)
+				if err != nil {
+					return
+				}
+				m, err := agentproto.Unmarshal(b)
+				if err != nil {
+					continue
+				}
+				switch v := m.(type) {
+				case agentproto.DeployResult:
+					if !changed {
+						changed = true
+						time.Sleep(2 * watchDebounce) // past the reconcile's own quiet period
+						_ = os.WriteFile(p, []byte("tampered"), 0o644)
+					}
+				case agentproto.Heartbeat:
+					got <- v
+					return
+				}
+			}
+		}
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	go func() { _ = a.session(ctx, nil) }()
+	select {
+	case hb := <-got:
+		if hb.FileWatch == nil || !hb.FileWatch.Active {
+			t.Skipf("watcher unavailable here: %+v", hb.FileWatch)
+		}
+		if len(hb.Installed) != 1 || hb.Installed[0].SHA256 == g.Files[0].SHA256 {
+			t.Fatalf("heartbeat %+v does not show the change", hb.Installed)
+		}
+	case <-ctx.Done():
+		t.Fatal("no heartbeat after the file changed")
+	}
+}

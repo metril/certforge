@@ -58,6 +58,28 @@ it('shows the header facts', async () => {
   expect(within(within(header).getByRole('list', { name: 'Capabilities' })).getAllByRole('listitem').map((l) => l.textContent)).toEqual(['traefik', 'hooks']);
 });
 
+it('shows the file watcher health, and nothing for an agent without one', async () => {
+  client = { ...client, fileWatch: { active: true, reason: '' } };
+  renderRoute('/o/acme/clients/cl-1/settings');
+  const header = await screen.findByRole('region', { name: 'Client summary' });
+  expect(await within(header).findByText('Watching files')).toBeInTheDocument();
+});
+
+it('shows File watch off with its reason', async () => {
+  client = { ...client, fileWatch: { active: false, reason: 'disabled' } };
+  const { user } = renderRoute('/o/acme/clients/cl-1/settings');
+  const header = await screen.findByRole('region', { name: 'Client summary' });
+  expect(await within(header).findByText('File watch off')).toBeInTheDocument();
+  await user.hover(within(header).getByRole('button', { name: 'Help: file watch reason' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('disabled');
+});
+
+it('hides the file watch fact for an agent that reports none', async () => {
+  renderRoute('/o/acme/clients/cl-1/settings');
+  const header = await screen.findByRole('region', { name: 'Client summary' });
+  expect(within(header).queryByText('File watch')).not.toBeInTheDocument();
+});
+
 it('shows an error state with Retry when a later refetch fails', async () => {
   // The route's own loader `ensureQueryData`s the client, so a failure on
   // the very first load is caught by the router's own error boundary

@@ -81,6 +81,11 @@ type Identity struct {
 	State State
 
 	mu sync.Mutex
+
+	// digests caches installed-file digests by path (see Installed); dmu
+	// guards it and is never held across file I/O.
+	dmu     sync.Mutex
+	digests map[string]cachedDigest
 }
 
 // clientURIPrefix matches agentca.ClientURI's scheme. The client id is

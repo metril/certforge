@@ -325,6 +325,7 @@ func (s *Service) Report(ctx context.Context, c sqlcgen.Client, rep agentproto.R
 // audits transitions, and bumps the revision for auto-remediating grants.
 func (s *Service) Heartbeat(ctx context.Context, c sqlcgen.Client, hb agentproto.Heartbeat) error {
 	s.storeRestartTargets(ctx, c.ID, hb.RestartTargets)
+	s.storeFileWatch(ctx, c.ID, hb.FileWatch)
 	by := map[uuid.UUID][]agentproto.FileDigest{}
 	for _, f := range hb.Installed {
 		by[f.GrantID] = append(by[f.GrantID], agentproto.FileDigest{Path: f.Path, SHA256: f.SHA256})
@@ -433,6 +434,19 @@ func (s *Service) storeRestartTargets(ctx context.Context, id uuid.UUID, in []ag
 	b, _ := json.Marshal(out)
 	if err := s.Q.SetClientRestartTargets(ctx, sqlcgen.SetClientRestartTargetsParams{ID: id, RestartTargets: b}); err != nil {
 		s.log().Warn("agents: restart targets not stored", "client", id, "err", err)
+	}
+}
+
+// storeFileWatch keeps the agent's file watcher health; an agent without a
+// watcher sends none and leaves the stored value alone: a downgraded agent
+// is rare, and a pull-mode agent says "pull mode" explicitly.
+func (s *Service) storeFileWatch(ctx context.Context, id uuid.UUID, fw *agentproto.FileWatchStatus) {
+	if fw == nil {
+		return
+	}
+	active := fw.Active
+	if err := s.Q.SetClientFileWatch(ctx, sqlcgen.SetClientFileWatchParams{ID: id, FileWatchActive: &active, FileWatchReason: clip(fw.Reason, 200)}); err != nil {
+		s.log().Warn("agents: file watch status not stored", "client", id, "err", err)
 	}
 }
 

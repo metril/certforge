@@ -45,6 +45,7 @@ The **Global** scope also has a **Checks and limits** card with **Check CAA reco
 | **Approval window (hours)** (`agents.pendingTtlHours`) | How long a request waits for approval, and how long an approved agent has to collect its certificate. Greyed out when approval is off | 24 |
 | **Agent certificate lifetime (days)** (`agents.agentCertDays`) | Lifetime of an agent's identity certificate; agents renew at two thirds | 90 |
 | **Heartbeat interval (seconds)** (`agents.heartbeatSeconds`) | How often agents report installed files for drift detection | 60 |
+| **Watch installed files** (`agents.fileWatch`) | Agents report a changed installed file within seconds instead of at the next heartbeat. A host can opt out with `CF_AGENT_WATCH_FILES=false` | on |
 | **Offline after (seconds)** (`agents.offlineAfterSeconds`) | A client not seen for this long shows as offline | 180 |
 
 Below the form, the **Listener certificate** card shows the names, expiry and issuing CA of the certificate on the agent port. The **Agent certificate authorities** card lists the CAs that sign agent identities, with **Rotate** to add a new one and **Retire** to stop trusting an old one once no agent still uses it. The steps are in [Key management](../operations/key-management.md#agent-ca-rotation). Agent setup is in [Clients](clients.md) and [Agents](agents.md).
