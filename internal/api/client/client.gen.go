@@ -18012,6 +18012,7 @@ type ListDeployTargetsResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
 	JSON200                   *DeployTargetList
+	ApplicationproblemJSON400 *BadRequest
 	ApplicationproblemJSON401 *Unauthorized
 	ApplicationproblemJSON403 *Forbidden
 	ApplicationproblemJSON404 *NotFound
@@ -27349,6 +27350,13 @@ func ParseListDeployTargetsResponse(rsp *http.Response) (*ListDeployTargetsRespo
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
