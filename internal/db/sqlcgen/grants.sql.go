@@ -1265,7 +1265,7 @@ const serverGrantViews = `-- name: ServerGrantViews :many
 SELECT g.id, g.deploy_target_id, g.cert_id, ce.name AS certificate_name, g.delivery,
        g.output_spec_id, g.steps, g.auto_remediate, g.target_options, g.created_at, g.updated_at,
        sd.status, sd.version_id, sd.last_error, sd.deployed_at, sd.updated_at AS deployment_updated_at,
-       m.id AS monitor_id, m.host, m.port, m.sni, m.interval_seconds
+       m.id AS monitor_id, m.host, m.port, m.sni, m.interval_seconds, m.post_deploy_delay_seconds
 FROM client_cert_grants g
 JOIN deploy_targets t ON t.id = g.deploy_target_id
 JOIN certificates ce ON ce.id = g.cert_id
@@ -1284,27 +1284,28 @@ type ServerGrantViewsParams struct {
 }
 
 type ServerGrantViewsRow struct {
-	ID                  uuid.UUID  `json:"id"`
-	DeployTargetID      *uuid.UUID `json:"deploy_target_id"`
-	CertID              uuid.UUID  `json:"cert_id"`
-	CertificateName     string     `json:"certificate_name"`
-	Delivery            string     `json:"delivery"`
-	OutputSpecID        *uuid.UUID `json:"output_spec_id"`
-	Steps               []byte     `json:"steps"`
-	AutoRemediate       bool       `json:"auto_remediate"`
-	TargetOptions       []byte     `json:"target_options"`
-	CreatedAt           time.Time  `json:"created_at"`
-	UpdatedAt           time.Time  `json:"updated_at"`
-	Status              *string    `json:"status"`
-	VersionID           *uuid.UUID `json:"version_id"`
-	LastError           *string    `json:"last_error"`
-	DeployedAt          *time.Time `json:"deployed_at"`
-	DeploymentUpdatedAt *time.Time `json:"deployment_updated_at"`
-	MonitorID           *uuid.UUID `json:"monitor_id"`
-	Host                *string    `json:"host"`
-	Port                *int32     `json:"port"`
-	Sni                 *string    `json:"sni"`
-	IntervalSeconds     *int32     `json:"interval_seconds"`
+	ID                     uuid.UUID  `json:"id"`
+	DeployTargetID         *uuid.UUID `json:"deploy_target_id"`
+	CertID                 uuid.UUID  `json:"cert_id"`
+	CertificateName        string     `json:"certificate_name"`
+	Delivery               string     `json:"delivery"`
+	OutputSpecID           *uuid.UUID `json:"output_spec_id"`
+	Steps                  []byte     `json:"steps"`
+	AutoRemediate          bool       `json:"auto_remediate"`
+	TargetOptions          []byte     `json:"target_options"`
+	CreatedAt              time.Time  `json:"created_at"`
+	UpdatedAt              time.Time  `json:"updated_at"`
+	Status                 *string    `json:"status"`
+	VersionID              *uuid.UUID `json:"version_id"`
+	LastError              *string    `json:"last_error"`
+	DeployedAt             *time.Time `json:"deployed_at"`
+	DeploymentUpdatedAt    *time.Time `json:"deployment_updated_at"`
+	MonitorID              *uuid.UUID `json:"monitor_id"`
+	Host                   *string    `json:"host"`
+	Port                   *int32     `json:"port"`
+	Sni                    *string    `json:"sni"`
+	IntervalSeconds        *int32     `json:"interval_seconds"`
+	PostDeployDelaySeconds *int32     `json:"post_deploy_delay_seconds"`
 }
 
 func (q *Queries) ServerGrantViews(ctx context.Context, arg ServerGrantViewsParams) ([]ServerGrantViewsRow, error) {
@@ -1338,6 +1339,7 @@ func (q *Queries) ServerGrantViews(ctx context.Context, arg ServerGrantViewsPara
 			&i.Port,
 			&i.Sni,
 			&i.IntervalSeconds,
+			&i.PostDeployDelaySeconds,
 		); err != nil {
 			return nil, err
 		}

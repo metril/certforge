@@ -5119,6 +5119,11 @@ export interface components {
              * @default 3600
              */
             intervalSeconds: number;
+            /**
+             * @description Seconds to wait after a deploy before the verify check runs, so the service can finish reloading. Default 15. On update, omitted keeps the current delay.
+             * @default 15
+             */
+            postDeployDelaySeconds: number;
         };
         /** @description The pfSense services that use a server grant's certificate. */
         PfSenseUsage: {

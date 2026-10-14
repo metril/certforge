@@ -60,20 +60,21 @@ func (q *Queries) CountMonitorsInOrg(ctx context.Context, orgID uuid.UUID) (int6
 }
 
 const createMonitor = `-- name: CreateMonitor :one
-INSERT INTO external_monitors (org_id, name, host, port, sni, interval_seconds, expected_cert_id, enabled)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, org_id, name, host, port, sni, interval_seconds, expected_cert_id, enabled, state, state_changed_at, last_checked_at, next_check_at, last_fingerprint, last_not_after, last_issuer, last_error, created_at, updated_at, consecutive_failures, grant_id
+INSERT INTO external_monitors (org_id, name, host, port, sni, interval_seconds, expected_cert_id, enabled, post_deploy_delay_seconds)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::int, 15))
+RETURNING id, org_id, name, host, port, sni, interval_seconds, expected_cert_id, enabled, state, state_changed_at, last_checked_at, next_check_at, last_fingerprint, last_not_after, last_issuer, last_error, created_at, updated_at, consecutive_failures, grant_id, post_deploy_delay_seconds
 `
 
 type CreateMonitorParams struct {
-	OrgID           uuid.UUID  `json:"org_id"`
-	Name            string     `json:"name"`
-	Host            string     `json:"host"`
-	Port            int32      `json:"port"`
-	Sni             *string    `json:"sni"`
-	IntervalSeconds int32      `json:"interval_seconds"`
-	ExpectedCertID  *uuid.UUID `json:"expected_cert_id"`
-	Enabled         bool       `json:"enabled"`
+	OrgID                  uuid.UUID  `json:"org_id"`
+	Name                   string     `json:"name"`
+	Host                   string     `json:"host"`
+	Port                   int32      `json:"port"`
+	Sni                    *string    `json:"sni"`
+	IntervalSeconds        int32      `json:"interval_seconds"`
+	ExpectedCertID         *uuid.UUID `json:"expected_cert_id"`
+	Enabled                bool       `json:"enabled"`
+	PostDeployDelaySeconds *int32     `json:"post_deploy_delay_seconds"`
 }
 
 func (q *Queries) CreateMonitor(ctx context.Context, arg CreateMonitorParams) (ExternalMonitor, error) {
@@ -86,6 +87,7 @@ func (q *Queries) CreateMonitor(ctx context.Context, arg CreateMonitorParams) (E
 		arg.IntervalSeconds,
 		arg.ExpectedCertID,
 		arg.Enabled,
+		arg.PostDeployDelaySeconds,
 	)
 	var i ExternalMonitor
 	err := row.Scan(
@@ -110,6 +112,7 @@ func (q *Queries) CreateMonitor(ctx context.Context, arg CreateMonitorParams) (E
 		&i.UpdatedAt,
 		&i.ConsecutiveFailures,
 		&i.GrantID,
+		&i.PostDeployDelaySeconds,
 	)
 	return i, err
 }
@@ -161,7 +164,7 @@ func (q *Queries) DueMonitorIDs(ctx context.Context, limit int32) ([]uuid.UUID, 
 }
 
 const getMonitor = `-- name: GetMonitor :one
-SELECT m.id, m.org_id, m.name, m.host, m.port, m.sni, m.interval_seconds, m.expected_cert_id, m.enabled, m.state, m.state_changed_at, m.last_checked_at, m.next_check_at, m.last_fingerprint, m.last_not_after, m.last_issuer, m.last_error, m.created_at, m.updated_at, m.consecutive_failures, m.grant_id, ec.name AS expected_certificate_name
+SELECT m.id, m.org_id, m.name, m.host, m.port, m.sni, m.interval_seconds, m.expected_cert_id, m.enabled, m.state, m.state_changed_at, m.last_checked_at, m.next_check_at, m.last_fingerprint, m.last_not_after, m.last_issuer, m.last_error, m.created_at, m.updated_at, m.consecutive_failures, m.grant_id, m.post_deploy_delay_seconds, ec.name AS expected_certificate_name
 FROM external_monitors m
 LEFT JOIN certificates ec ON ec.id = m.expected_cert_id
 WHERE m.id = $1 AND m.org_id = $2
@@ -194,6 +197,7 @@ type GetMonitorRow struct {
 	UpdatedAt               time.Time  `json:"updated_at"`
 	ConsecutiveFailures     int32      `json:"consecutive_failures"`
 	GrantID                 *uuid.UUID `json:"grant_id"`
+	PostDeployDelaySeconds  int32      `json:"post_deploy_delay_seconds"`
 	ExpectedCertificateName *string    `json:"expected_certificate_name"`
 }
 
@@ -222,13 +226,14 @@ func (q *Queries) GetMonitor(ctx context.Context, arg GetMonitorParams) (GetMoni
 		&i.UpdatedAt,
 		&i.ConsecutiveFailures,
 		&i.GrantID,
+		&i.PostDeployDelaySeconds,
 		&i.ExpectedCertificateName,
 	)
 	return i, err
 }
 
 const getMonitorByGrant = `-- name: GetMonitorByGrant :one
-SELECT id, org_id, name, host, port, sni, interval_seconds, expected_cert_id, enabled, state, state_changed_at, last_checked_at, next_check_at, last_fingerprint, last_not_after, last_issuer, last_error, created_at, updated_at, consecutive_failures, grant_id FROM external_monitors WHERE grant_id = $1
+SELECT id, org_id, name, host, port, sni, interval_seconds, expected_cert_id, enabled, state, state_changed_at, last_checked_at, next_check_at, last_fingerprint, last_not_after, last_issuer, last_error, created_at, updated_at, consecutive_failures, grant_id, post_deploy_delay_seconds FROM external_monitors WHERE grant_id = $1
 `
 
 // The monitor a server grant owns (its Verify endpoint); pgx.ErrNoRows when none.
@@ -257,12 +262,13 @@ func (q *Queries) GetMonitorByGrant(ctx context.Context, grantID *uuid.UUID) (Ex
 		&i.UpdatedAt,
 		&i.ConsecutiveFailures,
 		&i.GrantID,
+		&i.PostDeployDelaySeconds,
 	)
 	return i, err
 }
 
 const getMonitorByID = `-- name: GetMonitorByID :one
-SELECT id, org_id, name, host, port, sni, interval_seconds, expected_cert_id, enabled, state, state_changed_at, last_checked_at, next_check_at, last_fingerprint, last_not_after, last_issuer, last_error, created_at, updated_at, consecutive_failures, grant_id FROM external_monitors WHERE id = $1
+SELECT id, org_id, name, host, port, sni, interval_seconds, expected_cert_id, enabled, state, state_changed_at, last_checked_at, next_check_at, last_fingerprint, last_not_after, last_issuer, last_error, created_at, updated_at, consecutive_failures, grant_id, post_deploy_delay_seconds FROM external_monitors WHERE id = $1
 `
 
 // Unscoped by org: used by the check job (CheckArgs carries only the
@@ -293,12 +299,13 @@ func (q *Queries) GetMonitorByID(ctx context.Context, id uuid.UUID) (ExternalMon
 		&i.UpdatedAt,
 		&i.ConsecutiveFailures,
 		&i.GrantID,
+		&i.PostDeployDelaySeconds,
 	)
 	return i, err
 }
 
 const listMonitors = `-- name: ListMonitors :many
-SELECT m.id, m.org_id, m.name, m.host, m.port, m.sni, m.interval_seconds, m.expected_cert_id, m.enabled, m.state, m.state_changed_at, m.last_checked_at, m.next_check_at, m.last_fingerprint, m.last_not_after, m.last_issuer, m.last_error, m.created_at, m.updated_at, m.consecutive_failures, m.grant_id, ec.name AS expected_certificate_name
+SELECT m.id, m.org_id, m.name, m.host, m.port, m.sni, m.interval_seconds, m.expected_cert_id, m.enabled, m.state, m.state_changed_at, m.last_checked_at, m.next_check_at, m.last_fingerprint, m.last_not_after, m.last_issuer, m.last_error, m.created_at, m.updated_at, m.consecutive_failures, m.grant_id, m.post_deploy_delay_seconds, ec.name AS expected_certificate_name
 FROM external_monitors m
 LEFT JOIN certificates ec ON ec.id = m.expected_cert_id
 WHERE m.org_id = $1
@@ -327,6 +334,7 @@ type ListMonitorsRow struct {
 	UpdatedAt               time.Time  `json:"updated_at"`
 	ConsecutiveFailures     int32      `json:"consecutive_failures"`
 	GrantID                 *uuid.UUID `json:"grant_id"`
+	PostDeployDelaySeconds  int32      `json:"post_deploy_delay_seconds"`
 	ExpectedCertificateName *string    `json:"expected_certificate_name"`
 }
 
@@ -364,6 +372,7 @@ func (q *Queries) ListMonitors(ctx context.Context, orgID uuid.UUID) ([]ListMoni
 			&i.UpdatedAt,
 			&i.ConsecutiveFailures,
 			&i.GrantID,
+			&i.PostDeployDelaySeconds,
 			&i.ExpectedCertificateName,
 		); err != nil {
 			return nil, err
@@ -520,26 +529,28 @@ func (q *Queries) TransitionMonitorState(ctx context.Context, arg TransitionMoni
 const updateMonitor = `-- name: UpdateMonitor :one
 UPDATE external_monitors
 SET name = $3, host = $4, port = $5, sni = $6, interval_seconds = $7, expected_cert_id = $8, enabled = $9,
-    state = CASE WHEN $10::bool THEN 'unknown' ELSE state END,
-    state_changed_at = CASE WHEN $10::bool THEN now() ELSE state_changed_at END,
-    next_check_at = CASE WHEN $10::bool THEN now() ELSE next_check_at END,
-    consecutive_failures = CASE WHEN $10::bool OR enabled <> $9 THEN 0 ELSE consecutive_failures END,
+    post_deploy_delay_seconds = COALESCE($10::int, post_deploy_delay_seconds),
+    state = CASE WHEN $11::bool THEN 'unknown' ELSE state END,
+    state_changed_at = CASE WHEN $11::bool THEN now() ELSE state_changed_at END,
+    next_check_at = CASE WHEN $11::bool THEN now() ELSE next_check_at END,
+    consecutive_failures = CASE WHEN $11::bool OR enabled <> $9 THEN 0 ELSE consecutive_failures END,
     updated_at = now()
 WHERE id = $1 AND org_id = $2
-RETURNING id, org_id, name, host, port, sni, interval_seconds, expected_cert_id, enabled, state, state_changed_at, last_checked_at, next_check_at, last_fingerprint, last_not_after, last_issuer, last_error, created_at, updated_at, consecutive_failures, grant_id
+RETURNING id, org_id, name, host, port, sni, interval_seconds, expected_cert_id, enabled, state, state_changed_at, last_checked_at, next_check_at, last_fingerprint, last_not_after, last_issuer, last_error, created_at, updated_at, consecutive_failures, grant_id, post_deploy_delay_seconds
 `
 
 type UpdateMonitorParams struct {
-	ID              uuid.UUID  `json:"id"`
-	OrgID           uuid.UUID  `json:"org_id"`
-	Name            string     `json:"name"`
-	Host            string     `json:"host"`
-	Port            int32      `json:"port"`
-	Sni             *string    `json:"sni"`
-	IntervalSeconds int32      `json:"interval_seconds"`
-	ExpectedCertID  *uuid.UUID `json:"expected_cert_id"`
-	Enabled         bool       `json:"enabled"`
-	ResetState      bool       `json:"reset_state"`
+	ID                     uuid.UUID  `json:"id"`
+	OrgID                  uuid.UUID  `json:"org_id"`
+	Name                   string     `json:"name"`
+	Host                   string     `json:"host"`
+	Port                   int32      `json:"port"`
+	Sni                    *string    `json:"sni"`
+	IntervalSeconds        int32      `json:"interval_seconds"`
+	ExpectedCertID         *uuid.UUID `json:"expected_cert_id"`
+	Enabled                bool       `json:"enabled"`
+	PostDeployDelaySeconds *int32     `json:"post_deploy_delay_seconds"`
+	ResetState             bool       `json:"reset_state"`
 }
 
 // state/state_changed_at/next_check_at are written only when reset_state is
@@ -563,6 +574,7 @@ func (q *Queries) UpdateMonitor(ctx context.Context, arg UpdateMonitorParams) (E
 		arg.IntervalSeconds,
 		arg.ExpectedCertID,
 		arg.Enabled,
+		arg.PostDeployDelaySeconds,
 		arg.ResetState,
 	)
 	var i ExternalMonitor
@@ -588,6 +600,7 @@ func (q *Queries) UpdateMonitor(ctx context.Context, arg UpdateMonitorParams) (E
 		&i.UpdatedAt,
 		&i.ConsecutiveFailures,
 		&i.GrantID,
+		&i.PostDeployDelaySeconds,
 	)
 	return i, err
 }

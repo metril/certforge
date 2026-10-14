@@ -80,6 +80,8 @@ type Monitor struct {
 	LastIssuer              string
 	LastError               string
 	ConsecutiveFailures     int
+	// PostDeployDelaySeconds is how long after a server-grant deploy its verify check runs.
+	PostDeployDelaySeconds int
 	// GrantID is the server grant that owns this monitor; nil when standalone.
 	GrantID              *uuid.UUID
 	CreatedAt, UpdatedAt time.Time
@@ -95,6 +97,8 @@ type Input struct {
 	IntervalSeconds int
 	ExpectedCertID  *uuid.UUID
 	Enabled         bool
+	// PostDeployDelaySeconds is 0 to 600; nil keeps the current value (15 on create).
+	PostDeployDelaySeconds *int
 }
 
 // ValidateInput cleans and validates in's shape-level fields (name, host
@@ -133,6 +137,10 @@ func ValidateInput(in Input, allowLoopback bool) (Input, error) {
 
 	if in.IntervalSeconds < minIntervalSeconds || in.IntervalSeconds > maxIntervalSeconds {
 		return Input{}, &ValidationError{Field: "intervalSeconds", Msg: "must be 300 to 86400"}
+	}
+
+	if d := in.PostDeployDelaySeconds; d != nil && (*d < 0 || *d > 600) {
+		return Input{}, &ValidationError{Field: "postDeployDelaySeconds", Msg: "must be 0 to 600"}
 	}
 
 	return in, nil

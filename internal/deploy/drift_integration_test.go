@@ -225,3 +225,88 @@ func TestDeployNudgesGrantMonitor(t *testing.T) {
 		t.Fatalf("next_check_at = %v, want <= now", next)
 	}
 }
+
+// A successful deploy schedules the grant's check after its monitor's delay.
+func TestDeploySchedulesCheckAfterDelay(t *testing.T) {
+	f := newDriftFixture(t, false, "pending")
+	ctx := context.Background()
+	if _, err := f.pool.Exec(ctx, `UPDATE external_monitors SET post_deploy_delay_seconds = 30 WHERE id = $1`, f.monitor); err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now()
+	if err := f.disp.Deploy(ctx, f.grant, f.version); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.ins.checks) != 1 || f.ins.checks[0].MonitorID != f.monitor {
+		t.Fatalf("checks = %v, want one for %v", f.ins.checks, f.monitor)
+	}
+	at := f.ins.opts[0].ScheduledAt
+	if at.Before(before.Add(30*time.Second)) || at.After(time.Now().Add(31*time.Second)) {
+		t.Fatalf("ScheduledAt = %v, want about now+30s", at)
+	}
+}
+
+func TestDeployDefaultDelayIs15s(t *testing.T) {
+	f := newDriftFixture(t, false, "pending")
+	before := time.Now()
+	if err := f.disp.Deploy(context.Background(), f.grant, f.version); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.ins.opts) != 1 || f.ins.opts[0].ScheduledAt.Before(before.Add(15*time.Second)) || f.ins.opts[0].ScheduledAt.After(time.Now().Add(16*time.Second)) {
+		t.Fatalf("opts = %v, want ScheduledAt about now+15s", f.ins.opts)
+	}
+}
+
+func TestDeployNoCheckWithoutEnabledMonitor(t *testing.T) {
+	ctx := context.Background()
+	f := newDriftFixture(t, false, "pending")
+	if _, err := f.pool.Exec(ctx, `UPDATE external_monitors SET enabled = false WHERE id = $1`, f.monitor); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.disp.Deploy(ctx, f.grant, f.version); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.ins.checks) != 0 {
+		t.Fatalf("disabled monitor: checks = %v, want none", f.ins.checks)
+	}
+	g := newDriftFixture(t, false, "pending")
+	if _, err := g.pool.Exec(ctx, `DELETE FROM external_monitors WHERE id = $1`, g.monitor); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.disp.Deploy(ctx, g.grant, g.version); err != nil {
+		t.Fatal(err)
+	}
+	if len(g.ins.checks) != 0 {
+		t.Fatalf("no monitor: checks = %v, want none", g.ins.checks)
+	}
+}
+
+func TestDeployFailedOrStaleSchedulesNoCheck(t *testing.T) {
+	ctx := context.Background()
+	f := newDriftFixture(t, false, "pending")
+	// Stale: deploying a version the row is not pending on is a no-op.
+	if err := f.disp.Deploy(ctx, f.grant, uuid.New()); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.ins.checks) != 0 {
+		t.Fatalf("stale: checks = %v, want none", f.ins.checks)
+	}
+	// Failed deploy.
+	if _, err := f.pool.Exec(ctx, `UPDATE deploy_targets SET type = 'no-such-type' WHERE id = (SELECT deploy_target_id FROM client_cert_grants WHERE id = $1)`, f.grant); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.disp.Deploy(ctx, f.grant, f.version)
+	if len(f.ins.checks) != 0 {
+		t.Fatalf("failed: checks = %v, want none", f.ins.checks)
+	}
+}
+
+func TestEnqueueGrantCheck(t *testing.T) {
+	f := newDriftFixture(t, false, "deployed")
+	if err := f.disp.EnqueueGrantCheck(context.Background(), f.grant); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.ins.checks) != 1 || f.ins.checks[0].MonitorID != f.monitor {
+		t.Fatalf("checks = %v, want one for %v", f.ins.checks, f.monitor)
+	}
+}

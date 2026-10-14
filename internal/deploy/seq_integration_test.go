@@ -14,10 +14,20 @@ import (
 	"github.com/metril/certforge/internal/targets"
 )
 
-type captureInserter struct{ args []DeployArgs }
+type captureInserter struct {
+	args   []DeployArgs
+	checks []GrantCheckArgs
+	opts   []*river.InsertOpts // opts of each check insert
+}
 
-func (c *captureInserter) InsertTx(_ context.Context, _ pgx.Tx, args river.JobArgs, _ *river.InsertOpts) (*rivertype.JobInsertResult, error) {
-	c.args = append(c.args, args.(DeployArgs))
+func (c *captureInserter) InsertTx(_ context.Context, _ pgx.Tx, args river.JobArgs, opts *river.InsertOpts) (*rivertype.JobInsertResult, error) {
+	switch a := args.(type) {
+	case DeployArgs:
+		c.args = append(c.args, a)
+	case GrantCheckArgs:
+		c.checks = append(c.checks, a)
+		c.opts = append(c.opts, opts)
+	}
 	return &rivertype.JobInsertResult{}, nil
 }
 

@@ -511,10 +511,17 @@ func (d *Dispatcher) deploy(ctx context.Context, grantID, versionID uuid.UUID, w
 			return d.fail(ctx, row, versionID, seq, redact, fmt.Errorf("deployed, but post action %s failed: %w", a.Name, err))
 		}
 	}
-	if err := d.Q.MarkServerDeploymentDeployed(ctx, sqlcgen.MarkServerDeploymentDeployedParams{GrantID: grantID, VersionID: &versionID, DeploySeq: seq}); err != nil {
+	err = pgx.BeginFunc(ctx, d.Pool, func(tx pgx.Tx) error {
+		if err := d.Q.WithTx(tx).MarkServerDeploymentDeployed(ctx, sqlcgen.MarkServerDeploymentDeployedParams{GrantID: grantID, VersionID: &versionID, DeploySeq: seq}); err != nil {
+			return err
+		}
+		// Schedule the verify check after the grant's post-deploy delay.
+		return d.enqueueGrantCheckTx(ctx, tx, grantID)
+	})
+	if err != nil {
 		return err
 	}
-	// Verify the new deployment promptly (best effort).
+	// Fallback when the unique-by-args check job was already queued or running.
 	if err := d.Q.NudgeGrantMonitor(ctx, &grantID); err != nil {
 		d.log().Warn("nudge grant monitor failed", "grant", grantID, "err", err)
 	}
