@@ -2,6 +2,14 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.36.2](https://github.com/metril/certforge/compare/v0.36.1...v0.36.2) (2026-10-14)
+
+
+### Bug Fixes
+
+* **web:** open the full group list in a scrollable popover ([006169c](https://github.com/metril/certforge/commit/006169c6076c0aaf5dd20a5653b9a6272b181ef9))
+* **web:** open the full group list in a scrollable popover ([7895cad](https://github.com/metril/certforge/commit/7895cad5acef85bdf1f6754bea16066260130b5c))
+
 ## [0.36.1](https://github.com/metril/certforge/compare/v0.36.0...v0.36.1) (2026-10-13)
 
 
