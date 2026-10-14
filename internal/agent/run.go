@@ -124,8 +124,11 @@ func NewAgent(cfg Config, log *slog.Logger, id *Identity) *Agent {
 }
 
 // heartbeat is the installed digests plus what this agent could restart.
-func (a *Agent) heartbeat(ctx context.Context) agentproto.Heartbeat {
+func (a *Agent) heartbeat(ctx context.Context, wc *watchCtl) agentproto.Heartbeat {
 	hb := agentproto.Heartbeat{Installed: a.ID.Installed()}
+	if wc != nil {
+		hb.FileWatch = wc.Status()
+	}
 	if a.Deployer != nil {
 		hb.RestartTargets = a.Deployer.Restart.Targets(ctx)
 	}
@@ -199,7 +202,7 @@ func (a *Agent) pullOnce(ctx context.Context) error {
 		err = cl.Report(ctx, rep)
 	}
 	if err == nil {
-		err = cl.Heartbeat(ctx, a.heartbeat(ctx))
+		err = cl.Heartbeat(ctx, a.heartbeat(ctx, nil))
 	}
 	if IsUnauthorized(err) {
 		return ErrRevoked
@@ -347,8 +350,11 @@ func (a *Agent) session(ctx context.Context, pull <-chan time.Time) error {
 			}
 		}
 	}()
-	heartbeat := time.NewTicker(time.Minute)
+	hbEvery := time.Minute
+	heartbeat := time.NewTicker(hbEvery)
 	defer heartbeat.Stop()
+	wc := newWatchCtl(ctx, a)
+	defer wc.Close()
 	renew := time.NewTicker(time.Hour)
 	defer renew.Stop()
 	// Reconciles (file writes and hooks, up to minutes) run on one worker
@@ -376,7 +382,12 @@ func (a *Agent) session(ctx context.Context, pull <-chan time.Time) error {
 			case <-retry:
 			}
 			retry = nil
+			wc.Begin()
 			rep, err := a.reconcile(parent, cl)
+			if err == nil {
+				wc.Sync()
+			}
+			wc.End()
 			if err != nil {
 				a.Log.Warn("reconcile failed; retrying", "err", err, "in", delay)
 				retry = time.After(delay)
@@ -411,8 +422,10 @@ func (a *Agent) session(ctx context.Context, pull <-chan time.Time) error {
 			switch v := m.(type) {
 			case agentproto.Welcome:
 				if v.HeartbeatSeconds > 0 {
-					heartbeat.Reset(time.Duration(v.HeartbeatSeconds) * time.Second)
+					hbEvery = time.Duration(v.HeartbeatSeconds) * time.Second
+					heartbeat.Reset(hbEvery)
 				}
+				wc.Set(!v.NoFileWatch)
 				reconcileAndReport()
 			case agentproto.Sync:
 				reconcileAndReport()
@@ -438,9 +451,15 @@ func (a *Agent) session(ctx context.Context, pull <-chan time.Time) error {
 				a.Challenge.CleanUp(v)
 			}
 		case <-heartbeat.C:
-			if err := send(a.heartbeat(ctx)); err != nil {
+			if err := send(a.heartbeat(ctx, wc)); err != nil {
 				return err
 			}
+		case <-wc.changed:
+			// An installed file changed: report now and restart the tick.
+			if err := send(a.heartbeat(ctx, wc)); err != nil {
+				return err
+			}
+			heartbeat.Reset(hbEvery)
 		case <-renew.C:
 			if a.renewDue() {
 				return errReconnect

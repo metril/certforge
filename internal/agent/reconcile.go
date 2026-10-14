@@ -272,5 +272,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) (agentproto.Report, error) {
 	r.ID.mu.Lock()
 	r.ID.State.Grants, r.ID.State.Revision = st.Grants, as.Revision
 	r.ID.mu.Unlock()
+	// Warm the digest cache for the files just written.
+	r.ID.Installed()
 	return rep, r.ID.SaveState()
 }

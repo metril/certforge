@@ -232,12 +232,20 @@ A grant on a certificate with no version yet still appears, with only the files 
 
 ## Drift
 
-Each heartbeat (**Heartbeat interval (seconds)**, default 60) carries the SHA-256 of every installed file. This is the only place the server learns that a file changed on disk. A missing or changed file turns the deployment to **Drift** and records one `deployment.drift` audit event.
+Each heartbeat (**Heartbeat interval (seconds)**, default 60) carries the SHA-256 of every installed file. This is how the server learns that a file changed on disk. The agent also watches the installed files (see [File watching](#file-watching)) and sends a heartbeat within a few seconds of a change. A missing or changed file turns the deployment to **Drift** and records one `deployment.drift` audit event.
 
 - Without auto-remediate, the deployment stays in **Drift** until you choose **Redeploy** on the grant.
 - With **Auto-remediate** on the grant (under **Advanced** in the grant sheet), the server asks the agent to reinstall the files: at once for **Push**, on the next pull for **Pull**. The deployment returns to **Deployed** on the next report or heartbeat.
 - Server grants detect drift differently, by checking the served certificate: see [Drift and auto-remediation](delivery.md#drift-and-auto-remediation).
 - **Redeploy** always reinstalls and re-runs the steps, even when nothing changed.
+
+### File watching
+
+The agent watches the directories of its installed files with the operating system's file notifications (inotify on Linux) and sends a heartbeat about 2 seconds after a file is written, replaced, renamed or deleted. Its own writes during a reconcile do not trigger this. Between changes the heartbeat only checks each file's size and modification time and rehashes a file when either changed.
+
+- Turn it off for every agent with **Watch installed files** (`fileWatch`) under **Settings → Agents**. Agents then report only on the heartbeat interval.
+- Turn it off for one host with `CF_AGENT_WATCH_FILES=false` in the agent's environment. This wins over the server setting.
+- The client page header shows **Watching files** or **File watch off**. The help beside it gives the reason: disabled in settings or the agent config, the watcher could not start (for example the inotify limit), or a directory could not be watched (network filesystems such as NFS and SMB send no notifications). The agent keeps reporting on the heartbeat interval in every case. An older agent shows nothing.
 
 ## Pull mode
 

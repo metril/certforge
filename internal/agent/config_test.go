@@ -31,9 +31,19 @@ func TestLoadConfig(t *testing.T) {
 		"root write, second entry": {"CF_WRITE_ALLOW": "/etc/ssl:/"},
 		"short pull":               {"CF_AGENT_PULL_INTERVAL": "30s"},
 		"bad pull":                 {"CF_AGENT_PULL_INTERVAL": "soon"},
+		"bad watch":                {"CF_AGENT_WATCH_FILES": "maybe"},
 	} {
 		if _, err := LoadConfig(env(m), "dev"); err == nil {
 			t.Errorf("%s accepted", name)
+		}
+	}
+}
+
+func TestLoadConfigWatchFiles(t *testing.T) {
+	for v, off := range map[string]bool{"": false, "true": false, "false": true, "0": true} {
+		c, err := LoadConfig(env(map[string]string{"CF_AGENT_WATCH_FILES": v}), "dev")
+		if err != nil || c.NoWatchFiles != off {
+			t.Errorf("%q: %+v %v", v, c, err)
 		}
 	}
 }

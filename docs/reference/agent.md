@@ -16,6 +16,7 @@ Environment variables, commands, files, transport modes and protocol limits for 
 | `CF_HOOK_ALLOW` | empty (command actions off) | Colon-separated absolute paths of executables command actions may run. Must be clean absolute paths. |
 | `CF_WRITE_ALLOW` | empty (every deploy fails) | Colon-separated absolute directory prefixes the agent may write or remove files under. `/` is rejected. |
 | `CF_AGENT_PULL_INTERVAL` | `0` | Reconcile on this schedule too, for example `15m`. `0`, or a duration of at least `1m`. `0` means only on server nudges and at connect. |
+| `CF_AGENT_WATCH_FILES` | `true` | `false` stops the agent watching its installed files, whatever **Settings → Agents → Watch installed files** says. See [File watching](../guide/agents.md#file-watching). |
 | `CF_AGENT_HTTP01_LISTEN` | empty (off) | `host:port` of the agent's own http-01 listener, for example `:8080`. Port 1 to 65535. |
 | `CF_AGENT_TLSALPN_LISTEN` | empty (off) | `host:port` of the agent's tls-alpn-01 listener, for example `:5001`. Port 1 to 65535. |
 

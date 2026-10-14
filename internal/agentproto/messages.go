@@ -68,6 +68,9 @@ type HelloAck struct {
 type Welcome struct {
 	HeartbeatSeconds int   `json:"heartbeatSeconds"`
 	Revision         int64 `json:"revision"`
+	// NoFileWatch turns the agent's file watcher off; absent (an older
+	// server, or the setting on) means watch.
+	NoFileWatch bool `json:"noFileWatch,omitempty"`
 }
 
 // Sync tells the agent its desired revision changed.
@@ -89,6 +92,15 @@ type Heartbeat struct {
 	// RestartTargets is what this agent could restart (see RestartTarget);
 	// absent from an agent without CF_RESTART_ALLOW.
 	RestartTargets []RestartTarget `json:"restartTargets,omitempty"`
+	// FileWatch is the agent's file watcher health; absent from an older agent.
+	FileWatch *FileWatchStatus `json:"fileWatch,omitempty"`
+}
+
+// FileWatchStatus says whether the agent's file watcher is running and, when
+// it is not, why (disabled, or the watcher could not start or add a path).
+type FileWatchStatus struct {
+	Active bool   `json:"active"`
+	Reason string `json:"reason,omitempty"`
 }
 
 // RestartTarget is a restart hook target the agent knows about. Allowed means
