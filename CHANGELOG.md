@@ -2,6 +2,36 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.39.0](https://github.com/metril/certforge/compare/v0.38.0...v0.39.0) (2026-10-14)
+
+
+### Features
+
+* **agents:** file watch setting, watcher health and Client.fileWatch ([74aaa99](https://github.com/metril/certforge/commit/74aaa99b1f82e5f7c738c2c84d67507730f362b5))
+* **agent:** watch installed certificate files and report watcher health ([e009e73](https://github.com/metril/certforge/commit/e009e73ce0d24a3e60ecdaf44a026e1db823e3ed))
+* **agent:** watch installed files and cache digests ([7ba7e36](https://github.com/metril/certforge/commit/7ba7e36c7ff08cec6e2350fe91900fbf4f8ec7c3))
+* **api:** check-now webhook for server grants ([719cc5b](https://github.com/metril/certforge/commit/719cc5b699f8bd33997a7e26b8b3f0f6b3071af1))
+* **api:** check-now webhook per server grant ([dd79e88](https://github.com/metril/certforge/commit/dd79e886b14d094230c5ae42ab3bfbc3e2c34b9c))
+* **api:** list grants across agent and server with filters ([44d33c3](https://github.com/metril/certforge/commit/44d33c35f680e372f4442161b6f8d085b4ecf893))
+* **deploy:** schedule the grant check after each deploy with a per-grant delay ([0671c7c](https://github.com/metril/certforge/commit/0671c7c77df99fcae77e269895e84dfb5e5ceea0))
+* **deploy:** verify server grants right after each deploy ([5bf29e6](https://github.com/metril/certforge/commit/5bf29e6d856a0541588c983cb5b25d7def02a611))
+* **web:** check hook popover on server grants ([9f14abc](https://github.com/metril/certforge/commit/9f14abc76fd5db06ee59f53207ce16506810b613))
+* **web:** file watch setting and watcher health in the client header ([3a28bbe](https://github.com/metril/certforge/commit/3a28bbee26f6705fb6bfa22a72376eb5c7d35968))
+* **web:** grants popover on certificate and client lists ([1631a70](https://github.com/metril/certforge/commit/1631a70a5eba5e55702155e1384849ac9b42608e))
+* **web:** navigate from resources to their grants ([ec740c8](https://github.com/metril/certforge/commit/ec740c825cc94f1346a9c22bc4d4072811e19646))
+* **web:** navigate from targets, layouts, actions and lists to their grants ([b36925a](https://github.com/metril/certforge/commit/b36925a44293f53fcc62836540f6e9229d113b4a))
+* **web:** post-deploy check delay in the server grant verify section ([1906706](https://github.com/metril/certforge/commit/1906706ce3138398e3a5a22579cbf7e575cfad94))
+
+
+### Bug Fixes
+
+* **agent:** re-add recreated watch dirs, say pull mode, and document connect-time setting ([c70dc42](https://github.com/metril/certforge/commit/c70dc42395cd92e6c1f386276acbc880f8207e1c))
+* **api:** defer the check token FK, back up the table, lint the test ([5c6c823](https://github.com/metril/certforge/commit/5c6c823e377b9f21a333ce20d4cd142414fbd003))
+* **api:** scope check hook audit to the org and reject removed grants ([d10f32c](https://github.com/metril/certforge/commit/d10f32c9e59b65390ba5959977a6978cf9369aa2))
+* **backup:** restore pre-00036 archives without grant_check_tokens ([8222834](https://github.com/metril/certforge/commit/8222834d513e81ea5193b039a96bb1f9e72516b9))
+* **web:** keep the file watch help text under the length cap ([ba9f3b4](https://github.com/metril/certforge/commit/ba9f3b48e5362ff72144652b16fc9e416fe6ff65))
+* **web:** two-sentence help text for the file watch setting ([22b8d94](https://github.com/metril/certforge/commit/22b8d94ef6f1e5be08c983fb12f7e96e6c4b1bb2))
+
 ## [0.38.0](https://github.com/metril/certforge/compare/v0.37.0...v0.38.0) (2026-10-14)
 
 
