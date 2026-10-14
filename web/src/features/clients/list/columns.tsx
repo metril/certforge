@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { plural } from '@/api/queries/certificates';
 import type { Client } from '@/api/types';
 import { ConnectionDot } from '@/components/ConnectionDot';
+import { GrantsPopover } from '@/features/delivery/GrantsPopover';
 import { PrimaryCell } from '@/components/PrimaryCell';
 import { ToneChip } from '@/components/StatusChip';
 import { help } from '@/lib/help';
@@ -12,12 +13,12 @@ import { fmtDateTime, relTime } from '@/lib/time';
 const col = columnHelper<Client>();
 /** Muted second line of the Name cell (also the mobile card's): hostname,
  * site, agent version, grants, and drift/failed counts as plain text. */
-export function clientMeta(c: Client, site?: string): string[] {
+export function clientMeta(c: Client, site?: string, withGrants = true): string[] {
   return [
     c.hostname,
     site && site !== '–' ? site : '',
     c.agentVersion ? `agent ${c.agentVersion}` : '',
-    plural(c.grantCount, 'grant'),
+    withGrants ? plural(c.grantCount, 'grant') : '',
     c.driftCount > 0 ? `${c.driftCount} drift` : '',
     c.failedCount > 0 ? `${c.failedCount} failed` : '',
   ].filter(Boolean) as string[];
@@ -47,7 +48,8 @@ export function clientColumns({ slugOf, siteName, orgName }: { slugOf: (c: Clien
         <PrimaryCell
           primary={row.original.name}
           link={{ to: '/o/$org/clients/$id', params: { org: slugOf(row.original), id: row.original.id } }}
-          meta={clientMeta(row.original, siteName?.(row.original.siteId))}
+          meta={clientMeta(row.original, siteName?.(row.original.siteId), false)}
+          lead={row.original.grantCount > 0 ? <GrantsPopover count={row.original.grantCount} filter={{ clientId: row.original.id }} /> : undefined}
           metaTitle={clientMetaTitle(row.original, siteName?.(row.original.siteId))}
         />
       ),

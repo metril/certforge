@@ -72,7 +72,7 @@ func TestPhase3OperationsDeclared(t *testing.T) {
 	}
 	want := map[string]bool{}
 	for _, id := range []string{"listClients", "createClient", "listAllClients", "getClient", "updateClient", "deleteClient",
-		"revokeClient", "reenrollClient", "listClientGrants", "createGrant", "updateGrant", "deleteGrant", "redeployGrant",
+		"revokeClient", "reenrollClient", "listClientGrants", "listGrants", "createGrant", "updateGrant", "deleteGrant", "redeployGrant",
 		"listClientHookRuns", "listCertificateDeployments", "listLayouts", "createLayout", "getLayout", "updateLayout",
 		"deleteLayout", "listDeployTargets", "createDeployTarget", "getDeployTarget", "updateDeployTarget",
 		"deleteDeployTarget", "listActions", "createAction", "getAction", "updateAction", "deleteAction", "listActionGroups", "createActionGroup", "getActionGroup", "updateActionGroup", "deleteActionGroup", "listAgentCAs",

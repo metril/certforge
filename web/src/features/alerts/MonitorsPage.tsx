@@ -53,13 +53,20 @@ function CheckNowButton({ monitor, orgId }: { monitor: Monitor; orgId: string })
   );
 }
 
-function GrantBadge() {
+// Links to the owning server grant's row on its target's Grants tab.
+function GrantBadge({ monitor }: { monitor: Monitor }) {
+  const org = useOrg();
+  const badge = <Badge variant="outline" tabIndex={monitor.grantDeployTargetId ? undefined : 0}>Grant</Badge>;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Badge variant="outline" tabIndex={0}>
-          Grant
-        </Badge>
+        {monitor.grantDeployTargetId && monitor.grantId ? (
+          <Link to="/o/$org/delivery/targets/$id/$tab" params={{ org: org.slug, id: monitor.grantDeployTargetId, tab: 'grants' }} search={{ open: monitor.grantId }} onClick={(e) => e.stopPropagation()}>
+            {badge}
+          </Link>
+        ) : (
+          badge
+        )}
       </TooltipTrigger>
       <TooltipContent>Owned by a server grant; change it in the grant's Verify settings.</TooltipContent>
     </Tooltip>
@@ -102,7 +109,7 @@ function monitorColumns(orgId: string) {
       cell: ({ row }) => (
         <span className="flex items-center gap-2">
           <PrimaryCell primary={row.original.name} meta={monitorMeta(row.original)} />
-          {row.original.grantId && <GrantBadge />}
+          {row.original.grantId && <GrantBadge monitor={row.original} />}
         </span>
       ),
     }),
@@ -153,7 +160,7 @@ function MonitorCard({ monitor, orgId, onOpen }: { monitor: Monitor; orgId: stri
         <span className="text-xs text-ink-muted">{fmtInterval(monitor.intervalSeconds)}</span>
         {monitor.grantId && (
           <span className="relative z-10">
-            <GrantBadge />
+            <GrantBadge monitor={monitor} />
           </span>
         )}
       </div>

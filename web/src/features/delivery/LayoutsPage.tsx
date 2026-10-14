@@ -76,7 +76,7 @@ export function LayoutsPage() {
                     <PrimaryCell primary={l.name} meta={layoutMeta(l)} metaTitle={layoutMeta(l, true).filter(Boolean).join(' · ')} />
                   </TableCell>
                   <TableCell className="py-1">
-                    <UsedBy count={l.grantCount} />
+                    <UsedBy count={l.grantCount} filter={{ layoutId: l.id }} />
                   </TableCell>
                   <TableCell className="py-1 text-right">
                     <RowActions

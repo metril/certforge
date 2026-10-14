@@ -126,7 +126,7 @@ export function ActionsPage() {
                   </TableCell>
                   <TableCell className="py-1 text-sm">{a.timeoutSeconds} s</TableCell>
                   <TableCell className="py-1">
-                    <UsedBy count={a.grantCount} />
+                    <UsedBy count={a.grantCount} filter={{ actionId: a.id }} />
                   </TableCell>
                   <TableCell className="py-1 text-right">
                     <RowActions name={a.name} grantCount={a.grantCount} canWrite={canWrite} onOpen={() => openSheet(a.id)} onDelete={() => setDeleting(a)} />
@@ -158,7 +158,7 @@ export function ActionsPage() {
                   </TableCell>
                   <TableCell className="truncate py-1 text-sm text-ink-muted">{g.actionIds.map(actionName).join(' → ')}</TableCell>
                   <TableCell className="py-1">
-                    <UsedBy count={g.grantCount} />
+                    <UsedBy count={g.grantCount} filter={{ actionGroupId: g.id }} />
                   </TableCell>
                   <TableCell className="py-1 text-right">
                     <RowActions name={g.name} grantCount={g.grantCount} canWrite={canWrite} onOpen={() => openSheet(g.id)} onDelete={() => setDeletingGroup(g)} />

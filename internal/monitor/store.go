@@ -44,7 +44,16 @@ func fromGetRow(r sqlcgen.GetMonitorRow) Monitor {
 }
 
 func fromListRow(r sqlcgen.ListMonitorsRow) Monitor {
-	return fromGetRow(sqlcgen.GetMonitorRow(r))
+	m := fromRow(sqlcgen.ExternalMonitor{
+		ID: r.ID, OrgID: r.OrgID, Name: r.Name, Host: r.Host, Port: r.Port, Sni: r.Sni,
+		IntervalSeconds: r.IntervalSeconds, ExpectedCertID: r.ExpectedCertID, Enabled: r.Enabled,
+		State: r.State, StateChangedAt: r.StateChangedAt, LastCheckedAt: r.LastCheckedAt, NextCheckAt: r.NextCheckAt,
+		LastFingerprint: r.LastFingerprint, LastNotAfter: r.LastNotAfter, LastIssuer: r.LastIssuer, LastError: r.LastError,
+		ConsecutiveFailures: r.ConsecutiveFailures, GrantID: r.GrantID, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+	})
+	m.ExpectedCertificateName = r.ExpectedCertificateName
+	m.GrantDeployTargetID = r.GrantDeployTargetID
+	return m
 }
 
 func delayArg(p *int) *int32 {

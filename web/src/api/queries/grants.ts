@@ -12,6 +12,23 @@ export const grantsQuery = (orgId: string, clientId: string) =>
     refetchInterval: (q) => livePoll(!!q.state.data?.some((g) => g.deployment?.state === 'pending')),
   });
 
+export type GrantsFilter = {
+  certificateId?: string;
+  clientId?: string;
+  layoutId?: string;
+  deployTargetId?: string;
+  actionId?: string;
+  actionGroupId?: string;
+  grantId?: string;
+};
+
+// Agent and server grants matching every given filter (GET /orgs/{orgId}/grants).
+export const grantsListQuery = (orgId: string, filter: GrantsFilter) =>
+  queryOptions({
+    queryKey: ['grants', orgId, 'list', filter],
+    queryFn: async () => (await call(api.GET('/orgs/{orgId}/grants', { params: { path: { orgId }, query: filter } }))).items,
+  });
+
 // Asks the firewall which services use a server grant's certificate. Never
 // fetched on its own (enabled: false): the caller refetches on demand.
 export const grantPfSenseUsageQuery = (orgId: string, grantId: string) =>

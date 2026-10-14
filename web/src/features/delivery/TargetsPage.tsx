@@ -106,7 +106,7 @@ export function TargetsPage() {
                       <RunsOnChip mode={t.runsOn} />
                     </TableCell>
                     <TableCell className="py-1">
-                      <UsedBy count={t.grantCount} />
+                      <UsedBy count={t.grantCount} filter={{ deployTargetId: t.id }} />
                     </TableCell>
                     <TableCell className="py-1 text-right">
                       <RowActions
@@ -134,7 +134,7 @@ export function TargetsPage() {
                   </div>
                   <span className="truncate text-xs text-ink-muted">{targetMeta(t).filter(Boolean).join(' · ')}</span>
                   <div className="flex items-center justify-between gap-2">
-                    <UsedBy count={t.grantCount} />
+                    <UsedBy count={t.grantCount} filter={{ deployTargetId: t.id }} />
                     <RowActions
                       name={t.name}
                       grantCount={t.grantCount}

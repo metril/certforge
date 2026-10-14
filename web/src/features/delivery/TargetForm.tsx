@@ -22,7 +22,6 @@ import { FormActions, FormPage } from '@/components/FormPage';
 import { useNavBypass } from '@/components/NavGuard';
 import { FormSection } from '@/components/FormSection';
 import { SchemaForm, type SchemaFormHandle } from '@/forms/SchemaForm';
-import { plural } from '@/api/queries/certificates';
 import { fieldErrorFromMessage, secretKeys } from '@/forms/uiSchema';
 import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
@@ -30,6 +29,7 @@ import { caBundleScope, can } from '@/lib/permissions';
 import { stripSecretDefaults, storedSecretsFor, settledConfig } from '@/lib/secretForm';
 import { RUNS_ON_META, credentialKindsOf, defaultRunsOn, forcedRunsOn, keyGateBlocks, locationChanged, toTargetInput, typeHelpKey, typeMeta, unrequireFields } from '@/lib/targets';
 import { useMediaQuery } from '@/lib/useMediaQuery';
+import { GrantsPopover } from './GrantsPopover';
 
 function omitKeys(o: Record<string, unknown>, keys: string[]): Record<string, unknown> {
   return Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k)));
@@ -339,7 +339,7 @@ export function TargetForm({ orgId, orgSlug, target, types, readOnly = false }: 
       {target && (
         <div className="grid min-w-0 gap-1">
           <dt className="text-xs text-ink-muted">Used by</dt>
-          <dd>{plural(target.grantCount, 'grant')}</dd>
+          <dd><GrantsPopover count={target.grantCount} filter={{ deployTargetId: target.id }} /></dd>
         </div>
       )}
     </dl>

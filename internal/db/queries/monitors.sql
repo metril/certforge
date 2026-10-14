@@ -7,9 +7,12 @@ RETURNING *;
 -- expected_certificate_name is null when expected_cert_id is null or the
 -- certificate it named has since been deleted (expected_cert_id itself goes
 -- NULL too then, ON DELETE SET NULL).
-SELECT m.*, ec.name AS expected_certificate_name
+-- grant_deploy_target_id is the owning server grant's target, for the
+-- Monitors page link.
+SELECT m.*, ec.name AS expected_certificate_name, g.deploy_target_id AS grant_deploy_target_id
 FROM external_monitors m
 LEFT JOIN certificates ec ON ec.id = m.expected_cert_id
+LEFT JOIN client_cert_grants g ON g.id = m.grant_id
 WHERE m.org_id = $1
 ORDER BY m.name;
 

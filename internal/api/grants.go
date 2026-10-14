@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -63,6 +64,7 @@ func grantOut(r sqlcgen.GrantViewsRow) (gen.Grant, error) {
 	return gen.Grant{Id: r.ID, ClientId: r.ClientID, ClientName: &clientName, CertificateId: r.CertID, CertificateName: r.CertificateName,
 		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, TargetOptions: opts, Steps: stepsOut(r.Steps),
 		AutoRemediate: r.AutoRemediate, Deployment: &d, RunsOn: gen.RunsOn("agent"), ServerDeployment: nil,
+		LayoutName: r.LayoutName, DeployTargetName: r.DeployTargetName,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}, nil
 }
 
@@ -124,6 +126,55 @@ func (s *Server) ListClientGrants(ctx context.Context, r gen.ListClientGrantsReq
 		items = append(items, g)
 	}
 	return gen.ListClientGrants200JSONResponse(gen.GrantList{Items: items}), nil
+}
+
+// ListGrants returns the org's live agent and server grants, filtered by
+// any of certificate, client, layout, target, action, action group or id
+// (AND), sorted by certificate name.
+func (s *Server) ListGrants(ctx context.Context, r gen.ListGrantsRequestObject) (gen.ListGrantsResponseObject, error) {
+	if _, err := authorize(ctx, authz.ActionClientsRead, &r.OrgId); err != nil {
+		return nil, err
+	}
+	p := r.Params
+	q := s.queries()
+	items := []gen.Grant{}
+	seen := map[uuid.UUID]bool{}
+	rows, err := q.GrantViews(ctx, sqlcgen.GrantViewsParams{OrgID: r.OrgId, ClientID: p.ClientId, GrantID: p.GrantId, CertID: p.CertificateId,
+		LayoutID: p.LayoutId, TargetID: p.DeployTargetId, ActionID: p.ActionId, GroupID: p.ActionGroupId})
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		g, err := grantOut(row)
+		if err != nil {
+			return nil, err
+		}
+		if !seen[g.Id] {
+			seen[g.Id] = true
+			items = append(items, g)
+		}
+	}
+	if p.ClientId == nil { // a client filter excludes server grants
+		srows, err := q.ServerGrantViews(ctx, sqlcgen.ServerGrantViewsParams{OrgID: r.OrgId, GrantID: p.GrantId, CertID: p.CertificateId,
+			LayoutID: p.LayoutId, TargetID: p.DeployTargetId, ActionID: p.ActionId, GroupID: p.ActionGroupId})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range srows {
+			if !seen[row.ID] {
+				seen[row.ID] = true
+				items = append(items, serverGrantOut(row))
+			}
+		}
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		a, b := strings.ToLower(items[i].CertificateName), strings.ToLower(items[j].CertificateName)
+		if a != b {
+			return a < b
+		}
+		return items[i].Id.String() < items[j].Id.String()
+	})
+	return gen.ListGrants200JSONResponse(gen.GrantList{Items: items}), nil
 }
 
 // requireKeysExport is the agent-grant counterpart of requireKeyIfNeeded's
@@ -348,7 +399,7 @@ func serverGrantOut(r sqlcgen.ServerGrantViewsRow) gen.Grant {
 	return gen.Grant{Id: r.ID, ClientId: nil, ClientName: nil, CertificateId: r.CertID, CertificateName: r.CertificateName,
 		Delivery: gen.GrantDelivery(r.Delivery), LayoutId: r.OutputSpecID, DeployTargetId: r.DeployTargetID, TargetOptions: opts, Steps: stepsOut(r.Steps),
 		AutoRemediate: r.AutoRemediate, Deployment: nil, RunsOn: gen.RunsOn("server"), ServerDeployment: sd,
-		Verify: verifyOut(r), MonitorId: r.MonitorID, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
+		Verify: verifyOut(r), MonitorId: r.MonitorID, LayoutName: r.LayoutName, DeployTargetName: &r.DeployTargetName, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
 }
 
 // verifyOut maps the grant-owned monitor's endpoint columns; nil when none.

@@ -48,12 +48,12 @@ export function EditTargetPage({ id }: { id: string }) {
   return <TargetForm key={target.id} orgId={org.id} orgSlug={org.slug} target={target} types={types} />;
 }
 
-export function TargetDetailPage({ id, tab }: { id: string; tab: TargetTab }) {
+export function TargetDetailPage({ id, tab, open }: { id: string; tab: TargetTab; open?: string }) {
   const org = useOrg();
   const { q, types } = useTypes();
   const tq = useQuery(deployTargetsQuery(org.id));
   const target = tq.data?.find((t) => t.id === id);
   if (tq.isSuccess && !target) return <Gone orgSlug={org.slug} />;
   if (!target || types.length === 0) return <Pending error={q.error} retry={() => void q.refetch()} />;
-  return <TargetDetail orgId={org.id} orgSlug={org.slug} target={target} types={types} tab={tab} />;
+  return <TargetDetail orgId={org.id} orgSlug={org.slug} target={target} types={types} tab={tab} open={open} />;
 }

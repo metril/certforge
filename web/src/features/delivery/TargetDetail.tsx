@@ -27,6 +27,7 @@ import { can } from '@/lib/permissions';
 import { needsKey, typeMeta } from '@/lib/targets';
 import { relTime } from '@/lib/time';
 import { useMediaQuery } from '@/lib/useMediaQuery';
+import { cn } from '@/lib/utils';
 import { TargetForm } from './TargetForm';
 import type { TargetTab } from './tabs';
 import { PfSenseUsage } from './PfSenseUsage';
@@ -34,7 +35,7 @@ import { ServerGrantForm } from './ServerGrantForm';
 import { failedWithoutData } from '@/lib/queryState';
 import { IconButton } from '@/components/IconButton';
 
-type Props = { orgId: string; orgSlug: string; target: DeployTarget; types: ProviderSchema[]; tab: TargetTab };
+type Props = { orgId: string; orgSlug: string; target: DeployTarget; types: ProviderSchema[]; tab: TargetTab; open?: string };
 
 const TAB_LABEL: Record<TargetTab, string> = { overview: 'Overview', grants: 'Grants', runs: 'Action runs' };
 
@@ -46,7 +47,7 @@ function TargetRuns({ orgId, targetId }: { orgId: string; targetId: string }) {
   return <ActionRunsList q={q} nameOf={() => 'SSH command'} empty={<EmptyState message="No action runs yet." />} />;
 }
 
-export function TargetDetail({ orgId, orgSlug, target, types, tab }: Props) {
+export function TargetDetail({ orgId, orgSlug, target, types, tab, open }: Props) {
   const me = useMe();
   const navigate = useNavigate();
   const canWrite = can(me, 'clients:write', orgId);
@@ -69,7 +70,19 @@ export function TargetDetail({ orgId, orgSlug, target, types, tab }: Props) {
   const keyed = needsKey(typeMeta(types, target.type)?.keyPolicy, target.config);
   const newGrantAllowed = canWrite && (!keyed || canExportKeys);
   const newGrantReason = !canWrite ? 'clients:write' : 'keys:export';
-  const layoutName = (id: string | null) => (id ? (layouts.find((l) => l.id === id)?.name ?? '…') : 'Target files');
+  const layoutName = (id: string | null) => {
+    if (!id) return 'Target files';
+    return (
+      <Link to="/o/$org/delivery/layouts/$id/edit" params={{ org: orgSlug, id }} className="hover:underline">
+        {layouts.find((l) => l.id === id)?.name ?? '…'}
+      </Link>
+    );
+  };
+  // Scroll the linked grant (?open=) into view once the list has loaded.
+  useEffect(() => {
+    if (open && q.data) document.getElementById(`grant-${open}`)?.scrollIntoView({ block: 'center' });
+  }, [open, q.data]);
+  const rowHl = (g: Grant) => (open === g.id ? 'bg-accent/50' : undefined);
   const redeploying = (g: Grant) => redeploy.isPending && redeploy.variables === g.id;
 
   const openForm = (editing?: Grant) => setMode({ kind: 'form', editing });
@@ -138,7 +151,7 @@ export function TargetDetail({ orgId, orgSlug, target, types, tab }: Props) {
       return (
         <ul aria-label="Grants" className="grid gap-2">
           {grants.map((g) => (
-            <li key={g.id} className="grid grid-cols-1 gap-2 rounded-md border border-border bg-panel p-3">
+            <li key={g.id} id={`grant-${g.id}`} className={cn('grid grid-cols-1 gap-2 rounded-md border border-border bg-panel p-3', rowHl(g))}>
               <div className="flex items-center justify-between gap-2">
                 {certLink(g)}
                 {statusCell(g)}
@@ -166,7 +179,7 @@ export function TargetDetail({ orgId, orgSlug, target, types, tab }: Props) {
         <TableBody>
           {grants.map((g) => (
             <Fragment key={g.id}>
-              <TableRow className="h-9">
+              <TableRow id={`grant-${g.id}`} className={cn('h-9', rowHl(g))}>
                 <TableCell className="py-1">{certLink(g)}</TableCell>
                 <TableCell className="truncate py-1">{layoutName(g.layoutId)}</TableCell>
                 <TableCell className="py-1">{statusCell(g)}</TableCell>
