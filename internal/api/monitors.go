@@ -22,7 +22,7 @@ func monitorOut(m monitor.Monitor) gen.Monitor {
 		IntervalSeconds: m.IntervalSeconds, ExpectedCertificateId: m.ExpectedCertID, ExpectedCertificateName: m.ExpectedCertificateName,
 		Enabled: m.Enabled, State: gen.MonitorState(m.State), LastCheckedAt: m.LastCheckedAt, NextCheckAt: &nextCheckAt,
 		LastFingerprint: strOrNil(m.LastFingerprint), LastNotAfter: m.LastNotAfter, LastIssuer: strOrNil(m.LastIssuer),
-		LastError: strOrNil(m.LastError), GrantId: m.GrantID, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
+		LastError: strOrNil(m.LastError), GrantId: m.GrantID, GrantDeployTargetId: m.GrantDeployTargetID, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
 }
 

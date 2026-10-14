@@ -2411,6 +2411,9 @@ type Grant struct {
 	// DeployTargetId Deploy target; null for files only.
 	DeployTargetId *openapi_types.UUID `json:"deployTargetId"`
 
+	// DeployTargetName Name of the deploy target; null when deployTargetId is null.
+	DeployTargetName *string `json:"deployTargetName"`
+
 	// Deployment Agent-side deployment state; null for a server grant (see serverDeployment).
 	Deployment *Deployment `json:"deployment"`
 
@@ -2419,6 +2422,9 @@ type Grant struct {
 
 	// LayoutId Output layout; null for a target-only grant.
 	LayoutId *openapi_types.UUID `json:"layoutId"`
+
+	// LayoutName Name of the output layout; null when layoutId is null.
+	LayoutName *string `json:"layoutName"`
 
 	// MonitorId The grant-owned monitor behind verify; null when none. Server grants only.
 	MonitorId *openapi_types.UUID `json:"monitorId"`
@@ -2469,7 +2475,7 @@ type GrantInput struct {
 	TargetOptions *map[string]interface{} `json:"targetOptions,omitempty"`
 }
 
-// GrantList A client's live grants.
+// GrantList Live grants.
 type GrantList struct {
 	// Items Grants sorted by certificate name.
 	Items []Grant `json:"items"`
@@ -2880,6 +2886,9 @@ type Monitor struct {
 
 	// ExpectedCertificateName That certificate's name
 	ExpectedCertificateName *string `json:"expectedCertificateName"`
+
+	// GrantDeployTargetId The deploy target of the owning server grant
+	GrantDeployTargetId *openapi_types.UUID `json:"grantDeployTargetId"`
 
 	// GrantId The server grant that owns this monitor; null for a standalone monitor. A grant-owned monitor is edited through the grant's verify.
 	GrantId *openapi_types.UUID `json:"grantId"`
@@ -4043,6 +4052,30 @@ type ListEventsParams struct {
 	Cursor *ListCursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
+// ListGrantsParams defines parameters for ListGrants.
+type ListGrantsParams struct {
+	// CertificateId Only grants of this certificate.
+	CertificateId *openapi_types.UUID `form:"certificateId,omitempty" json:"certificateId,omitempty"`
+
+	// ClientId Only grants on this client (excludes server grants).
+	ClientId *openapi_types.UUID `form:"clientId,omitempty" json:"clientId,omitempty"`
+
+	// LayoutId Only grants using this layout.
+	LayoutId *openapi_types.UUID `form:"layoutId,omitempty" json:"layoutId,omitempty"`
+
+	// DeployTargetId Only grants using this deploy target.
+	DeployTargetId *openapi_types.UUID `form:"deployTargetId,omitempty" json:"deployTargetId,omitempty"`
+
+	// ActionId Only grants with a step running this action
+	ActionId *openapi_types.UUID `form:"actionId,omitempty" json:"actionId,omitempty"`
+
+	// ActionGroupId Only grants with a step running this action group.
+	ActionGroupId *openapi_types.UUID `form:"actionGroupId,omitempty" json:"actionGroupId,omitempty"`
+
+	// GrantId Only this grant.
+	GrantId *openapi_types.UUID `form:"grantId,omitempty" json:"grantId,omitempty"`
+}
+
 // DeleteGrantParams defines parameters for DeleteGrant.
 type DeleteGrantParams struct {
 	// Force Hard-delete a removal-pending or still-live grant at once instead of waiting for the agent to confirm the files are gone; audited with forced true.
@@ -4756,6 +4789,9 @@ type ClientInterface interface {
 
 	// GetFlow request
 	GetFlow(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListGrants request
+	ListGrants(ctx context.Context, orgId OrgId, params *ListGrantsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteGrant request
 	DeleteGrant(ctx context.Context, orgId OrgId, id Id, params *DeleteGrantParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6639,6 +6675,18 @@ func (c *APIClient) ListEvents(ctx context.Context, orgId OrgId, params *ListEve
 
 func (c *APIClient) GetFlow(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetFlowRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *APIClient) ListGrants(ctx context.Context, orgId OrgId, params *ListGrantsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListGrantsRequest(c.Server, orgId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -12790,6 +12838,158 @@ func NewGetFlowRequest(server string, orgId OrgId) (*http.Request, error) {
 	return req, nil
 }
 
+// NewListGrantsRequest generates requests for ListGrants
+func NewListGrantsRequest(server string, orgId OrgId, params *ListGrantsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs/%s/grants", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.CertificateId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "certificateId", runtime.ParamLocationQuery, *params.CertificateId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.ClientId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "clientId", runtime.ParamLocationQuery, *params.ClientId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.LayoutId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "layoutId", runtime.ParamLocationQuery, *params.LayoutId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.DeployTargetId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "deployTargetId", runtime.ParamLocationQuery, *params.DeployTargetId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.ActionId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "actionId", runtime.ParamLocationQuery, *params.ActionId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.ActionGroupId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "actionGroupId", runtime.ParamLocationQuery, *params.ActionGroupId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.GrantId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "grantId", runtime.ParamLocationQuery, *params.GrantId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewDeleteGrantRequest generates requests for DeleteGrant
 func NewDeleteGrantRequest(server string, orgId OrgId, id Id, params *DeleteGrantParams) (*http.Request, error) {
 	var err error
@@ -14903,6 +15103,9 @@ type ClientWithResponsesInterface interface {
 
 	// GetFlowWithResponse request
 	GetFlowWithResponse(ctx context.Context, orgId OrgId, reqEditors ...RequestEditorFn) (*GetFlowResponse, error)
+
+	// ListGrantsWithResponse request
+	ListGrantsWithResponse(ctx context.Context, orgId OrgId, params *ListGrantsParams, reqEditors ...RequestEditorFn) (*ListGrantsResponse, error)
 
 	// DeleteGrantWithResponse request
 	DeleteGrantWithResponse(ctx context.Context, orgId OrgId, id Id, params *DeleteGrantParams, reqEditors ...RequestEditorFn) (*DeleteGrantResponse, error)
@@ -18121,6 +18324,33 @@ func (r GetFlowResponse) StatusCode() int {
 	return 0
 }
 
+type ListGrantsResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *GrantList
+	ApplicationproblemJSON400 *BadRequest
+	ApplicationproblemJSON401 *Unauthorized
+	ApplicationproblemJSON403 *Forbidden
+	ApplicationproblemJSON404 *NotFound
+	ApplicationproblemJSON500 *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r ListGrantsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListGrantsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type DeleteGrantResponse struct {
 	Body                      []byte
 	HTTPResponse              *http.Response
@@ -20475,6 +20705,15 @@ func (c *ClientWithResponses) GetFlowWithResponse(ctx context.Context, orgId Org
 		return nil, err
 	}
 	return ParseGetFlowResponse(rsp)
+}
+
+// ListGrantsWithResponse request returning *ListGrantsResponse
+func (c *ClientWithResponses) ListGrantsWithResponse(ctx context.Context, orgId OrgId, params *ListGrantsParams, reqEditors ...RequestEditorFn) (*ListGrantsResponse, error) {
+	rsp, err := c.ListGrants(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListGrantsResponse(rsp)
 }
 
 // DeleteGrantWithResponse request returning *DeleteGrantResponse
@@ -28049,6 +28288,67 @@ func ParseGetFlowResponse(rsp *http.Response) (*GetFlowResponse, error) {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListGrantsResponse parses an HTTP response from a ListGrantsWithResponse call
+func ParseListGrantsResponse(rsp *http.Response) (*ListGrantsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListGrantsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GrantList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized

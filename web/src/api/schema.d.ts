@@ -1580,6 +1580,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orgs/{orgId}/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List grants
+         * @description Needs clients:read. Live agent and server grants, sorted by certificate name. Every filter given must match (AND). actionId also matches grants that run the action through an action group.
+         */
+        get: operations["listGrants"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orgs/{orgId}/grants/{id}": {
         parameters: {
             query?: never;
@@ -5007,6 +5030,10 @@ export interface components {
              * @description The grant-owned monitor behind verify; null when none. Server grants only.
              */
             monitorId?: string | null;
+            /** @description Name of the output layout; null when layoutId is null. */
+            layoutName?: string | null;
+            /** @description Name of the deploy target; null when deployTargetId is null. */
+            deployTargetName?: string | null;
             /**
              * Format: date-time
              * @description Creation time.
@@ -5075,7 +5102,7 @@ export interface components {
             /** @description A TLS endpoint CertForge polls to confirm the deployed certificate is the one served; a grant-owned monitor, hourly. Null when none. Absent or null removes it. Server grants only; a client grant with verify is 422. */
             verify?: components["schemas"]["GrantVerify"] | null;
         };
-        /** @description A client's live grants. */
+        /** @description Live grants. */
         GrantList: {
             /** @description Grants sorted by certificate name. */
             items: components["schemas"]["Grant"][];
@@ -5584,6 +5611,11 @@ export interface components {
              * @description The server grant that owns this monitor; null for a standalone monitor. A grant-owned monitor is edited through the grant's verify.
              */
             grantId?: string | null;
+            /**
+             * Format: uuid
+             * @description The deploy target of the owning server grant
+             */
+            grantDeployTargetId?: string | null;
             state: components["schemas"]["MonitorState"];
             /**
              * Format: date-time
@@ -8565,6 +8597,49 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listGrants: {
+        parameters: {
+            query?: {
+                /** @description Only grants of this certificate. */
+                certificateId?: string;
+                /** @description Only grants on this client (excludes server grants). */
+                clientId?: string;
+                /** @description Only grants using this layout. */
+                layoutId?: string;
+                /** @description Only grants using this deploy target. */
+                deployTargetId?: string;
+                /** @description Only grants with a step running this action */
+                actionId?: string;
+                /** @description Only grants with a step running this action group. */
+                actionGroupId?: string;
+                /** @description Only this grant. */
+                grantId?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Org id. */
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Grants. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrantList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
         };
     };

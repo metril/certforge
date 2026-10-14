@@ -38,16 +38,31 @@ DELETE FROM client_cert_grants WHERE id = $1;
 SELECT * FROM client_cert_grants WHERE client_id = $1 AND removed_at IS NOT NULL FOR UPDATE;
 
 -- name: GrantViews :many
+-- Optional AND filters. The steps predicates match LiveGrantIDsUsingAction /
+-- LiveGrantIDsUsingActionGroup (action direct, or through a group).
 SELECT g.id, g.client_id, c.name AS client_name, g.cert_id, ce.name AS certificate_name, g.delivery,
        g.output_spec_id, g.deploy_target_id, g.steps, g.auto_remediate, g.target_options, g.created_at, g.updated_at,
+       o.name AS layout_name, t.name AS deploy_target_name,
        d.state, d.version_id, d.expected, d.installed, d.error, d.reported_at, d.state_changed_at, d.updated_at AS deployment_updated_at
 FROM client_cert_grants g
 JOIN clients c ON c.id = g.client_id
 JOIN certificates ce ON ce.id = g.cert_id
 JOIN deployments d ON d.grant_id = g.id
+LEFT JOIN output_specs o ON o.id = g.output_spec_id
+LEFT JOIN deploy_targets t ON t.id = g.deploy_target_id
 WHERE c.org_id = sqlc.arg(org_id) AND g.removed_at IS NULL
   AND (sqlc.narg(client_id)::uuid IS NULL OR g.client_id = sqlc.narg(client_id)::uuid)
   AND (sqlc.narg(grant_id)::uuid IS NULL OR g.id = sqlc.narg(grant_id)::uuid)
+  AND (sqlc.narg(cert_id)::uuid IS NULL OR g.cert_id = sqlc.narg(cert_id)::uuid)
+  AND (sqlc.narg(layout_id)::uuid IS NULL OR g.output_spec_id = sqlc.narg(layout_id)::uuid)
+  AND (sqlc.narg(target_id)::uuid IS NULL OR g.deploy_target_id = sqlc.narg(target_id)::uuid)
+  AND (sqlc.narg(action_id)::uuid IS NULL
+       OR g.steps @> jsonb_build_array(jsonb_build_object('action', sqlc.narg(action_id)::uuid))
+       OR EXISTS (SELECT 1 FROM action_groups ag
+                  WHERE ag.action_ids @> ARRAY[sqlc.narg(action_id)::uuid]
+                    AND g.steps @> jsonb_build_array(jsonb_build_object('group', ag.id))))
+  AND (sqlc.narg(group_id)::uuid IS NULL
+       OR g.steps @> jsonb_build_array(jsonb_build_object('group', sqlc.narg(group_id)::uuid)))
 ORDER BY lower(ce.name), g.id;
 
 -- name: CertificateInOrg :one
@@ -331,18 +346,30 @@ WHERE g.id = $1
   AND ((g.client_id IS NOT NULL AND c.org_id = $2) OR (g.client_id IS NULL AND t.org_id = $2));
 
 -- name: ServerGrantViews :many
+-- Same optional filters as GrantViews (minus client).
 SELECT g.id, g.deploy_target_id, g.cert_id, ce.name AS certificate_name, g.delivery,
        g.output_spec_id, g.steps, g.auto_remediate, g.target_options, g.created_at, g.updated_at,
+       o.name AS layout_name, t.name AS deploy_target_name,
        sd.status, sd.version_id, sd.last_error, sd.deployed_at, sd.updated_at AS deployment_updated_at,
        m.id AS monitor_id, m.host, m.port, m.sni, m.interval_seconds, m.post_deploy_delay_seconds
 FROM client_cert_grants g
 JOIN deploy_targets t ON t.id = g.deploy_target_id
 JOIN certificates ce ON ce.id = g.cert_id
+LEFT JOIN output_specs o ON o.id = g.output_spec_id
 LEFT JOIN server_deployments sd ON sd.grant_id = g.id
 LEFT JOIN external_monitors m ON m.grant_id = g.id
 WHERE g.client_id IS NULL AND g.removed_at IS NULL AND t.org_id = sqlc.arg(org_id)
   AND (sqlc.narg(target_id)::uuid IS NULL OR g.deploy_target_id = sqlc.narg(target_id)::uuid)
   AND (sqlc.narg(grant_id)::uuid IS NULL OR g.id = sqlc.narg(grant_id)::uuid)
+  AND (sqlc.narg(cert_id)::uuid IS NULL OR g.cert_id = sqlc.narg(cert_id)::uuid)
+  AND (sqlc.narg(layout_id)::uuid IS NULL OR g.output_spec_id = sqlc.narg(layout_id)::uuid)
+  AND (sqlc.narg(action_id)::uuid IS NULL
+       OR g.steps @> jsonb_build_array(jsonb_build_object('action', sqlc.narg(action_id)::uuid))
+       OR EXISTS (SELECT 1 FROM action_groups ag
+                  WHERE ag.action_ids @> ARRAY[sqlc.narg(action_id)::uuid]
+                    AND g.steps @> jsonb_build_array(jsonb_build_object('group', ag.id))))
+  AND (sqlc.narg(group_id)::uuid IS NULL
+       OR g.steps @> jsonb_build_array(jsonb_build_object('group', sqlc.narg(group_id)::uuid)))
 ORDER BY lower(ce.name), g.id;
 
 -- name: CertificateCurrentVersion :one

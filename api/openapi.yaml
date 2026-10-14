@@ -1953,6 +1953,32 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "422": {$ref: "#/components/responses/UnprocessableEntity"}
         "500": {$ref: "#/components/responses/InternalError"}
+  /orgs/{orgId}/grants:
+    parameters: [{$ref: "#/components/parameters/OrgId"}]
+    get:
+      operationId: listGrants
+      tags: [clients]
+      summary: List grants
+      description: Needs clients:read. Live agent and server grants, sorted by certificate name. Every filter given must match (AND). actionId also matches grants that run the action through an action group.
+      parameters:
+        - {name: certificateId, in: query, required: false, description: Only grants of this certificate., schema: {type: string, format: uuid}}
+        - {name: clientId, in: query, required: false, description: Only grants on this client (excludes server grants)., schema: {type: string, format: uuid}}
+        - {name: layoutId, in: query, required: false, description: Only grants using this layout., schema: {type: string, format: uuid}}
+        - {name: deployTargetId, in: query, required: false, description: Only grants using this deploy target., schema: {type: string, format: uuid}}
+        - {name: actionId, in: query, required: false, description: Only grants with a step running this action, directly or through a group., schema: {type: string, format: uuid}}
+        - {name: actionGroupId, in: query, required: false, description: Only grants with a step running this action group., schema: {type: string, format: uuid}}
+        - {name: grantId, in: query, required: false, description: Only this grant., schema: {type: string, format: uuid}}
+      responses:
+        "200":
+          description: Grants.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GrantList"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
   /orgs/{orgId}/grants/{id}:
     parameters: [{$ref: "#/components/parameters/OrgId"}, {$ref: "#/components/parameters/Id"}]
     patch:
@@ -5249,6 +5275,8 @@ components:
             - $ref: "#/components/schemas/GrantVerify"
           nullable: true
         monitorId: {type: string, format: uuid, nullable: true, description: The grant-owned monitor behind verify; null when none. Server grants only.}
+        layoutName: {type: string, nullable: true, description: Name of the output layout; null when layoutId is null.}
+        deployTargetName: {type: string, nullable: true, description: Name of the deploy target; null when deployTargetId is null.}
         createdAt: {type: string, format: date-time, description: Creation time.}
         updatedAt: {type: string, format: date-time, description: Last change.}
     GrantInput:
@@ -5281,7 +5309,7 @@ components:
           nullable: true
     GrantList:
       type: object
-      description: A client's live grants.
+      description: Live grants.
       required: [items]
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/Grant"}, description: Grants sorted by certificate name.}
@@ -5613,6 +5641,7 @@ components:
         expectedCertificateName: {type: string, nullable: true, description: That certificate's name, for display; null when expectedCertificateId is null.}
         enabled: {type: boolean, description: Checked on the scan schedule and countable toward the org's monitor limit.}
         grantId: {type: string, format: uuid, nullable: true, description: The server grant that owns this monitor; null for a standalone monitor. A grant-owned monitor is edited through the grant's verify.}
+        grantDeployTargetId: {type: string, format: uuid, nullable: true, description: The deploy target of the owning server grant, for linking to it; null for a standalone monitor.}
         state: {$ref: "#/components/schemas/MonitorState"}
         lastCheckedAt: {type: string, format: date-time, nullable: true, description: When the most recent check ran; null before the first check.}
         nextCheckAt: {type: string, format: date-time, nullable: true, description: When the next scheduled check is due.}

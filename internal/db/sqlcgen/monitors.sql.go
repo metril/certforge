@@ -305,9 +305,10 @@ func (q *Queries) GetMonitorByID(ctx context.Context, id uuid.UUID) (ExternalMon
 }
 
 const listMonitors = `-- name: ListMonitors :many
-SELECT m.id, m.org_id, m.name, m.host, m.port, m.sni, m.interval_seconds, m.expected_cert_id, m.enabled, m.state, m.state_changed_at, m.last_checked_at, m.next_check_at, m.last_fingerprint, m.last_not_after, m.last_issuer, m.last_error, m.created_at, m.updated_at, m.consecutive_failures, m.grant_id, m.post_deploy_delay_seconds, ec.name AS expected_certificate_name
+SELECT m.id, m.org_id, m.name, m.host, m.port, m.sni, m.interval_seconds, m.expected_cert_id, m.enabled, m.state, m.state_changed_at, m.last_checked_at, m.next_check_at, m.last_fingerprint, m.last_not_after, m.last_issuer, m.last_error, m.created_at, m.updated_at, m.consecutive_failures, m.grant_id, m.post_deploy_delay_seconds, ec.name AS expected_certificate_name, g.deploy_target_id AS grant_deploy_target_id
 FROM external_monitors m
 LEFT JOIN certificates ec ON ec.id = m.expected_cert_id
+LEFT JOIN client_cert_grants g ON g.id = m.grant_id
 WHERE m.org_id = $1
 ORDER BY m.name
 `
@@ -336,11 +337,14 @@ type ListMonitorsRow struct {
 	GrantID                 *uuid.UUID `json:"grant_id"`
 	PostDeployDelaySeconds  int32      `json:"post_deploy_delay_seconds"`
 	ExpectedCertificateName *string    `json:"expected_certificate_name"`
+	GrantDeployTargetID     *uuid.UUID `json:"grant_deploy_target_id"`
 }
 
 // expected_certificate_name is null when expected_cert_id is null or the
 // certificate it named has since been deleted (expected_cert_id itself goes
 // NULL too then, ON DELETE SET NULL).
+// grant_deploy_target_id is the owning server grant's target, for the
+// Monitors page link.
 func (q *Queries) ListMonitors(ctx context.Context, orgID uuid.UUID) ([]ListMonitorsRow, error) {
 	rows, err := q.db.Query(ctx, listMonitors, orgID)
 	if err != nil {
@@ -374,6 +378,7 @@ func (q *Queries) ListMonitors(ctx context.Context, orgID uuid.UUID) ([]ListMoni
 			&i.GrantID,
 			&i.PostDeployDelaySeconds,
 			&i.ExpectedCertificateName,
+			&i.GrantDeployTargetID,
 		); err != nil {
 			return nil, err
 		}

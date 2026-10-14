@@ -70,6 +70,8 @@ type Monitor struct {
 	IntervalSeconds         int
 	ExpectedCertID          *uuid.UUID
 	ExpectedCertificateName *string
+	// GrantDeployTargetID is the owning server grant's target (list only).
+	GrantDeployTargetID *uuid.UUID
 	Enabled                 bool
 	State                   string
 	StateChangedAt          time.Time

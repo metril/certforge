@@ -594,14 +594,27 @@ func (q *Queries) GrantSources(ctx context.Context, ids []uuid.UUID) ([]GrantSou
 const grantViews = `-- name: GrantViews :many
 SELECT g.id, g.client_id, c.name AS client_name, g.cert_id, ce.name AS certificate_name, g.delivery,
        g.output_spec_id, g.deploy_target_id, g.steps, g.auto_remediate, g.target_options, g.created_at, g.updated_at,
+       o.name AS layout_name, t.name AS deploy_target_name,
        d.state, d.version_id, d.expected, d.installed, d.error, d.reported_at, d.state_changed_at, d.updated_at AS deployment_updated_at
 FROM client_cert_grants g
 JOIN clients c ON c.id = g.client_id
 JOIN certificates ce ON ce.id = g.cert_id
 JOIN deployments d ON d.grant_id = g.id
+LEFT JOIN output_specs o ON o.id = g.output_spec_id
+LEFT JOIN deploy_targets t ON t.id = g.deploy_target_id
 WHERE c.org_id = $1 AND g.removed_at IS NULL
   AND ($2::uuid IS NULL OR g.client_id = $2::uuid)
   AND ($3::uuid IS NULL OR g.id = $3::uuid)
+  AND ($4::uuid IS NULL OR g.cert_id = $4::uuid)
+  AND ($5::uuid IS NULL OR g.output_spec_id = $5::uuid)
+  AND ($6::uuid IS NULL OR g.deploy_target_id = $6::uuid)
+  AND ($7::uuid IS NULL
+       OR g.steps @> jsonb_build_array(jsonb_build_object('action', $7::uuid))
+       OR EXISTS (SELECT 1 FROM action_groups ag
+                  WHERE ag.action_ids @> ARRAY[$7::uuid]
+                    AND g.steps @> jsonb_build_array(jsonb_build_object('group', ag.id))))
+  AND ($8::uuid IS NULL
+       OR g.steps @> jsonb_build_array(jsonb_build_object('group', $8::uuid)))
 ORDER BY lower(ce.name), g.id
 `
 
@@ -609,6 +622,11 @@ type GrantViewsParams struct {
 	OrgID    uuid.UUID  `json:"org_id"`
 	ClientID *uuid.UUID `json:"client_id"`
 	GrantID  *uuid.UUID `json:"grant_id"`
+	CertID   *uuid.UUID `json:"cert_id"`
+	LayoutID *uuid.UUID `json:"layout_id"`
+	TargetID *uuid.UUID `json:"target_id"`
+	ActionID *uuid.UUID `json:"action_id"`
+	GroupID  *uuid.UUID `json:"group_id"`
 }
 
 type GrantViewsRow struct {
@@ -625,6 +643,8 @@ type GrantViewsRow struct {
 	TargetOptions       []byte     `json:"target_options"`
 	CreatedAt           time.Time  `json:"created_at"`
 	UpdatedAt           time.Time  `json:"updated_at"`
+	LayoutName          *string    `json:"layout_name"`
+	DeployTargetName    *string    `json:"deploy_target_name"`
 	State               string     `json:"state"`
 	VersionID           *uuid.UUID `json:"version_id"`
 	Expected            []byte     `json:"expected"`
@@ -635,8 +655,19 @@ type GrantViewsRow struct {
 	DeploymentUpdatedAt time.Time  `json:"deployment_updated_at"`
 }
 
+// Optional AND filters. The steps predicates match LiveGrantIDsUsingAction /
+// LiveGrantIDsUsingActionGroup (action direct, or through a group).
 func (q *Queries) GrantViews(ctx context.Context, arg GrantViewsParams) ([]GrantViewsRow, error) {
-	rows, err := q.db.Query(ctx, grantViews, arg.OrgID, arg.ClientID, arg.GrantID)
+	rows, err := q.db.Query(ctx, grantViews,
+		arg.OrgID,
+		arg.ClientID,
+		arg.GrantID,
+		arg.CertID,
+		arg.LayoutID,
+		arg.TargetID,
+		arg.ActionID,
+		arg.GroupID,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -658,6 +689,8 @@ func (q *Queries) GrantViews(ctx context.Context, arg GrantViewsParams) ([]Grant
 			&i.TargetOptions,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.LayoutName,
+			&i.DeployTargetName,
 			&i.State,
 			&i.VersionID,
 			&i.Expected,
@@ -1264,16 +1297,27 @@ func (q *Queries) RemovalPendingGrantsForClient(ctx context.Context, clientID *u
 const serverGrantViews = `-- name: ServerGrantViews :many
 SELECT g.id, g.deploy_target_id, g.cert_id, ce.name AS certificate_name, g.delivery,
        g.output_spec_id, g.steps, g.auto_remediate, g.target_options, g.created_at, g.updated_at,
+       o.name AS layout_name, t.name AS deploy_target_name,
        sd.status, sd.version_id, sd.last_error, sd.deployed_at, sd.updated_at AS deployment_updated_at,
        m.id AS monitor_id, m.host, m.port, m.sni, m.interval_seconds, m.post_deploy_delay_seconds
 FROM client_cert_grants g
 JOIN deploy_targets t ON t.id = g.deploy_target_id
 JOIN certificates ce ON ce.id = g.cert_id
+LEFT JOIN output_specs o ON o.id = g.output_spec_id
 LEFT JOIN server_deployments sd ON sd.grant_id = g.id
 LEFT JOIN external_monitors m ON m.grant_id = g.id
 WHERE g.client_id IS NULL AND g.removed_at IS NULL AND t.org_id = $1
   AND ($2::uuid IS NULL OR g.deploy_target_id = $2::uuid)
   AND ($3::uuid IS NULL OR g.id = $3::uuid)
+  AND ($4::uuid IS NULL OR g.cert_id = $4::uuid)
+  AND ($5::uuid IS NULL OR g.output_spec_id = $5::uuid)
+  AND ($6::uuid IS NULL
+       OR g.steps @> jsonb_build_array(jsonb_build_object('action', $6::uuid))
+       OR EXISTS (SELECT 1 FROM action_groups ag
+                  WHERE ag.action_ids @> ARRAY[$6::uuid]
+                    AND g.steps @> jsonb_build_array(jsonb_build_object('group', ag.id))))
+  AND ($7::uuid IS NULL
+       OR g.steps @> jsonb_build_array(jsonb_build_object('group', $7::uuid)))
 ORDER BY lower(ce.name), g.id
 `
 
@@ -1281,6 +1325,10 @@ type ServerGrantViewsParams struct {
 	OrgID    uuid.UUID  `json:"org_id"`
 	TargetID *uuid.UUID `json:"target_id"`
 	GrantID  *uuid.UUID `json:"grant_id"`
+	CertID   *uuid.UUID `json:"cert_id"`
+	LayoutID *uuid.UUID `json:"layout_id"`
+	ActionID *uuid.UUID `json:"action_id"`
+	GroupID  *uuid.UUID `json:"group_id"`
 }
 
 type ServerGrantViewsRow struct {
@@ -1295,6 +1343,8 @@ type ServerGrantViewsRow struct {
 	TargetOptions          []byte     `json:"target_options"`
 	CreatedAt              time.Time  `json:"created_at"`
 	UpdatedAt              time.Time  `json:"updated_at"`
+	LayoutName             *string    `json:"layout_name"`
+	DeployTargetName       string     `json:"deploy_target_name"`
 	Status                 *string    `json:"status"`
 	VersionID              *uuid.UUID `json:"version_id"`
 	LastError              *string    `json:"last_error"`
@@ -1308,8 +1358,17 @@ type ServerGrantViewsRow struct {
 	PostDeployDelaySeconds *int32     `json:"post_deploy_delay_seconds"`
 }
 
+// Same optional filters as GrantViews (minus client).
 func (q *Queries) ServerGrantViews(ctx context.Context, arg ServerGrantViewsParams) ([]ServerGrantViewsRow, error) {
-	rows, err := q.db.Query(ctx, serverGrantViews, arg.OrgID, arg.TargetID, arg.GrantID)
+	rows, err := q.db.Query(ctx, serverGrantViews,
+		arg.OrgID,
+		arg.TargetID,
+		arg.GrantID,
+		arg.CertID,
+		arg.LayoutID,
+		arg.ActionID,
+		arg.GroupID,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1329,6 +1388,8 @@ func (q *Queries) ServerGrantViews(ctx context.Context, arg ServerGrantViewsPara
 			&i.TargetOptions,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.LayoutName,
+			&i.DeployTargetName,
 			&i.Status,
 			&i.VersionID,
 			&i.LastError,
