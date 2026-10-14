@@ -2,6 +2,27 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.40.0](https://github.com/metril/certforge/compare/v0.39.0...v0.40.0) (2026-10-14)
+
+
+### Features
+
+* link every referenced object ([3e4a6cc](https://github.com/metril/certforge/commit/3e4a6cc8e543f1e67e39fd86cab70e59615ce405))
+* list what uses a deploy or DNS credential ([e85a8de](https://github.com/metril/certforge/commit/e85a8dedb3ec89df8148b29599e684ade7f4e0d9))
+* **web:** EntityLink and ?edit= on DNS credentials ([c5cf6b8](https://github.com/metril/certforge/commit/c5cf6b8ad19bb43e1f5cd589bb49d9b30ba8a425))
+* **web:** link audit and activity resources and actors ([76e50f9](https://github.com/metril/certforge/commit/76e50f97b2d338d398896d43d84f6273744979df))
+* **web:** link plain-text references through EntityLink ([f83147f](https://github.com/metril/certforge/commit/f83147fd431c79befa0505b71aee0dc40f378c8a))
+* **web:** link site names to the Sites sheet ([8e43590](https://github.com/metril/certforge/commit/8e43590594d66149bb131220b18d58ba23bc67a6))
+* **web:** show where a certificate is used in its header ([9ab2f5c](https://github.com/metril/certforge/commit/9ab2f5c9ebc0af4f69cdef769a95a6fff920712c))
+
+
+### Bug Fixes
+
+* **api:** allow the generated Id field in the DNS credential usage response ([a88622a](https://github.com/metril/certforge/commit/a88622aa847f21f3c65d0ecc14423be219224b4c))
+* **api:** document the 400 on the deploy target list ([54aaf22](https://github.com/metril/certforge/commit/54aaf22cef1f5a6d49d833e3bc9a4b574bf200ce))
+* **web:** do not open the DNS credential sheet for a reader ([e2b0db9](https://github.com/metril/certforge/commit/e2b0db948603122f175f9d8ace5ab8e354ea7aff))
+* **web:** open a non-private CA's sheet from a CA link ([c1aba44](https://github.com/metril/certforge/commit/c1aba446c4420e4a7bd6e819b2f7c7149da9143d))
+
 ## [0.39.0](https://github.com/metril/certforge/compare/v0.38.0...v0.39.0) (2026-10-14)
 
 
