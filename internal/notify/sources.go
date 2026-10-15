@@ -56,6 +56,7 @@ func (s *Sources) now() time.Time {
 var (
 	_ issuance.VersionListener = (*Sources)(nil)
 	_ issuance.FailureListener = (*Sources)(nil)
+	_ agents.ClientEvents      = (*Sources)(nil)
 )
 
 // ---- issuance.VersionListener ----
@@ -139,6 +140,30 @@ func (s *Sources) OnFailure(ctx context.Context, cert issuance.Certificate, fail
 	if _, err := s.Emitter.Emit(ctx, nil, ev); err != nil {
 		s.log().Error("notify: cert.renewal_failed not emitted", "cert", cert.ID, "err", err)
 	}
+}
+
+// ClientSeen implements agents.ClientEvents: the client.online alert, raised
+// only when a client.offline alert was actually sent for the last_seen the
+// client came back from (the same key scanOffline builds).
+func (s *Sources) ClientSeen(ctx context.Context, c agents.ClientSeen) error {
+	offlineKey := fmt.Sprintf("client.offline:%s:%d", c.ClientID, c.PrevSeen.Unix())
+	sent, err := s.Q.NotificationEventExists(ctx, offlineKey)
+	if err != nil || !sent {
+		return err
+	}
+	ev := Event{
+		Kind:     "client.online",
+		OrgID:    &c.OrgID,
+		Resource: Resource{ID: c.ClientID.String(), Name: c.Name},
+		Summary:  fmt.Sprintf("%s is back online", c.Name),
+		Details: map[string]any{
+			"lastSeen":        c.PrevSeen,
+			"downtimeSeconds": int64(s.now().Sub(c.PrevSeen).Seconds()),
+		},
+		DedupeKey: fmt.Sprintf("client.online:%s:%d", c.ClientID, c.PrevSeen.Unix()),
+	}
+	_, err = s.Emitter.Emit(ctx, nil, ev)
+	return err
 }
 
 // offlineCutoff is the oldest last_seen that still counts as online (now

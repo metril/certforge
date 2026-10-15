@@ -630,11 +630,24 @@ func (q *Queries) SetDeploymentState(ctx context.Context, arg SetDeploymentState
 	return err
 }
 
-const touchClient = `-- name: TouchClient :exec
-UPDATE clients SET last_seen = now() WHERE id = $1
+const touchClient = `-- name: TouchClient :one
+UPDATE clients c SET last_seen = now()
+FROM (SELECT p.id, p.last_seen FROM clients p WHERE p.id = $1 FOR UPDATE) prev
+WHERE c.id = prev.id
+RETURNING c.org_id, c.name, prev.last_seen AS prev_last_seen
 `
 
-func (q *Queries) TouchClient(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, touchClient, id)
-	return err
+type TouchClientRow struct {
+	OrgID        uuid.UUID  `json:"org_id"`
+	Name         string     `json:"name"`
+	PrevLastSeen *time.Time `json:"prev_last_seen"`
+}
+
+// Returns the client's identity and its previous last_seen (NULL before the
+// first check-in), read under the row lock so concurrent touches see distinct values.
+func (q *Queries) TouchClient(ctx context.Context, id uuid.UUID) (TouchClientRow, error) {
+	row := q.db.QueryRow(ctx, touchClient, id)
+	var i TouchClientRow
+	err := row.Scan(&i.OrgID, &i.Name, &i.PrevLastSeen)
+	return i, err
 }

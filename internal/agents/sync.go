@@ -53,8 +53,20 @@ func (s *Service) touch(ctx context.Context, id uuid.UUID) {
 	if !s.markSeen(id, s.now()) {
 		return
 	}
-	if err := s.Q.TouchClient(ctx, id); err != nil {
+	// Read the cutoff before the write so the settings lookup never sits between a touch and its alert.
+	cutoff := s.OnlineCutoff(ctx)
+	row, err := s.Q.TouchClient(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return
+	}
+	if err != nil {
 		s.log().Warn("agents: last_seen not written", "client", id, "err", err)
+		return
+	}
+	if s.Clients != nil && row.PrevLastSeen != nil && row.PrevLastSeen.Before(cutoff) {
+		if err := s.Clients.ClientSeen(ctx, ClientSeen{OrgID: row.OrgID, ClientID: id, Name: row.Name, PrevSeen: *row.PrevLastSeen}); err != nil {
+			s.log().Warn("agents: client.online not raised", "client", id, "err", err)
+		}
 	}
 }
 

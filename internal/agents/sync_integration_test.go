@@ -1069,3 +1069,41 @@ func TestDeploymentAlertsOncePerTransition(t *testing.T) {
 			counter("ok")-okBefore, counter("drift")-driftBefore, counter("failed")-failedBefore)
 	}
 }
+
+type clientSeenRecorder struct{ got []ClientSeen }
+
+func (r *clientSeenRecorder) ClientSeen(_ context.Context, c ClientSeen) error {
+	r.got = append(r.got, c)
+	return nil
+}
+
+// TestTouchReportsReturnFromOffline: touch tells Clients about a client only
+// when its previous last_seen is older than the offline cutoff.
+func TestTouchReportsReturnFromOffline(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+	rec := &clientSeenRecorder{}
+	f.svc.Clients = rec
+	c := f.client(t, "returning")
+
+	f.svc.touch(ctx, c.ID) // never seen before: nothing to report
+	if len(rec.got) != 0 {
+		t.Fatalf("first check-in reported %d returns, want 0", len(rec.got))
+	}
+
+	prev := time.Now().Add(-time.Hour).Truncate(time.Second)
+	if _, err := f.pool.Exec(ctx, `UPDATE clients SET last_seen = $2 WHERE id = $1`, c.ID, prev); err != nil {
+		t.Fatal(err)
+	}
+	f.svc.Now = func() time.Time { return time.Now().Add(time.Minute) } // past the touch throttle
+	f.svc.touch(ctx, c.ID)
+	if len(rec.got) != 1 || !rec.got[0].PrevSeen.Equal(prev) || rec.got[0].ClientID != c.ID || rec.got[0].Name != "returning" {
+		t.Fatalf("returns = %+v, want one for prev %v", rec.got, prev)
+	}
+
+	f.svc.Now = func() time.Time { return time.Now().Add(2 * time.Minute) }
+	f.svc.touch(ctx, c.ID) // seen a moment ago: still online
+	if len(rec.got) != 1 {
+		t.Fatalf("online check-in reported again: %+v", rec.got)
+	}
+}

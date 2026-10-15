@@ -483,3 +483,44 @@ func TestImmediateDeploymentAlertDedupesWithScan(t *testing.T) {
 		t.Fatalf("deploy.drift events after the scan = %d, want still 1", got)
 	}
 }
+
+// TestClientOnlineFollowsOffline: ClientSeen raises client.online only when
+// a client.offline alert was sent for the last_seen the client came back from,
+// and only once per episode.
+func TestClientOnlineFollowsOffline(t *testing.T) {
+	ctx := context.Background()
+	pool, _ := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	insertChannel(t, pool, testChannel{orgID: org, name: "all-events"})
+	setAgentsOfflineAfterSeconds(t, pool, 180)
+
+	target := insertDeployTarget(t, pool, org, "target", "agent")
+	cert := insertCert(t, pool, org, "cert", "cert.example.test", nil)
+	version := insertVersion(t, pool, cert, time.Now().Add(90*24*time.Hour), uuid.Nil)
+	lastSeen := time.Now().Add(-10 * time.Minute)
+	client := insertClient(t, pool, org, "client-1", clientOpts{lastSeen: &lastSeen})
+	insertAgentGrant(t, pool, client, cert, target, "ok", version, "")
+
+	s := newSources(pool, &fakeInserter{})
+	seen := agents.ClientSeen{OrgID: org, ClientID: client, Name: "client-1", PrevSeen: lastSeen}
+
+	// No client.offline alert yet: no client.online.
+	if err := s.ClientSeen(ctx, seen); err != nil {
+		t.Fatal(err)
+	}
+	if got := eventCount(t, pool, "client.online"); got != 0 {
+		t.Fatalf("client.online without a prior client.offline = %d, want 0", got)
+	}
+
+	if err := s.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := s.ClientSeen(ctx, seen); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := eventCount(t, pool, "client.online"); got != 1 {
+		t.Fatalf("client.online after offline alert = %d, want 1", got)
+	}
+}

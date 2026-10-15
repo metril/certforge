@@ -98,8 +98,13 @@ UPDATE clients SET applied_revision = GREATEST(applied_revision, LEAST(sqlc.arg(
        last_seen = now()
 WHERE id = sqlc.arg(id);
 
--- name: TouchClient :exec
-UPDATE clients SET last_seen = now() WHERE id = $1;
+-- name: TouchClient :one
+-- Returns the client's identity and its previous last_seen (NULL before the
+-- first check-in), read under the row lock so concurrent touches see distinct values.
+UPDATE clients c SET last_seen = now()
+FROM (SELECT p.id, p.last_seen FROM clients p WHERE p.id = $1 FOR UPDATE) prev
+WHERE c.id = prev.id
+RETURNING c.org_id, c.name, prev.last_seen AS prev_last_seen;
 
 -- name: ListHookRuns :many
 SELECT r.id, r.client_id, r.grant_id, r.hook_id, r.phase, r.argv, r.exit_code, r.duration_ms, r.stdout, r.stderr, r.ran_at,

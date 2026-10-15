@@ -637,6 +637,17 @@ func (q *Queries) MatchingChannels(ctx context.Context, arg MatchingChannelsPara
 	return items, nil
 }
 
+const notificationEventExists = `-- name: NotificationEventExists :one
+SELECT EXISTS (SELECT 1 FROM notification_events WHERE dedupe_key = $1)::bool
+`
+
+func (q *Queries) NotificationEventExists(ctx context.Context, dedupeKey string) (bool, error) {
+	row := q.db.QueryRow(ctx, notificationEventExists, dedupeKey)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const pruneOldNotificationEvents = `-- name: PruneOldNotificationEvents :execrows
 DELETE FROM notification_events WHERE at < $1::timestamptz
 `

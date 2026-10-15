@@ -8,6 +8,9 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (dedupe_key) DO NOTHING
 RETURNING id;
 
+-- name: NotificationEventExists :one
+SELECT EXISTS (SELECT 1 FROM notification_events WHERE dedupe_key = $1)::bool;
+
 -- name: MatchingChannels :many
 -- Emit's channel match (task-3 brief): enabled, org-owned or all_orgs, an
 -- empty events list or an explicit kind match, and a minSeverity at or
