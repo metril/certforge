@@ -194,6 +194,11 @@ WHERE g.removed_at IS NULL AND d.state IN ('failed', 'drift') AND d.version_id I
     SELECT 1 FROM notification_events e
     WHERE e.dedupe_key = 'deploy.' || d.state || ':' || g.id::text || ':' || d.version_id::text
   )
+  -- A failed action already raised action.failed for this version.
+  AND NOT (d.state = 'failed' AND EXISTS (
+    SELECT 1 FROM notification_events e
+    WHERE e.dedupe_key LIKE 'action.failed:' || g.id::text || ':' || d.version_id::text || ':%'
+  ))
 ORDER BY d.state_changed_at, g.id
 LIMIT sqlc.arg(page_limit)::int;
 
@@ -217,6 +222,11 @@ WHERE g.removed_at IS NULL AND sd.status = 'failed' AND sd.version_id IS NOT NUL
   AND NOT EXISTS (
     SELECT 1 FROM notification_events e
     WHERE e.dedupe_key = 'deploy.failed:' || g.id::text || ':' || sd.version_id::text
+  )
+  -- A failed action already raised action.failed for this version.
+  AND NOT EXISTS (
+    SELECT 1 FROM notification_events e
+    WHERE e.dedupe_key LIKE 'action.failed:' || g.id::text || ':' || sd.version_id::text || ':%'
   )
 ORDER BY sd.state_changed_at, g.id
 LIMIT sqlc.arg(page_limit)::int;

@@ -1107,3 +1107,49 @@ func TestTouchReportsReturnFromOffline(t *testing.T) {
 		t.Fatalf("online check-in reported again: %+v", rec.got)
 	}
 }
+
+// TestFailedReportBlamesNonZeroHook: a failed result whose hook run exited
+// non-zero reaches Events with that hook's phase and action name; a failure
+// with no failing hook carries neither.
+func TestFailedReportBlamesNonZeroHook(t *testing.T) {
+	f := newSyncFixture(t)
+	ev := &fakeDeploymentEvents{}
+	f.svc.Events = ev
+	ctx := context.Background()
+
+	certID := f.cert(t, "web")
+	vid := f.version(t, certID, 1, true)
+	f.setCurrent(t, certID, vid)
+	targetID := f.target(t, "traefik", delivery.TraefikConfig{Dir: "/etc/traefik/dynamic", AcmeServiceURL: "http://agent:8080"})
+	c := f.client(t, "web-hook")
+	gid, err := f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: certID, Delivery: "pull", TargetID: &targetID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl, err := f.q.GetClientByID(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asg, err := f.svc.Assignments(ctx, cl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hookID uuid.UUID
+	if err := f.pool.QueryRow(ctx, `INSERT INTO actions (org_id, name, kind, phase, config) VALUES ($1, 'reload-nginx', 'ssh', 'post_deploy', '{}') RETURNING id`,
+		f.org).Scan(&hookID); err != nil {
+		t.Fatal(err)
+	}
+	report := func(r agentproto.GrantResult) {
+		t.Helper()
+		r.GrantID, r.VersionID = gid, vid
+		if err := f.svc.Report(ctx, cl, agentproto.Report{Revision: asg.Revision, Results: []agentproto.GrantResult{r}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	report(agentproto.GrantResult{State: agentproto.StateFailed, Error: "post hook failed", HookRuns: []agentproto.HookRun{
+		{HookID: hookID, Phase: "post_deploy", Argv: []string{"nginx", "-s", "reload"}, ExitCode: 1}}})
+	if len(ev.got) != 1 || ev.got[0].State != "failed" || ev.got[0].Phase != "post_deploy" || ev.got[0].Action != "reload-nginx" {
+		t.Fatalf("transitions = %+v", ev.got)
+	}
+}

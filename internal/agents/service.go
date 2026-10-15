@@ -42,6 +42,9 @@ type DeploymentTransition struct {
 	Target    string // the client's name
 	State     string // "drift" or "failed"
 	Error     string
+	// Phase and Action name the hook that exited non-zero behind a failed
+	// state; both are empty when no hook is to blame.
+	Phase, Action string
 }
 
 // DeploymentEvents is told about drift and failed transitions so an alert

@@ -229,6 +229,24 @@ func transitionOf(c sqlcgen.Client, d sqlcgen.ClientDeploymentsRow, next, errTex
 		CertName: d.CertificateName, Target: c.Name, State: next, Error: errText}, true
 }
 
+// blameHook names the pre/post-deploy hook behind a failed transition: the
+// first reported hook run that exited non-zero.
+func (s *Service) blameHook(ctx context.Context, q *sqlcgen.Queries, c sqlcgen.Client, res agentproto.GrantResult, t *DeploymentTransition) {
+	if t.State != stateFailed {
+		return
+	}
+	for _, hr := range res.HookRuns {
+		if hr.ExitCode == 0 || (hr.Phase != "pre_deploy" && hr.Phase != "post_deploy") {
+			continue
+		}
+		t.Phase, t.Action = hr.Phase, "an action"
+		if a, err := q.GetAction(ctx, sqlcgen.GetActionParams{ID: hr.HookID, OrgID: c.OrgID}); err == nil {
+			t.Action = a.Name
+		}
+		return
+	}
+}
+
 // notifyTransitions sends the after-commit alerts; a failed send is logged,
 // never returned, so it cannot undo an agent's report.
 func (s *Service) notifyTransitions(ctx context.Context, ts []DeploymentTransition) {
@@ -314,6 +332,7 @@ func (s *Service) Report(ctx context.Context, c sqlcgen.Client, rep agentproto.R
 				events = append(events, deploymentEvent(c, d, next, errText, missing, mismatched))
 				changedTo = append(changedTo, next)
 				if t, ok := transitionOf(c, d, next, errText); ok {
+					s.blameHook(ctx, q, c, res, &t)
 					transitions = append(transitions, t)
 				}
 				if next == stateDrift && d.AutoRemediate {

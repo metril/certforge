@@ -136,8 +136,18 @@ func (d *Dispatcher) PfSenseUsage(ctx context.Context, orgID, id uuid.UUID, cert
 	return PfSenseUsage(ctx, d.HTTP(ctx), rt.cfg, certName)
 }
 
+// ActionError is a failed action step. The dispatcher turns it into an
+// action.failed alert instead of a plain deploy failure.
+type ActionError struct {
+	Phase, Action string
+	Err           error
+}
+
+func (e *ActionError) Error() string { return e.Err.Error() }
+func (e *ActionError) Unwrap() error { return e.Err }
+
 // runAction runs one action step against the grant and records it. The
-// returned error is already redacted of the target's and the action's secrets.
+// returned *ActionError is already redacted of the target's and the action's secrets.
 func (d *Dispatcher) runAction(ctx context.Context, row sqlcgen.ServerDeployGrantRow, a stepAction, req targets.Request) error {
 	timeout := time.Duration(a.TimeoutSeconds) * time.Second
 	if a.TimeoutSeconds <= 0 {
@@ -171,7 +181,7 @@ func (d *Dispatcher) runAction(ctx context.Context, row sqlcgen.ServerDeployGran
 		run.Stderr = capRun([]byte(msg))
 	}
 	rec.RecordHook(ctx, run)
-	return errors.New(msg)
+	return &ActionError{Phase: a.Phase, Action: a.Name, Err: errors.New(msg)}
 }
 
 func (d *Dispatcher) execAction(ctx context.Context, row sqlcgen.ServerDeployGrantRow, a stepAction, req targets.Request, timeout time.Duration, res *stepResult) error {

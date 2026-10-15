@@ -524,3 +524,34 @@ func TestClientOnlineFollowsOffline(t *testing.T) {
 		t.Fatalf("client.online after offline alert = %d, want 1", got)
 	}
 }
+
+// TestAgentActionFailureEmitsActionFailed: an agent-run failure blamed on a
+// hook raises action.failed (not deploy.failed), and the scan adds no
+// deploy.failed for the same grant and version.
+func TestAgentActionFailureEmitsActionFailed(t *testing.T) {
+	ctx := context.Background()
+	pool, _ := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	insertChannel(t, pool, testChannel{orgID: org, name: "all-events"})
+
+	target := insertDeployTarget(t, pool, org, "target", "agent")
+	cert := insertCert(t, pool, org, "cert", "cert.example.test", nil)
+	version := insertVersion(t, pool, cert, time.Now().Add(90*24*time.Hour), uuid.Nil)
+	client := insertClient(t, pool, org, "client-1", clientOpts{})
+	grant := insertAgentGrant(t, pool, client, cert, target, "failed", version, "hook exited 1")
+
+	e := notify.DeployEvents{E: &notify.Emitter{Pool: pool, River: &fakeInserter{}}}
+	if err := e.DeploymentChanged(ctx, agents.DeploymentTransition{OrgID: org, ClientID: client, GrantID: grant, VersionID: version,
+		CertName: "cert", Target: "client-1", State: "failed", Error: "hook exited 1", Phase: "pre_deploy", Action: "stop-app"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := eventCount(t, pool, "action.failed"); got != 1 {
+		t.Fatalf("action.failed = %d, want 1", got)
+	}
+	if err := newSources(pool, &fakeInserter{}).Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := eventCount(t, pool, "deploy.failed"); got != 0 {
+		t.Fatalf("deploy.failed after scan = %d, want 0", got)
+	}
+}
