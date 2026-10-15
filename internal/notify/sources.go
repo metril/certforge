@@ -97,7 +97,8 @@ func (s *Sources) OnVersion(ctx context.Context, certID, versionID uuid.UUID) {
 
 // ---- issuance.FailureListener ----
 
-// OnFailure emits cert.renewal_failed once failures reaches the live
+// OnFailure emits cert.renewal_failed (cert.issuance_failed while the cert
+// has no current version yet) once failures reaches the live
 // notifications.failureThreshold, at most once per UTC calendar day (the
 // dedupe key's own trailing :<date>). cause is never read here: f is
 // already issuance.ClassifyFailure's classified, URL/host-free view of it
@@ -126,19 +127,23 @@ func (s *Sources) OnFailure(ctx context.Context, cert issuance.Certificate, fail
 	if cert.NextRenewAt != nil {
 		details["nextAttemptAt"] = *cert.NextRenewAt
 	}
+	kind, what := "cert.renewal_failed", "Renewal"
+	if cert.CurrentVersionID == nil {
+		kind, what = "cert.issuance_failed", "Issuance"
+	}
 	ev := Event{
-		Kind:  "cert.renewal_failed",
+		Kind:  kind,
 		OrgID: &cert.OrgID,
 		Resource: Resource{
 			ID:   cert.ID.String(),
 			Name: cert.Name,
 		},
-		Summary:   fmt.Sprintf("Renewal of %s failed (%s, attempt %d)", cert.CommonName, f.Class, failures),
+		Summary:   fmt.Sprintf("%s of %s failed (%s, attempt %d)", what, cert.CommonName, f.Class, failures),
 		Details:   details,
-		DedupeKey: fmt.Sprintf("cert.renewal_failed:%s:%s", cert.ID, today),
+		DedupeKey: fmt.Sprintf("%s:%s:%s", kind, cert.ID, today),
 	}
 	if _, err := s.Emitter.Emit(ctx, nil, ev); err != nil {
-		s.log().Error("notify: cert.renewal_failed not emitted", "cert", cert.ID, "err", err)
+		s.log().Error("notify: "+kind+" not emitted", "cert", cert.ID, "err", err)
 	}
 }
 
