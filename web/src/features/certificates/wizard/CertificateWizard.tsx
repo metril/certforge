@@ -236,7 +236,7 @@ export function CertificateWizard({ from, edit }: { from?: Certificate; edit?: C
               </Button>
             )}
             <Button
-              variant="ghost"
+              variant="outline"
               className="ml-auto"
               disabled={busy}
               onClick={() =>
