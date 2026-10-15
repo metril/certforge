@@ -2,6 +2,16 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.41.1](https://github.com/metril/certforge/compare/v0.41.0...v0.41.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* **web:** hide coverage when the CA needs no verification ([8150b28](https://github.com/metril/certforge/commit/8150b28c32222825cd63c201960f77d86715d01c))
+* **web:** let the certificate wizard cancel ([f8c9cdf](https://github.com/metril/certforge/commit/f8c9cdf8768d1d64749fff192483a96a6c2ea7e6))
+* **web:** readable digests and installed notes, wizard Cancel, no coverage warning for private CAs ([4aafca2](https://github.com/metril/certforge/commit/4aafca20c7dcd0dcc492e9e928cb355cac6ebc8c))
+* **web:** show full certificate digests and the whole installed note ([bac5892](https://github.com/metril/certforge/commit/bac5892d98b8d4ab539fb0efca7f817c0d64c700))
+
 ## [0.41.0](https://github.com/metril/certforge/compare/v0.40.0...v0.41.0) (2026-10-14)
 
 
