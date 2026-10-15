@@ -94,6 +94,9 @@ type DeployFailure struct {
 	OrgID, GrantID, VersionID uuid.UUID
 	CertName, TargetName      string
 	LastError                 string
+	// Phase ("pre_deploy" or "post_deploy") and Action name the action step
+	// that failed; both are empty for any other failure.
+	Phase, Action string
 }
 
 // Dispatcher is the server-side counterpart to an enrolled agent for
@@ -716,10 +719,15 @@ func (d *Dispatcher) fail(ctx context.Context, row sqlcgen.ServerDeployGrantRow,
 	// its own transaction, so there is nothing here to undo, and river's
 	// retry is driven by the returned error below, not by this.
 	if d.Events != nil {
-		if err := d.Events.DeployFailed(ctx, DeployFailure{
+		f := DeployFailure{
 			OrgID: row.OrgID, GrantID: row.ID, VersionID: versionID,
 			CertName: row.CertificateName, TargetName: row.TargetName, LastError: msg,
-		}); err != nil {
+		}
+		var ae *ActionError
+		if errors.As(cause, &ae) {
+			f.Phase, f.Action = ae.Phase, ae.Action
+		}
+		if err := d.Events.DeployFailed(ctx, f); err != nil {
 			d.log().Error("deploy: deploy.failed not emitted", "grant", row.ID, "err", err)
 		}
 	}

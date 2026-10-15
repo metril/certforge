@@ -5580,7 +5580,7 @@ export interface components {
          * @description What happened. Severity and resource type follow deterministically from kind (docs/reference/events.md#events).
          * @enum {string}
          */
-        EventKind: "cert.issued" | "cert.renewal_failed" | "cert.expiring" | "cert.expired" | "deploy.failed" | "deploy.drift" | "client.offline" | "agent.cert_expiring" | "client.pending_approval" | "monitor.mismatch" | "monitor.unreachable" | "monitor.expiring" | "monitor.recovered" | "backup.completed" | "backup.failed" | "test";
+        EventKind: "cert.issued" | "cert.renewal_failed" | "cert.issuance_failed" | "cert.expiring" | "cert.expired" | "deploy.failed" | "action.failed" | "deploy.drift" | "client.offline" | "client.online" | "agent.cert_expiring" | "client.pending_approval" | "monitor.mismatch" | "monitor.unreachable" | "monitor.expiring" | "monitor.recovered" | "backup.completed" | "backup.failed" | "test";
         /**
          * @description How serious an event is.
          * @enum {string}

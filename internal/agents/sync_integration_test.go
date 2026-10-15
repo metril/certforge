@@ -1069,3 +1069,116 @@ func TestDeploymentAlertsOncePerTransition(t *testing.T) {
 			counter("ok")-okBefore, counter("drift")-driftBefore, counter("failed")-failedBefore)
 	}
 }
+
+type clientSeenRecorder struct{ got []ClientSeen }
+
+func (r *clientSeenRecorder) ClientSeen(_ context.Context, c ClientSeen) error {
+	r.got = append(r.got, c)
+	return nil
+}
+
+// TestTouchReportsReturnFromOffline: touch tells Clients about a client only
+// when its previous last_seen is older than the offline cutoff.
+func TestTouchReportsReturnFromOffline(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+	rec := &clientSeenRecorder{}
+	f.svc.Clients = rec
+	c := f.client(t, "returning")
+
+	f.svc.touch(ctx, c.ID) // never seen before: nothing to report
+	if len(rec.got) != 0 {
+		t.Fatalf("first check-in reported %d returns, want 0", len(rec.got))
+	}
+
+	prev := time.Now().Add(-time.Hour).Truncate(time.Second)
+	if _, err := f.pool.Exec(ctx, `UPDATE clients SET last_seen = $2 WHERE id = $1`, c.ID, prev); err != nil {
+		t.Fatal(err)
+	}
+	f.svc.Now = func() time.Time { return time.Now().Add(time.Minute) } // past the touch throttle
+	f.svc.touch(ctx, c.ID)
+	if len(rec.got) != 1 || !rec.got[0].PrevSeen.Equal(prev) || rec.got[0].ClientID != c.ID || rec.got[0].Name != "returning" {
+		t.Fatalf("returns = %+v, want one for prev %v", rec.got, prev)
+	}
+
+	f.svc.Now = func() time.Time { return time.Now().Add(2 * time.Minute) }
+	f.svc.touch(ctx, c.ID) // seen a moment ago: still online
+	if len(rec.got) != 1 {
+		t.Fatalf("online check-in reported again: %+v", rec.got)
+	}
+}
+
+// TestFailedReportBlamesNonZeroHook: a failed result whose hook run exited
+// non-zero reaches Events with that hook's phase and action name; a failure
+// with no failing hook carries neither.
+func TestFailedReportBlamesNonZeroHook(t *testing.T) {
+	f := newSyncFixture(t)
+	ev := &fakeDeploymentEvents{}
+	f.svc.Events = ev
+	ctx := context.Background()
+
+	certID := f.cert(t, "web")
+	vid := f.version(t, certID, 1, true)
+	f.setCurrent(t, certID, vid)
+	targetID := f.target(t, "traefik", delivery.TraefikConfig{Dir: "/etc/traefik/dynamic", AcmeServiceURL: "http://agent:8080"})
+	c := f.client(t, "web-hook")
+	gid, err := f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: certID, Delivery: "pull", TargetID: &targetID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl, err := f.q.GetClientByID(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asg, err := f.svc.Assignments(ctx, cl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hookID uuid.UUID
+	if err := f.pool.QueryRow(ctx, `INSERT INTO actions (org_id, name, kind, phase, config) VALUES ($1, 'reload-nginx', 'ssh', 'post_deploy', '{}') RETURNING id`,
+		f.org).Scan(&hookID); err != nil {
+		t.Fatal(err)
+	}
+	report := func(r agentproto.GrantResult) {
+		t.Helper()
+		r.GrantID, r.VersionID = gid, vid
+		if err := f.svc.Report(ctx, cl, agentproto.Report{Revision: asg.Revision, Results: []agentproto.GrantResult{r}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	report(agentproto.GrantResult{State: agentproto.StateFailed, Error: "post_deploy hook nginx exited 1; the files are installed", HookRuns: []agentproto.HookRun{
+		{HookID: hookID, Phase: "post_deploy", Argv: []string{"nginx", "-s", "reload"}, ExitCode: 1}}})
+	if len(ev.got) != 1 || ev.got[0].State != "failed" || ev.got[0].Phase != "post_deploy" || ev.got[0].Action != "reload-nginx" {
+		t.Fatalf("transitions = %+v", ev.got)
+	}
+
+	// A reload failure that a later post hook also trips over is not the hook's fault.
+	report(agentproto.GrantResult{State: agentproto.StateOK})
+	ev.got = nil
+	report(agentproto.GrantResult{State: agentproto.StateFailed, Error: "files installed; reload: boom", HookRuns: []agentproto.HookRun{
+		{HookID: hookID, Phase: "post_deploy", Argv: []string{"nginx"}, ExitCode: 1}}})
+	if len(ev.got) != 1 || ev.got[0].State != "failed" || ev.got[0].Phase != "" || ev.got[0].Action != "" {
+		t.Fatalf("reload failure blamed on a hook: %+v", ev.got)
+	}
+}
+
+// TestHelloReportsReturnFromOffline: Hello is the first thing a reconnecting
+// agent does, so it must not overwrite last_seen before touch compares it.
+func TestHelloReportsReturnFromOffline(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+	rec := &clientSeenRecorder{}
+	f.svc.Clients = rec
+	c := f.client(t, "reconnecting")
+	prev := time.Now().Add(-time.Hour).Truncate(time.Second)
+	if _, err := f.pool.Exec(ctx, `UPDATE clients SET last_seen = $2 WHERE id = $1`, c.ID, prev); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Hello(ctx, c, agentproto.Hello{Hostname: "h", OS: "linux", Arch: "amd64", AgentVersion: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.got) != 1 || !rec.got[0].PrevSeen.Equal(prev) {
+		t.Fatalf("returns = %+v, want one for prev %v", rec.got, prev)
+	}
+}

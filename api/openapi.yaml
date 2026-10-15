@@ -5649,7 +5649,7 @@ components:
         durationMs: {type: integer, description: Wall time the attempt took, in milliseconds.}
     EventKind:
       type: string
-      enum: [cert.issued, cert.renewal_failed, cert.expiring, cert.expired, deploy.failed, deploy.drift, client.offline, agent.cert_expiring, client.pending_approval, monitor.mismatch, monitor.unreachable, monitor.expiring, monitor.recovered, backup.completed, backup.failed, test]
+      enum: [cert.issued, cert.renewal_failed, cert.issuance_failed, cert.expiring, cert.expired, deploy.failed, action.failed, deploy.drift, client.offline, client.online, agent.cert_expiring, client.pending_approval, monitor.mismatch, monitor.unreachable, monitor.expiring, monitor.recovered, backup.completed, backup.failed, test]
       description: What happened. Severity and resource type follow deterministically from kind (docs/reference/events.md#events).
     Severity:
       type: string

@@ -180,6 +180,28 @@ func deployStateEvent(orgID, grantID, versionID uuid.UUID, state, certName, targ
 	}
 }
 
+// actionFailedEvent builds the action.failed event for a pre- or post-deploy
+// action step. A pre-deploy failure means nothing was deployed; a post-deploy
+// failure means the certificate is already in place. The dedupe key carries
+// the phase, and the scan queries skip any grant and version with a key under
+// that prefix so they never add a second deploy.failed.
+func actionFailedEvent(orgID, grantID, versionID uuid.UUID, phase, action, certName, targetName, errText string) Event {
+	deployed := phase == "post_deploy"
+	label, outcome := "Pre-deploy", "not deployed"
+	if deployed {
+		label, outcome = "Post-deploy", "certificate deployed"
+	}
+	return Event{
+		Kind:     "action.failed",
+		OrgID:    &orgID,
+		Resource: Resource{ID: grantID.String(), Name: certName + " → " + targetName},
+		Summary:  fmt.Sprintf("%s action %s failed on %s (%s)", label, action, targetName, outcome),
+		Details: map[string]any{"target": targetName, "phase": phase, "action": action,
+			"deployed": deployed, "lastError": redactURLs(errText)},
+		DedupeKey: fmt.Sprintf("action.failed:%s:%s:%s", grantID, versionID, phase),
+	}
+}
+
 // scanDeployments covers both deploy.failed/deploy.drift for agent-run
 // grants (client_cert_grants/deployments) and deploy.failed for
 // server-run grants (client_cert_grants/server_deployments, which has no

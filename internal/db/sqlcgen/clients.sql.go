@@ -539,7 +539,7 @@ func (q *Queries) PendingTokens(ctx context.Context, ids []uuid.UUID) ([]Pending
 
 const renewClientCert = `-- name: RenewClientCert :one
 UPDATE clients SET agent_cert_serial = $1, agent_cert_not_after = $2,
-       agent_ca_id = $3, last_seen = now()
+       agent_ca_id = $3
 WHERE id = $4 AND status = 'active' AND agent_cert_serial = $5
 RETURNING id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets, file_watch_active, file_watch_reason
 `
@@ -727,7 +727,7 @@ func (q *Queries) UpdateClient(ctx context.Context, arg UpdateClientParams) (Cli
 }
 
 const updateClientFacts = `-- name: UpdateClientFacts :one
-UPDATE clients SET hostname = $2, os = $3, arch = $4, agent_version = $5, capabilities = $6, last_seen = now()
+UPDATE clients SET hostname = $2, os = $3, arch = $4, agent_version = $5, capabilities = $6
 WHERE id = $1 RETURNING id, org_id, site_id, name, status, agent_cert_serial, agent_cert_not_after, agent_ca_id, hostname, os, arch, agent_version, capabilities, last_seen, desired_revision, applied_revision, created_at, restart_targets, file_watch_active, file_watch_reason
 `
 

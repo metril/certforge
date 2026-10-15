@@ -37,6 +37,10 @@ type DeployEvents struct {
 // the same redactURLs pass scan.go's backstop uses before either can win
 // the shared dedupe key.
 func (d DeployEvents) DeployFailed(ctx context.Context, f deploy.DeployFailure) error {
+	if f.Phase != "" {
+		_, err := d.E.Emit(ctx, nil, actionFailedEvent(f.OrgID, f.GrantID, f.VersionID, f.Phase, f.Action, f.CertName, f.TargetName, f.LastError))
+		return err
+	}
 	ev := Event{
 		Kind:      "deploy.failed",
 		OrgID:     &f.OrgID,
@@ -62,6 +66,10 @@ func (d DeployEvents) DeployDrift(ctx context.Context, f deploy.DeployDrift) err
 // commits. It shares scan.go's builder and so its DedupeKey, which makes the
 // hourly scan a backstop that cannot send a second copy.
 func (d DeployEvents) DeploymentChanged(ctx context.Context, t agents.DeploymentTransition) error {
+	if t.State == "failed" && t.Phase != "" {
+		_, err := d.E.Emit(ctx, nil, actionFailedEvent(t.OrgID, t.GrantID, t.VersionID, t.Phase, t.Action, t.CertName, t.Target, t.Error))
+		return err
+	}
 	_, err := d.E.Emit(ctx, nil, deployStateEvent(t.OrgID, t.GrantID, t.VersionID, t.State, t.CertName, t.Target, t.Error))
 	return err
 }

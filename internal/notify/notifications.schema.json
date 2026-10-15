@@ -22,7 +22,7 @@
     "failureThreshold": {
       "type": "integer",
       "title": "Renewal failure threshold",
-      "description": "Consecutive renewal failures for one certificate before a cert.renewal_failed event is raised, at most once per day.",
+      "description": "Consecutive renewal failures for one certificate before a cert.renewal_failed (or cert.issuance_failed, for a certificate with no issued version yet) event is raised, at most once per day.",
       "minimum": 1,
       "maximum": 10,
       "default": 3

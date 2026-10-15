@@ -213,7 +213,7 @@ Changing the host or port requires re-sending the password. **Send test email** 
 |---|---|---|---|
 | **Allow loopback and link-local** (`allowLoopbackUrls`) | off | – | Lets webhook, ntfy and Home Assistant channels, and external monitors, target loopback and link-local hosts. Private-network (RFC 1918) hosts are always allowed. It also applies to DNS credential URL fields. Off is the SSRF protection. |
 | **Expiry warning (days)** (`expiryWarningDays`) | 7 | 1–60 | Days before a certificate version expires that a `cert.expiring` event is raised. |
-| **Renewal failure threshold** (`failureThreshold`) | 3 | 1–10 | Consecutive renewal failures before `cert.renewal_failed` is raised, at most once per day. |
+| **Renewal failure threshold** (`failureThreshold`) | 3 | 1–10 | Consecutive renewal failures before `cert.renewal_failed` (or `cert.issuance_failed`, for a certificate with no issued version yet) is raised, at most once per day. |
 
 ### Prometheus section
 

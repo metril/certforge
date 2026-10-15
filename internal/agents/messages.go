@@ -64,6 +64,7 @@ func (s *Service) Hello(ctx context.Context, c sqlcgen.Client, h agentproto.Hell
 	if err != nil {
 		return agentproto.Welcome{}, err
 	}
+	s.touch(ctx, c.ID)
 	st := s.CurrentSettings(ctx)
 	return agentproto.Welcome{HeartbeatSeconds: st.HeartbeatSeconds, Revision: nc.DesiredRevision, NoFileWatch: !st.FileWatchEnabled()}, nil
 }

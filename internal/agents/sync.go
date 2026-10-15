@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -53,8 +54,20 @@ func (s *Service) touch(ctx context.Context, id uuid.UUID) {
 	if !s.markSeen(id, s.now()) {
 		return
 	}
-	if err := s.Q.TouchClient(ctx, id); err != nil {
+	// Read the cutoff before the write so the settings lookup never sits between a touch and its alert.
+	cutoff := s.OnlineCutoff(ctx)
+	row, err := s.Q.TouchClient(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return
+	}
+	if err != nil {
 		s.log().Warn("agents: last_seen not written", "client", id, "err", err)
+		return
+	}
+	if s.Clients != nil && row.PrevLastSeen != nil && row.PrevLastSeen.Before(cutoff) {
+		if err := s.Clients.ClientSeen(ctx, ClientSeen{OrgID: row.OrgID, ClientID: id, Name: row.Name, PrevSeen: *row.PrevLastSeen}); err != nil {
+			s.log().Warn("agents: client.online not raised", "client", id, "err", err)
+		}
 	}
 }
 
@@ -217,6 +230,26 @@ func transitionOf(c sqlcgen.Client, d sqlcgen.ClientDeploymentsRow, next, errTex
 		CertName: d.CertificateName, Target: c.Name, State: next, Error: errText}, true
 }
 
+// blameHook names the pre/post-deploy hook behind a failed transition: the
+// first reported hook run that exited non-zero.
+func (s *Service) blameHook(ctx context.Context, q *sqlcgen.Queries, c sqlcgen.Client, res agentproto.GrantResult, t *DeploymentTransition) {
+	if t.State != stateFailed {
+		return
+	}
+	for _, hr := range res.HookRuns {
+		// The agent words a hook failure "<phase> hook <name> exited N"; any other
+		// error (a reload, a file write) is not the hook's doing.
+		if hr.ExitCode == 0 || (hr.Phase != "pre_deploy" && hr.Phase != "post_deploy") || !strings.HasPrefix(res.Error, hr.Phase+" hook ") {
+			continue
+		}
+		t.Phase, t.Action = hr.Phase, "an action"
+		if a, err := q.GetAction(ctx, sqlcgen.GetActionParams{ID: hr.HookID, OrgID: c.OrgID}); err == nil {
+			t.Action = a.Name
+		}
+		return
+	}
+}
+
 // notifyTransitions sends the after-commit alerts; a failed send is logged,
 // never returned, so it cannot undo an agent's report.
 func (s *Service) notifyTransitions(ctx context.Context, ts []DeploymentTransition) {
@@ -302,6 +335,7 @@ func (s *Service) Report(ctx context.Context, c sqlcgen.Client, rep agentproto.R
 				events = append(events, deploymentEvent(c, d, next, errText, missing, mismatched))
 				changedTo = append(changedTo, next)
 				if t, ok := transitionOf(c, d, next, errText); ok {
+					s.blameHook(ctx, q, c, res, &t)
 					transitions = append(transitions, t)
 				}
 				if next == stateDrift && d.AutoRemediate {
@@ -352,6 +386,7 @@ func (s *Service) Report(ctx context.Context, c sqlcgen.Client, rep agentproto.R
 	}
 	s.notifyTransitions(ctx, transitions)
 	s.nudge(revs, map[uuid.UUID]bool{c.ID: pushRemediate})
+	s.touch(ctx, c.ID)
 	return nil
 }
 

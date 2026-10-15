@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/metril/certforge/internal/db/dbtest"
@@ -65,6 +66,8 @@ func TestIssuedEventOnVersion(t *testing.T) {
 // TestFailureThresholdOncePerDay: failures 1-2 emit nothing (below
 // threshold 3); the 3rd emits; a 4th failure the same UTC day is a no-op
 // (already fired today); a failure the next day emits again.
+var currentVersion = uuid.New() // a cert that has issued before, so its failures are renewals
+
 func TestFailureThresholdOncePerDay(t *testing.T) {
 	ctx := context.Background()
 	pool, _ := dbtest.New(t)
@@ -73,7 +76,7 @@ func TestFailureThresholdOncePerDay(t *testing.T) {
 	setNotifySettings(t, pool, 3, 0)
 
 	certID := insertCert(t, pool, org, "example", "example.test", nil)
-	cert := issuance.Certificate{ID: certID, OrgID: org, Name: "example", CommonName: "example.test"}
+	cert := issuance.Certificate{ID: certID, OrgID: org, Name: "example", CommonName: "example.test", CurrentVersionID: &currentVersion}
 	fi := issuance.FailureInfo{Step: "order", Class: "acme", ProblemType: "urn:ietf:params:acme:error:unauthorized", Status: 403}
 
 	now := time.Date(2026, 9, 29, 10, 0, 0, 0, time.UTC)
@@ -115,7 +118,7 @@ func TestFailurePayloadHasNoURLOrHost(t *testing.T) {
 	setNotifySettings(t, pool, 1, 0)
 
 	certID := insertCert(t, pool, org, "example", "example.test", nil)
-	cert := issuance.Certificate{ID: certID, OrgID: org, Name: "example", CommonName: "example.test"}
+	cert := issuance.Certificate{ID: certID, OrgID: org, Name: "example", CommonName: "example.test", CurrentVersionID: &currentVersion}
 
 	cause := fmt.Errorf("dial CA at https://acme.example/acme/order/123 via dns.internal: %w", errors.New("connection refused"))
 	fi := issuance.ClassifyFailure("order", cause)
@@ -166,5 +169,37 @@ func TestFailurePayloadHasNoURLOrHost(t *testing.T) {
 		if strings.Contains(msgs[0].Data, l) {
 			t.Fatalf("rendered email leaked %q: %s", l, msgs[0].Data)
 		}
+	}
+}
+
+// TestFirstIssuanceFailureIsNotARenewal: a cert with no current version
+// raises cert.issuance_failed (same threshold, once per day); one that has
+// issued before still raises cert.renewal_failed.
+func TestFirstIssuanceFailureIsNotARenewal(t *testing.T) {
+	ctx := context.Background()
+	pool, _ := dbtest.New(t)
+	org := dbtest.Org(t, pool)
+	insertChannel(t, pool, testChannel{orgID: org, name: "all-events"})
+	setNotifySettings(t, pool, 2, 0)
+
+	first := insertCert(t, pool, org, "first", "first.example.test", nil)
+	renewing := insertCert(t, pool, org, "renewing", "renewing.example.test", nil)
+	fi := issuance.FailureInfo{Step: "order", Class: "acme"}
+	s := newSources(pool, &fakeInserter{})
+
+	issuing := issuance.Certificate{ID: first, OrgID: org, Name: "first", CommonName: "first.example.test"}
+	s.OnFailure(ctx, issuing, 1, fi)
+	if got := eventCount(t, pool, "cert.issuance_failed"); got != 0 {
+		t.Fatalf("issuance_failed below threshold = %d, want 0", got)
+	}
+	s.OnFailure(ctx, issuing, 2, fi)
+	s.OnFailure(ctx, issuing, 3, fi)
+	if got := eventCount(t, pool, "cert.issuance_failed"); got != 1 {
+		t.Fatalf("issuance_failed = %d, want 1 (once per day)", got)
+	}
+
+	s.OnFailure(ctx, issuance.Certificate{ID: renewing, OrgID: org, Name: "renewing", CommonName: "renewing.example.test", CurrentVersionID: &currentVersion}, 2, fi)
+	if a, b := eventCount(t, pool, "cert.issuance_failed"), eventCount(t, pool, "cert.renewal_failed"); a != 1 || b != 1 {
+		t.Fatalf("issuance_failed=%d renewal_failed=%d, want 1 and 1", a, b)
 	}
 }

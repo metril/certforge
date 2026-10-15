@@ -16,6 +16,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -328,5 +330,52 @@ func TestNewVersionEmitsAgain(t *testing.T) {
 	}
 	if got := eventCount(t, f.pool, "deploy.failed"); got != 2 {
 		t.Fatalf("events after v2 = %d, want 2 (a new version is a new condition)", got)
+	}
+}
+
+// TestPostActionFailureEmitsActionFailed: a failing post-deploy action raises
+// action.failed (certificate deployed) and no deploy.failed, and the hourly
+// scan adds neither.
+func TestPostActionFailureEmitsActionFailed(t *testing.T) {
+	f := newEventsFixture(t)
+	ctx := context.Background()
+	certID := f.cert(t, "action-fail")
+	versionID := f.version(t, certID, "1")
+	targetID, _ := f.target(t, "action-fail-target", map[string]any{"url": "https://example.test/hook", "token": "tok"})
+	grantID := f.grant(t, certID, targetID)
+	f.pending(t, grantID, versionID)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500) }))
+	defer srv.Close()
+	cfg, _ := json.Marshal(map[string]any{"method": "GET", "url": srv.URL})
+	var actionID uuid.UUID
+	if err := f.pool.QueryRow(ctx, `INSERT INTO actions (org_id, name, kind, phase, config, timeout_seconds, optional)
+		VALUES ($1, 'reload', 'http', 'post_deploy', $2, 10, false) RETURNING id`, f.org, cfg).Scan(&actionID); err != nil {
+		t.Fatal(err)
+	}
+	steps, _ := json.Marshal([]any{map[string]uuid.UUID{"action": actionID}})
+	if _, err := f.pool.Exec(ctx, `UPDATE client_cert_grants SET steps = $2 WHERE id = $1`, grantID, steps); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := f.disp.Deploy(ctx, grantID, versionID); err == nil {
+		t.Fatal("Deploy = nil, want the action's error")
+	}
+	if got := eventCount(t, f.pool, "action.failed"); got != 1 {
+		t.Fatalf("action.failed after deploy = %d, want 1", got)
+	}
+	if got := eventCount(t, f.pool, "deploy.failed"); got != 0 {
+		t.Fatalf("deploy.failed after deploy = %d, want 0", got)
+	}
+	d := eventDetails(t, f.pool, fmt.Sprintf("action.failed:%s:%s:post_deploy", grantID, versionID))
+	if !strings.Contains(d, `"deployed": true`) || !strings.Contains(d, `"action": "reload"`) {
+		t.Fatalf("details = %s", d)
+	}
+
+	if err := f.sources.Scan(ctx); err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if a, df := eventCount(t, f.pool, "action.failed"), eventCount(t, f.pool, "deploy.failed"); a != 1 || df != 0 {
+		t.Fatalf("after scan action.failed=%d deploy.failed=%d, want 1 and 0", a, df)
 	}
 }
