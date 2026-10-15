@@ -2,6 +2,14 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.41.2](https://github.com/metril/certforge/compare/v0.41.1...v0.41.2) (2026-10-15)
+
+
+### Bug Fixes
+
+* **web:** give the wizard Cancel button an outline like other Cancel buttons ([8af4856](https://github.com/metril/certforge/commit/8af4856a82e6c245ed81e3c97e07f12f0c090e0a))
+* **web:** make the wizard Cancel button look like a button ([5212012](https://github.com/metril/certforge/commit/5212012dcdce65284a328a7119d8baf841415c06))
+
 ## [0.41.1](https://github.com/metril/certforge/compare/v0.41.0...v0.41.1) (2026-10-15)
 
 
