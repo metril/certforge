@@ -2,6 +2,22 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.42.0](https://github.com/metril/certforge/compare/v0.41.2...v0.42.0) (2026-10-15)
+
+
+### Features
+
+* **deploy:** raise action.failed when a pre or post deploy action fails ([28e60fa](https://github.com/metril/certforge/commit/28e60fafe78552af982e16da7b5c1c46aa98261a))
+* **notify:** add client.online, action.failed and cert.issuance_failed event kinds ([c33a836](https://github.com/metril/certforge/commit/c33a836d0c7769c92cb9924aa9b6afd25757a831))
+* **notify:** client.online, action.failed and cert.issuance_failed alerts ([4fc7ec5](https://github.com/metril/certforge/commit/4fc7ec5d1e733ac0d7ff9c6b8d4cc91b42c1dc55))
+* **notify:** raise cert.issuance_failed when a first issuance keeps failing ([ce1d2fe](https://github.com/metril/certforge/commit/ce1d2fe57c4cf1f0103a90029c6682c6b4465327))
+* **notify:** raise client.online when an agent returns after an offline alert ([2432603](https://github.com/metril/certforge/commit/2432603f3e5fb87b1b8cd13449cc9a44294ce274))
+
+
+### Bug Fixes
+
+* **agents:** keep last_seen untouched until touch so client.online sees the real downtime; blame only the hook that failed ([31ddbd7](https://github.com/metril/certforge/commit/31ddbd75695fb33df3534e62056f016fac30821b))
+
 ## [0.41.2](https://github.com/metril/certforge/compare/v0.41.1...v0.41.2) (2026-10-15)
 
 
