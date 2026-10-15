@@ -223,8 +223,8 @@ func TestPhase6OperationsDeclared(t *testing.T) {
 		}
 	}
 	wantEventKinds := []string{
-		"cert.issued", "cert.renewal_failed", "cert.expiring", "cert.expired",
-		"deploy.failed", "deploy.drift", "client.offline", "agent.cert_expiring", "client.pending_approval",
+		"cert.issued", "cert.renewal_failed", "cert.issuance_failed", "cert.expiring", "cert.expired",
+		"deploy.failed", "action.failed", "deploy.drift", "client.offline", "client.online", "agent.cert_expiring", "client.pending_approval",
 		"monitor.mismatch", "monitor.unreachable", "monitor.expiring", "monitor.recovered",
 		"backup.completed", "backup.failed", "test",
 	}

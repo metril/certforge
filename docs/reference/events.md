@@ -10,11 +10,14 @@ Each kind has a fixed severity and resource type. Events are listed by `GET /api
 |---|---|---|---|
 | `cert.issued` | info | certificate | A renewal or issuance commits a new version. Uploaded and imported versions do not fire. |
 | `cert.renewal_failed` | warning | certificate | Consecutive failures reach the **Renewal failure threshold**. Then at most once per UTC day. |
+| `cert.issuance_failed` | warning | certificate | A certificate with no issued version yet has consecutive failures reaching the **Renewal failure threshold**. Then at most once per UTC day. |
 | `cert.expiring` | warning | certificate | The current version expires within the **Expiry warning (days)** window. |
 | `cert.expired` | critical | certificate | The current version has expired. |
 | `deploy.failed` | warning | grant | A live grant's deployment is in state failed. |
+| `action.failed` | warning | grant | A pre- or post-deploy action failed. A post-deploy failure means the certificate was deployed. |
 | `deploy.drift` | warning | grant | A grant's deployed certificate no longer matches: an agent grant's installed files, or the endpoint a server grant's monitor checks. |
 | `client.offline` | warning | client | An active client with a live grant was last seen longer ago than **Offline after (seconds)**. |
+| `client.online` | info | client | An agent checks in again after a `client.offline` alert was sent for it. |
 | `agent.cert_expiring` | warning | client | An active client's agent certificate expires within 14 days. |
 | `client.pending_approval` | warning | client | An agent redeemed its token and waits for approval. |
 | `monitor.mismatch` | critical | monitor | A monitor's endpoint serves an unexpected certificate. |
@@ -37,10 +40,13 @@ Only these `details` keys are ever sent. Anything else is dropped before deliver
 |---|---|
 | `cert.issued` | `serial`, `notAfter`, `names`, `caName` |
 | `cert.renewal_failed` | `failures`, `step`, `problemType`, `status`, `class`, `nextAttemptAt` |
+| `cert.issuance_failed` | `failures`, `step`, `problemType`, `status`, `class`, `nextAttemptAt` |
 | `cert.expiring`, `cert.expired` | `commonName`, `notAfter` |
 | `deploy.failed` | `target`, `lastError` |
+| `action.failed` | `target`, `phase`, `action`, `deployed`, `lastError` |
 | `deploy.drift` | `target` |
 | `client.offline` | `lastSeen` |
+| `client.online` | `lastSeen`, `downtimeSeconds` |
 | `agent.cert_expiring` | `notAfter` |
 | `client.pending_approval` | `verifyCode`, `hostname`, `expiresAt` |
 | `monitor.*` | `host`, `port`, `fp`, `issuer`, `notAfter`, `chainError`, `error` |
@@ -58,11 +64,14 @@ Each condition fires once. Raising an event whose dedupe key already exists does
 |---|---|
 | `cert.issued` | `cert.issued:<versionId>` |
 | `cert.renewal_failed` | `cert.renewal_failed:<certId>:<UTC yyyy-mm-dd>` |
+| `cert.issuance_failed` | `cert.issuance_failed:<certId>:<UTC yyyy-mm-dd>` |
 | `cert.expiring` | `cert.expiring:<versionId>` |
 | `cert.expired` | `cert.expired:<versionId>` |
 | `deploy.failed` | `deploy.failed:<grantId>:<versionId>` |
+| `action.failed` | `action.failed:<grantId>:<versionId>:<phase>` |
 | `deploy.drift` | `deploy.drift:<grantId>:<versionId>` |
 | `client.offline` | `client.offline:<clientId>:<last_seen unix>` |
+| `client.online` | `client.online:<clientId>:<previous last_seen unix>` |
 | `agent.cert_expiring` | `agent.cert_expiring:<clientId>:<agent certificate serial>` |
 | `client.pending_approval` | `client.pending_approval:<requestId>` |
 | `monitor.<state>` | `monitor.<state>:<monitorId>:<fingerprint>:<state_changed_at unix>` |
