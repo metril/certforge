@@ -94,11 +94,12 @@ UPDATE client_cert_grants SET redeploy_seq = redeploy_seq + 1, updated_at = now(
 WHERE id = ANY(sqlc.arg(ids)::uuid[]);
 
 -- name: SetAppliedRevision :exec
-UPDATE clients SET applied_revision = GREATEST(applied_revision, LEAST(sqlc.arg(revision)::bigint, desired_revision)),
-       last_seen = now()
+UPDATE clients SET applied_revision = GREATEST(applied_revision, LEAST(sqlc.arg(revision)::bigint, desired_revision))
 WHERE id = sqlc.arg(id);
 
 -- name: TouchClient :one
+-- The only writer of last_seen after activation, so the previous value it
+-- returns is the real time of the last check-in.
 -- Returns the client's identity and its previous last_seen (NULL before the
 -- first check-in), read under the row lock so concurrent touches see distinct values.
 UPDATE clients c SET last_seen = now()

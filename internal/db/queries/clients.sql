@@ -61,7 +61,7 @@ UPDATE clients SET status = 'active', agent_cert_serial = sqlc.arg(agent_cert_se
 WHERE id = sqlc.arg(id) RETURNING *;
 
 -- name: UpdateClientFacts :one
-UPDATE clients SET hostname = $2, os = $3, arch = $4, agent_version = $5, capabilities = $6, last_seen = now()
+UPDATE clients SET hostname = $2, os = $3, arch = $4, agent_version = $5, capabilities = $6
 WHERE id = $1 RETURNING *;
 
 -- name: SetClientRestartTargets :exec
@@ -73,7 +73,7 @@ WHERE id = $1 AND (file_watch_active IS DISTINCT FROM $2 OR file_watch_reason IS
 
 -- name: RenewClientCert :one
 UPDATE clients SET agent_cert_serial = sqlc.arg(agent_cert_serial), agent_cert_not_after = sqlc.arg(agent_cert_not_after),
-       agent_ca_id = sqlc.arg(agent_ca_id), last_seen = now()
+       agent_ca_id = sqlc.arg(agent_ca_id)
 WHERE id = sqlc.arg(id) AND status = 'active' AND agent_cert_serial = sqlc.arg(old_serial)
 RETURNING *;
 

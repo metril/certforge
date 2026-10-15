@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -236,7 +237,9 @@ func (s *Service) blameHook(ctx context.Context, q *sqlcgen.Queries, c sqlcgen.C
 		return
 	}
 	for _, hr := range res.HookRuns {
-		if hr.ExitCode == 0 || (hr.Phase != "pre_deploy" && hr.Phase != "post_deploy") {
+		// The agent words a hook failure "<phase> hook <name> exited N"; any other
+		// error (a reload, a file write) is not the hook's doing.
+		if hr.ExitCode == 0 || (hr.Phase != "pre_deploy" && hr.Phase != "post_deploy") || !strings.HasPrefix(res.Error, hr.Phase+" hook ") {
 			continue
 		}
 		t.Phase, t.Action = hr.Phase, "an action"
@@ -383,6 +386,7 @@ func (s *Service) Report(ctx context.Context, c sqlcgen.Client, rep agentproto.R
 	}
 	s.notifyTransitions(ctx, transitions)
 	s.nudge(revs, map[uuid.UUID]bool{c.ID: pushRemediate})
+	s.touch(ctx, c.ID)
 	return nil
 }
 

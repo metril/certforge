@@ -1147,9 +1147,38 @@ func TestFailedReportBlamesNonZeroHook(t *testing.T) {
 		}
 	}
 
-	report(agentproto.GrantResult{State: agentproto.StateFailed, Error: "post hook failed", HookRuns: []agentproto.HookRun{
+	report(agentproto.GrantResult{State: agentproto.StateFailed, Error: "post_deploy hook nginx exited 1; the files are installed", HookRuns: []agentproto.HookRun{
 		{HookID: hookID, Phase: "post_deploy", Argv: []string{"nginx", "-s", "reload"}, ExitCode: 1}}})
 	if len(ev.got) != 1 || ev.got[0].State != "failed" || ev.got[0].Phase != "post_deploy" || ev.got[0].Action != "reload-nginx" {
 		t.Fatalf("transitions = %+v", ev.got)
+	}
+
+	// A reload failure that a later post hook also trips over is not the hook's fault.
+	report(agentproto.GrantResult{State: agentproto.StateOK})
+	ev.got = nil
+	report(agentproto.GrantResult{State: agentproto.StateFailed, Error: "files installed; reload: boom", HookRuns: []agentproto.HookRun{
+		{HookID: hookID, Phase: "post_deploy", Argv: []string{"nginx"}, ExitCode: 1}}})
+	if len(ev.got) != 1 || ev.got[0].State != "failed" || ev.got[0].Phase != "" || ev.got[0].Action != "" {
+		t.Fatalf("reload failure blamed on a hook: %+v", ev.got)
+	}
+}
+
+// TestHelloReportsReturnFromOffline: Hello is the first thing a reconnecting
+// agent does, so it must not overwrite last_seen before touch compares it.
+func TestHelloReportsReturnFromOffline(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+	rec := &clientSeenRecorder{}
+	f.svc.Clients = rec
+	c := f.client(t, "reconnecting")
+	prev := time.Now().Add(-time.Hour).Truncate(time.Second)
+	if _, err := f.pool.Exec(ctx, `UPDATE clients SET last_seen = $2 WHERE id = $1`, c.ID, prev); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Hello(ctx, c, agentproto.Hello{Hostname: "h", OS: "linux", Arch: "amd64", AgentVersion: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.got) != 1 || !rec.got[0].PrevSeen.Equal(prev) {
+		t.Fatalf("returns = %+v, want one for prev %v", rec.got, prev)
 	}
 }

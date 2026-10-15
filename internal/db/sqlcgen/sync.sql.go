@@ -585,8 +585,7 @@ func (q *Queries) PruneHookRuns(ctx context.Context, arg PruneHookRunsParams) (i
 }
 
 const setAppliedRevision = `-- name: SetAppliedRevision :exec
-UPDATE clients SET applied_revision = GREATEST(applied_revision, LEAST($1::bigint, desired_revision)),
-       last_seen = now()
+UPDATE clients SET applied_revision = GREATEST(applied_revision, LEAST($1::bigint, desired_revision))
 WHERE id = $2
 `
 
@@ -643,6 +642,8 @@ type TouchClientRow struct {
 	PrevLastSeen *time.Time `json:"prev_last_seen"`
 }
 
+// The only writer of last_seen after activation, so the previous value it
+// returns is the real time of the last check-in.
 // Returns the client's identity and its previous last_seen (NULL before the
 // first check-in), read under the row lock so concurrent touches see distinct values.
 func (q *Queries) TouchClient(ctx context.Context, id uuid.UUID) (TouchClientRow, error) {
