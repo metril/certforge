@@ -1,9 +1,10 @@
 import type { ReactElement } from 'react';
-import { act, fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { expect, it, vi } from 'vitest';
 import { Providers } from '@/app/Providers';
 import { server } from '@/test/server';
+import { advance } from '@/test/timers';
 import { iso, makeAttempt, NOW, url } from '@/test/fixtures';
 import { renderUI } from '@/test/render';
 import { AttemptLogViewer } from './AttemptLogViewer';
@@ -193,10 +194,10 @@ it('tails the log every 2 s while the attempt runs', async () => {
   server.use(http.get(attemptUrl, () => (calls++, HttpResponse.json(makeAttempt({ outcome: 'running', log: `line ${calls}` })))));
   renderUI(<AttemptLogViewer orgId="org-1" certId="c-1" attempt={noLog({ outcome: 'running', finishedAt: undefined })} defaultOpen />);
   fireEvent.click(screen.getByRole('button', { name: 'Raw log' }));
-  await act(async () => { await vi.advanceTimersByTimeAsync(50); });
+  await advance(50);
   const first = calls;
   expect(first).toBeGreaterThan(0);
-  await act(async () => { await vi.advanceTimersByTimeAsync(2_050); });
+  await advance(2_050);
   expect(calls).toBe(first + 1);
   expect(screen.getByText(`line ${first + 1}`)).toBeInTheDocument();
 });
@@ -213,11 +214,11 @@ it('fetches the final log once the fetched attempt finishes, then stops polling'
   // The list's copy still says running; only the fetched attempt knows it finished.
   renderUI(<AttemptLogViewer orgId="org-1" certId="c-1" attempt={noLog({ outcome: 'running', finishedAt: undefined })} defaultOpen />);
   fireEvent.click(screen.getByRole('button', { name: 'Raw log' }));
-  await act(async () => { await vi.advanceTimersByTimeAsync(50); });
-  await act(async () => { await vi.advanceTimersByTimeAsync(4_200); });
+  await advance(50);
+  await advance(4_200);
   expect(calls).toBe(3);
   expect(screen.getByText('final line')).toBeInTheDocument();
-  await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+  await advance(60_000);
   expect(calls).toBe(3);
 });
 

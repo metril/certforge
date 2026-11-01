@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import type { Action } from '@/lib/permissions';
 import { saveBlob } from '@/lib/download';
 import { server } from '@/test/server';
+import { anyBlob } from '@/test/blob';
 import { authHandlers, makeCert, makeClient, meWith, org, org2, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
@@ -374,7 +375,7 @@ it('back up now entry downloads', async () => {
   server.use(
     ...certificateHandlers(makeCert({ id: 'c-7', name: 'edge' })),
     http.post(url('/backup'), () =>
-      new HttpResponse(new Blob(['data']), { headers: { 'Content-Disposition': 'attachment; filename="certforge-20260101T000000Z.cfbak"' } }),
+      new HttpResponse('data', { headers: { 'Content-Disposition': 'attachment; filename="certforge-20260101T000000Z.cfbak"' } }),
     ),
   );
   const { user } = renderRoute('/o/acme/overview');
@@ -383,7 +384,7 @@ it('back up now entry downloads', async () => {
   const dialog = await screen.findByRole('dialog');
   await user.type(within(dialog).getByPlaceholderText('www.example.com'), 'archive');
   await user.click(await within(dialog).findByText('Settings: Back up now'));
-  await waitFor(() => expect(saveBlob).toHaveBeenCalledWith(expect.any(Blob), 'certforge-20260101T000000Z.cfbak'));
+  await waitFor(() => expect(saveBlob).toHaveBeenCalledWith(anyBlob(), 'certforge-20260101T000000Z.cfbak'));
 });
 
 it('back up now does nothing while a backup is already running', async () => {
@@ -393,7 +394,7 @@ it('back up now does nothing while a backup is already running', async () => {
     http.post(url('/backup'), async () => {
       posts++;
       await delay(400);
-      return new HttpResponse(new Blob(['data']), { headers: { 'Content-Disposition': 'attachment; filename="certforge-20260101T000000Z.cfbak"' } });
+      return new HttpResponse('data', { headers: { 'Content-Disposition': 'attachment; filename="certforge-20260101T000000Z.cfbak"' } });
     }),
   );
   const { user } = renderRoute('/o/acme/overview');

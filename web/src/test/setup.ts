@@ -1,7 +1,8 @@
 import '@testing-library/jest-dom/vitest';
 import { afterAll, afterEach, beforeAll, beforeEach, expect, vi } from 'vitest';
-import { cleanup, configure } from '@testing-library/react';
+import { act, cleanup, configure } from '@testing-library/react';
 import { server } from './server';
+import { settleNetwork } from './timers';
 import { NOW } from './fixtures';
 
 // C1: a `console.error` almost always means a real bug (a React warning about
@@ -88,15 +89,23 @@ if (typeof navigator !== 'undefined' && !navigator.clipboard) {
   });
 }
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
 // Every relative date ("in 60 d") in fixtures.ts is computed from this fixed
 // clock; only Date is faked so setTimeout-driven query polling still runs.
 beforeEach(() => {
   vi.useFakeTimers({ now: NOW, toFake: ['Date'], shouldAdvanceTime: true });
 });
-afterEach(() => {
+afterEach(async () => {
   vi.useRealTimers();
+  // msw 3 answers on a real socket, so a request this test fired last (a
+  // refetch or a save, say) can still be in flight here. Let it, and what it
+  // triggers (a navigation, a follow-up fetch), land while the tree is still
+  // mounted and this test's handlers are installed. Otherwise it can reach
+  // the next test's handlers and pollute what that test captures, or update
+  // React after the file's environment is torn down.
+  await act(settleNetwork);
   cleanup();
+  await settleNetwork();
   server.resetHandlers();
   if (typeof localStorage !== 'undefined') localStorage.clear();
   clipboardText = '';

@@ -1,8 +1,9 @@
 import { http, HttpResponse } from 'msw';
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { help } from '@/lib/help';
 import { server } from '@/test/server';
+import { advance as tick } from '@/test/timers';
 import { authHandlers, grantServer, makeCert, makeGrant, makeAction, makeActionGroup, makeActionRun, makeLayout, makeTarget, meWith, NOW, org, targetTestSecret, targetVaultKv, testSecretSchema, traefikSchema, url, vaultKvSchema } from '@/test/fixtures';
 import { renderRoute, renderUI } from '@/test/render';
 import { ServerGrantForm } from './ServerGrantForm';
@@ -303,10 +304,6 @@ it('stops polling when settled', async () => {
   // Fake timers block testing-library's own findBy* polling (it also runs
   // on setTimeout), so this ticks and re-queries by hand, matching
   // settings/keys.test.tsx's "polls only while running" precedent.
-  const tick = (ms: number) =>
-    act(async () => {
-      await vi.advanceTimersByTimeAsync(ms);
-    });
   renderRoute('/o/acme/delivery/targets/t-vault-1/grants');
   for (let i = 0; i < 20 && !screen.queryByText('Pending'); i++) await tick(50);
   expect(screen.getByText('Pending')).toBeInTheDocument();

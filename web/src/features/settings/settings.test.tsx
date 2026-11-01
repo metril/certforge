@@ -239,7 +239,9 @@ it('resets an org override: PUT sends null and keeps its sibling, badge settles 
   );
   const { user } = renderRoute('/settings/issuance-defaults?scope=org');
   const mustStapleField = within(await screen.findByRole('group', { name: 'Must-Staple' }));
-  expect(await mustStapleField.findByRole('switch', { name: 'Override Must-Staple' })).toBeChecked();
+  // The field renders before the org defaults load, so wait for the override.
+  const override = await mustStapleField.findByRole('switch', { name: 'Override Must-Staple' });
+  await waitFor(() => expect(override).toBeChecked());
 
   await user.click(mustStapleField.getByRole('button', { name: 'Use Global value' }));
   // Before the save lands, `effective` still says 'org' with the old value

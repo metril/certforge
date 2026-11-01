@@ -4,6 +4,7 @@ import { beforeAll, expect, it, vi } from 'vitest';
 import type { BackupStatus } from '@/api/types';
 import { saveBlob } from '@/lib/download';
 import { server } from '@/test/server';
+import { anyBlob } from '@/test/blob';
 import { authHandlers, backupStatus, iso, meWith, org, problem, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
@@ -83,7 +84,7 @@ function handlers(
     }),
     http.post(url('/backup'), () =>
       opts.onBackup?.() ??
-      new HttpResponse(new Blob(['data']), { headers: { 'Content-Disposition': 'attachment; filename="certforge-20260101T000000Z.cfbak"' } }),
+      new HttpResponse('data', { headers: { 'Content-Disposition': 'attachment; filename="certforge-20260101T000000Z.cfbak"' } }),
     ),
   ];
 }
@@ -137,7 +138,7 @@ it('back up now downloads with server filename', async () => {
   server.use(...authHandlers({ authed: true }), ...handlers());
   const { user } = renderRoute('/settings/backup');
   await user.click(await screen.findByRole('button', { name: 'Back up now' }));
-  await waitFor(() => expect(saveBlob).toHaveBeenCalledWith(expect.any(Blob), 'certforge-20260101T000000Z.cfbak'));
+  await waitFor(() => expect(saveBlob).toHaveBeenCalledWith(anyBlob(), 'certforge-20260101T000000Z.cfbak'));
   expect(await screen.findByText('Backup downloaded')).toBeInTheDocument();
 });
 
