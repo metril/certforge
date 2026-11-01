@@ -88,7 +88,7 @@ it('a whole-field server error shows once below the rows', async () => {
 });
 
 it('saves files as path/content/mode objects', async () => {
-  const { user, sheet } = await open();
+  const { user, sheet, router } = await open();
   await user.clear(within(sheet).getByLabelText('File 1 remote path'));
   await user.type(within(sheet).getByLabelText('File 1 remote path'), '/etc/new.pem');
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
@@ -97,4 +97,7 @@ it('saves files as path/content/mode objects', async () => {
     { path: '/etc/new.pem', content: 'fullchain', mode: '0644' },
     { path: '/etc/ssl/a.key', content: 'key', mode: '0600' },
   ]);
+  // Let the save finish (it navigates off the edit page) inside the test, so
+  // the navigation can't land after teardown.
+  await waitFor(() => expect(router.state.location.pathname).not.toMatch(/\/edit$/));
 });

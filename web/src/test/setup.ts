@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest';
 import { afterAll, afterEach, beforeAll, beforeEach, expect, vi } from 'vitest';
-import { cleanup, configure } from '@testing-library/react';
+import { act, cleanup, configure } from '@testing-library/react';
 import { server } from './server';
 import { settleNetwork } from './timers';
 import { NOW } from './fixtures';
@@ -97,11 +97,14 @@ beforeEach(() => {
 });
 afterEach(async () => {
   vi.useRealTimers();
-  cleanup();
   // msw 3 answers on a real socket, so a request this test fired last (a
-  // refetch after a mutation, say) can still be in flight here. Let it land
-  // while this test's handlers are installed, or it reaches the next test's
-  // handlers and pollutes whatever that test captures.
+  // refetch or a save, say) can still be in flight here. Let it, and what it
+  // triggers (a navigation, a follow-up fetch), land while the tree is still
+  // mounted and this test's handlers are installed. Otherwise it can reach
+  // the next test's handlers and pollute what that test captures, or update
+  // React after the file's environment is torn down.
+  await act(settleNetwork);
+  cleanup();
   await settleNetwork();
   server.resetHandlers();
   if (typeof localStorage !== 'undefined') localStorage.clear();
