@@ -2,6 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
+import { anyBlob } from '@/test/blob';
 import { authHandlers, makeAuditEvent, meWith, org, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 import { saveBlob } from '@/lib/download';
@@ -43,6 +44,14 @@ function capture() {
   return seen;
 }
 
+// The table renders while the list is still loading, and with msw 3 the
+// handler runs a real event-loop turn after the request is sent, so wait for
+// it to have seen one before reading what was sent.
+async function lastRequest(seen: URLSearchParams[]) {
+  await waitFor(() => expect(seen.length).toBeGreaterThan(0));
+  return seen[seen.length - 1]!;
+}
+
 it('opens an event with its before and after diff', async () => {
   capture();
   const { user, router } = renderRoute('/o/acme/audit');
@@ -71,6 +80,7 @@ it('sends URL filters to the API and shows them as chips', async () => {
   const { user } = renderRoute('/o/acme/audit?action=session.&resourceType=user');
   await screen.findByRole('table', { name: 'Audit events' });
   const last = () => seen[seen.length - 1]!;
+  await lastRequest(seen);
   expect(last().get('action')).toBe('session.');
   expect(last().get('resourceType')).toBe('user');
   expect(last().get('orgId')).toBe(org.id);
@@ -82,7 +92,7 @@ it('survives a bad URL', async () => {
   const seen = capture();
   renderRoute('/o/acme/audit?from=yesterday&action=%00&to=2020-01-01&event=nope');
   await screen.findByRole('heading', { name: 'Audit log' });
-  const q = seen[seen.length - 1]!;
+  const q = await lastRequest(seen);
   expect(q.has('from')).toBe(false);
   expect(q.has('action')).toBe(false);
   expect(q.get('to')).toMatch(/^2020-01-0[12]T/);
@@ -93,7 +103,7 @@ it('keeps an inverted date range visible and sends it', async () => {
   renderRoute('/o/acme/audit?from=2030-01-01&to=2020-01-01');
   expect(await screen.findByLabelText('From date')).toHaveValue('2030-01-01');
   expect(screen.getByLabelText('To date')).toHaveValue('2020-01-01');
-  expect(seen[seen.length - 1]!.has('from')).toBe(true);
+  expect((await lastRequest(seen)).has('from')).toBe(true);
 });
 
 it('shows a broken chain', async () => {
@@ -150,7 +160,7 @@ it('exports the filtered events as CSV', async () => {
   }));
   const { user } = renderRoute('/o/acme/audit?action=certificate.renew');
   await user.click(await screen.findByRole('button', { name: 'Export CSV' }));
-  await waitFor(() => expect(saveBlob).toHaveBeenCalledWith(expect.any(Blob), 'audit-2026-09-24.csv'));
+  await waitFor(() => expect(saveBlob).toHaveBeenCalledWith(anyBlob(), 'audit-2026-09-24.csv'));
   expect(exported?.get('action')).toBe('certificate.renew');
   expect(exported?.get('orgId')).toBe(org.id);
 });
@@ -286,7 +296,7 @@ it('defaults from to 30 days ago when q is set, without writing it to the URL', 
   const seen = capture();
   const { router } = renderRoute('/o/acme/audit?q=renew');
   await screen.findByRole('table', { name: 'Audit events' });
-  expect(seen[seen.length - 1]!.get('from')).toBe(dayIso(localDay(Date.now() - 30 * 86_400_000)));
+  expect((await lastRequest(seen)).get('from')).toBe(dayIso(localDay(Date.now() - 30 * 86_400_000)));
   expect(router.state.location.search).not.toHaveProperty('from');
   expect(screen.getByLabelText('From date')).toHaveValue(localDay(Date.now() - 30 * 86_400_000));
   vi.useRealTimers();
@@ -296,14 +306,14 @@ it('lets an explicit from win over the q default', async () => {
   const seen = capture();
   renderRoute('/o/acme/audit?q=renew&from=2020-03-01');
   await screen.findByRole('table', { name: 'Audit events' });
-  expect(seen[seen.length - 1]!.get('from')).toBe(dayIso('2020-03-01'));
+  expect((await lastRequest(seen)).get('from')).toBe(dayIso('2020-03-01'));
 });
 
 it('anchors the q default to an old to date', async () => {
   const seen = capture();
   renderRoute('/o/acme/audit?q=renew&to=2020-06-15');
   await screen.findByRole('table', { name: 'Audit events' });
-  const from = seen[seen.length - 1]!.get('from')!;
+  const from = (await lastRequest(seen)).get('from')!;
   expect(from).toBe(dayIso(localDay(new Date('2020-06-15T00:00:00').getTime() - 30 * 86_400_000)));
   expect(Date.parse(from)).toBeLessThan(Date.parse(seen[seen.length - 1]!.get('to')!));
 });
@@ -312,5 +322,5 @@ it('sends no default from without q', async () => {
   const seen = capture();
   renderRoute('/o/acme/audit');
   await screen.findByRole('table', { name: 'Audit events' });
-  expect(seen[seen.length - 1]!.has('from')).toBe(false);
+  expect((await lastRequest(seen)).has('from')).toBe(false);
 });

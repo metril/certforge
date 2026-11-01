@@ -3,6 +3,7 @@ import { act, screen } from '@testing-library/react';
 import { focusManager } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
+import { advance as tick } from '@/test/timers';
 import { iso, makeAttempt, makeRateLedger, NOW, problem, url } from '@/test/fixtures';
 import { renderUI } from '@/test/render';
 import { AttemptsTab } from './AttemptsTab';
@@ -15,7 +16,6 @@ const failedRateLedger = () =>
 
 afterEach(() => focusManager.setFocused(undefined));
 
-const tick = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
 
 it('polls a running attempt every 2 s, stops while hidden, and refetches once on return', async () => {
   vi.useFakeTimers({ now: NOW, toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });

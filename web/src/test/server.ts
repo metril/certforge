@@ -23,7 +23,7 @@ import {
 // T11 replaces the route stub with a page that actually fetches both, that
 // test (and any other test that merely navigates through the certificates
 // route without caring about its data) would fail on an unhandled request
-// under `onUnhandledRequest: 'error'`. These empty-list defaults are
+// under `onUnhandledFrame: 'error'`. These empty-list defaults are
 // restored by `server.resetHandlers()` after every test and are shadowed by
 // any more specific `server.use(...)` handler a test adds for the same path.
 //

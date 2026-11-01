@@ -1,8 +1,9 @@
 import { http, HttpResponse } from 'msw';
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { NotifyEvent } from '@/api/types';
 import { server } from '@/test/server';
+import { advance } from '@/test/timers';
 import { authHandlers, iso, makeEvent, url } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
@@ -210,15 +211,15 @@ it('polls only while pending', async () => {
     }),
   );
   renderRoute('/o/acme/alerts/events');
-  await act(async () => { await vi.advanceTimersByTimeAsync(50); });
+  await advance(50);
   const first = calls;
-  await act(async () => { await vi.advanceTimersByTimeAsync(5_050); });
+  await advance(5_050);
   expect(calls).toBe(first + 1);
 
   status = 'delivered';
-  await act(async () => { await vi.advanceTimersByTimeAsync(5_050); });
+  await advance(5_050);
   const settled = calls;
-  await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+  await advance(10_000);
   expect(calls).toBe(settled);
 });
 

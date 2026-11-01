@@ -208,7 +208,9 @@ it('warns when the agent listener certificate is close to expiry', async () => {
 });
 
 it('says the agent listener certificate has expired once past its notAfter', async () => {
-  server.use(http.get(url('/agents/ca'), () => HttpResponse.json({ items: [], listener: { caId: 'aca-1', names: ['cf.lan'], notAfter: iso(-2) } })));
+  // Not a whole number of days: relDays rounds away from zero, so exactly
+  // -2 d would read "3 d ago" as soon as the auto-advancing clock ticks.
+  server.use(http.get(url('/agents/ca'), () => HttpResponse.json({ items: [], listener: { caId: 'aca-1', names: ['cf.lan'], notAfter: iso(-1.5) } })));
   renderRoute('/o/acme/overview');
   const strip = await screen.findByRole('alert', { name: 'Server health' });
   expect(strip).toHaveTextContent('Agent listener certificate expired 2 d ago');
