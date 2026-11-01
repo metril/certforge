@@ -1,6 +1,6 @@
 # Alerts
 
-CertForge raises an **event** when something needs attention: a certificate was issued or is about to expire, a renewal keeps failing, a deploy failed, an agent went offline, an external endpoint serves the wrong certificate, or a backup finished or failed. A **channel** sends those events to a place you read, such as a webhook, email, Discord, ntfy or Home Assistant. Open **Alerts** in the sidebar. It has three tabs: **Channels**, **Monitors** and **Events**.
+CertForge raises an **event** when something needs attention: a certificate was issued or is about to expire, a renewal or first issuance keeps failing, a deploy or deploy action failed, an agent went offline or came back online, an external endpoint serves the wrong certificate, or a backup finished or failed. A **channel** sends those events to a place you read, such as a webhook, email, Discord, ntfy or Home Assistant. Open **Alerts** in the sidebar. It has three tabs: **Channels**, **Monitors** and **Events**.
 
 ## Before you start
 

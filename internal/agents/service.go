@@ -31,6 +31,45 @@ type Reloader interface {
 	Reload(ctx context.Context) error
 }
 
+// DeploymentTransition is one agent deployment's state change, handed to
+// DeploymentEvents after the transaction that recorded it commits.
+type DeploymentTransition struct {
+	OrgID     uuid.UUID
+	ClientID  uuid.UUID
+	GrantID   uuid.UUID
+	VersionID uuid.UUID
+	CertName  string
+	Target    string // the client's name
+	State     string // "drift" or "failed"
+	Error     string
+	// Phase and Action name the hook that exited non-zero behind a failed
+	// state; both are empty when no hook is to blame.
+	Phase, Action string
+}
+
+// DeploymentEvents is told about drift and failed transitions so an alert
+// goes out at once instead of at the next hourly scan. notify.DeployEvents
+// implements it; the interface lives here to avoid an import cycle.
+type DeploymentEvents interface {
+	DeploymentChanged(ctx context.Context, t DeploymentTransition) error
+}
+
+// ClientSeen is a client's first check-in after being quiet for longer than
+// the offline cutoff.
+type ClientSeen struct {
+	OrgID    uuid.UUID
+	ClientID uuid.UUID
+	Name     string
+	PrevSeen time.Time // the last_seen the client came back from
+}
+
+// ClientEvents is told when a client checks in after being offline, so a
+// client.online alert can follow the client.offline one. notify.ClientEvents
+// implements it; the interface lives here to avoid an import cycle.
+type ClientEvents interface {
+	ClientSeen(ctx context.Context, c ClientSeen) error
+}
+
 // Service is the agents domain service. Hub and Listener may be nil.
 type Service struct {
 	Pool     *pgxpool.Pool
@@ -42,6 +81,8 @@ type Service struct {
 	Settings *SettingsSource
 	Hub      Hub
 	Listener Reloader
+	Events   DeploymentEvents // nil skips the immediate drift/failed alerts
+	Clients  ClientEvents     // nil skips the client.online alert
 	Log      *slog.Logger
 	Now      func() time.Time
 

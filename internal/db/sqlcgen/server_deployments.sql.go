@@ -353,10 +353,12 @@ func (q *Queries) ServerDeployGrant(ctx context.Context, id uuid.UUID) (ServerDe
 
 const serverGrantForMonitor = `-- name: ServerGrantForMonitor :one
 SELECT g.id AS grant_id, ce.org_id, g.cert_id, g.auto_remediate,
-       sd.status, sd.version_id, ce.current_version_id, sd.remediations, sd.remediated_fp
+       sd.status, sd.version_id, ce.current_version_id, sd.remediations, sd.remediated_fp,
+       ce.name AS certificate_name, t.name AS target_name
 FROM client_cert_grants g
 JOIN certificates ce ON ce.id = g.cert_id
 JOIN server_deployments sd ON sd.grant_id = g.id
+JOIN deploy_targets t ON t.id = g.deploy_target_id
 WHERE g.id = $1 AND g.client_id IS NULL AND g.removed_at IS NULL
 FOR UPDATE OF sd
 `
@@ -371,6 +373,8 @@ type ServerGrantForMonitorRow struct {
 	CurrentVersionID *uuid.UUID `json:"current_version_id"`
 	Remediations     int32      `json:"remediations"`
 	RemediatedFp     *string    `json:"remediated_fp"`
+	CertificateName  string     `json:"certificate_name"`
+	TargetName       string     `json:"target_name"`
 }
 
 // A grant-owned monitor's check reaction (drift detection): the grant, its
@@ -389,6 +393,8 @@ func (q *Queries) ServerGrantForMonitor(ctx context.Context, grantID uuid.UUID) 
 		&i.CurrentVersionID,
 		&i.Remediations,
 		&i.RemediatedFp,
+		&i.CertificateName,
+		&i.TargetName,
 	)
 	return i, err
 }

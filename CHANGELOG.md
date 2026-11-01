@@ -2,6 +2,50 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.42.0](https://github.com/metril/certforge/compare/v0.41.2...v0.42.0) (2026-10-15)
+
+
+### Features
+
+* **deploy:** raise action.failed when a pre or post deploy action fails ([28e60fa](https://github.com/metril/certforge/commit/28e60fafe78552af982e16da7b5c1c46aa98261a))
+* **notify:** add client.online, action.failed and cert.issuance_failed event kinds ([c33a836](https://github.com/metril/certforge/commit/c33a836d0c7769c92cb9924aa9b6afd25757a831))
+* **notify:** client.online, action.failed and cert.issuance_failed alerts ([4fc7ec5](https://github.com/metril/certforge/commit/4fc7ec5d1e733ac0d7ff9c6b8d4cc91b42c1dc55))
+* **notify:** raise cert.issuance_failed when a first issuance keeps failing ([ce1d2fe](https://github.com/metril/certforge/commit/ce1d2fe57c4cf1f0103a90029c6682c6b4465327))
+* **notify:** raise client.online when an agent returns after an offline alert ([2432603](https://github.com/metril/certforge/commit/2432603f3e5fb87b1b8cd13449cc9a44294ce274))
+
+
+### Bug Fixes
+
+* **agents:** keep last_seen untouched until touch so client.online sees the real downtime; blame only the hook that failed ([31ddbd7](https://github.com/metril/certforge/commit/31ddbd75695fb33df3534e62056f016fac30821b))
+
+## [0.41.2](https://github.com/metril/certforge/compare/v0.41.1...v0.41.2) (2026-10-15)
+
+
+### Bug Fixes
+
+* **web:** give the wizard Cancel button an outline like other Cancel buttons ([8af4856](https://github.com/metril/certforge/commit/8af4856a82e6c245ed81e3c97e07f12f0c090e0a))
+* **web:** make the wizard Cancel button look like a button ([5212012](https://github.com/metril/certforge/commit/5212012dcdce65284a328a7119d8baf841415c06))
+
+## [0.41.1](https://github.com/metril/certforge/compare/v0.41.0...v0.41.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* **web:** hide coverage when the CA needs no verification ([8150b28](https://github.com/metril/certforge/commit/8150b28c32222825cd63c201960f77d86715d01c))
+* **web:** let the certificate wizard cancel ([f8c9cdf](https://github.com/metril/certforge/commit/f8c9cdf8768d1d64749fff192483a96a6c2ea7e6))
+* **web:** readable digests and installed notes, wizard Cancel, no coverage warning for private CAs ([4aafca2](https://github.com/metril/certforge/commit/4aafca20c7dcd0dcc492e9e928cb355cac6ebc8c))
+* **web:** show full certificate digests and the whole installed note ([bac5892](https://github.com/metril/certforge/commit/bac5892d98b8d4ab539fb0efca7f817c0d64c700))
+
+## [0.41.0](https://github.com/metril/certforge/compare/v0.40.0...v0.41.0) (2026-10-14)
+
+
+### Features
+
+* **deploy:** send deploy.drift when a server grant first drifts ([4d7d40f](https://github.com/metril/certforge/commit/4d7d40f1e4bb6f1165fe64872f60b462e1ecbf17))
+* **metrics:** count deployment transitions and report inactive file watchers ([14c18e4](https://github.com/metril/certforge/commit/14c18e47fa07ed8876bcac8d98779bdb111218ef))
+* **notify:** send agent drift and failed alerts when the state changes ([c03668e](https://github.com/metril/certforge/commit/c03668e6c7313d935c90de4f7cebc60a7cc5d462))
+* prompt drift and failure alerts, transition and file-watch metrics ([9a7e176](https://github.com/metril/certforge/commit/9a7e1762b9a9f027345ce5f2a53eeaa6d6fc1556))
+
 ## [0.40.0](https://github.com/metril/certforge/compare/v0.39.0...v0.40.0) (2026-10-14)
 
 

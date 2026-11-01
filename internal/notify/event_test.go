@@ -13,11 +13,14 @@ func TestKindsAndSeverities(t *testing.T) {
 	}{
 		"cert.issued":             {"info", "certificate"},
 		"cert.renewal_failed":     {"warning", "certificate"},
+		"cert.issuance_failed":    {"warning", "certificate"},
 		"cert.expiring":           {"warning", "certificate"},
 		"cert.expired":            {"critical", "certificate"},
 		"deploy.failed":           {"warning", "grant"},
+		"action.failed":           {"warning", "grant"},
 		"deploy.drift":            {"warning", "grant"},
 		"client.offline":          {"warning", "client"},
+		"client.online":           {"info", "client"},
 		"agent.cert_expiring":     {"warning", "client"},
 		"client.pending_approval": {"warning", "client"},
 		"monitor.mismatch":        {"critical", "monitor"},
@@ -29,8 +32,8 @@ func TestKindsAndSeverities(t *testing.T) {
 		"test":                    {"info", "channel"},
 	}
 
-	if len(notify.Kinds) != 16 {
-		t.Fatalf("len(Kinds) = %d, want 16", len(notify.Kinds))
+	if len(notify.Kinds) != 19 {
+		t.Fatalf("len(Kinds) = %d, want 19", len(notify.Kinds))
 	}
 	seen := map[string]bool{}
 	for _, k := range notify.Kinds {

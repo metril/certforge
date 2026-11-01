@@ -10,8 +10,8 @@ import (
 // defines it (also the migration's CHECK constraint order): TestKindsAndSeverities
 // pins this order and every kind's severity.
 var Kinds = []string{
-	"cert.issued", "cert.renewal_failed", "cert.expiring", "cert.expired",
-	"deploy.failed", "deploy.drift", "client.offline", "agent.cert_expiring", "client.pending_approval",
+	"cert.issued", "cert.renewal_failed", "cert.issuance_failed", "cert.expiring", "cert.expired",
+	"deploy.failed", "action.failed", "deploy.drift", "client.offline", "client.online", "agent.cert_expiring", "client.pending_approval",
 	"monitor.mismatch", "monitor.unreachable", "monitor.expiring", "monitor.recovered",
 	"backup.completed", "backup.failed", "test",
 }
@@ -19,10 +19,13 @@ var Kinds = []string{
 // severityByKind is the Shared contract's "Severity and resource per kind" row.
 var severityByKind = map[string]string{
 	"cert.issued":             "info",
+	"client.online":           "info",
 	"monitor.recovered":       "info",
 	"backup.completed":        "info",
 	"test":                    "info",
 	"cert.renewal_failed":     "warning",
+	"cert.issuance_failed":    "warning",
+	"action.failed":           "warning",
 	"cert.expiring":           "warning",
 	"deploy.failed":           "warning",
 	"deploy.drift":            "warning",
@@ -40,11 +43,14 @@ var severityByKind = map[string]string{
 var resourceTypeByKind = map[string]string{
 	"cert.issued":             "certificate",
 	"cert.renewal_failed":     "certificate",
+	"cert.issuance_failed":    "certificate",
 	"cert.expiring":           "certificate",
 	"cert.expired":            "certificate",
 	"deploy.failed":           "grant",
+	"action.failed":           "grant",
 	"deploy.drift":            "grant",
 	"client.offline":          "client",
+	"client.online":           "client",
 	"agent.cert_expiring":     "client",
 	"client.pending_approval": "client",
 	"monitor.mismatch":        "monitor",

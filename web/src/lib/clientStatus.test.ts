@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { iso, makeClient, makeDeployment, NOW } from '@/test/fixtures';
-import { agentCertExpiring, connection, fileRows, headerConnectionLabel, shortHash } from './clientStatus';
+import { agentCertExpiring, connection, fileRows, diffRuns, headerConnectionLabel, shortHash } from './clientStatus';
 
 describe('connection', () => {
   it.each([
@@ -48,5 +48,15 @@ describe('fileRows', () => {
   it('shortens digests', () => {
     expect(shortHash(a)).toBe('aaaaaaaaaaaa…');
     expect(shortHash(null)).toBe('–');
+  });
+});
+
+describe('diffRuns', () => {
+  it('has no diff for identical strings', () => expect(diffRuns('abcd', 'abcd')).toEqual([{ text: 'abcd', diff: false }]));
+  it('marks a single differing character', () => expect(diffRuns('abcd', 'abxd')).toEqual([{ text: 'ab', diff: false }, { text: 'c', diff: true }, { text: 'd', diff: false }]));
+  it('merges adjacent differences into a tail run', () => expect(diffRuns('abcd', 'abxy')).toEqual([{ text: 'ab', diff: false }, { text: 'cd', diff: true }]));
+  it('treats the longer string tail as a difference', () => {
+    expect(diffRuns('abcd', 'ab')).toEqual([{ text: 'ab', diff: false }, { text: 'cd', diff: true }]);
+    expect(diffRuns('ab', 'abcd')).toEqual([{ text: 'ab', diff: false }]);
   });
 });

@@ -39,10 +39,11 @@ it('lists every client holding the certificate with state and installed files', 
   renderRoute('/o/acme/certificates/c-1/deployments');
   const list = await screen.findByRole('list', { name: 'Deployments' });
   const web = within(list).getByRole('link', { name: 'web-1' }).closest('li')!;
-  for (const text of ['Online', 'Rack A', 'Push', 'Deployed', 'Current version · 1/1 files match']) expect(within(web).getByText(text)).toBeInTheDocument();
+  for (const text of ['Online', 'Rack A', 'Push', 'Deployed', 'Current version', '1/1 files match']) expect(within(web).getByText(text)).toBeInTheDocument();
   const db = within(list).getByRole('link', { name: 'db-1' });
   expect(db).toHaveAttribute('href', '/o/acme/clients/cl-2/certificates?open=g-2');
-  for (const text of ['Offline', 'Pull', 'Drift', 'Current version · 0/1 files match']) expect(within(db.closest('li')!).getByText(text)).toBeInTheDocument();
+  for (const text of ['Offline', 'Pull', 'Drift', 'Current version']) expect(within(db.closest('li')!).getByText(text)).toBeInTheDocument();
+  expect(within(db.closest('li')!).getByText('0/1 files match')).toHaveClass('text-drift');
 });
 
 it('shows the layout and deploy target of each grant, linking to Delivery', async () => {
