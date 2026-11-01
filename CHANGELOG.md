@@ -2,6 +2,14 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.42.1](https://github.com/metril/certforge/compare/v0.42.0...v0.42.1) (2026-11-01)
+
+
+### Bug Fixes
+
+* **deps:** bump Go to 1.26.10 and x/net to v0.62.0 for govulncheck ([2fb6027](https://github.com/metril/certforge/commit/2fb6027d38b6ca992c03c21462b30f3386018d8e))
+* **deps:** bump Go to 1.26.10 and x/net to v0.62.0 for govulncheck ([6900ac3](https://github.com/metril/certforge/commit/6900ac3354cbefe96651c3aa2d18f3a05d5860a7))
+
 ## [0.42.0](https://github.com/metril/certforge/compare/v0.41.2...v0.42.0) (2026-10-15)
 
 
