@@ -181,8 +181,9 @@ func (q *Queries) ClientAssignments(ctx context.Context, clientID *uuid.UUID) ([
 }
 
 const clientDeployments = `-- name: ClientDeployments :many
-SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, g.removed_revision, d.state, d.version_id, d.expected
+SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, g.removed_revision, d.state, d.version_id, d.expected, ce.name AS certificate_name
 FROM client_cert_grants g JOIN deployments d ON d.grant_id = g.id
+JOIN certificates ce ON ce.id = g.cert_id
 WHERE g.client_id = $1
 ORDER BY g.id
 FOR UPDATE OF d
@@ -198,6 +199,7 @@ type ClientDeploymentsRow struct {
 	State           string     `json:"state"`
 	VersionID       *uuid.UUID `json:"version_id"`
 	Expected        []byte     `json:"expected"`
+	CertificateName string     `json:"certificate_name"`
 }
 
 func (q *Queries) ClientDeployments(ctx context.Context, clientID *uuid.UUID) ([]ClientDeploymentsRow, error) {
@@ -219,6 +221,7 @@ func (q *Queries) ClientDeployments(ctx context.Context, clientID *uuid.UUID) ([
 			&i.State,
 			&i.VersionID,
 			&i.Expected,
+			&i.CertificateName,
 		); err != nil {
 			return nil, err
 		}
@@ -231,8 +234,9 @@ func (q *Queries) ClientDeployments(ctx context.Context, clientID *uuid.UUID) ([
 }
 
 const clientDeploymentsNoLock = `-- name: ClientDeploymentsNoLock :many
-SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, g.removed_revision, d.state, d.version_id, d.expected
+SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, g.removed_revision, d.state, d.version_id, d.expected, ce.name AS certificate_name
 FROM client_cert_grants g JOIN deployments d ON d.grant_id = g.id
+JOIN certificates ce ON ce.id = g.cert_id
 WHERE g.client_id = $1
 ORDER BY g.id
 `
@@ -247,6 +251,7 @@ type ClientDeploymentsNoLockRow struct {
 	State           string     `json:"state"`
 	VersionID       *uuid.UUID `json:"version_id"`
 	Expected        []byte     `json:"expected"`
+	CertificateName string     `json:"certificate_name"`
 }
 
 // ClientDeployments without the row locks: Heartbeat reads with this first
@@ -270,6 +275,7 @@ func (q *Queries) ClientDeploymentsNoLock(ctx context.Context, clientID *uuid.UU
 			&i.State,
 			&i.VersionID,
 			&i.Expected,
+			&i.CertificateName,
 		); err != nil {
 			return nil, err
 		}
@@ -579,8 +585,7 @@ func (q *Queries) PruneHookRuns(ctx context.Context, arg PruneHookRunsParams) (i
 }
 
 const setAppliedRevision = `-- name: SetAppliedRevision :exec
-UPDATE clients SET applied_revision = GREATEST(applied_revision, LEAST($1::bigint, desired_revision)),
-       last_seen = now()
+UPDATE clients SET applied_revision = GREATEST(applied_revision, LEAST($1::bigint, desired_revision))
 WHERE id = $2
 `
 
@@ -624,11 +629,26 @@ func (q *Queries) SetDeploymentState(ctx context.Context, arg SetDeploymentState
 	return err
 }
 
-const touchClient = `-- name: TouchClient :exec
-UPDATE clients SET last_seen = now() WHERE id = $1
+const touchClient = `-- name: TouchClient :one
+UPDATE clients c SET last_seen = now()
+FROM (SELECT p.id, p.last_seen FROM clients p WHERE p.id = $1 FOR UPDATE) prev
+WHERE c.id = prev.id
+RETURNING c.org_id, c.name, prev.last_seen AS prev_last_seen
 `
 
-func (q *Queries) TouchClient(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, touchClient, id)
-	return err
+type TouchClientRow struct {
+	OrgID        uuid.UUID  `json:"org_id"`
+	Name         string     `json:"name"`
+	PrevLastSeen *time.Time `json:"prev_last_seen"`
+}
+
+// The only writer of last_seen after activation, so the previous value it
+// returns is the real time of the last check-in.
+// Returns the client's identity and its previous last_seen (NULL before the
+// first check-in), read under the row lock so concurrent touches see distinct values.
+func (q *Queries) TouchClient(ctx context.Context, id uuid.UUID) (TouchClientRow, error) {
+	row := q.db.QueryRow(ctx, touchClient, id)
+	var i TouchClientRow
+	err := row.Scan(&i.OrgID, &i.Name, &i.PrevLastSeen)
+	return i, err
 }

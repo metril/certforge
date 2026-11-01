@@ -47,6 +47,8 @@ var (
 		"Managed certificates whose next renewal is now or past due.", []string{"org"}, nil)
 	clientsDesc = prometheus.NewDesc("certforge_clients",
 		"Agent clients by organization and status.", []string{"org", "status"}, nil)
+	fileWatchInactiveDesc = prometheus.NewDesc("certforge_clients_file_watch_inactive",
+		"Active clients whose agent reports its file watcher is not running.", []string{"org"}, nil)
 	deploymentsDesc = prometheus.NewDesc("certforge_deployments",
 		"Certificate deployments by organization and status.", []string{"org", "status"}, nil)
 	monitorsDesc = prometheus.NewDesc("certforge_monitors",
@@ -86,6 +88,7 @@ type snapshot struct {
 	notAfter     []sqlcgen.MetricsCertificateNotAfterRow
 	dueRenewal   []sqlcgen.MetricsCertificatesDueRenewalRow
 	clients      []sqlcgen.MetricsClientsByStatusRow
+	fileWatch    []sqlcgen.MetricsClientsFileWatchInactiveRow
 	deployments  []sqlcgen.MetricsDeploymentsByStatusRow
 	monitors     []sqlcgen.MetricsMonitorsByStateRow
 	riverJobs    []riverJobRow
@@ -130,6 +133,9 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	}
 	for _, r := range snap.clients {
 		ch <- prometheus.MustNewConstMetric(clientsDesc, prometheus.GaugeValue, float64(r.Count), r.Org, r.Status)
+	}
+	for _, r := range snap.fileWatch {
+		ch <- prometheus.MustNewConstMetric(fileWatchInactiveDesc, prometheus.GaugeValue, float64(r.Count), r.Org)
 	}
 	// Two UNION ALL branches (agent- and server-run grants) can each
 	// contribute a row for the same (org, status): summed here rather than
@@ -195,6 +201,9 @@ func (c *Collector) query(ctx context.Context) (snapshot, error) {
 		return snapshot{}, err
 	}
 	if snap.clients, err = c.q.MetricsClientsByStatus(ctx, c.onlineCutoff(ctx)); err != nil {
+		return snapshot{}, err
+	}
+	if snap.fileWatch, err = c.q.MetricsClientsFileWatchInactive(ctx); err != nil {
 		return snapshot{}, err
 	}
 	if snap.deployments, err = c.q.MetricsDeploymentsByStatus(ctx); err != nil {

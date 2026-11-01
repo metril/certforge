@@ -21,6 +21,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"software.sslmate.com/src/go-pkcs12"
 
 	"github.com/metril/certforge/internal/agentca"
@@ -32,6 +33,7 @@ import (
 	"github.com/metril/certforge/internal/db/sqlcgen"
 	"github.com/metril/certforge/internal/delivery"
 	"github.com/metril/certforge/internal/deploy"
+	"github.com/metril/certforge/internal/metrics"
 	"github.com/metril/certforge/internal/render"
 	"github.com/metril/certforge/internal/signer"
 	"github.com/metril/certforge/internal/targets"
@@ -983,5 +985,200 @@ func TestHeartbeatStoresFileWatch(t *testing.T) {
 	}
 	if a, r := get(); a == nil || !*a || r != "" {
 		t.Fatalf("on: %v %q", a, r)
+	}
+}
+
+type fakeDeploymentEvents struct{ got []DeploymentTransition }
+
+func (f *fakeDeploymentEvents) DeploymentChanged(_ context.Context, t DeploymentTransition) error {
+	f.got = append(f.got, t)
+	return nil
+}
+
+// TestDeploymentAlertsOncePerTransition: a drift or failed state change calls
+// Events once, after commit; a repeated state, an ok state and a version-less
+// deployment call nothing.
+func TestDeploymentAlertsOncePerTransition(t *testing.T) {
+	f := newSyncFixture(t)
+	ev := &fakeDeploymentEvents{}
+	f.svc.Events = ev
+	ctx := context.Background()
+
+	certID := f.cert(t, "web")
+	vid := f.version(t, certID, 1, true)
+	f.setCurrent(t, certID, vid)
+	targetID := f.target(t, "traefik", delivery.TraefikConfig{Dir: "/etc/traefik/dynamic", AcmeServiceURL: "http://agent:8080"})
+	c := f.client(t, "web-alerts")
+	gid, err := f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: certID, Delivery: "pull", TargetID: &targetID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl, err := f.q.GetClientByID(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asg, err := f.svc.Assignments(ctx, cl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bad []agentproto.InstalledFile
+	var installed []agentproto.FileDigest
+	for _, file := range asg.Grants[0].Files {
+		bad = append(bad, agentproto.InstalledFile{GrantID: gid, Path: file.Path, SHA256: "0000"})
+		installed = append(installed, agentproto.FileDigest{Path: file.Path, SHA256: file.SHA256})
+	}
+	report := func(r agentproto.GrantResult) {
+		t.Helper()
+		r.GrantID, r.VersionID = gid, vid
+		if err := f.svc.Report(ctx, cl, agentproto.Report{Revision: asg.Revision, Results: []agentproto.GrantResult{r}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	counter := func(to string) float64 {
+		return testutil.ToFloat64(metrics.DeploymentTransitions.WithLabelValues("agent", to))
+	}
+	okBefore, driftBefore, failedBefore := counter("ok"), counter("drift"), counter("failed")
+
+	report(agentproto.GrantResult{State: agentproto.StateOK, Installed: installed})
+	if len(ev.got) != 0 {
+		t.Fatalf("ok sent %d alerts, want 0", len(ev.got))
+	}
+	if err := f.svc.Heartbeat(ctx, cl, agentproto.Heartbeat{Installed: bad}); err != nil {
+		t.Fatal(err)
+	}
+	if len(ev.got) != 1 || ev.got[0].State != "drift" || ev.got[0].VersionID != vid || ev.got[0].CertName != "web" || ev.got[0].Target != "web-alerts" {
+		t.Fatalf("after drift heartbeat: %+v", ev.got)
+	}
+	if err := f.svc.Heartbeat(ctx, cl, agentproto.Heartbeat{Installed: bad}); err != nil {
+		t.Fatal(err)
+	}
+	if len(ev.got) != 1 {
+		t.Fatalf("a repeated drift sent %d alerts, want 1", len(ev.got))
+	}
+	report(agentproto.GrantResult{State: agentproto.StateFailed, Error: "disk full"})
+	if len(ev.got) != 2 || ev.got[1].State != "failed" || ev.got[1].Error != "disk full" {
+		t.Fatalf("after failed report: %+v", ev.got)
+	}
+	report(agentproto.GrantResult{State: agentproto.StateFailed, Error: "disk full"})
+	if len(ev.got) != 2 {
+		t.Fatalf("a repeated failed sent %d alerts, want 2 total", len(ev.got))
+	}
+	if counter("ok")-okBefore != 1 || counter("drift")-driftBefore != 1 || counter("failed")-failedBefore != 1 {
+		t.Fatalf("transition counters moved ok=%v drift=%v failed=%v, want 1 each",
+			counter("ok")-okBefore, counter("drift")-driftBefore, counter("failed")-failedBefore)
+	}
+}
+
+type clientSeenRecorder struct{ got []ClientSeen }
+
+func (r *clientSeenRecorder) ClientSeen(_ context.Context, c ClientSeen) error {
+	r.got = append(r.got, c)
+	return nil
+}
+
+// TestTouchReportsReturnFromOffline: touch tells Clients about a client only
+// when its previous last_seen is older than the offline cutoff.
+func TestTouchReportsReturnFromOffline(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+	rec := &clientSeenRecorder{}
+	f.svc.Clients = rec
+	c := f.client(t, "returning")
+
+	f.svc.touch(ctx, c.ID) // never seen before: nothing to report
+	if len(rec.got) != 0 {
+		t.Fatalf("first check-in reported %d returns, want 0", len(rec.got))
+	}
+
+	prev := time.Now().Add(-time.Hour).Truncate(time.Second)
+	if _, err := f.pool.Exec(ctx, `UPDATE clients SET last_seen = $2 WHERE id = $1`, c.ID, prev); err != nil {
+		t.Fatal(err)
+	}
+	f.svc.Now = func() time.Time { return time.Now().Add(time.Minute) } // past the touch throttle
+	f.svc.touch(ctx, c.ID)
+	if len(rec.got) != 1 || !rec.got[0].PrevSeen.Equal(prev) || rec.got[0].ClientID != c.ID || rec.got[0].Name != "returning" {
+		t.Fatalf("returns = %+v, want one for prev %v", rec.got, prev)
+	}
+
+	f.svc.Now = func() time.Time { return time.Now().Add(2 * time.Minute) }
+	f.svc.touch(ctx, c.ID) // seen a moment ago: still online
+	if len(rec.got) != 1 {
+		t.Fatalf("online check-in reported again: %+v", rec.got)
+	}
+}
+
+// TestFailedReportBlamesNonZeroHook: a failed result whose hook run exited
+// non-zero reaches Events with that hook's phase and action name; a failure
+// with no failing hook carries neither.
+func TestFailedReportBlamesNonZeroHook(t *testing.T) {
+	f := newSyncFixture(t)
+	ev := &fakeDeploymentEvents{}
+	f.svc.Events = ev
+	ctx := context.Background()
+
+	certID := f.cert(t, "web")
+	vid := f.version(t, certID, 1, true)
+	f.setCurrent(t, certID, vid)
+	targetID := f.target(t, "traefik", delivery.TraefikConfig{Dir: "/etc/traefik/dynamic", AcmeServiceURL: "http://agent:8080"})
+	c := f.client(t, "web-hook")
+	gid, err := f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: certID, Delivery: "pull", TargetID: &targetID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl, err := f.q.GetClientByID(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asg, err := f.svc.Assignments(ctx, cl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hookID uuid.UUID
+	if err := f.pool.QueryRow(ctx, `INSERT INTO actions (org_id, name, kind, phase, config) VALUES ($1, 'reload-nginx', 'ssh', 'post_deploy', '{}') RETURNING id`,
+		f.org).Scan(&hookID); err != nil {
+		t.Fatal(err)
+	}
+	report := func(r agentproto.GrantResult) {
+		t.Helper()
+		r.GrantID, r.VersionID = gid, vid
+		if err := f.svc.Report(ctx, cl, agentproto.Report{Revision: asg.Revision, Results: []agentproto.GrantResult{r}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	report(agentproto.GrantResult{State: agentproto.StateFailed, Error: "post_deploy hook nginx exited 1; the files are installed", HookRuns: []agentproto.HookRun{
+		{HookID: hookID, Phase: "post_deploy", Argv: []string{"nginx", "-s", "reload"}, ExitCode: 1}}})
+	if len(ev.got) != 1 || ev.got[0].State != "failed" || ev.got[0].Phase != "post_deploy" || ev.got[0].Action != "reload-nginx" {
+		t.Fatalf("transitions = %+v", ev.got)
+	}
+
+	// A reload failure that a later post hook also trips over is not the hook's fault.
+	report(agentproto.GrantResult{State: agentproto.StateOK})
+	ev.got = nil
+	report(agentproto.GrantResult{State: agentproto.StateFailed, Error: "files installed; reload: boom", HookRuns: []agentproto.HookRun{
+		{HookID: hookID, Phase: "post_deploy", Argv: []string{"nginx"}, ExitCode: 1}}})
+	if len(ev.got) != 1 || ev.got[0].State != "failed" || ev.got[0].Phase != "" || ev.got[0].Action != "" {
+		t.Fatalf("reload failure blamed on a hook: %+v", ev.got)
+	}
+}
+
+// TestHelloReportsReturnFromOffline: Hello is the first thing a reconnecting
+// agent does, so it must not overwrite last_seen before touch compares it.
+func TestHelloReportsReturnFromOffline(t *testing.T) {
+	f := newSyncFixture(t)
+	ctx := context.Background()
+	rec := &clientSeenRecorder{}
+	f.svc.Clients = rec
+	c := f.client(t, "reconnecting")
+	prev := time.Now().Add(-time.Hour).Truncate(time.Second)
+	if _, err := f.pool.Exec(ctx, `UPDATE clients SET last_seen = $2 WHERE id = $1`, c.ID, prev); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Hello(ctx, c, agentproto.Hello{Hostname: "h", OS: "linux", Arch: "amd64", AgentVersion: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.got) != 1 || !rec.got[0].PrevSeen.Equal(prev) {
+		t.Fatalf("returns = %+v, want one for prev %v", rec.got, prev)
 	}
 }

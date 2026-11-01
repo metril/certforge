@@ -41,8 +41,9 @@ LEFT JOIN deploy_targets t ON t.id = g.deploy_target_id
 WHERE g.id = sqlc.arg(id) AND g.client_id = sqlc.arg(client_id) AND g.removed_at IS NULL;
 
 -- name: ClientDeployments :many
-SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, g.removed_revision, d.state, d.version_id, d.expected
+SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, g.removed_revision, d.state, d.version_id, d.expected, ce.name AS certificate_name
 FROM client_cert_grants g JOIN deployments d ON d.grant_id = g.id
+JOIN certificates ce ON ce.id = g.cert_id
 WHERE g.client_id = $1
 ORDER BY g.id
 FOR UPDATE OF d;
@@ -50,8 +51,9 @@ FOR UPDATE OF d;
 -- name: ClientDeploymentsNoLock :many
 -- ClientDeployments without the row locks: Heartbeat reads with this first
 -- and takes the locked path only when a state would change.
-SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, g.removed_revision, d.state, d.version_id, d.expected
+SELECT g.id AS grant_id, g.cert_id, g.delivery, g.auto_remediate, g.removed_at, g.removed_revision, d.state, d.version_id, d.expected, ce.name AS certificate_name
 FROM client_cert_grants g JOIN deployments d ON d.grant_id = g.id
+JOIN certificates ce ON ce.id = g.cert_id
 WHERE g.client_id = $1
 ORDER BY g.id;
 
@@ -92,12 +94,18 @@ UPDATE client_cert_grants SET redeploy_seq = redeploy_seq + 1, updated_at = now(
 WHERE id = ANY(sqlc.arg(ids)::uuid[]);
 
 -- name: SetAppliedRevision :exec
-UPDATE clients SET applied_revision = GREATEST(applied_revision, LEAST(sqlc.arg(revision)::bigint, desired_revision)),
-       last_seen = now()
+UPDATE clients SET applied_revision = GREATEST(applied_revision, LEAST(sqlc.arg(revision)::bigint, desired_revision))
 WHERE id = sqlc.arg(id);
 
--- name: TouchClient :exec
-UPDATE clients SET last_seen = now() WHERE id = $1;
+-- name: TouchClient :one
+-- The only writer of last_seen after activation, so the previous value it
+-- returns is the real time of the last check-in.
+-- Returns the client's identity and its previous last_seen (NULL before the
+-- first check-in), read under the row lock so concurrent touches see distinct values.
+UPDATE clients c SET last_seen = now()
+FROM (SELECT p.id, p.last_seen FROM clients p WHERE p.id = $1 FOR UPDATE) prev
+WHERE c.id = prev.id
+RETURNING c.org_id, c.name, prev.last_seen AS prev_last_seen;
 
 -- name: ListHookRuns :many
 SELECT r.id, r.client_id, r.grant_id, r.hook_id, r.phase, r.argv, r.exit_code, r.duration_ms, r.stdout, r.stderr, r.ran_at,

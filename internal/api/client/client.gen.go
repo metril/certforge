@@ -212,14 +212,17 @@ const (
 
 // Defines values for EventKind.
 const (
+	ActionFailed          EventKind = "action.failed"
 	AgentCertExpiring     EventKind = "agent.cert_expiring"
 	BackupCompleted       EventKind = "backup.completed"
 	BackupFailed          EventKind = "backup.failed"
 	CertExpired           EventKind = "cert.expired"
 	CertExpiring          EventKind = "cert.expiring"
+	CertIssuanceFailed    EventKind = "cert.issuance_failed"
 	CertIssued            EventKind = "cert.issued"
 	CertRenewalFailed     EventKind = "cert.renewal_failed"
 	ClientOffline         EventKind = "client.offline"
+	ClientOnline          EventKind = "client.online"
 	ClientPendingApproval EventKind = "client.pending_approval"
 	DeployDrift           EventKind = "deploy.drift"
 	DeployFailed          EventKind = "deploy.failed"

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/riverqueue/river"
 
 	"github.com/metril/certforge/internal/db/sqlcgen"
@@ -160,6 +161,47 @@ func (s *Sources) scanExpired(ctx context.Context, since time.Time) error {
 	return nil
 }
 
+// deployStateEvent builds the deploy.failed/deploy.drift event for an
+// agent-run deployment. The hourly scan and the agents' immediate send share
+// it, so both carry the same DedupeKey and only one notification goes out.
+func deployStateEvent(orgID, grantID, versionID uuid.UUID, state, certName, targetName, errText string) Event {
+	kind := "deploy." + state // "deploy.failed" or "deploy.drift"
+	details := map[string]any{"target": targetName}
+	if state == "failed" {
+		details["lastError"] = redactURLs(errText)
+	}
+	return Event{
+		Kind:      kind,
+		OrgID:     &orgID,
+		Resource:  Resource{ID: grantID.String(), Name: certName + " → " + targetName},
+		Summary:   fmt.Sprintf("Deployment of %s to %s %s", certName, targetName, state),
+		Details:   details,
+		DedupeKey: fmt.Sprintf("%s:%s:%s", kind, grantID, versionID),
+	}
+}
+
+// actionFailedEvent builds the action.failed event for a pre- or post-deploy
+// action step. A pre-deploy failure means nothing was deployed; a post-deploy
+// failure means the certificate is already in place. The dedupe key carries
+// the phase, and the scan queries skip any grant and version with a key under
+// that prefix so they never add a second deploy.failed.
+func actionFailedEvent(orgID, grantID, versionID uuid.UUID, phase, action, certName, targetName, errText string) Event {
+	deployed := phase == "post_deploy"
+	label, outcome := "Pre-deploy", "not deployed"
+	if deployed {
+		label, outcome = "Post-deploy", "certificate deployed"
+	}
+	return Event{
+		Kind:     "action.failed",
+		OrgID:    &orgID,
+		Resource: Resource{ID: grantID.String(), Name: certName + " → " + targetName},
+		Summary:  fmt.Sprintf("%s action %s failed on %s (%s)", label, action, targetName, outcome),
+		Details: map[string]any{"target": targetName, "phase": phase, "action": action,
+			"deployed": deployed, "lastError": redactURLs(errText)},
+		DedupeKey: fmt.Sprintf("action.failed:%s:%s:%s", grantID, versionID, phase),
+	}
+}
+
 // scanDeployments covers both deploy.failed/deploy.drift for agent-run
 // grants (client_cert_grants/deployments) and deploy.failed for
 // server-run grants (client_cert_grants/server_deployments, which has no
@@ -175,19 +217,7 @@ func (s *Sources) scanDeployments(ctx context.Context, since time.Time) error {
 		if r.VersionID == nil {
 			continue // defensive: the query already filters this out
 		}
-		kind := "deploy." + r.State // "deploy.failed" or "deploy.drift"
-		details := map[string]any{"target": r.TargetName}
-		if r.State == "failed" {
-			details["lastError"] = redactURLs(r.Error)
-		}
-		ev := Event{
-			Kind:      kind,
-			OrgID:     &r.OrgID,
-			Resource:  Resource{ID: r.GrantID.String(), Name: r.CertificateName + " → " + r.TargetName},
-			Summary:   fmt.Sprintf("Deployment of %s to %s %s", r.CertificateName, r.TargetName, r.State),
-			Details:   details,
-			DedupeKey: fmt.Sprintf("%s:%s:%s", kind, r.GrantID, r.VersionID),
-		}
+		ev := deployStateEvent(r.OrgID, r.GrantID, *r.VersionID, r.State, r.CertificateName, r.TargetName, r.Error)
 		evs = append(evs, ev)
 	}
 	s.emitBatch(ctx, "deploy event", evs)

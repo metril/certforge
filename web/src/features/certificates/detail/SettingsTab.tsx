@@ -13,7 +13,8 @@ import { coverage, inheritedFrom } from '@/lib/coverage';
 import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
-import { EffectiveConfigList, NameChipStatic } from './shared';
+import { VerificationNotNeeded } from '@/forms/VerificationNotNeeded';
+import { effectiveCaOf, EffectiveConfigList, NameChipStatic } from './shared';
 
 type Props = { cert: Certificate; orgId: string; orgSlug: string };
 
@@ -28,6 +29,7 @@ export function SettingsTab({ cert, orgId, orgSlug }: Props) {
   const canEdit = can(me, 'certs:write', orgId);
   const ctx = useFieldCtx(orgId);
   const inherited = inheritedFrom(useQuery(effectiveDefaultsQuery(orgId)).data);
+  const { ca, privateCa } = effectiveCaOf(ctx.cas, cert);
   const names = [...new Set([cert.commonName, ...cert.sans])];
   const eff = (cert.effective ?? {}) as EffectiveMap;
   return (
@@ -80,8 +82,14 @@ export function SettingsTab({ cert, orgId, orgSlug }: Props) {
         <Card role="region" aria-labelledby="st-verification">
           <CardHeader title="Verification" titleId="st-verification" />
           <CardBody className="grid gap-3">
-            <p className="text-sm">{rulesSummary(cert.verificationRules, ctx.credentials, ctx.clients)}</p>
-            <CoveragePanel items={coverage(names, cert.verificationRules, inherited, ctx.clients)} credentials={ctx.credentials} clients={ctx.clients} />
+            {privateCa ? (
+              <VerificationNotNeeded caName={ca?.name} />
+            ) : (
+              <>
+                <p className="text-sm">{rulesSummary(cert.verificationRules, ctx.credentials, ctx.clients)}</p>
+                <CoveragePanel items={coverage(names, cert.verificationRules, inherited, ctx.clients)} credentials={ctx.credentials} clients={ctx.clients} />
+              </>
+            )}
           </CardBody>
         </Card>
       )}

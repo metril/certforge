@@ -218,7 +218,7 @@ type Use struct {
 
 // certEventKinds are the event kinds a certificate emits, with severities.
 var certEventKinds = map[string]string{
-	"cert.issued": "info", "cert.renewal_failed": "warning", "cert.expiring": "warning", "cert.expired": "critical",
+	"cert.issued": "info", "cert.renewal_failed": "warning", "cert.issuance_failed": "warning", "cert.expiring": "warning", "cert.expired": "critical",
 }
 
 var sevRank = map[string]int{"info": 0, "warning": 1, "critical": 2}

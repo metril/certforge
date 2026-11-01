@@ -11,10 +11,10 @@ import { ToneChip } from '@/components/StatusChip';
 import { ValidityBar } from '@/components/ValidityBar';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { isPrivate } from '@/lib/caKinds';
 import { certTone } from '@/lib/status';
 import { fmtDate, relTime } from '@/lib/time';
 import { RevokeVersionDialog } from './RevokeVersionDialog';
+import { effectiveCaOf } from './shared';
 import { IconButton } from '@/components/IconButton';
 
 // Serial is pinned (`sticky left-0`, like DataTable's own Name column) so it
@@ -40,8 +40,7 @@ export function VersionsTab({
   // effective CA being private (localca/vaultpki) — the same cas list and
   // lookup CertificateHeader already uses for its CA name.
   const { data: cas = [] } = useQuery(casQuery(orgId));
-  const effCa = cas.find((c) => c.id === cert.effective?.caId?.value);
-  const privateCa = !!effCa && isPrivate(effCa);
+  const { privateCa } = effectiveCaOf(cas, cert);
   const [revoking, setRevoking] = useState<CertificateVersion | null>(null);
   const versions = [...data].sort((a, b) => Date.parse(b.notBefore) - Date.parse(a.notBefore));
   if (!isPending && versions.length === 0) {

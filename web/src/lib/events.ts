@@ -5,11 +5,14 @@ import type { Tone } from './status';
 export const KIND_LABEL: Record<EventKind, string> = {
   'cert.issued': 'Certificate issued',
   'cert.renewal_failed': 'Renewal failed',
+  'cert.issuance_failed': 'Issuance failed',
   'cert.expiring': 'Certificate expiring',
   'cert.expired': 'Certificate expired',
   'deploy.failed': 'Deploy failed',
+  'action.failed': 'Action failed',
   'deploy.drift': 'Drift',
   'client.offline': 'Client offline',
+  'client.online': 'Client online',
   'agent.cert_expiring': 'Agent cert expiring',
   'client.pending_approval': 'Client awaiting approval',
   'monitor.mismatch': 'Monitor mismatch',
@@ -26,11 +29,14 @@ export const KIND_LABEL: Record<EventKind, string> = {
 export const KIND_SHORT: Record<EventKind, string> = {
   'cert.issued': 'Issued',
   'cert.renewal_failed': 'Renewal failed',
+  'cert.issuance_failed': 'Issuance failed',
   'cert.expiring': 'Expiring',
   'cert.expired': 'Expired',
   'deploy.failed': 'Failed',
+  'action.failed': 'Action failed',
   'deploy.drift': 'Drift',
   'client.offline': 'Offline',
+  'client.online': 'Online',
   'agent.cert_expiring': 'Cert expiring',
   'client.pending_approval': 'Awaiting approval',
   'monitor.mismatch': 'Mismatch',
@@ -45,9 +51,9 @@ export const KIND_SHORT: Record<EventKind, string> = {
 /** In EventKind enum order (Shared contracts "Enums"). Test is an event
  * filter only, never a channel filter (Deviations, UI conventions). */
 export const KIND_GROUPS: { label: string; kinds: EventKind[] }[] = [
-  { label: 'Certificates', kinds: ['cert.issued', 'cert.renewal_failed', 'cert.expiring', 'cert.expired'] },
-  { label: 'Deployments', kinds: ['deploy.failed', 'deploy.drift'] },
-  { label: 'Clients', kinds: ['client.offline', 'agent.cert_expiring', 'client.pending_approval'] },
+  { label: 'Certificates', kinds: ['cert.issued', 'cert.renewal_failed', 'cert.issuance_failed', 'cert.expiring', 'cert.expired'] },
+  { label: 'Deployments', kinds: ['deploy.failed', 'action.failed', 'deploy.drift'] },
+  { label: 'Clients', kinds: ['client.offline', 'client.online', 'agent.cert_expiring', 'client.pending_approval'] },
   { label: 'Monitors', kinds: ['monitor.mismatch', 'monitor.unreachable', 'monitor.expiring', 'monitor.recovered'] },
   { label: 'Backups', kinds: ['backup.completed', 'backup.failed'] },
   { label: 'Test', kinds: ['test'] },

@@ -1,8 +1,9 @@
 import { CircleAlert, CircleCheck, CircleHelp, CircleX, FileDiff, type LucideIcon } from 'lucide-react';
 import type { Deployment } from '@/api/types';
+import { Digest } from '@/components/Digest';
 import { HelpTip } from '@/components/HelpTip';
 import { ToneChip } from '@/components/StatusChip';
-import { fileRows, shortHash, type FileRow } from '@/lib/clientStatus';
+import { fileRows, type FileRow } from '@/lib/clientStatus';
 import type { Tone } from '@/lib/status';
 
 const MATCH: Record<FileRow['match'], { label: string; tone: Tone; icon: LucideIcon }> = {
@@ -32,17 +33,15 @@ export function FileCompare({ deployment, name }: { deployment: Deployment; name
         {rows.map((r) => {
           const m = MATCH[r.match];
           return (
-            <li key={r.path} className="grid gap-1 border-b border-border py-1.5 text-xs last:border-0 md:grid-cols-[minmax(0,1fr)_120px_120px_auto] md:items-center md:gap-3">
-              <span className="min-w-0 truncate font-mono" title={r.path}>
-                {r.path}
+            <li key={r.path} className="grid gap-1 border-b border-border py-1.5 text-xs last:border-0 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center md:gap-3">
+              <span className="min-w-0 break-all font-mono">{r.path}</span>
+              <span className="flex min-w-0 items-baseline gap-1">
+                <span className="shrink-0 md:sr-only">Expected </span>
+                <Digest value={r.expected} label="expected digest" compare={{ label: 'Installed', value: r.installed }} />
               </span>
-              <span className="font-mono text-ink-muted" title={r.expected ?? undefined}>
-                <span className="md:sr-only">Expected </span>
-                <span>{shortHash(r.expected)}</span>
-              </span>
-              <span className="font-mono text-ink-muted" title={r.installed ?? undefined}>
-                <span className="md:sr-only">Installed </span>
-                <span>{shortHash(r.installed)}</span>
+              <span className="flex min-w-0 items-baseline gap-1">
+                <span className="shrink-0 md:sr-only">Installed </span>
+                <Digest value={r.installed} label="installed digest" tone={r.match === 'changed' ? 'drift' : undefined} compare={{ label: 'Expected', value: r.expected }} />
               </span>
               {reported && <ToneChip tone={m.tone} icon={m.icon} label={m.label} />}
             </li>

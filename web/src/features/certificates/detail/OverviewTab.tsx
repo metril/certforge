@@ -6,11 +6,13 @@ import { useFieldCtx } from '@/features/settings/issuanceFields';
 import { CoveragePanel } from '@/forms/CoveragePanel';
 import { coverage, inheritedFrom } from '@/lib/coverage';
 import { classifyName, groupByZone } from '@/lib/names';
-import { EffectiveConfigList, NameChipStatic } from './shared';
+import { VerificationNotNeeded } from '@/forms/VerificationNotNeeded';
+import { effectiveCaOf, EffectiveConfigList, NameChipStatic } from './shared';
 
 export function OverviewTab({ cert, orgId }: { cert: Certificate; orgId: string }) {
   const ctx = useFieldCtx(orgId);
   const inherited = inheritedFrom(useQuery(effectiveDefaultsQuery(orgId)).data);
+  const { ca, privateCa } = effectiveCaOf(ctx.cas, cert);
   const names = [...new Set([cert.commonName, ...cert.sans])];
   const groups = groupByZone(names.map(classifyName));
   const eff = (cert.effective ?? {}) as EffectiveMap;
@@ -39,7 +41,11 @@ export function OverviewTab({ cert, orgId }: { cert: Certificate; orgId: string 
       {cert.managed && (
         <Card>
           <CardBody>
-            <CoveragePanel items={coverage(names, cert.verificationRules, inherited, ctx.clients)} credentials={ctx.credentials} clients={ctx.clients} />
+            {privateCa ? (
+              <VerificationNotNeeded caName={ca?.name} />
+            ) : (
+              <CoveragePanel items={coverage(names, cert.verificationRules, inherited, ctx.clients)} credentials={ctx.credentials} clients={ctx.clients} />
+            )}
           </CardBody>
         </Card>
       )}

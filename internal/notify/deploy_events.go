@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/metril/certforge/internal/agents"
 	"github.com/metril/certforge/internal/deploy"
 )
 
@@ -36,6 +37,10 @@ type DeployEvents struct {
 // the same redactURLs pass scan.go's backstop uses before either can win
 // the shared dedupe key.
 func (d DeployEvents) DeployFailed(ctx context.Context, f deploy.DeployFailure) error {
+	if f.Phase != "" {
+		_, err := d.E.Emit(ctx, nil, actionFailedEvent(f.OrgID, f.GrantID, f.VersionID, f.Phase, f.Action, f.CertName, f.TargetName, f.LastError))
+		return err
+	}
 	ev := Event{
 		Kind:      "deploy.failed",
 		OrgID:     &f.OrgID,
@@ -47,6 +52,29 @@ func (d DeployEvents) DeployFailed(ctx context.Context, f deploy.DeployFailure) 
 	_, err := d.E.Emit(ctx, nil, ev)
 	return err
 }
+
+// DeployDrift implements deploy.Events: the server-run grant's deploy.drift
+// warning, sent after OnCheck's transaction commits. Same DedupeKey shape as
+// the agent-run alert and scan.go, so a repeat for one version never sends twice.
+func (d DeployEvents) DeployDrift(ctx context.Context, f deploy.DeployDrift) error {
+	_, err := d.E.Emit(ctx, nil, deployStateEvent(f.OrgID, f.GrantID, f.VersionID, "drift", f.CertName, f.TargetName, ""))
+	return err
+}
+
+// DeploymentChanged implements agents.DeploymentEvents: the agent-run
+// deploy.drift/deploy.failed alert, sent right after the report or heartbeat
+// commits. It shares scan.go's builder and so its DedupeKey, which makes the
+// hourly scan a backstop that cannot send a second copy.
+func (d DeployEvents) DeploymentChanged(ctx context.Context, t agents.DeploymentTransition) error {
+	if t.State == "failed" && t.Phase != "" {
+		_, err := d.E.Emit(ctx, nil, actionFailedEvent(t.OrgID, t.GrantID, t.VersionID, t.Phase, t.Action, t.CertName, t.Target, t.Error))
+		return err
+	}
+	_, err := d.E.Emit(ctx, nil, deployStateEvent(t.OrgID, t.GrantID, t.VersionID, t.State, t.CertName, t.Target, t.Error))
+	return err
+}
+
+var _ agents.DeploymentEvents = DeployEvents{}
 
 // compile-time check that DeployEvents satisfies deploy.Events.
 var _ deploy.Events = DeployEvents{}

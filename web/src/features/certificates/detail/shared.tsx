@@ -1,6 +1,7 @@
 import { Fragment } from 'react';
 import { Crown } from 'lucide-react';
-import type { EffectiveMap } from '@/api/types';
+import type { CA, Certificate, EffectiveMap } from '@/api/types';
+import { isPrivate } from '@/lib/caKinds';
 import { effectiveText, isUnset, ISSUANCE_FIELDS, type FieldCtx } from '@/features/settings/issuanceFields';
 import { SourceBadge } from '@/forms/InheritableField';
 
@@ -38,4 +39,10 @@ export function EffectiveConfigList({ eff, ctx }: { eff: EffectiveMap; ctx: Fiel
       })}
     </dl>
   );
+}
+
+/** The certificate's effective CA (from the org's CA list) and whether it is private, so needs no domain verification. */
+export function effectiveCaOf(cas: CA[], cert: Certificate): { ca: CA | undefined; privateCa: boolean } {
+  const ca = cas.find((c) => c.id === cert.effective?.caId?.value);
+  return { ca, privateCa: !!ca && isPrivate(ca) };
 }
