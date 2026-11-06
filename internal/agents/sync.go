@@ -584,11 +584,12 @@ func (s *Service) hookSpecs(ctx context.Context, rows []sqlcgen.ClientAssignment
 				continue
 			}
 			var cfg struct {
-				Argv   []string `json:"argv"`
-				Target string   `json:"target"`
+				Argv        []string `json:"argv"`
+				Target      string   `json:"target"`
+				OncePerHost bool     `json:"oncePerHost"`
 			}
 			_ = json.Unmarshal(a.Config, &cfg)
-			out[id] = append(out[id], agentproto.HookSpec{ID: a.ID, Phase: a.Phase, Argv: cfg.Argv, Kind: a.Kind, Target: cfg.Target, TimeoutSeconds: a.TimeoutSeconds})
+			out[id] = append(out[id], agentproto.HookSpec{ID: a.ID, Phase: a.Phase, Argv: cfg.Argv, Kind: a.Kind, Target: cfg.Target, OncePerHost: cfg.OncePerHost, TimeoutSeconds: a.TimeoutSeconds})
 		}
 	}
 	return out, nil

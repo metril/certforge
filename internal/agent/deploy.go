@@ -202,11 +202,26 @@ func hookName(h agentproto.HookSpec) string {
 // and (only when the grant has a Traefik target) the certs/<name>
 // directory the target created, for Remove to prune once empty.
 func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentproto.Bundle) (agentproto.GrantResult, []agentproto.FileSpec, string) {
+	res, written, certsDir, _, _ := d.deploy(ctx, a, b, false)
+	return res, written, certsDir
+}
+
+// batchableHook reports whether h runs once per host when several grants
+// carry it: a restart, or an exec that opted in.
+func batchableHook(h agentproto.HookSpec) bool {
+	return h.Kind == "restart" || h.OncePerHost
+}
+
+// deploy is Deploy. With deferTail, the post_deploy hooks run inline only up
+// to the first batchable one; that hook and every later one are returned as
+// tail, with the hook env, for the Reconciler to merge across grants.
+func (d *Deployer) deploy(ctx context.Context, a agentproto.Assignment, b agentproto.Bundle, deferTail bool) (
+	agentproto.GrantResult, []agentproto.FileSpec, string, []agentproto.HookSpec, []string) {
 	res := agentproto.GrantResult{GrantID: a.ID, VersionID: b.VersionID, State: agentproto.StateOK, Installed: []agentproto.FileDigest{}}
 	var written []agentproto.FileSpec
-	fail := func(format string, args ...any) (agentproto.GrantResult, []agentproto.FileSpec, string) {
+	fail := func(format string, args ...any) (agentproto.GrantResult, []agentproto.FileSpec, string, []agentproto.HookSpec, []string) {
 		res.State, res.Error = agentproto.StateFailed, fmt.Sprintf(format, args...)
-		return res, written, ""
+		return res, written, "", nil, nil
 	}
 	if a.VersionID == nil {
 		return fail("assignment %s has no version; nothing to deploy against a bundle", a.ID)
@@ -252,7 +267,7 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 		tfiles, err := ft.Files(req)
 		if err != nil {
 			res.State, res.Error = agentproto.StateFailed, redactTargetError(t, a.Target.Config, fmt.Errorf("target: %w", err))
-			return res, written, ""
+			return res, written, "", nil, nil
 		}
 		files = append(files, tfiles...)
 		// certsDir (the certs/<name> directory Remove prunes once empty) is
@@ -311,9 +326,18 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 			}
 		}
 	}
-	for _, h := range a.Hooks {
+	var tail []agentproto.HookSpec
+	for i, h := range a.Hooks {
 		if h.Phase != "post_deploy" {
 			continue
+		}
+		if deferTail && batchableHook(h) {
+			for _, rest := range a.Hooks[i:] {
+				if rest.Phase == "post_deploy" {
+					tail = append(tail, rest)
+				}
+			}
+			break
 		}
 		run := d.runHook(ctx, h, env)
 		res.HookRuns = append(res.HookRuns, run)
@@ -321,7 +345,7 @@ func (d *Deployer) Deploy(ctx context.Context, a agentproto.Assignment, b agentp
 			res.State, res.Error = agentproto.StateFailed, fmt.Sprintf("post_deploy hook %s exited %d; the files are installed", hookName(h), run.ExitCode)
 		}
 	}
-	return res, written, certsDir
+	return res, written, certsDir, tail, env
 }
 
 // DeployTargetOnly installs a version-less grant's target-only files —

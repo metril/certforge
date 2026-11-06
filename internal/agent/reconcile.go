@@ -235,6 +235,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) (agentproto.Report, error) {
 		}
 		delete(st.Grants, id)
 	}
+	tails := map[uuid.UUID]*tailJob{}
 	for _, a := range as.Grants {
 		gs, had := st.Grants[a.ID]
 		var versionID uuid.UUID
@@ -265,9 +266,22 @@ func (r *Reconciler) Reconcile(ctx context.Context) (agentproto.Report, error) {
 				State: agentproto.StateFailed, Error: "bundle: " + err.Error()})
 			continue
 		}
-		res, written, certsDir := r.Deployer.Deploy(ctx, a, b)
+		res, written, certsDir, tail, env := r.Deployer.deploy(ctx, a, b, true)
+		if len(tail) > 0 {
+			// Finished after the merge: its state.json update waits for the tail.
+			tails[a.ID] = &tailJob{a: a, gs: gs, had: had, versionID: versionID, written: written, certsDir: certsDir,
+				tail: tail, env: env, idx: len(rep.Results)}
+			rep.Results = append(rep.Results, res)
+			continue
+		}
 		r.recordDeployOutcome(st, live, a, gs, had, versionID, res, written, certsDir)
 		rep.Results = append(rep.Results, res)
+	}
+	if len(tails) > 0 {
+		r.runTails(ctx, tails, rep.Results)
+		for _, j := range tails {
+			r.recordDeployOutcome(st, live, j.a, j.gs, j.had, j.versionID, rep.Results[j.idx], j.written, j.certsDir)
+		}
 	}
 	r.ID.mu.Lock()
 	r.ID.State.Grants, r.ID.State.Revision = st.Grants, as.Revision
