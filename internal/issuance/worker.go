@@ -737,8 +737,12 @@ func (w *IssueWorker) succeed(ctx context.Context, cert Certificate, attemptID u
 	// against the row's current common_name/sans in the same UPDATE detects
 	// an operator having changed them while this attempt was in flight — see
 	// MarkCertificateIssued.
+	issuedSANs := cert.SANs
+	if issuedSANs == nil {
+		issuedSANs = []string{}
+	}
 	actualNext, err := w.Store.q.WithTx(tx).MarkCertificateIssued(ctx, sqlcgen.MarkCertificateIssuedParams{
-		ID: cert.ID, CurrentVersionID: &v.ID, IssuedCommonName: cert.CommonName, IssuedSans: cert.SANs, NextRenewAt: next})
+		ID: cert.ID, CurrentVersionID: &v.ID, IssuedCommonName: cert.CommonName, IssuedSans: issuedSANs, NextRenewAt: next})
 	if err != nil {
 		return err
 	}
