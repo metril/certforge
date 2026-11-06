@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, CircleAlert, TriangleAlert, X } from 'lucide-react';
+import { metaSchemasQuery } from '@/api/queries/dns';
 import { actionGroupsQuery, actionsQuery } from '@/api/queries/delivery';
 import type { Action as StepAction, ActionGroup as StepGroup, Client, GrantStep } from '@/api/types';
 import { Combobox } from '@/components/Combobox';
@@ -37,17 +38,27 @@ type Props = {
   newActionHref?: string;
   /** The agent's restart allow-list; restart steps outside it get a warning. Empty or absent means unknown. */
   restartTargets?: Client['restartTargets'];
+  /** The grant's deploy target type; kinds that cannot run on it are hidden, and groups containing them are disabled. */
+  targetType?: string;
 };
 
 /** An ordered list of grant steps (library actions and groups) with a library picker. */
-export function StepsPicker({ orgId, runsOn, value, onChange, newActionHref, restartTargets = [] }: Props) {
+export function StepsPicker({ orgId, runsOn, value, onChange, newActionHref, restartTargets = [], targetType }: Props) {
+  const metaQ = useQuery(metaSchemasQuery);
   const actionsQ = useQuery(actionsQuery(orgId));
   const groupsQ = useQuery(actionGroupsQuery(orgId));
   const actions = actionsQ.data ?? [];
   const groups = groupsQ.data ?? [];
-  const fits = (a: StepAction) => a.runsOn === runsOn;
+  const kindTypes = new Map((metaQ.data?.actions ?? []).map((k) => [k.code, k.targetTypes]));
+  const typeOk = (a: StepAction) => {
+    const types = kindTypes.get(a.kind) ?? [];
+    return !targetType || types.length === 0 || types.includes(targetType);
+  };
+  const fits = (a: StepAction) => a.runsOn === runsOn && typeOk(a);
   const memberActions = (g: StepGroup) => g.actionIds.map((id) => actions.find((x) => x.id === id)).filter((a): a is StepAction => !!a);
-  const groupFits = (g: StepGroup) => memberActions(g).every(fits);
+  const runsFits = (a: StepAction) => a.runsOn === runsOn;
+  const groupFits = (g: StepGroup) => memberActions(g).every(runsFits);
+  const groupTypeOk = (g: StepGroup) => memberActions(g).every(typeOk);
   const disallowed = (a: StepAction) => {
     const t = (a.config as { target?: string } | undefined)?.target;
     return a.kind === 'restart' && restartTargets.length > 0 && !restartTargets.some((r) => r.allowed && r.target === t);
@@ -55,7 +66,10 @@ export function StepsPicker({ orgId, runsOn, value, onChange, newActionHref, res
   const used = new Set(value.map(stepKey));
   const options = [
     ...actions.filter(fits).filter((a) => !used.has(`a:${a.id}`)).map((a) => ({ value: `a:${a.id}`, label: a.name, hint: `${KIND_LABEL[a.kind]} · ${PHASE[a.phase]}` })),
-    ...groups.filter(groupFits).filter((g) => !used.has(`g:${g.id}`)).map((g) => ({ value: `g:${g.id}`, label: g.name, hint: `Group · ${plural(g.actionIds.length, 'action')}` })),
+    ...groups
+      .filter(groupFits)
+      .filter((g) => !used.has(`g:${g.id}`))
+      .map((g) => ({ value: `g:${g.id}`, label: g.name, hint: groupTypeOk(g) ? `Group · ${plural(g.actionIds.length, 'action')}` : `Has steps a ${targetType} target cannot run`, disabled: !groupTypeOk(g) })),
   ];
   const move = (i: number, d: -1 | 1) => {
     const next = [...value];

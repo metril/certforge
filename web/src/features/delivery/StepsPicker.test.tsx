@@ -8,12 +8,13 @@ import { useState } from 'react';
 import type { GrantStep } from '@/api/types';
 import { StepsPicker } from './StepsPicker';
 
-function Harness({ runsOn, initial = [], spy }: { runsOn: 'agent' | 'server'; initial?: GrantStep[]; spy?: (v: GrantStep[]) => void }) {
+function Harness({ runsOn, initial = [], spy, targetType }: { runsOn: 'agent' | 'server'; initial?: GrantStep[]; spy?: (v: GrantStep[]) => void; targetType?: string }) {
   const [v, setV] = useState(initial);
   return (
     <StepsPicker
       orgId="org-1"
       runsOn={runsOn}
+      targetType={targetType}
       value={v}
       newActionHref="/o/acme/delivery/actions?edit=new"
       onChange={(n) => {
@@ -104,4 +105,31 @@ it('warns on restart steps outside the allowed targets, directly or via a group'
   await waitFor(() => expect(within(rows[0]!).getByText('Not allowed on this agent')).toBeInTheDocument());
   expect(within(rows[1]!).queryByText('Not allowed on this agent')).not.toBeInTheDocument();
   expect(within(rows[2]!).getByText('Not allowed on this agent')).toBeInTheDocument();
+});
+
+it('hides kinds that cannot run on the grant target type and disables groups containing them', async () => {
+  server.use(
+    ...authHandlers({ authed: true }),
+    http.get(url('/orgs/org-1/actions'), () =>
+      HttpResponse.json({
+        items: [
+          makeAction({ id: 'p-1', name: 'pikvm restart', kind: 'pikvm_restart', runsOn: 'server', config: {} }),
+          makeAction({ id: 'g-1', name: 'glkvm restart', kind: 'glkvm_restart', runsOn: 'server', config: {} }),
+          makeAction({ id: 's-1', name: 'ssh reload', kind: 'ssh', runsOn: 'server', config: { command: 'x' } }),
+          makeAction({ id: 'w-1', name: 'pause', kind: 'wait', runsOn: 'server', config: { seconds: 1 } }),
+        ],
+      }),
+    ),
+    http.get(url('/orgs/org-1/action-groups'), () =>
+      HttpResponse.json({ items: [makeActionGroup({ id: 'ok', name: 'kvm group', actionIds: ['p-1', 'w-1'] }), makeActionGroup({ id: 'bad', name: 'gl group', actionIds: ['g-1'] })] }),
+    ),
+  );
+  const { user } = renderUI(<Harness runsOn="server" targetType="pikvm" />);
+  await user.click(await screen.findByRole('combobox', { name: 'Add from library' }));
+  expect(await screen.findByRole('option', { name: /pikvm restart/ })).toBeInTheDocument();
+  expect(screen.getByRole('option', { name: /ssh reload/ })).toBeInTheDocument();
+  expect(screen.getByRole('option', { name: /pause/ })).toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: /glkvm restart/ })).not.toBeInTheDocument();
+  expect(screen.getByRole('option', { name: /kvm group/ })).not.toHaveAttribute('aria-disabled', 'true');
+  expect(screen.getByRole('option', { name: /gl group/ })).toHaveAttribute('aria-disabled', 'true');
 });
