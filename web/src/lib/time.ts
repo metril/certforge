@@ -16,6 +16,12 @@ export function relDays(t: string, now = Date.now()): string {
   return d > 0 ? `in ${d} d` : `${-d} d ago`;
 }
 
+/** Next-renewal cell: '–' until a version exists, 'due now' once the date has passed. */
+export function nextRenewLabel(nextRenewAt: string | null | undefined, hasVersion: boolean, now = Date.now()): string {
+  if (!hasVersion || !nextRenewAt) return '–';
+  return toMs(nextRenewAt) <= now ? 'due now' : relDays(nextRenewAt, now);
+}
+
 export function fmtDate(t: string): string {
   return new Date(t).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
