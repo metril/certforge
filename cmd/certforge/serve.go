@@ -217,6 +217,9 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 		} else if n > 0 {
 			log.Info("audit chain re-keyed with HMAC-SHA256", "events", n)
 		}
+		if err := auditMigratedStepRemovals(ctx, pool, aud, log); err != nil {
+			log.Error("could not audit removed grant steps; retrying at next start", "err", err)
+		}
 	}
 	notifySvc := &notify.Service{
 		Store: &notify.Store{Pool: pool, Q: q}, Emitter: notifyEmitter, Registry: notifyReg,
