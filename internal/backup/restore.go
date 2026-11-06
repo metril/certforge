@@ -39,15 +39,26 @@ const actionsMigration = 33
 // grant_check_tokens.
 const checkTokensMigration = 36
 
+// stepRemovalsMigration is 00040_actions_grant_target.sql, which added
+// migrated_step_removals.
+const stepRemovalsMigration = 40
+
 // manifestFor returns the table list of the schema at migration version v.
 func manifestFor(v int64) []string {
-	if v >= checkTokensMigration {
+	if v >= stepRemovalsMigration {
 		return Manifest
 	}
 	out := make([]string, 0, len(Manifest))
 	for _, t := range Manifest {
 		switch t {
+		case "migrated_step_removals":
+			if v >= stepRemovalsMigration {
+				out = append(out, t)
+			}
 		case "grant_check_tokens":
+			if v >= checkTokensMigration {
+				out = append(out, t)
+			}
 		case "action_groups":
 			if v >= actionsMigration {
 				out = append(out, t)
