@@ -586,6 +586,7 @@ func pfPostActionHTTPTimeout(cfgSecs, paSecs int) int {
 const glkvmReloadScript = `P=/run/kvmd/nginx.pid; C=/etc/kvmd/user/ssl/server.crt
 if [ -s "$P" ] && kill -0 "$(cat "$P")" 2>/dev/null; then kill -HUP "$(cat "$P")"; else /etc/init.d/S99kvmd-nginx start; fi
 want=$(openssl x509 -in "$C" -noout -fingerprint -sha256)
+[ -n "$want" ] || { echo "cannot read $C" >&2; exit 1; }
 i=0; while [ $i -lt 15 ]; do i=$((i+1)); sleep 1
   got=$(openssl s_client -connect 127.0.0.1:443 -servername localhost </dev/null 2>/dev/null | openssl x509 -noout -fingerprint -sha256 2>/dev/null)
   [ "$got" = "$want" ] && exit 0
