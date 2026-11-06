@@ -99,7 +99,7 @@ func (in GrantInput) stepsJSON() []byte {
 // first, then the actions they and the steps name), expands them in order
 // and requires every action to be able to run on mode (Agent or Server).
 // Errors name steps[i].
-func (s *Service) CheckSteps(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, steps []actions.Step, mode targets.Mode) error {
+func (s *Service) CheckSteps(ctx context.Context, q *sqlcgen.Queries, orgID uuid.UUID, steps []actions.Step, mode targets.Mode, targetType string) error {
 	if len(steps) == 0 {
 		return nil
 	}
@@ -158,6 +158,9 @@ func (s *Service) CheckSteps(ctx context.Context, q *sqlcgen.Queries, orgID uuid
 			}
 			return invalid(fmt.Sprintf("steps[%d]", i), "this step runs on the server, not an agent")
 		}
+		if j := actions.Compatible(one, targetType); j >= 0 {
+			return invalid(fmt.Sprintf("steps[%d]", i), "a %s step does not fit this grant's %s target", one[j].Kind, targetType)
+		}
 	}
 	return nil
 }
@@ -183,7 +186,7 @@ func (s *Service) checkRefs(ctx context.Context, q *sqlcgen.Queries, orgID uuid.
 	// deployments), so DeleteAction/DeleteActionGroup either serialize with
 	// this grant winning (and then see it as a dependent) or win and the
 	// lookup here reports the missing row.
-	if err := s.CheckSteps(ctx, q, orgID, in.Steps, targets.Agent); err != nil {
+	if err := s.CheckSteps(ctx, q, orgID, in.Steps, targets.Agent, ""); err != nil {
 		return err
 	}
 	// output_spec_id and deploy_target_id are real FKs: an insert/update

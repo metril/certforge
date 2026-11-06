@@ -1929,7 +1929,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a deploy target
-         * @description Needs delivery:write. 409 while any grant uses it; the detail names up to five client/certificate pairs.
+         * @description Needs delivery:write. 409 while any grant uses it; the detail names up to five client/certificate pairs. Device actions no longer name a target, so they never block the delete.
          */
         delete: operations["deleteDeployTarget"];
         options?: never;
@@ -1986,7 +1986,7 @@ export interface paths {
         put?: never;
         /**
          * Grant a certificate to a server-side deploy target
-         * @description Needs clients:write; also keys:export when the target's config has includeKey true. 422 when the target's runsOn is agent (an agent target takes grants through POST /orgs/{orgId}/clients/{id}/grants instead). One grant per certificate per target (409). Recorded as grant.create in the audit log with runsOn: server and includeKey.
+         * @description Needs clients:write; also keys:export when the target's config has includeKey true. 422 when the target's runsOn is agent (an agent target takes grants through POST /orgs/{orgId}/clients/{id}/grants instead). One grant per certificate per target (409). Steps are checked against the target's type: an action that runs on an agent, or a device action that does not fit the target type (for example pikvm_restart on a pfsense target), is 422 on steps[i]. Recorded as grant.create in the audit log with runsOn: server and includeKey.
          */
         post: operations["createServerGrant"];
         delete?: never;
@@ -2013,7 +2013,7 @@ export interface paths {
         put?: never;
         /**
          * Create an action
-         * @description Needs delivery:write. config is validated against the kind schema from GET /meta/schemas (actions); fields with secret true are stored encrypted and never returned (secretKeys names the ones stored). A kind with a targetId needs a deploy target in this org of an accepted type (422 on config.targetId); notify needs a channel in this org. An action of kind exec or restart runs on agents (argv[0] must be in the agent's CF_HOOK_ALLOW list, never through a shell); every other kind runs on the server.
+         * @description Needs delivery:write. config is validated against the kind schema from GET /meta/schemas (actions); fields with secret true are stored encrypted and never returned (secretKeys names the ones stored). Device kinds (ssh, pfsense_shell, pfsense_restart, pikvm_restart, glkvm_restart, truenas_restart, routeros_restart) have no target field: they always run against the deploy target of the server grant that names them, and a config with targetId is 422. notify needs a channel in this org. An action of kind exec or restart runs on agents (argv[0] must be in the agent's CF_HOOK_ALLOW list, never through a shell); every other kind runs on the server.
          */
         post: operations["createAction"];
         delete?: never;
@@ -2050,7 +2050,7 @@ export interface paths {
         head?: never;
         /**
          * Replace an action
-         * @description Needs delivery:write. Replaces the action; a secret field of config sent as "__unchanged__" or omitted keeps its stored value, "" or {} clears it. Agents whose grants use it get a revision bump.
+         * @description Needs delivery:write. Replaces the action; a secret field of config sent as "__unchanged__" or omitted keeps its stored value, "" or {} clears it. Agents whose grants use it get a revision bump. 422 when the new kind does not fit the target type of a live server grant that uses the action, directly or through a group.
          */
         patch: operations["updateAction"];
         trace?: never;
@@ -2110,7 +2110,7 @@ export interface paths {
         head?: never;
         /**
          * Replace an action group
-         * @description Needs delivery:write. Replaces the group. Agents whose grants use it get a revision bump.
+         * @description Needs delivery:write. Replaces the group. Agents whose grants use it get a revision bump. 422 when a member does not fit the target type of a live server grant that uses the group.
          */
         patch: operations["updateActionGroup"];
         trace?: never;
@@ -2776,7 +2776,7 @@ export interface components {
              * @enum {string}
              */
             phaseHint: "" | "pre_deploy" | "post_deploy";
-            /** @description Deploy target types config.targetId accepts; empty when the kind has no targetId. */
+            /** @description Grant target types this kind is compatible with (a device kind runs against the grant's own target); empty for a kind that fits any grant. */
             targetTypes: string[];
         };
         /** @description Pluggable type schemas grouped by kind. */
@@ -4904,7 +4904,7 @@ export interface components {
             kind: components["schemas"]["ActionKind"];
             phase: components["schemas"]["ActionPhase"];
             runsOn: components["schemas"]["RunsOn"];
-            /** @description Kind-specific configuration */
+            /** @description Kind-specific configuration, valid against the kind's schema, with secret fields removed. Device kinds carry no target: they run against the deploy target of the server grant that uses them. */
             config: {
                 [key: string]: unknown;
             };
@@ -4914,6 +4914,8 @@ export interface components {
             timeoutSeconds: number;
             /** @description Server-run actions only: a failure is recorded but never fails the deploy. */
             optional: boolean;
+            /** @description True when the step runs once per host when several certificates deploy together; false when it runs per grant. */
+            readonly batched?: boolean;
             /** @description Live grants naming it directly as a step. */
             grantCount: number;
             /**
@@ -5180,7 +5182,7 @@ export interface components {
             targetOptions: {
                 [key: string]: unknown;
             };
-            /** @description Actions and action groups in run order. An action that runs on the wrong side is 422 on steps[i]. A server grant with steps needs delivery:write. */
+            /** @description Actions and action groups in run order. An action that runs on the wrong side, or a device action that does not fit the grant's target type, is 422 on steps[i]. A server grant with steps needs delivery:write. */
             steps: components["schemas"]["GrantStep"][];
             /** @description Reinstall automatically on drift. */
             autoRemediate: boolean;
@@ -5208,7 +5210,7 @@ export interface components {
             targetOptions?: {
                 [key: string]: unknown;
             };
-            /** @description Server actions (every kind except exec and restart) to run around the deploy, in order; needs delivery:write. An action that runs on an agent is 422 on steps[i]. */
+            /** @description Server actions (every kind except exec and restart) to run around the deploy, in order; needs delivery:write. An action that runs on an agent, or a device action that does not fit the grant's target type, is 422 on steps[i]. */
             steps?: components["schemas"]["GrantStep"][];
             /** @description A TLS endpoint CertForge polls to confirm the deployed certificate is the one served; a grant-owned monitor, hourly. Null when none. Server grants only. */
             verify?: components["schemas"]["GrantVerify"] | null;

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"sort"
 	"strings"
 
@@ -180,22 +179,9 @@ func (s *Server) validAction(ctx context.Context, q *sqlcgen.Queries, orgID uuid
 		return validatedAction{}, unprocessable("config", err.Error())
 	}
 	var refs struct {
-		TargetID  string `json:"targetId"`
 		ChannelID string `json:"channelId"`
 	}
 	_ = json.Unmarshal(parsed.Public, &refs)
-	if refs.TargetID != "" {
-		id, _ := uuid.Parse(refs.TargetID)
-		t, err := q.GetDeployTarget(ctx, sqlcgen.GetDeployTargetParams{ID: id, OrgID: orgID})
-		if errors.Is(err, pgx.ErrNoRows) {
-			return validatedAction{}, unprocessable("config.targetId", fmt.Sprintf("deploy target %s is not in this org", id))
-		} else if err != nil {
-			return validatedAction{}, err
-		}
-		if types := kind.TargetTypes(); !slices.Contains(types, t.Type) {
-			return validatedAction{}, unprocessable("config.targetId", fmt.Sprintf("a %s action needs %s target", kind.Code(), postTargetPhrase(types)))
-		}
-	}
 	if refs.ChannelID != "" {
 		id, _ := uuid.Parse(refs.ChannelID)
 		if _, err := q.GetOrgNotificationChannel(ctx, sqlcgen.GetOrgNotificationChannelParams{ID: id, OrgID: orgID}); errors.Is(err, pgx.ErrNoRows) {
@@ -309,6 +295,9 @@ func (s *Server) UpdateAction(ctx context.Context, r gen.UpdateActionRequestObje
 	if err != nil {
 		return nil, err
 	}
+	if err := actionFitsGrants(ctx, q, r.Id, v.kind); err != nil {
+		return nil, err
+	}
 	// Moving an action to the other side would strand the grants that use it.
 	if oldKind, ok := actions.Default.Get(cur.Kind); ok && oldKind.RunsOn() != v.runsOn {
 		deps, err := q.ActionDependents(ctx, sqlcgen.ActionDependentsParams{ActionID: r.Id, OrgID: r.OrgId})
@@ -342,6 +331,21 @@ func (s *Server) UpdateAction(ctx context.Context, r gen.UpdateActionRequestObje
 		return nil, err
 	}
 	return gen.UpdateAction200JSONResponse(out[0]), nil
+}
+
+// actionFitsGrants refuses a kind that a live server grant using the action
+// (directly or through a group) could not run against its target type.
+func actionFitsGrants(ctx context.Context, q *sqlcgen.Queries, id uuid.UUID, kind string) error {
+	sides, err := q.LiveGrantSidesUsingAction(ctx, id)
+	if err != nil {
+		return err
+	}
+	for _, sd := range sides {
+		if sd.Server && actions.Compatible([]actions.ActionRef{{ID: id, Kind: kind}}, sd.TargetType) >= 0 {
+			return unprocessable("kind", fmt.Sprintf("a %s action does not fit the %s target of a grant that uses it", kind, sd.TargetType))
+		}
+	}
+	return nil
 }
 
 // actionDependentsConflict is the 409 for an action still named by grant

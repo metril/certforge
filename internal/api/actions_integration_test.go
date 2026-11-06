@@ -188,23 +188,16 @@ func TestActionKindsValidation(t *testing.T) {
 func TestActionTargetAndChannelRefs(t *testing.T) {
 	f := newAgentFixture(t)
 	op := f.as("operator")
-	sshT := f.sshTargetIn(t, f.org, "ssh")
-	vaultT := f.sshTargetIn(t, f.org, "vault-kv")
-	otherOrg := f.sshTargetIn(t, dbtest.Org(t, f.pool), "ssh")
 	create := func(kind string, cfg map[string]interface{}) error {
 		_, err := f.srv.CreateAction(op, gen.CreateActionRequestObject{OrgId: f.org, Body: actionIn("a-"+uuid.NewString()[:6], kind, cfg)})
 		return err
 	}
-	for name, id := range map[string]uuid.UUID{"wrong type": vaultT, "other org": otherOrg, "missing": uuid.New()} {
-		err := create("ssh", map[string]interface{}{"targetId": id.String(), "command": "true"})
-		if problemStatus(err) != 422 || problemTitle(err) != "Invalid config.targetId" {
-			t.Errorf("%s: %v", name, err)
-		}
-	}
-	if err := create("ssh", map[string]interface{}{"targetId": sshT.String(), "command": "true"}); err != nil {
+	// Device kinds carry no target; a stale targetId is rejected.
+	if err := create("ssh", map[string]interface{}{"command": "true"}); err != nil {
 		t.Fatal(err)
 	}
-	wantStatus(t, create("truenas_restart", map[string]interface{}{"targetId": sshT.String()}), 422)
+	wantStatus(t, create("ssh", map[string]interface{}{"targetId": uuid.NewString(), "command": "true"}), 422)
+	wantStatus(t, create("truenas_restart", map[string]interface{}{"targetId": uuid.NewString()}), 422)
 	wantStatus(t, create("notify", map[string]interface{}{"channelId": uuid.NewString()}), 422)
 	ch, err := f.q.CreateNotificationChannel(context.Background(), sqlcgen.CreateNotificationChannelParams{OrgID: f.org, Name: "ops", Type: "webhook",
 		Config: []byte(`{}`), Events: []string{}, MinSeverity: "info", Enabled: true, StoredSecretKeys: []string{}})
@@ -545,6 +538,46 @@ func TestActionGroupEditCannotBreakGrants(t *testing.T) {
 	}
 	wantStatus(t, edit(sg, w.Id, e.Id), 409)
 	if err := edit(sg, w.Id); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A device action must fit the grant's target type: on a grant's steps, in a
+// group edit and in a kind change.
+func TestDeviceActionsFitGrantTarget(t *testing.T) {
+	f := newAgentFixture(t)
+	op := f.as("operator")
+	targetID, _ := f.serverTarget(t, "vault", nil) // vault-kv
+	certID, _ := f.currentCert(t, "web")
+	pikvm := f.mkAction(t, actionIn("kvm", "pikvm_restart", map[string]interface{}{}))
+	wait := f.waitAction(t, "w")
+	create := func(steps *[]gen.GrantStep) error {
+		_, err := f.srv.CreateServerGrant(op, gen.CreateServerGrantRequestObject{OrgId: f.org, Id: targetID,
+			Body: &gen.ServerGrantInput{CertificateId: certID, Steps: steps}})
+		return err
+	}
+	err := create(stepsPtr(wait.Id, pikvm.Id))
+	if problemStatus(err) != 422 || problemTitle(err) != "Invalid steps[1]" {
+		t.Fatalf("incompatible step: %v", err)
+	}
+	gres, err := f.srv.CreateActionGroup(op, gen.CreateActionGroupRequestObject{OrgId: f.org, Body: &gen.ActionGroupInput{Name: "g", ActionIds: []uuid.UUID{wait.Id}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	group := gen.ActionGroup(gres.(gen.CreateActionGroup201JSONResponse))
+	gs := []gen.GrantStep{groupStep(group.Id)}
+	if err := create(&gs); err != nil {
+		t.Fatal(err)
+	}
+	// Group edit.
+	_, err = f.srv.UpdateActionGroup(op, gen.UpdateActionGroupRequestObject{OrgId: f.org, Id: group.Id,
+		Body: &gen.ActionGroupInput{Name: "g", ActionIds: []uuid.UUID{wait.Id, pikvm.Id}}})
+	wantStatus(t, err, 422)
+	// Kind change of an action the grant uses through the group.
+	_, err = f.srv.UpdateAction(op, gen.UpdateActionRequestObject{OrgId: f.org, Id: wait.Id, Body: actionIn("w", "pikvm_restart", map[string]interface{}{})})
+	wantStatus(t, err, 422)
+	// A fitting change still works.
+	if _, err := f.srv.UpdateAction(op, gen.UpdateActionRequestObject{OrgId: f.org, Id: wait.Id, Body: actionIn("w", "wait", map[string]interface{}{"seconds": 3})}); err != nil {
 		t.Fatal(err)
 	}
 }
