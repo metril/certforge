@@ -310,7 +310,7 @@ func TestGLKVMRestartAction(t *testing.T) {
 	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
 		t.Fatal(err)
 	}
-	const want = "/etc/init.d/S99kvmd-nginx stop; /etc/init.d/S99kvmd-nginx start; sleep 2; pidof nginx >/dev/null"
+	want := glkvmReloadScript
 	if len(u.srv.Cmds) != 1 || u.srv.Cmds[0] != want {
 		t.Fatalf("cmds = %q", u.srv.Cmds)
 	}

@@ -281,7 +281,6 @@ func (d *Dispatcher) execAction(ctx context.Context, row sqlcgen.ServerDeployGra
 		if err := json.Unmarshal(rt.cfg, &cfg); err != nil {
 			return errors.New("glkvm target config invalid")
 		}
-		const cmd = "/etc/init.d/S99kvmd-nginx stop; /etc/init.d/S99kvmd-nginx start; sleep 2; pidof nginx >/dev/null"
 		res.argv = []string{"glkvm_restart", cfg.Host}
 		cl, err := sshx.Dial(ctx, sshx.Opts{Host: cfg.Host, Port: cfg.Port, User: cfg.Username, Password: cfg.Password,
 			PrivateKeyPEM: cfg.PrivateKey, PrivateKeyPassphrase: cfg.PrivateKeyPassphrase, HostKey: cfg.HostKey, AllowLoopback: req.HTTP.AllowLoopback, Timeout: timeout})
@@ -289,7 +288,7 @@ func (d *Dispatcher) execAction(ctx context.Context, row sqlcgen.ServerDeployGra
 			return err
 		}
 		defer func() { _ = cl.Close() }()
-		stdout, stderr, code, err := cl.Run(ctx, cmd)
+		stdout, stderr, code, err := cl.Run(ctx, glkvmReloadScript)
 		if err != nil {
 			return err
 		}
@@ -578,3 +577,18 @@ func pfPostActionHTTPTimeout(cfgSecs, paSecs int) int {
 	}
 	return max(cfgSecs, paSecs) + 10
 }
+
+// glkvmReloadScript reloads the Comet's nginx and waits until :443 serves the
+// deployed certificate. The firmware init script's stop does not wait for the
+// old master to exit, so stop-then-start races and fails to bind :443; SIGHUP
+// to the master re-reads the certificate in place. Runs as one SSH command in
+// busybox ash.
+const glkvmReloadScript = `P=/run/kvmd/nginx.pid; C=/etc/kvmd/user/ssl/server.crt
+if [ -s "$P" ] && kill -0 "$(cat "$P")" 2>/dev/null; then kill -HUP "$(cat "$P")"; else /etc/init.d/S99kvmd-nginx start; fi
+want=$(openssl x509 -in "$C" -noout -fingerprint -sha256)
+i=0; while [ $i -lt 15 ]; do i=$((i+1)); sleep 1
+  got=$(openssl s_client -connect 127.0.0.1:443 -servername localhost </dev/null 2>/dev/null | openssl x509 -noout -fingerprint -sha256 2>/dev/null)
+  [ "$got" = "$want" ] && exit 0
+done
+echo "nginx on :443 is not serving $C after reload" >&2; exit 1
+`
