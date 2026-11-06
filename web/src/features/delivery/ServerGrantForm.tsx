@@ -59,7 +59,7 @@ export function ServerGrantForm({ orgId, orgSlug, targetId, editing, onBack, onD
     try {
       let id = (actionsQ.data ?? []).find((a) => a.kind === restartKind)?.id;
       if (!id) {
-        const body: ActionInput = { name: `Restart nginx on ${target.name}`, kind: restartKind, phase: 'post_deploy', config: restartKind === 'pikvm_restart' ? { service: 'kvmd-nginx' } : {}, timeoutSeconds: 60, optional: false };
+        const body: ActionInput = { name: restartKind === 'pikvm_restart' ? 'Restart PiKVM nginx' : 'Restart GL.iNet nginx', kind: restartKind, phase: 'post_deploy', config: restartKind === 'pikvm_restart' ? { service: 'kvmd-nginx' } : {}, timeoutSeconds: 60, optional: false };
         id = (await createAction(orgId, body)).id;
         await invalidateActions(qc, orgId);
       }
@@ -165,7 +165,7 @@ export function ServerGrantForm({ orgId, orgSlug, targetId, editing, onBack, onD
         />
       </Field>
       <div className="grid gap-1.5">
-        <StepsPicker orgId={orgId} runsOn="server" value={steps} onChange={setSteps} newActionHref={orgSlug ? `/o/${orgSlug}/delivery/actions?edit=new` : undefined} />
+        <StepsPicker orgId={orgId} runsOn="server" targetType={target?.type} value={steps} onChange={setSteps} newActionHref={orgSlug ? `/o/${orgSlug}/delivery/actions?edit=new` : undefined} />
         {showRestartHint && (
           <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">

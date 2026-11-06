@@ -510,9 +510,16 @@ it('Add restart step creates the action when none of that kind exists, then clea
   const other = makeAction({ id: 'a-o', name: 'other kvm', kind: 'pikvm_restart', runsOn: 'server', config: {} } as never);
   const { created, user } = quickAddCase('glkvm', [other]);
   await user.click(await screen.findByRole('button', { name: 'Add restart step' }));
-  await waitFor(() => expect(created).toEqual([expect.objectContaining({ name: 'Restart nginx on dev', kind: 'glkvm_restart', phase: 'post_deploy', config: {} })]));
-  await screen.findByText('Restart nginx on dev');
+  await waitFor(() => expect(created).toEqual([expect.objectContaining({ name: 'Restart GL.iNet nginx', kind: 'glkvm_restart', phase: 'post_deploy', config: {} })]));
+  expect(await within(await screen.findByRole('list', { name: 'Step run order' })).findAllByText('Restart GL.iNet nginx')).toHaveLength(2);
   expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+});
+
+it('Add restart step creates Restart PiKVM nginx with the kvmd-nginx service', async () => {
+  const { created, user } = quickAddCase('pikvm', []);
+  await user.click(await screen.findByRole('button', { name: 'Add restart step' }));
+  await waitFor(() => expect(created).toEqual([expect.objectContaining({ name: 'Restart PiKVM nginx', kind: 'pikvm_restart', config: { service: 'kvmd-nginx' } })]));
+  expect((created[0] as { config: Record<string, unknown> }).config).not.toHaveProperty('targetId');
 });
 
 it('pfsense hint has no Add restart step button', async () => {
