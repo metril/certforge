@@ -2,6 +2,35 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.44.0](https://github.com/metril/certforge/compare/v0.43.1...v0.44.0) (2026-11-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **web:** the action form no longer has a target field
+* **api:** device action configs no longer accept targetId; an incompatible step is 422
+* **actions:** action config no longer accepts targetId
+
+### Features
+
+* **actions:** classify batchable post steps and plan merged tails ([a811f44](https://github.com/metril/certforge/commit/a811f448d477c12599d7d1c1ef431683748c0f9d))
+* **actions:** device actions run on the grant's own target ([1c60267](https://github.com/metril/certforge/commit/1c602673c0fe4c73e362d9a6b4e0945fe11f9b4f))
+* **agent:** restart each service once per reconcile run ([2f78d81](https://github.com/metril/certforge/commit/2f78d81029388773b84ca8f9ba153f0918392947))
+* **api:** validate action kinds against the grant's target type ([f98d66e](https://github.com/metril/certforge/commit/f98d66e1d15efad767774c40162c339f24ea15b7))
+* **db:** strip action targetId and drop cross-host steps ([9b6516a](https://github.com/metril/certforge/commit/9b6516a9436e98467a22549f518d05785de75fbb))
+* **deploy:** run identical batchable post steps once per target ([7ae05aa](https://github.com/metril/certforge/commit/7ae05aa37f8ad785315b439300089afdb0206c70))
+* **web:** actions no longer pick a target ([2f14424](https://github.com/metril/certforge/commit/2f14424c61b2c4a9ddae8c384b773f0d4c6f3f0b))
+* **web:** add a restart step from the grant form in one click ([d0a1c9c](https://github.com/metril/certforge/commit/d0a1c9c03391047cb024b79de26267546361300d))
+* **web:** offer only steps that fit the grant's target ([e544037](https://github.com/metril/certforge/commit/e5440377d6db76371281762770cec1f03227e54a))
+* **web:** quick-add restart step reuses any action of that kind ([9601d1d](https://github.com/metril/certforge/commit/9601d1d5516426d9dc775728620cb732300b5437))
+
+
+### Bug Fixes
+
+* **db:** back up migrated step removals and audit them once ([f401ebe](https://github.com/metril/certforge/commit/f401ebe7b293884efccc1219926b96ce8c2568b9))
+* **deploy:** make post-batch jobs unique per window ([de34f54](https://github.com/metril/certforge/commit/de34f54d2aad5681d0db4217d823a795cea7f0dc))
+* **web:** quick-add restart step sends no targetId ([5ff80c3](https://github.com/metril/certforge/commit/5ff80c3f0f926b7501f2aeda7481ee6d94e786c9))
+
 ## [0.43.1](https://github.com/metril/certforge/compare/v0.43.0...v0.43.1) (2026-11-06)
 
 
