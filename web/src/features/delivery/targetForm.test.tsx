@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { server } from '@/test/server';
-import { authHandlers, deployCredentialKinds, makeDeployCredential, makeTarget, meWith, org, pikvmSchema, sshSchema, targetTestSecret, targetVaultKv, testSecretSchema, traefikSchema, url, vaultKvSchema } from '@/test/fixtures';
+import { authHandlers, deployCredentialKinds, glkvmSchema, makeDeployCredential, makeTarget, meWith, org, pikvmSchema, sshSchema, targetTestSecret, targetVaultKv, testSecretSchema, traefikSchema, url, vaultKvSchema } from '@/test/fixtures';
 import { renderRoute } from '@/test/render';
 
 let posted: unknown;
@@ -253,6 +253,17 @@ it('pikvm form shows host, host key and key passphrase but no files', async () =
   expect(within(sheet).getByLabelText('Key passphrase')).toBeInTheDocument();
   expect(within(sheet).queryByLabelText('Files')).not.toBeInTheDocument();
   expect(within(sheet).queryByRole('radio', { name: 'Custom' })).not.toBeInTheDocument();
+});
+
+it('glkvm form shows host, host key and key passphrase but no files', async () => {
+  server.use(http.get(url('/meta/schemas'), () => HttpResponse.json({ dnsProviders: [], deployTargets: [traefikSchema, glkvmSchema], notifiers: [], signers: [] })));
+  const { user } = renderRoute('/o/acme/delivery/targets/new');
+  await screen.findByRole('heading', { name: 'Add deploy target' });
+  const sheet = document.body;
+  await user.click(within(sheet).getByRole('radio', { name: /^GL\.iNet Comet KVM/ }));
+  expect(await within(sheet).findByLabelText('Host')).toBeInTheDocument();
+  expect(within(sheet).getByLabelText('Host key')).toBeInTheDocument();
+  expect(within(sheet).queryByLabelText('Files')).not.toBeInTheDocument();
 });
 
 it('type field is radios with few types and a combobox with many', async () => {

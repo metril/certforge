@@ -1025,13 +1025,40 @@ export const sshSchema = {
 // internal/deploy/pikvm.go: server-run, no key.
 export const pikvmSchema = {
   code: 'pikvm',
-  name: 'PiKVM / GL.iNet Comet',
+  name: 'PiKVM',
   aliases: [],
   runsOn: 'server',
   keyPolicy: 'always',
   schema: {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
-    title: 'PiKVM / GL.iNet Comet',
+    title: 'PiKVM',
+    credentialKinds: ['ssh', 'password'],
+    type: 'object',
+    additionalProperties: false,
+    required: ['host', 'username', 'hostKey'],
+    properties: {
+      host: { type: 'string', title: 'Host' },
+      port: { type: 'integer', minimum: 1, maximum: 65535, default: 22, title: 'Port' },
+      username: { type: 'string', default: 'root', title: 'Username' },
+      password: { type: 'string', secret: true, title: 'Password' },
+      privateKey: { type: 'string', format: 'private-key', secret: true, maxLength: 8192, title: 'Private key' },
+      privateKeyPassphrase: { type: 'string', secret: true, maxLength: 1024, title: 'Key passphrase' },
+      hostKey: { type: 'string', format: 'ssh-host-key', maxLength: 2048, title: 'Host key' },
+      timeoutSeconds: { type: 'integer', minimum: 5, maximum: 300, default: 60, title: 'Timeout (seconds)' },
+    },
+  },
+};
+
+// internal/deploy/glkvm.go: server-run, no key.
+export const glkvmSchema = {
+  code: 'glkvm',
+  name: 'GL.iNet Comet KVM',
+  aliases: [],
+  runsOn: 'server',
+  keyPolicy: 'always',
+  schema: {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    title: 'GL.iNet Comet KVM',
     credentialKinds: ['ssh', 'password'],
     type: 'object',
     additionalProperties: false,
@@ -1142,7 +1169,7 @@ const targetKind = (code: string, name: string, targetTypes: string[], extra: Re
 export const metaActions: ActionSchemaEntry[] = [
   { code: 'exec', name: 'Run command (agent)', runsOn: 'agent', phaseHint: '', targetTypes: [], schema: actionSchema({ argv: { type: 'array', minItems: 1, maxItems: 64, items: { type: 'string' }, title: 'Command' } }, ['argv']) },
   { code: 'restart', name: 'Restart service (agent)', runsOn: 'agent', phaseHint: 'post_deploy', targetTypes: [], schema: actionSchema({ target: { type: 'string', title: 'Target' } }, ['target']) },
-  targetKind('ssh', 'SSH command', ['ssh', 'pikvm'], { command: { type: 'string', minLength: 1, maxLength: 512, title: 'Command' } }, ['targetId', 'command']),
+  targetKind('ssh', 'SSH command', ['ssh', 'pikvm', 'glkvm'], { command: { type: 'string', minLength: 1, maxLength: 512, title: 'Command' } }, ['targetId', 'command']),
   targetKind('pfsense_shell', 'pfSense shell command', ['pfsense'], { command: { type: 'string', minLength: 1, maxLength: 512, title: 'Command' } }, ['targetId', 'command']),
   targetKind('pfsense_restart', 'Restart pfSense services', ['pfsense'], {
     mode: { type: 'string', enum: ['all', 'selected', 'none'], default: 'all', title: 'Restart' },
@@ -1151,6 +1178,7 @@ export const metaActions: ActionSchemaEntry[] = [
   targetKind('pikvm_restart', 'Restart PiKVM service', ['pikvm'], {
     service: { type: 'string', enum: ['kvmd-nginx', 'kvmd-vnc'], default: 'kvmd-nginx', title: 'Service', description: 'The service to restart.' },
   }),
+  targetKind('glkvm_restart', 'Restart GL.iNet nginx', ['glkvm']),
   targetKind('truenas_restart', 'Restart TrueNAS services', ['truenas']),
   targetKind('routeros_restart', 'Restart RouterOS services', ['routeros']),
   {
