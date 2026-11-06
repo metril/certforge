@@ -246,7 +246,7 @@ A PiKVM target installs the certificate on a PiKVM. It runs on the server over S
 | **Host key** (`hostKey`) | The pinned server key. **Fetch from server** reads it, as for SSH. Required. | None |
 | **Timeout** (`timeoutSeconds`) | Seconds for the whole deploy, 5 to 300. | 60 |
 
-Each deploy runs `rw` (the root filesystem is read-only), writes `/etc/kvmd/nginx/ssl/server.crt` (`fullchain`, `0644`) and `server.key` (`key`, `0600`), then runs `ro`. It does not restart anything: add a **Restart PiKVM service** (`pikvm_restart`) step to restart `kvmd-nginx` or `kvmd-vnc`. The grant needs the private key, so it needs `keys:export`. Commands are recorded as hook runs, as for SSH.
+Each deploy runs `rw` (the root filesystem is read-only), writes `/etc/kvmd/nginx/ssl/server.crt` (`fullchain`, `0644`) and `server.key` (`key`, `0600`), then runs `ro`. It does not restart anything: add a **Restart PiKVM service** (`pikvm_restart`) step (the grant form's **Add restart step** button does it in one click) to restart `kvmd-nginx` or `kvmd-vnc`. The grant needs the private key, so it needs `keys:export`. Commands are recorded as hook runs, as for SSH.
 
 Existing SSH targets set up for PiKVM keep working; no migration is needed.
 
@@ -254,7 +254,7 @@ Existing SSH targets set up for PiKVM keep working; no migration is needed.
 
 A GL.iNet Comet KVM target installs the certificate on a Comet. It runs on the server over SSH, so its grants have no client. It takes the same fields as [PiKVM](#pikvm): **Host**, **Port**, **Username** (`root`), **Password** or **Private key** with its **Key passphrase**, the pinned **Host key** and **Timeout**.
 
-Each deploy writes `/etc/kvmd/user/ssl/server.crt` (`fullchain`, `0644`) and `server.key` (`key`, `0600`). The root filesystem is writable, so there is no remount. It does not restart anything: add a **Restart GL.iNet nginx** (`glkvm_restart`) step. The init script's `restart` races on firmware 1.5.0: its `stop` does not wait for nginx to exit, so the new nginx cannot bind port 443 and the old certificate stays until a reboot. The step instead sends SIGHUP to the nginx master (PID from `/run/kvmd/nginx.pid`; it starts nginx through `/etc/init.d/S99kvmd-nginx` if it is not running), then checks that the certificate served on `127.0.0.1:443` has the same fingerprint as `server.crt`. It fails the step after 15 seconds if not. The grant needs the private key, so it needs `keys:export`.
+Each deploy writes `/etc/kvmd/user/ssl/server.crt` (`fullchain`, `0644`) and `server.key` (`key`, `0600`). The root filesystem is writable, so there is no remount. It does not restart anything: add a **Restart GL.iNet nginx** (`glkvm_restart`) step (the grant form's **Add restart step** button does it in one click). The init script's `restart` races on firmware 1.5.0: its `stop` does not wait for nginx to exit, so the new nginx cannot bind port 443 and the old certificate stays until a reboot. The step instead sends SIGHUP to the nginx master (PID from `/run/kvmd/nginx.pid`; it starts nginx through `/etc/init.d/S99kvmd-nginx` if it is not running), then checks that the certificate served on `127.0.0.1:443` has the same fingerprint as `server.crt`. It fails the step after 15 seconds if not. The grant needs the private key, so it needs `keys:export`.
 
 A Comet that was set up as a PiKVM target writes to the wrong path. Recreate it as a GL.iNet Comet KVM target and move its grants and steps over.
 
@@ -372,6 +372,8 @@ The **Layouts** tab of **Delivery** shapes what an agent writes for a grant. **F
 
 An **action** is one reusable step a grant runs around a deploy: reload a service, restart a firewall's services, call a webhook, check the served certificate. Define them under **Delivery → Actions**, then add them to a grant's **Steps** in the order you want. Actions replace the old hooks, the server grant post action and the per-grant pfSense restart setting.
 
+The **Actions** tab is a library: an action is defined once and any number of grants can use it. A grant does not hold actions itself; its **Steps** pick from the library. For PiKVM and GL.iNet Comet KVM grants, the grant form shows **Add restart step** while no restart step is set. It reuses the restart action for that target, or creates one, and adds it as a post-deploy step in one click.
+
 | Kind | What it does | Runs on | Accepts |
 |---|---|---|---|
 | **Command** (`exec`) | Runs an executable with arguments, no shell, if the agent's `CF_HOOK_ALLOW` lists it. | Agent | None |
@@ -379,7 +381,7 @@ An **action** is one reusable step a grant runs around a deploy: reload a servic
 | **SSH** (`ssh`) | Runs one command (up to 512 characters) over SSH, reusing the target's host, login and pinned host key. | Server | SSH, PiKVM or GL.iNet Comet KVM target |
 | **pfSense shell** (`pfsense_shell`) | Runs a shell command through the firewall's API. The API reports no exit status, so it counts as done once accepted. The user needs the diag command privilege. | Server | pfSense target |
 | **Restart PiKVM service** (`pikvm_restart`) | Restarts `kvmd-nginx` (default) or `kvmd-vnc` over SSH so the device serves the new certificate. | Server | PiKVM target |
-| **Restart GL.iNet nginx** (`glkvm_restart`) | Stops and starts nginx over SSH so the Comet serves the new certificate; fails if nginx is not running afterward. | Server | GL.iNet Comet KVM target |
+| **Restart GL.iNet nginx** (`glkvm_restart`) | Sends SIGHUP to nginx and waits until port 443 serves the deployed certificate. | Server | GL.iNet Comet KVM target |
 | **pfSense restart** (`pfsense_restart`) | Restarts the services that use the certificate: all, only the ones you list, or none. | Server | pfSense target |
 | **TrueNAS restart** (`truenas_restart`) | Restarts the TrueNAS web UI. | Server | TrueNAS target |
 | **RouterOS restart** (`routeros_restart`) | Re-binds the certificate to the configured RouterOS services. | Server | RouterOS target |
