@@ -245,6 +245,20 @@ func TestActionOnPiKVMTarget(t *testing.T) {
 	}
 }
 
+func TestActionOnGLKVMTarget(t *testing.T) {
+	u := newStepSetup(t)
+	u.f.setSteps(t, u.g, step(u.sshAction(t, "hi", "post_deploy", "echo hi")))
+	if _, err := u.f.pool.Exec(context.Background(), `UPDATE deploy_targets SET type = 'glkvm' WHERE type = 'ssh'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
+		t.Fatal(err)
+	}
+	if len(u.srv.Cmds) != 1 || u.srv.Cmds[0] != "echo hi" {
+		t.Fatalf("cmds = %q", u.srv.Cmds)
+	}
+}
+
 func TestPiKVMRestartAction(t *testing.T) {
 	u := newStepSetup(t)
 	if _, err := u.f.pool.Exec(context.Background(), `UPDATE deploy_targets SET type = 'pikvm' WHERE type = 'ssh'`); err != nil {
@@ -283,6 +297,41 @@ func TestPiKVMRestartAction(t *testing.T) {
 	u.f.pending(t, u.g, u.ver)
 	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err == nil {
 		t.Fatal("expected error for non-pikvm target")
+	}
+}
+
+func TestGLKVMRestartAction(t *testing.T) {
+	u := newStepSetup(t)
+	if _, err := u.f.pool.Exec(context.Background(), `UPDATE deploy_targets SET type = 'glkvm' WHERE type = 'ssh'`); err != nil {
+		t.Fatal(err)
+	}
+	a := u.f.action(t, "kvm", "glkvm_restart", "post_deploy", map[string]any{"targetId": u.ssh})
+	u.f.setSteps(t, u.g, step(a))
+	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
+		t.Fatal(err)
+	}
+	const want = "/etc/init.d/S99kvmd-nginx stop; /etc/init.d/S99kvmd-nginx start; sleep 2; pidof nginx >/dev/null"
+	if len(u.srv.Cmds) != 1 || u.srv.Cmds[0] != want {
+		t.Fatalf("cmds = %q", u.srv.Cmds)
+	}
+	if runs := u.f.runs(t, u.g); len(runs) != 1 || strings.Join(runs[0].argv, "|") != "glkvm_restart|127.0.0.1" {
+		t.Fatalf("runs = %+v", runs)
+	}
+	// A non-zero exit fails.
+	u.srv.Exit = 1
+	u.f.pending(t, u.g, u.ver)
+	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err == nil {
+		t.Fatal("expected error")
+	}
+	// A non-glkvm target is rejected.
+	if _, err := u.f.pool.Exec(context.Background(), `UPDATE deploy_targets SET type = 'pikvm' WHERE type = 'glkvm'`); err != nil {
+		t.Fatal(err)
+	}
+	u.srv.Exit = 0
+	u.f.setSteps(t, u.g, step(a))
+	u.f.pending(t, u.g, u.ver)
+	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err == nil {
+		t.Fatal("expected error for non-glkvm target")
 	}
 }
 

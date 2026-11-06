@@ -15,6 +15,7 @@ export const KIND_LABEL: Record<StepAction['kind'], string> = {
   pfsense_shell: 'pfSense shell',
   pfsense_restart: 'pfSense restart',
   pikvm_restart: 'Restart PiKVM service',
+  glkvm_restart: 'Restart GL.iNet nginx',
   truenas_restart: 'TrueNAS restart',
   routeros_restart: 'RouterOS restart',
   http: 'HTTP',

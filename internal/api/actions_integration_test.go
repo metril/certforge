@@ -433,7 +433,7 @@ func TestMetaSchemasListsActionKinds(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := gen.MetaSchemas(res.(gen.GetMetaSchemas200JSONResponse))
-	if len(m.Actions) != 12 {
+	if len(m.Actions) != 13 {
 		t.Fatalf("%d action kinds", len(m.Actions))
 	}
 	seen := map[string]gen.ActionSchemaEntry{}

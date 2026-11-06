@@ -489,6 +489,7 @@ func newTargetsRegistry(vaultProvider *vault.Provider) *targets.Registry {
 	reg.Register(deploy.Authentik{})
 	reg.Register(deploy.SSH{})
 	reg.Register(deploy.PiKVM{})
+	reg.Register(deploy.GLKVM{})
 	reg.Register(deploy.PfSense{})
 	reg.Register(deploy.TrueNAS{})
 	reg.Register(deploy.RouterOS{})

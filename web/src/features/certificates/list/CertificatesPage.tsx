@@ -37,7 +37,7 @@ import { useAllOrgs, useMe, useOrg, useOrgSlugOf } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { useRowSelection } from '@/lib/selection';
 import { STATUS_META } from '@/lib/status';
-import { relDays } from '@/lib/time';
+import { nextRenewLabel } from '@/lib/time';
 import { certColumns, certMeta } from './columns';
 import { ImportMenu } from './ImportMenu';
 import { certListSearch, type CertListSearch } from './search';
@@ -83,7 +83,7 @@ function CertCard({ cert, org, orgName, ca }: { cert: Certificate; org: string; 
       <CertValidity cert={cert} />
       <div className="flex items-center justify-between text-xs text-ink-muted">
         <span>Next renewal</span>
-        <span>{cert.nextRenewAt ? relDays(cert.nextRenewAt) : '–'}</span>
+        <span>{nextRenewLabel(cert.nextRenewAt, !!cert.currentVersion)}</span>
       </div>
     </Link>
   );

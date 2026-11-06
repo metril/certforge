@@ -238,7 +238,7 @@ func newDefault() *Registry {
 		}
 		return checkUUID("targetId", c.TargetID)
 	}
-	add("ssh", "SSH command", post, targets.Server, []string{"ssh", "pikvm"}, nil,
+	add("ssh", "SSH command", post, targets.Server, []string{"ssh", "pikvm", "glkvm"}, nil,
 		func(_ map[string]json.RawMessage, raw json.RawMessage) error { return targetCmd(raw) })
 	add("pfsense_shell", "pfSense shell command", post, targets.Server, []string{"pfsense"}, nil,
 		func(_ map[string]json.RawMessage, raw json.RawMessage) error { return targetCmd(raw) })
@@ -300,6 +300,8 @@ func newDefault() *Registry {
 			}
 			return fe("service", "service must be kvmd-nginx or kvmd-vnc")
 		})
+	add("glkvm_restart", "Restart GL.iNet nginx", post, targets.Server, []string{"glkvm"}, nil,
+		func(_ map[string]json.RawMessage, raw json.RawMessage) error { return targetOnly(raw) })
 	add("truenas_restart", "Restart TrueNAS services", post, targets.Server, []string{"truenas"}, nil,
 		func(_ map[string]json.RawMessage, raw json.RawMessage) error { return targetOnly(raw) })
 	add("routeros_restart", "Restart RouterOS services", post, targets.Server, []string{"routeros"}, nil,

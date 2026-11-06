@@ -44,7 +44,7 @@ export function ServerGrantForm({ orgId, orgSlug, targetId, editing, onBack, onD
   const [formError, setFormError] = useState<string | null>(null);
   const target = targetsQ.data?.find((t) => t.id === targetId);
   const vDef = verifyDefault(target);
-  const restartKind = target?.type === 'pikvm' ? 'pikvm_restart' : target?.type === 'pfsense' ? 'pfsense_restart' : null;
+  const restartKind = target?.type === 'pikvm' ? 'pikvm_restart' : target?.type === 'glkvm' ? 'glkvm_restart' : target?.type === 'pfsense' ? 'pfsense_restart' : null;
   const kindOf = new Map((actionsQ.data ?? []).map((a) => [a.id, a.kind]));
   const groupIds = new Map((groupsQ.data ?? []).map((g) => [g.id, g.actionIds]));
   const hasRestart = steps.some((st) => ('action' in st ? [st.action] : (groupIds.get(st.group) ?? [])).some((id) => kindOf.get(id) === restartKind));

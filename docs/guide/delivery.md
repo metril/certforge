@@ -215,7 +215,7 @@ Each deploy looks the keypair up by exact name. If it exists it is updated in pl
 
 ## SSH
 
-An SSH target writes certificate files to a remote host and runs optional commands before and after. Use it for devices with no certificate API. For a PiKVM or GL.iNet Comet KVM use the [PiKVM](#pikvm) type. It runs on the server, so its grants have no client.
+An SSH target writes certificate files to a remote host and runs optional commands before and after. Use it for devices with no certificate API. For a PiKVM use the [PiKVM](#pikvm) type, and for a GL.iNet Comet KVM the [GL.iNet Comet KVM](#glinet-comet-kvm) type. It runs on the server, so its grants have no client.
 
 | Field | What it does | Default |
 |---|---|---|
@@ -236,7 +236,7 @@ Every command the SSH target runs, before or after the files, is recorded as a h
 
 ## PiKVM
 
-A PiKVM target installs the certificate on a PiKVM or GL.iNet Comet KVM. It runs on the server over SSH, so its grants have no client. The files and commands are fixed, so there is nothing else to set.
+A PiKVM target installs the certificate on a PiKVM. It runs on the server over SSH, so its grants have no client. The files and commands are fixed, so there is nothing else to set.
 
 | Field | What it does | Default |
 |---|---|---|
@@ -249,6 +249,14 @@ A PiKVM target installs the certificate on a PiKVM or GL.iNet Comet KVM. It runs
 Each deploy runs `rw` (the root filesystem is read-only), writes `/etc/kvmd/nginx/ssl/server.crt` (`fullchain`, `0644`) and `server.key` (`key`, `0600`), then runs `ro`. It does not restart anything: add a **Restart PiKVM service** (`pikvm_restart`) step to restart `kvmd-nginx` or `kvmd-vnc`. The grant needs the private key, so it needs `keys:export`. Commands are recorded as hook runs, as for SSH.
 
 Existing SSH targets set up for PiKVM keep working; no migration is needed.
+
+## GL.iNet Comet KVM
+
+A GL.iNet Comet KVM target installs the certificate on a Comet. It runs on the server over SSH, so its grants have no client. It takes the same fields as [PiKVM](#pikvm): **Host**, **Port**, **Username** (`root`), **Password** or **Private key** with its **Key passphrase**, the pinned **Host key** and **Timeout**.
+
+Each deploy writes `/etc/kvmd/user/ssl/server.crt` (`fullchain`, `0644`) and `server.key` (`key`, `0600`). The root filesystem is writable, so there is no remount. It does not restart anything: add a **Restart GL.iNet nginx** (`glkvm_restart`) step. It stops and then starts nginx through `/etc/init.d/S99kvmd-nginx` and fails if nginx is not running afterward, because the script's `restart` stops nginx without starting it on firmware 1.5.0. The grant needs the private key, so it needs `keys:export`.
+
+A Comet that was set up as a PiKVM target writes to the wrong path. Recreate it as a GL.iNet Comet KVM target and move its grants and steps over.
 
 ## pfSense Plus
 
@@ -334,7 +342,7 @@ Per grant, three icon buttons sit on the row:
 
 A server grant can check the TLS endpoint a device serves and redeploy when it serves a different certificate. This catches a deploy that reported success but did not take effect, or a certificate someone replaced by hand.
 
-**Set up.** In the grant form, open **Verify**, switch on **Verify the endpoint** and enter **Host** and **Port** (and **SNI** if the server name differs). **Check every** sets how often the endpoint is checked (5 minutes to 24 hours, default 1 hour), so how quickly drift is noticed. **Check after deploy** sets how long to wait after a successful deploy before the endpoint is checked (0 seconds to 10 minutes, default 15 seconds); raise it for a service that is slow to reload. For pfSense, TrueNAS, RouterOS and Authentik targets the host and port start from the target URL. PiKVM targets start from the target's host with port `443`. For other targets, such as SSH, enter them yourself. Switch on **Auto-remediate** to redeploy on drift. Vault KV grants have no endpoint to verify.
+**Set up.** In the grant form, open **Verify**, switch on **Verify the endpoint** and enter **Host** and **Port** (and **SNI** if the server name differs). **Check every** sets how often the endpoint is checked (5 minutes to 24 hours, default 1 hour), so how quickly drift is noticed. **Check after deploy** sets how long to wait after a successful deploy before the endpoint is checked (0 seconds to 10 minutes, default 15 seconds); raise it for a service that is slow to reload. For pfSense, TrueNAS, RouterOS and Authentik targets the host and port start from the target URL. PiKVM and GL.iNet Comet KVM targets start from the target's host with port `443`. For other targets, such as SSH, enter them yourself. Switch on **Auto-remediate** to redeploy on drift. Vault KV grants have no endpoint to verify.
 
 **How it works.** The grant owns an external monitor whose expected certificate is the grant's certificate (see [Alerts](alerts.md#external-monitors)). Drift is found when the monitor sees a different leaf, so detection runs at the monitor's check interval. A successful deploy schedules a check after the grant's **Check after deploy** delay. Mismatches are ignored while a newer version is still pending.
 
@@ -368,9 +376,10 @@ An **action** is one reusable step a grant runs around a deploy: reload a servic
 |---|---|---|---|
 | **Command** (`exec`) | Runs an executable with arguments, no shell, if the agent's `CF_HOOK_ALLOW` lists it. | Agent | None |
 | **Restart** (`restart`) | Restarts `docker:<container>` or `systemd:<unit>` if `CF_RESTART_ALLOW` lists it. | Agent | None |
-| **SSH** (`ssh`) | Runs one command (up to 512 characters) over SSH, reusing the target's host, login and pinned host key. | Server | SSH or PiKVM target |
+| **SSH** (`ssh`) | Runs one command (up to 512 characters) over SSH, reusing the target's host, login and pinned host key. | Server | SSH, PiKVM or GL.iNet Comet KVM target |
 | **pfSense shell** (`pfsense_shell`) | Runs a shell command through the firewall's API. The API reports no exit status, so it counts as done once accepted. The user needs the diag command privilege. | Server | pfSense target |
 | **Restart PiKVM service** (`pikvm_restart`) | Restarts `kvmd-nginx` (default) or `kvmd-vnc` over SSH so the device serves the new certificate. | Server | PiKVM target |
+| **Restart GL.iNet nginx** (`glkvm_restart`) | Stops and starts nginx over SSH so the Comet serves the new certificate; fails if nginx is not running afterward. | Server | GL.iNet Comet KVM target |
 | **pfSense restart** (`pfsense_restart`) | Restarts the services that use the certificate: all, only the ones you list, or none. | Server | pfSense target |
 | **TrueNAS restart** (`truenas_restart`) | Restarts the TrueNAS web UI. | Server | TrueNAS target |
 | **RouterOS restart** (`routeros_restart`) | Re-binds the certificate to the configured RouterOS services. | Server | RouterOS target |
@@ -420,8 +429,8 @@ A saved credential holds a login once so many targets can use it. When the same 
 
 | Kind | Fields | Accepted by |
 |---|---|---|
-| SSH | Username, plus a password, a private key (pasted or uploaded) with its key passphrase if protected, or both. Keys are checked on save | SSH, PiKVM |
-| Password | Username and password | SSH, PiKVM, pfSense Plus, MikroTik RouterOS |
+| SSH | Username, plus a password, a private key (pasted or uploaded) with its key passphrase if protected, or both. Keys are checked on save | SSH, PiKVM, GL.iNet Comet KVM |
+| Password | Username and password | SSH, PiKVM, GL.iNet Comet KVM, pfSense Plus, MikroTik RouterOS |
 | API key | API key, optional username | TrueNAS SCALE |
 | Token | Token | Authentik |
 

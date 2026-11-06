@@ -1899,7 +1899,7 @@ export interface paths {
         put?: never;
         /**
          * Create a deploy target
-         * @description Needs delivery:write; also keys:export when the resolved config needs the certificate's private key. config is validated against the type's schema from GET /meta/schemas (deployTargets). runsOn is required (422 "choose where this target run") for a type whose own runsOn is either (422 "choose where this target runs" without it), optional and must match the type's forced runsOn otherwise (422 naming it). Every URL in config is checked against the URL policy (422 "address not allowed"). An ssh or pikvm target's privateKey is parsed on save with privateKeyPassphrase: an unreadable key, a wrong or missing passphrase or an encrypted PKCS#8 key is 422 on config.privateKey or config.privateKeyPassphrase.
+         * @description Needs delivery:write; also keys:export when the resolved config needs the certificate's private key. config is validated against the type's schema from GET /meta/schemas (deployTargets). runsOn is required (422 "choose where this target run") for a type whose own runsOn is either (422 "choose where this target runs" without it), optional and must match the type's forced runsOn otherwise (422 naming it). Every URL in config is checked against the URL policy (422 "address not allowed"). An ssh, pikvm or glkvm target's privateKey is parsed on save with privateKeyPassphrase: an unreadable key, a wrong or missing passphrase or an encrypted PKCS#8 key is 422 on config.privateKey or config.privateKeyPassphrase.
          */
         post: operations["createDeployTarget"];
         delete?: never;
@@ -4726,7 +4726,7 @@ export interface components {
             items: components["schemas"]["Layout"][];
         };
         /**
-         * @description Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema. The ssh kind holds username, password and/or privateKey, plus privateKeyPassphrase for a protected key; ssh and pikvm targets accept it.
+         * @description Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema. The ssh kind holds username, password and/or privateKey, plus privateKeyPassphrase for a protected key; ssh, pikvm and glkvm targets accept it.
          * @enum {string}
          */
         DeployCredentialKind: "ssh" | "password" | "apiKey" | "token";
@@ -4796,10 +4796,10 @@ export interface components {
             value: string;
         };
         /**
-         * @description Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh and pikvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key; restart kvmd-nginx with a pikvm_restart action.
+         * @description Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh, pikvm and glkvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key (restart with a pikvm_restart action); glkvm is the GL.iNet Comet KVM, whose certificate lives in /etc/kvmd/user/ssl (restart with a glkvm_restart action).
          * @enum {string}
          */
-        DeployTargetType: "traefik" | "vault-kv" | "authentik" | "pfsense" | "truenas" | "routeros" | "ssh" | "pikvm";
+        DeployTargetType: "traefik" | "vault-kv" | "authentik" | "pfsense" | "truenas" | "routeros" | "ssh" | "pikvm" | "glkvm";
         /**
          * @description Where the target (and its grants) run — an enrolled agent, or this server (a server-side deploy target such as vault-kv).
          * @enum {string}
@@ -4881,7 +4881,7 @@ export interface components {
          * @description What the action does; matches a code from GET /meta/schemas actions. exec and restart run on an agent, every other kind on the server.
          * @enum {string}
          */
-        ActionKind: "exec" | "restart" | "ssh" | "pfsense_shell" | "pfsense_restart" | "pikvm_restart" | "truenas_restart" | "routeros_restart" | "http" | "notify" | "verify_tls" | "wait";
+        ActionKind: "exec" | "restart" | "ssh" | "pfsense_shell" | "pfsense_restart" | "pikvm_restart" | "glkvm_restart" | "truenas_restart" | "routeros_restart" | "http" | "notify" | "verify_tls" | "wait";
         /**
          * @description pre_deploy runs before the certificate is written (a failure stops the deploy, unless the action is optional); post_deploy runs after.
          * @enum {string}

@@ -23,7 +23,7 @@ import { help } from '@/lib/help';
 import { useMe } from '@/lib/org';
 import { can } from '@/lib/permissions';
 import { renewToastHandlers } from '@/lib/renewToast';
-import { relDays } from '@/lib/time';
+import { nextRenewLabel } from '@/lib/time';
 import { IconButton } from '@/components/IconButton';
 
 type Props = {
@@ -185,7 +185,7 @@ export function CertificateHeader({ cert, orgId, orgSlug, canRenew, canDelete, c
         </div>
         <div className="flex gap-2">
           <dt className="text-ink-muted">Next renewal</dt>
-          <dd>{cert.managed ? (cert.nextRenewAt ? relDays(cert.nextRenewAt) : '–') : 'Not renewed here'}</dd>
+          <dd>{cert.managed ? nextRenewLabel(cert.nextRenewAt, !!cert.currentVersion) : 'Not renewed here'}</dd>
         </div>
         {(grantCount > 0 || usedByLayouts.length > 0 || usedByMonitors.length > 0) && (
           <div className="flex flex-wrap gap-2">

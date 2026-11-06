@@ -14,6 +14,9 @@ it('returns empty for a bad url and for ssh', () => {
   expect(verifyDefault(t('routeros', { url: 'nope' }))).toEqual({ host: '', port: '443' });
   expect(verifyDefault(t('ssh', { host: 'x' }))).toEqual({ host: '', port: '443' });
 });
+it('uses the host of a glkvm target, port 443', () => {
+  expect(verifyDefault(t('glkvm', { host: 'comet.lan' }))).toEqual({ host: 'comet.lan', port: '443' });
+});
 it('is null for vault-kv', () => {
   expect(verifyDefault(t('vault-kv'))).toBeNull();
 });

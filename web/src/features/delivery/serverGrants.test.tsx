@@ -451,7 +451,7 @@ const hintCase = (type: string, kind: string) => async (steps: unknown[], action
   void kind;
 };
 
-it.each([['pikvm', 'pikvm_restart'], ['pfsense', 'pfsense_restart']])('%s grant without a %s step shows the restart hint, and a direct step or group clears it', async (type, kind) => {
+it.each([['pikvm', 'pikvm_restart'], ['glkvm', 'glkvm_restart'], ['pfsense', 'pfsense_restart']])('%s grant without a %s step shows the restart hint, and a direct step or group clears it', async (type, kind) => {
   const act = makeAction({ id: 'a-r', name: 'restart it', kind, runsOn: 'server' } as never);
   await hintCase(type, kind)([], [act]);
   await waitFor(() => expect(screen.getByText(HINT)).toBeInTheDocument());

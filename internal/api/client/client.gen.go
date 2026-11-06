@@ -32,6 +32,7 @@ const (
 // Defines values for ActionKind.
 const (
 	ActionKindExec            ActionKind = "exec"
+	ActionKindGlkvmRestart    ActionKind = "glkvm_restart"
 	ActionKindHttp            ActionKind = "http"
 	ActionKindNotify          ActionKind = "notify"
 	ActionKindPfsenseRestart  ActionKind = "pfsense_restart"
@@ -193,6 +194,7 @@ const (
 // Defines values for DeployTargetType.
 const (
 	Authentik DeployTargetType = "authentik"
+	Glkvm     DeployTargetType = "glkvm"
 	Pfsense   DeployTargetType = "pfsense"
 	Pikvm     DeployTargetType = "pikvm"
 	Routeros  DeployTargetType = "routeros"
@@ -1886,7 +1888,7 @@ type DeployCredential struct {
 	// Id Credential id.
 	Id openapi_types.UUID `json:"id"`
 
-	// Kind Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema. The ssh kind holds username, password and/or privateKey, plus privateKeyPassphrase for a protected key; ssh and pikvm targets accept it.
+	// Kind Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema. The ssh kind holds username, password and/or privateKey, plus privateKeyPassphrase for a protected key; ssh, pikvm and glkvm targets accept it.
 	Kind DeployCredentialKind `json:"kind"`
 
 	// Name Unique name in the org.
@@ -1910,14 +1912,14 @@ type DeployCredentialInput struct {
 	// Config Field values valid against the kind's schema.
 	Config map[string]interface{} `json:"config"`
 
-	// Kind Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema. The ssh kind holds username, password and/or privateKey, plus privateKeyPassphrase for a protected key; ssh and pikvm targets accept it.
+	// Kind Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema. The ssh kind holds username, password and/or privateKey, plus privateKeyPassphrase for a protected key; ssh, pikvm and glkvm targets accept it.
 	Kind DeployCredentialKind `json:"kind"`
 
 	// Name Unique name in the org.
 	Name string `json:"name"`
 }
 
-// DeployCredentialKind Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema. The ssh kind holds username, password and/or privateKey, plus privateKeyPassphrase for a protected key; ssh and pikvm targets accept it.
+// DeployCredentialKind Credential kind; its config schema is in GET /meta/schemas under deployCredentials. A deploy target type lists the kinds it accepts as credentialKinds in its own schema. The ssh kind holds username, password and/or privateKey, plus privateKeyPassphrase for a protected key; ssh, pikvm and glkvm targets accept it.
 type DeployCredentialKind string
 
 // DeployCredentialRevealRequest Which stored secret to reveal.
@@ -1973,7 +1975,7 @@ type DeployTarget struct {
 	// StoredSecrets Secret fields that have a stored value.
 	StoredSecrets []string `json:"storedSecrets"`
 
-	// Type Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh and pikvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key; restart kvmd-nginx with a pikvm_restart action.
+	// Type Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh, pikvm and glkvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key (restart with a pikvm_restart action); glkvm is the GL.iNet Comet KVM, whose certificate lives in /etc/kvmd/user/ssl (restart with a glkvm_restart action).
 	Type DeployTargetType `json:"type"`
 
 	// UpdatedAt Last change.
@@ -1994,7 +1996,7 @@ type DeployTargetInput struct {
 	// RunsOn Required for a type whose own runsOn is either; optional and must match otherwise. Immutable after create.
 	RunsOn *RunsOn `json:"runsOn,omitempty"`
 
-	// Type Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh and pikvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key; restart kvmd-nginx with a pikvm_restart action.
+	// Type Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh, pikvm and glkvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key (restart with a pikvm_restart action); glkvm is the GL.iNet Comet KVM, whose certificate lives in /etc/kvmd/user/ssl (restart with a glkvm_restart action).
 	Type DeployTargetType `json:"type"`
 }
 
@@ -2004,7 +2006,7 @@ type DeployTargetList struct {
 	Items []DeployTarget `json:"items"`
 }
 
-// DeployTargetType Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh and pikvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key; restart kvmd-nginx with a pikvm_restart action.
+// DeployTargetType Deploy target type; the server's registry is authoritative, and its config schema and runsOn/keyPolicy are in GET /meta/schemas under deployTargets — this enum lists only the types shipped today. ssh, pikvm and glkvm are server-run SSH targets with the same login fields (password, privateKey, privateKeyPassphrase); pikvm writes kvmd's nginx certificate and key (restart with a pikvm_restart action); glkvm is the GL.iNet Comet KVM, whose certificate lives in /etc/kvmd/user/ssl (restart with a glkvm_restart action).
 type DeployTargetType string
 
 // Deployment What a grant should have installed and what the agent last reported.

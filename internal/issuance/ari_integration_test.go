@@ -494,3 +494,53 @@ func TestARIPollDueCachesPerRun(t *testing.T) {
 		}
 	}
 }
+
+// TestIssueCNOnlyKeepsPolicyRenewal: a certificate with no SANs must keep
+// the computed policy renewal date, not fall back to now().
+func TestIssueCNOnlyKeepsPolicyRenewal(t *testing.T) {
+	f := newFixture(t)
+	cred := f.credential(t, "cf")
+	pol := RenewPolicy{Mode: RenewPercent, Value: 33}
+	c, err := f.store.CreateCertificate(context.Background(), f.org, CertInput{
+		Name: "cn-only", CommonName: "cn-only.example.test",
+		Rules:     []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: &cred}},
+		Overrides: Defaults{RenewPolicy: &pol},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := newWorker(f, &fakeSigner{issued: issuedFor(t, c.Names(), now0)}).Issue(context.Background(), c.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := f.store.GetCertificate(context.Background(), f.org, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := NextRenewAt(pol, now0, now0.Add(90*24*time.Hour), now0)
+	if got.NextRenewAt == nil || !got.NextRenewAt.Equal(want) {
+		t.Fatalf("next_renew_at = %v, want %v", got.NextRenewAt, want)
+	}
+}
+
+// A nil IssuedSans (NULL in SQL) must match a certificate stored with no
+// SANs instead of making the CASE fall through to now().
+func TestMarkCertificateIssuedNilSANs(t *testing.T) {
+	f := newFixture(t)
+	cred := f.credential(t, "cf")
+	c, err := f.store.CreateCertificate(context.Background(), f.org, CertInput{
+		Name: "nil-sans", CommonName: "nil-sans.example.test",
+		Rules: []challenge.RuleSpec{{Match: "*", Method: challenge.MethodDNS01, DNSCredentialID: &cred}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := now0.Add(60 * 24 * time.Hour)
+	got, err := f.store.q.MarkCertificateIssued(context.Background(), sqlcgen.MarkCertificateIssuedParams{
+		ID: c.ID, IssuedCommonName: c.CommonName, IssuedSans: nil, NextRenewAt: want})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || !got.Equal(want) {
+		t.Fatalf("next_renew_at = %v, want %v", got, want)
+	}
+}

@@ -245,7 +245,7 @@ RETURNING *;
 -- window on the API until the next poll happens to overwrite it (up to 6h
 -- away).
 UPDATE certificates SET status = 'active', current_version_id = $2,
-    next_renew_at = CASE WHEN common_name = sqlc.arg(issued_common_name) AND sans = sqlc.arg(issued_sans)
+    next_renew_at = CASE WHEN common_name = sqlc.arg(issued_common_name) AND sans = COALESCE(sqlc.arg(issued_sans)::text[], '{}'::text[])
                           THEN sqlc.arg(next_renew_at)::timestamptz ELSE now() END,
     failure_count = 0, last_error = '', updated_at = now(),
     ari_window_start = NULL, ari_window_end = NULL, ari_checked_at = NULL, ari_retry_after = NULL

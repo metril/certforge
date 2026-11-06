@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { DAY, HOUR, daysUntil, fmtDuration, relDays, relTime } from './time';
+import { DAY, HOUR, daysUntil, fmtDuration, nextRenewLabel, relDays, relTime } from './time';
 
 const now = Date.parse('2026-09-24T12:00:00Z');
 
@@ -51,4 +51,13 @@ it('formats a future timestamp as "in ..."', () => {
   expect(relTime(new Date(now + 5 * 60_000).toISOString(), now)).toBe('in 5 min');
   expect(relTime(new Date(now + 2 * HOUR).toISOString(), now)).toBe('in 2 h');
   expect(relTime(new Date(now + 3 * DAY).toISOString(), now)).toBe('in 3 d');
+});
+
+it('labels the next renewal', () => {
+  const iso = (ms: number) => new Date(ms).toISOString();
+  expect(nextRenewLabel(iso(now - DAY), false, now)).toBe('–');
+  expect(nextRenewLabel(null, true, now)).toBe('–');
+  expect(nextRenewLabel(iso(now - DAY), true, now)).toBe('due now');
+  expect(nextRenewLabel(iso(now), true, now)).toBe('due now');
+  expect(nextRenewLabel(iso(now + 12 * DAY), true, now)).toBe('in 12 d');
 });

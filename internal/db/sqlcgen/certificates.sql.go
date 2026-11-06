@@ -1808,7 +1808,7 @@ func (q *Queries) MarkCertificateFailed(ctx context.Context, arg MarkCertificate
 
 const markCertificateIssued = `-- name: MarkCertificateIssued :one
 UPDATE certificates SET status = 'active', current_version_id = $2,
-    next_renew_at = CASE WHEN common_name = $3 AND sans = $4
+    next_renew_at = CASE WHEN common_name = $3 AND sans = COALESCE($4::text[], '{}'::text[])
                           THEN $5::timestamptz ELSE now() END,
     failure_count = 0, last_error = '', updated_at = now(),
     ari_window_start = NULL, ari_window_end = NULL, ari_checked_at = NULL, ari_retry_after = NULL

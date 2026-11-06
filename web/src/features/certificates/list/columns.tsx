@@ -6,7 +6,7 @@ import { EntityLink } from '@/components/EntityLink';
 import { PrimaryCell } from '@/components/PrimaryCell';
 import { StatusChip } from '@/components/StatusChip';
 import { CertValidity } from '@/components/ValidityBar';
-import { relDays } from '@/lib/time';
+import { nextRenewLabel, relDays } from '@/lib/time';
 
 const col = columnHelper<Certificate>();
 
@@ -87,9 +87,9 @@ export function certColumns(
     col.accessor('nextRenewAt', {
       header: 'Next renewal',
       meta: { sortKey: 'nextRenewAt', className: 'w-32', hint: 'cert.nextRenew' },
-      cell: ({ getValue }) => {
+      cell: ({ row, getValue }) => {
         const v = getValue();
-        return v ? <span className="whitespace-nowrap">{relDays(v)}</span> : '–';
+        return v ? <span className="whitespace-nowrap">{nextRenewLabel(v, !!row.original.currentVersion)}</span> : '–';
       },
     }),
   ];
