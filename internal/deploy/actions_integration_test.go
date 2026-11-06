@@ -170,9 +170,28 @@ func newStepSetup(t *testing.T) *stepSetup {
 	return &stepSetup{f: f, g: g, ver: ver, target: target, sec: sec, ssh: ssh, srv: s}
 }
 
+// useSSHTarget makes the ssh target the grant's own target, typed typ; the
+// recording fake is registered for typ so deploys still reach it.
+func (u *stepSetup) useSSHTarget(t *testing.T, typ string) {
+	t.Helper()
+	if _, ok := u.f.reg.Get(typ); !ok {
+		u.sec.Code = typ
+		u.f.reg.Register(u.sec)
+	}
+	ctx := context.Background()
+	if _, err := u.f.pool.Exec(ctx, `UPDATE client_cert_grants SET deploy_target_id = $2 WHERE id = $1`, u.g, u.ssh); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := u.f.pool.Exec(ctx, `UPDATE deploy_targets SET type = $2 WHERE id = $1`, u.ssh, typ); err != nil {
+		t.Fatal(err)
+	}
+	u.target = u.ssh
+}
+
 func (u *stepSetup) sshAction(t *testing.T, name, phase, cmd string, o ...actionOpts) uuid.UUID {
 	t.Helper()
-	return u.f.action(t, name, "ssh", phase, map[string]any{"targetId": u.ssh, "command": cmd}, o...)
+	u.useSSHTarget(t, "ssh")
+	return u.f.action(t, name, "ssh", phase, map[string]any{"command": cmd}, o...)
 }
 
 func TestActionSSHPostRecorded(t *testing.T) {
@@ -234,9 +253,7 @@ func TestActionDialFailureRecorded(t *testing.T) {
 func TestActionOnPiKVMTarget(t *testing.T) {
 	u := newStepSetup(t)
 	u.f.setSteps(t, u.g, step(u.sshAction(t, "hi", "post_deploy", "echo hi")))
-	if _, err := u.f.pool.Exec(context.Background(), `UPDATE deploy_targets SET type = 'pikvm' WHERE type = 'ssh'`); err != nil {
-		t.Fatal(err)
-	}
+	u.useSSHTarget(t, "pikvm")
 	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
 		t.Fatal(err)
 	}
@@ -248,9 +265,7 @@ func TestActionOnPiKVMTarget(t *testing.T) {
 func TestActionOnGLKVMTarget(t *testing.T) {
 	u := newStepSetup(t)
 	u.f.setSteps(t, u.g, step(u.sshAction(t, "hi", "post_deploy", "echo hi")))
-	if _, err := u.f.pool.Exec(context.Background(), `UPDATE deploy_targets SET type = 'glkvm' WHERE type = 'ssh'`); err != nil {
-		t.Fatal(err)
-	}
+	u.useSSHTarget(t, "glkvm")
 	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
 		t.Fatal(err)
 	}
@@ -261,11 +276,9 @@ func TestActionOnGLKVMTarget(t *testing.T) {
 
 func TestPiKVMRestartAction(t *testing.T) {
 	u := newStepSetup(t)
-	if _, err := u.f.pool.Exec(context.Background(), `UPDATE deploy_targets SET type = 'pikvm' WHERE type = 'ssh'`); err != nil {
-		t.Fatal(err)
-	}
-	a := u.f.action(t, "kvm", "pikvm_restart", "post_deploy", map[string]any{"targetId": u.ssh})
-	b := u.f.action(t, "vnc", "pikvm_restart", "post_deploy", map[string]any{"targetId": u.ssh, "service": "kvmd-vnc"})
+	u.useSSHTarget(t, "pikvm")
+	a := u.f.action(t, "kvm", "pikvm_restart", "post_deploy", map[string]any{})
+	b := u.f.action(t, "vnc", "pikvm_restart", "post_deploy", map[string]any{"service": "kvmd-vnc"})
 	u.f.setSteps(t, u.g, step(a), step(b))
 	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
 		t.Fatal(err)
@@ -282,16 +295,14 @@ func TestPiKVMRestartAction(t *testing.T) {
 	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err == nil {
 		t.Fatal("expected error")
 	}
-	opt := u.f.action(t, "kvm-opt", "pikvm_restart", "post_deploy", map[string]any{"targetId": u.ssh}, actionOpts{optional: true})
+	opt := u.f.action(t, "kvm-opt", "pikvm_restart", "post_deploy", map[string]any{}, actionOpts{optional: true})
 	u.f.setSteps(t, u.g, step(opt))
 	u.f.pending(t, u.g, u.ver)
 	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
 		t.Fatal(err)
 	}
 	// A non-pikvm target is rejected.
-	if _, err := u.f.pool.Exec(context.Background(), `UPDATE deploy_targets SET type = 'ssh' WHERE type = 'pikvm'`); err != nil {
-		t.Fatal(err)
-	}
+	u.useSSHTarget(t, "ssh")
 	u.srv.Exit = 0
 	u.f.setSteps(t, u.g, step(a))
 	u.f.pending(t, u.g, u.ver)
@@ -302,10 +313,8 @@ func TestPiKVMRestartAction(t *testing.T) {
 
 func TestGLKVMRestartAction(t *testing.T) {
 	u := newStepSetup(t)
-	if _, err := u.f.pool.Exec(context.Background(), `UPDATE deploy_targets SET type = 'glkvm' WHERE type = 'ssh'`); err != nil {
-		t.Fatal(err)
-	}
-	a := u.f.action(t, "kvm", "glkvm_restart", "post_deploy", map[string]any{"targetId": u.ssh})
+	u.useSSHTarget(t, "glkvm")
+	a := u.f.action(t, "kvm", "glkvm_restart", "post_deploy", map[string]any{})
 	u.f.setSteps(t, u.g, step(a))
 	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
 		t.Fatal(err)
@@ -324,9 +333,7 @@ func TestGLKVMRestartAction(t *testing.T) {
 		t.Fatal("expected error")
 	}
 	// A non-glkvm target is rejected.
-	if _, err := u.f.pool.Exec(context.Background(), `UPDATE deploy_targets SET type = 'pikvm' WHERE type = 'glkvm'`); err != nil {
-		t.Fatal(err)
-	}
+	u.useSSHTarget(t, "pikvm")
 	u.srv.Exit = 0
 	u.f.setSteps(t, u.g, step(a))
 	u.f.pending(t, u.g, u.ver)
@@ -547,7 +554,6 @@ func TestActionPfSenseRestart(t *testing.T) {
 	row := u.f.row(t, u.g)
 	req := targets.Request{CertName: "web", HTTP: targets.HTTPFactory{AllowLoopback: true}}
 	run := func(cfg map[string]any) error {
-		cfg["targetId"] = u.target
 		return u.f.disp.runAction(context.Background(), row, u.f.stepOf(t, u.f.action(t, "r-"+uuid.NewString()[:6], "pfsense_restart", "post_deploy", cfg)), req)
 	}
 	if err := run(map[string]any{"mode": "none"}); err != nil || len(f.php) != 0 {
@@ -563,7 +569,8 @@ func TestActionPfSenseRestart(t *testing.T) {
 	if len(runs) != 3 || !strings.Contains(runs[1].stdout, "restarted: WebGUI") || runs[2].stdout != "restarted: IPsec" {
 		t.Fatalf("runs = %+v", runs)
 	}
-	bad := u.f.action(t, "bad", "pfsense_restart", "post_deploy", map[string]any{"targetId": uuid.New(), "mode": "all"})
+	bad := u.f.action(t, "bad", "pfsense_restart", "post_deploy", map[string]any{"mode": "all"})
+	row.DeployTargetID = nil
 	if err := u.f.disp.runAction(context.Background(), row, u.f.stepOf(t, bad), req); err == nil {
 		t.Fatal("expected error")
 	}
@@ -579,7 +586,7 @@ func TestPfSenseDeployNeverRestartsStepDoes(t *testing.T) {
 	// restarts; only the step does (usage lookup, then the restart).
 	u.sec.Code = "pfsense"
 	u.f.reg.Register(u.sec)
-	a := u.f.action(t, "restart", "pfsense_restart", "post_deploy", map[string]any{"targetId": u.target, "mode": "all"})
+	a := u.f.action(t, "restart", "pfsense_restart", "post_deploy", map[string]any{"mode": "all"})
 	u.f.setSteps(t, u.g, step(a))
 	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
 		t.Fatal(err)

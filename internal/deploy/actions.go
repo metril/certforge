@@ -186,7 +186,6 @@ func (d *Dispatcher) runAction(ctx context.Context, row sqlcgen.ServerDeployGran
 
 func (d *Dispatcher) execAction(ctx context.Context, row sqlcgen.ServerDeployGrantRow, a stepAction, req targets.Request, timeout time.Duration, res *stepResult) error {
 	var c struct {
-		TargetID  string                  `json:"targetId"`
 		Command   string                  `json:"command"`
 		Mode      string                  `json:"mode"`
 		Services  []string                `json:"services"`
@@ -206,11 +205,10 @@ func (d *Dispatcher) execAction(ctx context.Context, row sqlcgen.ServerDeployGra
 		return errors.New("action config invalid")
 	}
 	target := func(types []string, label string) (resolvedTarget, error) {
-		id, err := uuid.Parse(c.TargetID)
-		if err != nil {
-			return resolvedTarget{}, errors.New("action config invalid")
+		if row.DeployTargetID == nil {
+			return resolvedTarget{}, errors.New("action needs a deploy target")
 		}
-		rt, err := d.loadTarget(ctx, row.OrgID, id, types, label)
+		rt, err := d.loadTarget(ctx, row.OrgID, *row.DeployTargetID, types, label)
 		res.redact = rt.redact
 		return rt, err
 	}
