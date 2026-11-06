@@ -383,18 +383,25 @@ SELECT
   (sqlc.narg(target_id)::uuid IS NULL OR EXISTS (SELECT 1 FROM deploy_targets WHERE deploy_targets.id = sqlc.narg(target_id)::uuid AND deploy_targets.org_id = sqlc.arg(org_id)))::bool AS target_ok,
   (SELECT count(*) FROM actions WHERE actions.id = ANY(sqlc.arg(action_ids)::uuid[]) AND actions.org_id = sqlc.arg(org_id))::bigint AS actions_found;
 
--- name: CountPostActionUsers :one
--- Live server grants with a step whose action runs on this target.
-SELECT count(DISTINCT g.id)::bigint FROM client_cert_grants g
-JOIN actions a ON g.steps @> jsonb_build_array(jsonb_build_object('action', a.id))
-WHERE g.removed_at IS NULL AND g.client_id IS NULL AND a.config->>'targetId' = sqlc.arg(id)::text;
-
 -- name: LiveGrantSidesUsingActionGroup :many
--- Distinct sides (true = server grant, false = client grant) of the live
--- grants whose steps name the group.
-SELECT DISTINCT (deploy_target_id IS NOT NULL)::bool AS server FROM client_cert_grants
-WHERE steps @> jsonb_build_array(jsonb_build_object('group', sqlc.arg(group_id)::uuid))
-  AND removed_at IS NULL;
+-- Distinct sides (server = server grant, false = client grant) and deploy
+-- target types ('' for a client grant) of the live grants whose steps name
+-- the group.
+SELECT DISTINCT (g.deploy_target_id IS NOT NULL)::bool AS server, COALESCE(t.type, '')::text AS target_type
+FROM client_cert_grants g LEFT JOIN deploy_targets t ON t.id = g.deploy_target_id
+WHERE g.steps @> jsonb_build_array(jsonb_build_object('group', sqlc.arg(group_id)::uuid))
+  AND g.removed_at IS NULL;
+
+-- name: LiveGrantSidesUsingAction :many
+-- Like LiveGrantSidesUsingActionGroup, for the grants that use the action
+-- directly or through a group.
+SELECT DISTINCT (g.deploy_target_id IS NOT NULL)::bool AS server, COALESCE(t.type, '')::text AS target_type
+FROM client_cert_grants g LEFT JOIN deploy_targets t ON t.id = g.deploy_target_id
+WHERE g.removed_at IS NULL AND (
+  g.steps @> jsonb_build_array(jsonb_build_object('action', sqlc.arg(action_id)::uuid))
+  OR EXISTS (SELECT 1 FROM action_groups ag
+             WHERE sqlc.arg(action_id)::uuid = ANY(ag.action_ids)
+               AND g.steps @> jsonb_build_array(jsonb_build_object('group', ag.id))));
 
 -- name: UpsertGrantCheckToken :exec
 -- Generate or rotate: replaces any earlier token for the grant.

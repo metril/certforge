@@ -276,6 +276,10 @@ func (d *Dispatcher) EnqueueTx(ctx context.Context, tx pgx.Tx, q *sqlcgen.Querie
 	if err != nil {
 		return err
 	}
+	// The bumped deploy_seq makes any parked tail stale.
+	if err := q.ClearPostTail(ctx, grantID); err != nil {
+		return err
+	}
 	if versionID == nil {
 		return nil
 	}
@@ -380,6 +384,7 @@ func (w *SweepWorker) Work(ctx context.Context, _ *river.Job[SweepArgs]) error {
 func (d *Dispatcher) RegisterRiver(workers *river.Workers) []*river.PeriodicJob {
 	river.AddWorker(workers, &DeployWorker{D: d})
 	river.AddWorker(workers, &SweepWorker{D: d})
+	river.AddWorker(workers, &PostBatchWorker{D: d})
 	return []*river.PeriodicJob{river.NewPeriodicJob(river.PeriodicInterval(15*time.Minute),
 		func() (river.JobArgs, *river.InsertOpts) { return SweepArgs{}, nil }, nil)}
 }
@@ -406,23 +411,46 @@ func (d *Dispatcher) Deploy(ctx context.Context, grantID, versionID uuid.UUID) e
 // row's current deploy_seq, else the job is stale (the row was re-armed
 // since it was enqueued) and does nothing; nil adopts the row's own.
 func (d *Dispatcher) deploy(ctx context.Context, grantID, versionID uuid.UUID, wantSeq *int64) error {
-	row, err := d.Q.ServerDeployGrant(ctx, grantID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
+	p, err := d.prepare(ctx, grantID, versionID, wantSeq)
+	if err != nil || p == nil {
 		return err
 	}
+	return d.run(ctx, p)
+}
+
+// deployPlan is one grant's deploy, ready to run: the row, the material and
+// request built from it, and its expanded steps.
+type deployPlan struct {
+	row       sqlcgen.ServerDeployGrantRow
+	versionID uuid.UUID
+	seq       int64
+	target    targets.Target
+	req       targets.Request
+	refs      []stepAction
+	redact    map[string]string
+}
+
+// prepare builds grantID's deployPlan. It returns nil, nil when there is
+// nothing to do (grant gone, or the job is stale). Any other failure has
+// already been recorded by fail, and its error is returned.
+func (d *Dispatcher) prepare(ctx context.Context, grantID, versionID uuid.UUID, wantSeq *int64) (*deployPlan, error) {
+	row, err := d.Q.ServerDeployGrant(ctx, grantID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
 	if row.PendingVersionID == nil || *row.PendingVersionID != versionID || row.PendingDeploySeq == nil {
-		return nil
+		return nil, nil
 	}
 	seq := *row.PendingDeploySeq
 	if wantSeq != nil && *wantSeq != seq {
-		return nil
+		return nil, nil
 	}
 	target, ok := d.Reg.Get(row.TargetType)
 	if !ok {
-		return d.fail(ctx, row, versionID, seq, nil, fmt.Errorf("deploy: unknown target type %q", row.TargetType))
+		return nil, d.fail(ctx, row, versionID, seq, nil, fmt.Errorf("deploy: unknown target type %q", row.TargetType))
 	}
 	// A client-less grant may only ever be created on a target whose
 	// resolved side is server (API's validTarget/CreateServerGrant path);
@@ -430,17 +458,17 @@ func (d *Dispatcher) deploy(ctx context.Context, grantID, versionID uuid.UUID, w
 	// target drifting apart (a type re-registered as agent-only), not the
 	// only guard.
 	if target.RunsOn() == targets.Agent {
-		return d.fail(ctx, row, versionID, seq, nil, fmt.Errorf("deploy: %s runs on an agent, not the server", row.TargetName))
+		return nil, d.fail(ctx, row, versionID, seq, nil, fmt.Errorf("deploy: %s runs on an agent, not the server", row.TargetName))
 	}
 
 	secrets, err := d.openTargetSecrets(ctx, row.TargetSecretCfg)
 	if err != nil {
-		return d.fail(ctx, row, versionID, seq, nil, err)
+		return nil, d.fail(ctx, row, versionID, seq, nil, err)
 	}
 
 	cred, err := targets.OpenCredential(ctx, d.Box.Open, row.CredentialKind, row.CredentialPublic, row.CredentialSecretCfg)
 	if err != nil {
-		return d.fail(ctx, row, versionID, seq, secrets, err)
+		return nil, d.fail(ctx, row, versionID, seq, secrets, err)
 	}
 	// A credential's secrets are redacted from errors like the target's own.
 	redact := secrets
@@ -456,27 +484,27 @@ func (d *Dispatcher) deploy(ctx context.Context, grantID, versionID uuid.UUID, w
 
 	needsKey, err := d.Reg.NeedsKey(row.TargetType, row.TargetConfig)
 	if err != nil {
-		return d.fail(ctx, row, versionID, seq, redact, err)
+		return nil, d.fail(ctx, row, versionID, seq, redact, err)
 	}
 
 	m, err := d.Certs.Material(ctx, row.CertID, versionID, needsKey)
 	if err != nil {
-		return d.fail(ctx, row, versionID, seq, redact, err)
+		return nil, d.fail(ctx, row, versionID, seq, redact, err)
 	}
 
 	files, err := d.renderFiles(ctx, row, m, needsKey)
 	if err != nil {
-		return d.fail(ctx, row, versionID, seq, redact, err)
+		return nil, d.fail(ctx, row, versionID, seq, redact, err)
 	}
 
 	config, err := targets.Resolve(row.TargetConfig, secrets, cred)
 	if err != nil {
-		return d.fail(ctx, row, versionID, seq, redact, err)
+		return nil, d.fail(ctx, row, versionID, seq, redact, err)
 	}
 
 	refs, err := d.loadSteps(ctx, row)
 	if err != nil {
-		return d.fail(ctx, row, versionID, seq, redact, err)
+		return nil, d.fail(ctx, row, versionID, seq, redact, err)
 	}
 
 	req := targets.Request{
@@ -496,48 +524,86 @@ func (d *Dispatcher) deploy(ctx context.Context, grantID, versionID uuid.UUID, w
 	if row.DeployTargetID != nil {
 		req.Recorder = hookRecorder{d: d, grant: grantID, target: *row.DeployTargetID}
 	}
-	for _, a := range refs {
+	return &deployPlan{row: row, versionID: versionID, seq: seq, target: target, req: req, refs: refs, redact: redact}, nil
+}
+
+// postSteps returns the plan's post-deploy steps split into the ones that run
+// inline and the batchable tail.
+func (p *deployPlan) postSteps() (inline, tail []stepAction) {
+	var post []stepAction
+	for _, a := range p.refs {
+		if a.Phase == "post_deploy" {
+			post = append(post, a)
+		}
+	}
+	refs := make([]actions.ActionRef, len(post))
+	for i, a := range post {
+		refs[i] = a.ActionRef
+	}
+	in, _ := actions.Tail(refs, actions.IsBatch)
+	return post[:len(in)], post[len(in):]
+}
+
+// run executes a prepared deploy: pre steps, the target write, the inline
+// post steps, then either completes the grant or parks its batchable tail.
+func (d *Dispatcher) run(ctx context.Context, p *deployPlan) error {
+	row, grantID, versionID, seq := p.row, p.row.ID, p.versionID, p.seq
+	for _, a := range p.refs {
 		if a.Phase != "pre_deploy" {
 			continue
 		}
-		if err := d.runAction(ctx, row, a, req); err != nil {
+		if err := d.runAction(ctx, row, a, p.req); err != nil {
 			if a.Optional {
 				d.log().Warn("deploy: optional pre action failed", "grant", grantID, "action", a.Name, "err", err)
 				continue
 			}
-			return d.fail(ctx, row, versionID, seq, redact, fmt.Errorf("pre action %s failed; not deployed: %w", a.Name, err))
+			return d.fail(ctx, row, versionID, seq, p.redact, fmt.Errorf("pre action %s failed; not deployed: %w", a.Name, err))
 		}
 	}
-	if _, err := target.Deploy(ctx, req); err != nil {
-		return d.fail(ctx, row, versionID, seq, redact, err)
+	if _, err := p.target.Deploy(ctx, p.req); err != nil {
+		return d.fail(ctx, row, versionID, seq, p.redact, err)
 	}
-	for _, a := range refs {
-		if a.Phase != "post_deploy" {
-			continue
-		}
-		if err := d.runAction(ctx, row, a, req); err != nil {
+	inline, tail := p.postSteps()
+	for _, a := range inline {
+		if err := d.runAction(ctx, row, a, p.req); err != nil {
 			if a.Optional {
 				d.log().Warn("deploy: optional post action failed", "grant", grantID, "action", a.Name, "err", err)
 				continue
 			}
-			return d.fail(ctx, row, versionID, seq, redact, fmt.Errorf("deployed, but post action %s failed: %w", a.Name, err))
+			return d.fail(ctx, row, versionID, seq, p.redact, fmt.Errorf("deployed, but post action %s failed: %w", a.Name, err))
 		}
 	}
-	err = pgx.BeginFunc(ctx, d.Pool, func(tx pgx.Tx) error {
-		if err := d.Q.WithTx(tx).MarkServerDeploymentDeployed(ctx, sqlcgen.MarkServerDeploymentDeployedParams{GrantID: grantID, VersionID: &versionID, DeploySeq: seq}); err != nil {
-			return err
-		}
-		// Schedule the verify check after the grant's post-deploy delay.
-		return d.enqueueGrantCheckTx(ctx, tx, grantID)
+	if len(tail) > 0 && row.DeployTargetID != nil {
+		return d.parkTail(ctx, grantID, *row.DeployTargetID, versionID, seq)
+	}
+	return d.complete(ctx, grantID, versionID, seq)
+}
+
+// complete marks the grant deployed and schedules its verify check.
+func (d *Dispatcher) complete(ctx context.Context, grantID, versionID uuid.UUID, seq int64) error {
+	err := pgx.BeginFunc(ctx, d.Pool, func(tx pgx.Tx) error {
+		return d.completeTx(ctx, tx, grantID, versionID, seq)
 	})
 	if err != nil {
 		return err
 	}
-	// Fallback when the unique-by-args check job was already queued or running.
+	d.nudge(ctx, grantID)
+	return nil
+}
+
+func (d *Dispatcher) completeTx(ctx context.Context, tx pgx.Tx, grantID, versionID uuid.UUID, seq int64) error {
+	if err := d.Q.WithTx(tx).MarkServerDeploymentDeployed(ctx, sqlcgen.MarkServerDeploymentDeployedParams{GrantID: grantID, VersionID: &versionID, DeploySeq: seq}); err != nil {
+		return err
+	}
+	// Schedule the verify check after the grant's post-deploy delay.
+	return d.enqueueGrantCheckTx(ctx, tx, grantID)
+}
+
+// nudge is the fallback when the unique-by-args check job was already queued or running.
+func (d *Dispatcher) nudge(ctx context.Context, grantID uuid.UUID) {
 	if err := d.Q.NudgeGrantMonitor(ctx, &grantID); err != nil {
 		d.log().Warn("nudge grant monitor failed", "grant", grantID, "err", err)
 	}
-	return nil
 }
 
 // loadSteps expands the grant's steps (groups inline, in order) into the

@@ -256,19 +256,24 @@ func groupFitsGrants(ctx context.Context, q *sqlcgen.Queries, groupID uuid.UUID,
 	}
 	refs := make([]actions.ActionRef, 0, len(rows))
 	for _, a := range rows {
-		ref := actions.ActionRef{ID: a.ID}
+		ref := actions.ActionRef{ID: a.ID, Kind: a.Kind}
 		if k, ok := actions.Default.Get(a.Kind); ok {
 			ref.RunsOn = k.RunsOn()
 		}
 		refs = append(refs, ref)
 	}
-	for _, server := range sides {
+	for _, sd := range sides {
 		mode, who := targets.Agent, "client"
-		if server {
+		if sd.Server {
 			mode, who = targets.Server, "server"
 		}
 		if actions.RunsOnMismatch(refs, mode) >= 0 {
 			return conflict("This group is used by %s grants, and an action in it cannot run there.", who)
+		}
+		if sd.Server {
+			if i := actions.Compatible(refs, sd.TargetType); i >= 0 {
+				return unprocessable("actionIds", fmt.Sprintf("a %s action does not fit the %s target of a grant that uses this group", refs[i].Kind, sd.TargetType))
+			}
 		}
 	}
 	return nil

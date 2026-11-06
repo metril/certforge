@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -38,11 +39,15 @@ type Kind interface {
 	// RunsOn says where the action runs: Agent for exec and restart, Server otherwise.
 	RunsOn() targets.Mode
 	Schema() json.RawMessage
-	// TargetTypes lists the deploy target types a targetId may refer to; empty
-	// when the kind has no targetId.
+	// TargetTypes lists the grant target types a device kind runs against (it
+	// always uses the grant's own deploy target); empty for other kinds.
 	TargetTypes() []string
 	// PhaseHint is the phase the UI suggests: "post_deploy", or "" for none.
 	PhaseHint() string
+	// Batch reports whether an action of this kind with config cfg does not
+	// depend on the certificate, so identical steps of grants on one host may
+	// run once for all of them.
+	Batch(cfg json.RawMessage) bool
 	// Parse validates a config and splits it into public and secret parts.
 	Parse(raw json.RawMessage) (Config, error)
 }
@@ -53,6 +58,7 @@ type kind struct {
 	types            []string
 	schema           json.RawMessage
 	secrets          []string
+	batch            func(cfg json.RawMessage) bool
 	validate         func(m map[string]json.RawMessage, raw json.RawMessage) error
 }
 
@@ -62,6 +68,13 @@ func (k *kind) RunsOn() targets.Mode    { return k.runsOn }
 func (k *kind) Schema() json.RawMessage { return k.schema }
 func (k *kind) TargetTypes() []string   { return k.types }
 func (k *kind) PhaseHint() string       { return k.hint }
+
+func (k *kind) Batch(cfg json.RawMessage) bool {
+	if k.batch == nil {
+		return false
+	}
+	return k.batch(cfg)
+}
 
 func (k *kind) Parse(raw json.RawMessage) (Config, error) {
 	var m map[string]json.RawMessage
@@ -197,10 +210,16 @@ func newDefault() *Registry {
 			schema: load(code), secrets: secrets, validate: validate})
 	}
 	const post = "post_deploy"
+	always := func(json.RawMessage) bool { return true }
+	setBatch := func(code string, f func(json.RawMessage) bool) {
+		k, _ := r.Get(code)
+		k.(*kind).batch = f
+	}
 
 	add("exec", "Run command", "", targets.Agent, nil, nil, func(_ map[string]json.RawMessage, raw json.RawMessage) error {
 		var c struct {
-			Argv []string `json:"argv"`
+			Argv        []string `json:"argv"`
+			OncePerHost bool     `json:"oncePerHost"`
 		}
 		if err := decode(raw, &c); err != nil {
 			return err
@@ -218,25 +237,16 @@ func newDefault() *Registry {
 	})
 	targetCmd := func(raw json.RawMessage) error {
 		var c struct {
-			TargetID string `json:"targetId"`
-			Command  string `json:"command"`
+			Command string `json:"command"`
 		}
 		if err := decode(raw, &c); err != nil {
-			return err
-		}
-		if err := checkUUID("targetId", c.TargetID); err != nil {
 			return err
 		}
 		return checkCommand(c.Command)
 	}
 	targetOnly := func(raw json.RawMessage) error {
-		var c struct {
-			TargetID string `json:"targetId"`
-		}
-		if err := decode(raw, &c); err != nil {
-			return err
-		}
-		return checkUUID("targetId", c.TargetID)
+		var c struct{}
+		return decode(raw, &c)
 	}
 	add("ssh", "SSH command", post, targets.Server, []string{"ssh", "pikvm", "glkvm"}, nil,
 		func(_ map[string]json.RawMessage, raw json.RawMessage) error { return targetCmd(raw) })
@@ -245,14 +255,10 @@ func newDefault() *Registry {
 	add("pfsense_restart", "Restart pfSense services", post, targets.Server, []string{"pfsense"}, nil,
 		func(_ map[string]json.RawMessage, raw json.RawMessage) error {
 			var c struct {
-				TargetID string   `json:"targetId"`
 				Mode     string   `json:"mode"`
 				Services []string `json:"services"`
 			}
 			if err := decode(raw, &c); err != nil {
-				return err
-			}
-			if err := checkUUID("targetId", c.TargetID); err != nil {
 				return err
 			}
 			switch c.Mode {
@@ -285,13 +291,9 @@ func newDefault() *Registry {
 	add("pikvm_restart", "Restart PiKVM service", post, targets.Server, []string{"pikvm"}, nil,
 		func(_ map[string]json.RawMessage, raw json.RawMessage) error {
 			var c struct {
-				TargetID string `json:"targetId"`
-				Service  string `json:"service"`
+				Service string `json:"service"`
 			}
 			if err := decode(raw, &c); err != nil {
-				return err
-			}
-			if err := checkUUID("targetId", c.TargetID); err != nil {
 				return err
 			}
 			switch c.Service {
@@ -386,7 +388,53 @@ func newDefault() *Registry {
 		}
 		return nil
 	})
+	for _, c := range []string{"ssh", "pfsense_shell", "pikvm_restart", "glkvm_restart", "truenas_restart", "wait", "restart"} {
+		setBatch(c, always)
+	}
+	// An exec runs once per host only when it opts in.
+	setBatch("exec", func(cfg json.RawMessage) bool {
+		var c struct {
+			OncePerHost bool `json:"oncePerHost"`
+		}
+		return json.Unmarshal(cfg, &c) == nil && c.OncePerHost
+	})
+	// An http request is batchable unless it expands certificate placeholders.
+	setBatch("http", func(cfg json.RawMessage) bool {
+		var c struct {
+			URL     string            `json:"url"`
+			Headers map[string]string `json:"headers"`
+			Body    string            `json:"body"`
+		}
+		if json.Unmarshal(cfg, &c) != nil || HasPlaceholder(c.URL) || HasPlaceholder(c.Body) {
+			return false
+		}
+		for k, v := range c.Headers {
+			if HasPlaceholder(k) || HasPlaceholder(v) {
+				return false
+			}
+		}
+		return true
+	})
 	return r
+}
+
+// Compatible returns the index of the first ref whose kind cannot run against
+// a grant target of targetType, or -1 when all can. An empty targetType (an
+// agent grant) skips the check.
+func Compatible(refs []ActionRef, targetType string) int {
+	if targetType == "" {
+		return -1
+	}
+	for i, r := range refs {
+		k, ok := Default.Get(r.Kind)
+		if !ok {
+			continue
+		}
+		if types := k.TargetTypes(); len(types) > 0 && !slices.Contains(types, targetType) {
+			return i
+		}
+	}
+	return -1
 }
 
 // ValidateOptional rejects optional for a kind that runs on an agent: the

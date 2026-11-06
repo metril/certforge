@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { Layers } from 'lucide-react';
 import type { ErrorSchema, RJSFSchema } from '@rjsf/utils';
 import { toast } from 'sonner';
 import { ApiError, errorMessage } from '@/api/errors';
@@ -10,6 +11,7 @@ import { Field } from '@/components/Field';
 import { FormSection } from '@/components/FormSection';
 import { HelpTip } from '@/components/HelpTip';
 import { RunsOnChip } from '@/components/RunsOnChip';
+import { ToneChip } from '@/components/StatusChip';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { SwitchField } from '@/components/SwitchField';
 import { Button } from '@/components/ui/button';
@@ -40,6 +42,7 @@ export function ActionSheet({ orgId, action, kinds, readOnly, onOpenChange }: Pr
   const [config, setConfig] = useState<Record<string, unknown>>((action?.config as Record<string, unknown> | undefined) ?? {});
   const [argv, setArgv] = useState<string[]>(((action?.config as { argv?: string[] } | undefined)?.argv) ?? ['']);
   const [restartTarget, setRestartTarget] = useState((action?.config as { target?: string } | undefined)?.target ?? 'docker:');
+  const [oncePerHost, setOncePerHost] = useState((action?.config as { oncePerHost?: boolean } | undefined)?.oncePerHost ?? false);
   const [timeout, setTimeoutText] = useState(String(action?.timeoutSeconds ?? 60));
   const [optional, setOptional] = useState(action?.optional ?? false);
   const [show, setShow] = useState(false);
@@ -52,10 +55,9 @@ export function ActionSheet({ orgId, action, kinds, readOnly, onOpenChange }: Pr
   const schema = useMemo(() => stripSecretDefaults(meta.schema as RJSFSchema), [meta]);
   const stored = useMemo(() => (action && action.kind === kind ? action.secretKeys : []), [action, kind]);
   const bespoke = kind === 'exec' || kind === 'restart';
-  const formContext = useMemo(() => ({ actionForm: { orgId, targetTypes: meta.targetTypes } }), [orgId, meta.targetTypes]);
+  const formContext = useMemo(() => ({ actionForm: { orgId } }), [orgId]);
   const uiOverrides = useMemo(
     () => ({
-      targetId: { 'ui:widget': 'actionTarget' },
       channelId: { 'ui:widget': 'channel' },
       ...(kind === 'pfsense_restart' ? { services: { 'ui:description': PF_SERVICE_KEYS } } : {}),
     }),
@@ -65,7 +67,7 @@ export function ActionSheet({ orgId, action, kinds, readOnly, onOpenChange }: Pr
   const targetError = kind === 'restart' && !RESTART_TARGET.test(restartTarget) ? 'Use docker:<container> or systemd:<unit>.' : null;
   const seconds = Number(timeout);
   const timeoutError = Number.isInteger(seconds) && seconds >= 1 && seconds <= 3600 ? null : 'Use 1 to 3600 seconds.';
-  const dirty = useDirty({ name, kind, phase, optional, timeout, ...(kind === 'exec' ? { argv } : kind === 'restart' ? { restartTarget } : { config: settledConfig(schema, config, stored) }) });
+  const dirty = useDirty({ name, kind, phase, optional, timeout, ...(kind === 'exec' ? { argv, oncePerHost } : kind === 'restart' ? { restartTarget } : { config: settledConfig(schema, config, stored) }) });
   const title = action ? (readOnly ? action.name : `Edit ${action.name}`) : 'New action';
 
   const changeKind = (v: string | undefined) => {
@@ -92,7 +94,7 @@ export function ActionSheet({ orgId, action, kinds, readOnly, onOpenChange }: Pr
       name: trimmed,
       kind: kind as ActionKind,
       phase,
-      config: kind === 'exec' ? { argv } : kind === 'restart' ? { target: restartTarget } : withStoredSentinels(schema, config, stored),
+      config: kind === 'exec' ? { argv, ...(oncePerHost ? { oncePerHost: true } : {}) } : kind === 'restart' ? { target: restartTarget } : withStoredSentinels(schema, config, stored),
       timeoutSeconds: seconds,
       optional,
     };
@@ -185,6 +187,16 @@ export function ActionSheet({ orgId, action, kinds, readOnly, onOpenChange }: Pr
                     Command <HelpTip id="hook.argv" />
                   </span>
                   <ArgvField id="action-argv" value={argv} onChange={setArgv} errors={show ? argvErrs : []} disabled={readOnly} />
+                  <SwitchField
+                    id="action-once-per-host"
+                    label="Once per host"
+                    help="action.oncePerHost"
+                    checked={oncePerHost}
+                    onCheckedChange={setOncePerHost}
+                    onText="Runs once per host"
+                    offText="Runs for each certificate"
+                    disabled={readOnly}
+                  />
                 </div>
               ) : kind === 'restart' ? (
                 <div className="grid gap-2">
@@ -239,6 +251,11 @@ export function ActionSheet({ orgId, action, kinds, readOnly, onOpenChange }: Pr
               )}
             </FormSection>
             <FormSection title="Limits" columns={2}>
+              {(kind === 'exec' ? oncePerHost : !!action?.batched) && (
+                <div className="sm:col-span-2">
+                  <ToneChip tone="neutral" icon={Layers} label="Runs once per host" help="action.batched" />
+                </div>
+              )}
               <Field id="action-timeout" label="Timeout" help="hook.timeout" error={show ? timeoutError : null}>
                 <div className="flex items-center gap-2">
                   <Input

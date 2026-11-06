@@ -6,6 +6,7 @@
   "additionalProperties": false,
   "required": ["argv"],
   "properties": {
-    "argv": {"type": "array", "minItems": 1, "maxItems": 64, "title": "Command", "description": "Executable and arguments. The first entry must be an absolute path.", "items": {"type": "string", "maxLength": 4096}}
+    "argv": {"type": "array", "minItems": 1, "maxItems": 64, "title": "Command", "description": "Executable and arguments. The first entry must be an absolute path.", "items": {"type": "string", "maxLength": 4096}},
+    "oncePerHost": {"type": "boolean", "default": false, "title": "Run once per host", "description": "Run once per host when several certificates deploy together; the script must not rely on per-certificate variables."}
   }
 }

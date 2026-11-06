@@ -11,6 +11,27 @@ import (
 	"github.com/google/uuid"
 )
 
+const clearPostTail = `-- name: ClearPostTail :exec
+DELETE FROM server_post_tails WHERE ctid = (
+    SELECT t.ctid FROM server_post_tails t WHERE t.grant_id = $1 FOR UPDATE SKIP LOCKED)
+`
+
+// Drops a grant's tail when it is re-armed. A row a running batch job holds is
+// left to that job, which deletes it as stale (its deploy_seq no longer matches).
+func (q *Queries) ClearPostTail(ctx context.Context, grantID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, clearPostTail, grantID)
+	return err
+}
+
+const deletePostTail = `-- name: DeletePostTail :exec
+DELETE FROM server_post_tails WHERE grant_id = $1
+`
+
+func (q *Queries) DeletePostTail(ctx context.Context, grantID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deletePostTail, grantID)
+	return err
+}
+
 const liveServerGrantIDsForCert = `-- name: LiveServerGrantIDsForCert :many
 SELECT id FROM client_cert_grants WHERE cert_id = $1 AND removed_at IS NULL AND client_id IS NULL
 `
@@ -174,6 +195,46 @@ func (q *Queries) MarkServerDeploymentFailed(ctx context.Context, arg MarkServer
 		arg.DeploySeq,
 	)
 	return err
+}
+
+const postTailsForTarget = `-- name: PostTailsForTarget :many
+SELECT grant_id, deploy_target_id, version_id, deploy_seq FROM server_post_tails
+WHERE deploy_target_id = $1
+ORDER BY grant_id
+FOR UPDATE SKIP LOCKED
+`
+
+type PostTailsForTargetRow struct {
+	GrantID        uuid.UUID `json:"grant_id"`
+	DeployTargetID uuid.UUID `json:"deploy_target_id"`
+	VersionID      uuid.UUID `json:"version_id"`
+	DeploySeq      int64     `json:"deploy_seq"`
+}
+
+// Claims the target's parked tails; a row another batch job holds is skipped.
+func (q *Queries) PostTailsForTarget(ctx context.Context, deployTargetID uuid.UUID) ([]PostTailsForTargetRow, error) {
+	rows, err := q.db.Query(ctx, postTailsForTarget, deployTargetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PostTailsForTargetRow{}
+	for rows.Next() {
+		var i PostTailsForTargetRow
+		if err := rows.Scan(
+			&i.GrantID,
+			&i.DeployTargetID,
+			&i.VersionID,
+			&i.DeploySeq,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const recordServerRemediation = `-- name: RecordServerRemediation :exec
@@ -439,6 +500,31 @@ func (q *Queries) StaleServerDeployments(ctx context.Context) ([]StaleServerDepl
 		return nil, err
 	}
 	return items, nil
+}
+
+const upsertPostTail = `-- name: UpsertPostTail :exec
+INSERT INTO server_post_tails (grant_id, deploy_target_id, version_id, deploy_seq)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (grant_id) DO UPDATE SET deploy_target_id = EXCLUDED.deploy_target_id,
+       version_id = EXCLUDED.version_id, deploy_seq = EXCLUDED.deploy_seq, created_at = now()
+`
+
+type UpsertPostTailParams struct {
+	GrantID        uuid.UUID `json:"grant_id"`
+	DeployTargetID uuid.UUID `json:"deploy_target_id"`
+	VersionID      uuid.UUID `json:"version_id"`
+	DeploySeq      int64     `json:"deploy_seq"`
+}
+
+// Parks a deployed grant's batchable post steps for the target's post-batch job.
+func (q *Queries) UpsertPostTail(ctx context.Context, arg UpsertPostTailParams) error {
+	_, err := q.db.Exec(ctx, upsertPostTail,
+		arg.GrantID,
+		arg.DeployTargetID,
+		arg.VersionID,
+		arg.DeploySeq,
+	)
+	return err
 }
 
 const upsertServerDeploymentPending = `-- name: UpsertServerDeploymentPending :one

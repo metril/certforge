@@ -24,28 +24,26 @@ func TestParse(t *testing.T) {
 		{"restart", `{"target":"docker:web"}`, ""},
 		{"restart", `{"target":"systemd:nginx.service"}`, ""},
 		{"restart", `{"target":"pm2:web"}`, "target"},
-		{"ssh", `{"targetId":"` + id1 + `","command":"ls"}`, ""},
-		{"ssh", `{"targetId":"nope","command":"ls"}`, "targetId"},
-		{"ssh", `{"targetId":"` + id1 + `","command":"` + long + `"}`, "command"},
-		{"ssh", `{"targetId":"` + id1 + `","command":""}`, "command"},
-		{"pfsense_shell", `{"targetId":"` + id1 + `","command":"ls"}`, ""},
-		{"pfsense_restart", `{"targetId":"` + id1 + `"}`, ""},
-		{"pfsense_restart", `{"targetId":"` + id1 + `","mode":"selected","services":["webgui"]}`, ""},
-		{"pfsense_restart", `{"targetId":"` + id1 + `","mode":"selected"}`, "services"},
-		{"pfsense_restart", `{"targetId":"` + id1 + `","mode":"some"}`, "mode"},
-		{"pfsense_restart", `{"targetId":"` + id1 + `","mode":"selected","services":["package:a\");system(1);"]}`, "services"},
-		{"pfsense_restart", `{"targetId":"` + id1 + `","mode":"selected","services":["webgui","webgui"]}`, "services"},
-		{"pfsense_restart", `{"targetId":"` + id1 + `","mode":"all","services":["webgui"]}`, "services"},
-		{"pfsense_restart", `{"targetId":"` + id1 + `","mode":"selected","services":["webgui","openvpn:server:1","package:acme"]}`, ""},
-		{"pikvm_restart", `{"targetId":"` + id1 + `"}`, ""},
-		{"pikvm_restart", `{"targetId":"` + id1 + `","service":"kvmd-vnc"}`, ""},
-		{"pikvm_restart", `{"targetId":"` + id1 + `","service":"sshd"}`, "service"},
-		{"pikvm_restart", `{}`, "targetId"},
-		{"glkvm_restart", `{"targetId":"` + id1 + `"}`, ""},
-		{"glkvm_restart", `{}`, "targetId"},
-		{"truenas_restart", `{"targetId":"` + id1 + `"}`, ""},
-		{"truenas_restart", `{}`, "targetId"},
-		{"routeros_restart", `{"targetId":"` + id1 + `"}`, ""},
+		{"ssh", `{"command":"ls"}`, ""},
+		{"ssh", `{"targetId":"` + id1 + `","command":"ls"}`, "config"},
+		{"ssh", `{"command":"` + long + `"}`, "command"},
+		{"ssh", `{"command":""}`, "command"},
+		{"pfsense_shell", `{"command":"ls"}`, ""},
+		{"pfsense_restart", `{}`, ""},
+		{"pfsense_restart", `{"mode":"selected","services":["webgui"]}`, ""},
+		{"pfsense_restart", `{"mode":"selected"}`, "services"},
+		{"pfsense_restart", `{"mode":"some"}`, "mode"},
+		{"pfsense_restart", `{"mode":"selected","services":["package:a\");system(1);"]}`, "services"},
+		{"pfsense_restart", `{"mode":"selected","services":["webgui","webgui"]}`, "services"},
+		{"pfsense_restart", `{"mode":"all","services":["webgui"]}`, "services"},
+		{"pfsense_restart", `{"mode":"selected","services":["webgui","openvpn:server:1","package:acme"]}`, ""},
+		{"pikvm_restart", `{}`, ""},
+		{"pikvm_restart", `{"service":"kvmd-vnc"}`, ""},
+		{"pikvm_restart", `{"service":"sshd"}`, "service"},
+		{"glkvm_restart", `{}`, ""},
+		{"glkvm_restart", `{"targetId":"` + id1 + `"}`, "config"},
+		{"routeros_restart", `{"targetId":"` + id1 + `"}`, "config"},
+		{"routeros_restart", `{}`, ""},
 		{"http", `{"method":"GET","url":"https://x.example/h"}`, ""},
 		{"http", `{"method":"GET","url":"ftp://x"}`, "url"},
 		{"http", `{"method":"TRACE","url":"https://x"}`, "method"},
@@ -82,6 +80,32 @@ func TestParse(t *testing.T) {
 	}
 }
 
+func TestCompatible(t *testing.T) {
+	ref := func(k string) ActionRef { return ActionRef{Kind: k} }
+	cases := []struct {
+		name  string
+		refs  []ActionRef
+		typ   string
+		index int
+	}{
+		{"ssh on ssh", []ActionRef{ref("ssh")}, "ssh", -1},
+		{"ssh on pikvm", []ActionRef{ref("ssh")}, "pikvm", -1},
+		{"ssh on glkvm", []ActionRef{ref("ssh")}, "glkvm", -1},
+		{"ssh on pfsense", []ActionRef{ref("ssh")}, "pfsense", 0},
+		{"pfsense restart on pfsense", []ActionRef{ref("pfsense_shell"), ref("pfsense_restart")}, "pfsense", -1},
+		{"pikvm restart on glkvm", []ActionRef{ref("wait"), ref("pikvm_restart")}, "glkvm", 1},
+		{"glkvm restart on glkvm", []ActionRef{ref("glkvm_restart")}, "glkvm", -1},
+		{"truenas on routeros", []ActionRef{ref("truenas_restart")}, "routeros", 0},
+		{"generic kinds anywhere", []ActionRef{ref("http"), ref("notify"), ref("verify_tls"), ref("wait")}, "truenas", -1},
+		{"empty type skips", []ActionRef{ref("pikvm_restart")}, "", -1},
+	}
+	for _, c := range cases {
+		if got := Compatible(c.refs, c.typ); got != c.index {
+			t.Errorf("%s: got %d, want %d", c.name, got, c.index)
+		}
+	}
+}
+
 func TestHTTPSecretSplit(t *testing.T) {
 	k, _ := Default.Get("http")
 	c, err := k.Parse(json.RawMessage(`{"method":"POST","url":"https://x","headers":{"A":"b"},"secretHeaders":{"Authorization":"Bearer s3"}}`))
@@ -110,8 +134,12 @@ func TestRegistry(t *testing.T) {
 		if err := json.Unmarshal(k.Schema(), &s); err != nil || s["title"] == "" {
 			t.Errorf("%s schema: %v", k.Code(), err)
 		}
-		wantTypes := strings.Contains(string(k.Schema()), `"targetId"`)
-		if wantTypes != (len(k.TargetTypes()) > 0) {
+		if strings.Contains(string(k.Schema()), `"targetId"`) {
+			t.Errorf("%s schema still has targetId", k.Code())
+		}
+		device := map[string]bool{"ssh": true, "pfsense_shell": true, "pfsense_restart": true, "pikvm_restart": true,
+			"glkvm_restart": true, "truenas_restart": true, "routeros_restart": true}
+		if device[k.Code()] != (len(k.TargetTypes()) > 0) {
 			t.Errorf("%s target types mismatch", k.Code())
 		}
 		agent := k.Code() == "exec" || k.Code() == "restart"
@@ -214,5 +242,44 @@ func TestExpandTemplate(t *testing.T) {
 	}
 	if got := ExpandTemplate("{{cert.name}}", Vars{CertName: "{{grant.id}}", GrantID: "g"}); got != "{{grant.id}}" {
 		t.Errorf("rescanned: %q", got)
+	}
+}
+
+func TestHasPlaceholder(t *testing.T) {
+	for s, want := range map[string]bool{"{{cert.name}}": true, "x{{cert.notAfter}}": true, "{{grant.id}}": true, "{{other}}": false, "": false} {
+		if got := HasPlaceholder(s); got != want {
+			t.Errorf("%q = %v", s, got)
+		}
+	}
+}
+
+func TestKindBatch(t *testing.T) {
+	for _, c := range []struct {
+		kind, cfg string
+		want      bool
+	}{
+		{"wait", `{"seconds":1}`, true},
+		{"ssh", `{"command":"x {{cert.name}}"}`, true},
+		{"pikvm_restart", `{}`, true},
+		{"restart", `{"target":"nginx"}`, true},
+		{"http", `{"method":"GET","url":"https://a/b"}`, true},
+		{"http", `{"method":"GET","url":"https://a/{{cert.name}}"}`, false},
+		{"http", `{"method":"POST","url":"https://a","body":"{{grant.id}}"}`, false},
+		{"http", `{"method":"GET","url":"https://a","headers":{"X":"{{cert.fingerprint}}"}}`, false},
+		{"notify", `{}`, false},
+		{"verify_tls", `{}`, false},
+		{"pfsense_restart", `{}`, false},
+		{"routeros_restart", `{}`, false},
+		{"exec", `{"argv":["/bin/true"]}`, false},
+		{"exec", `{"argv":["/bin/true"],"oncePerHost":true}`, true},
+		{"exec", `{"argv":["/bin/true"],"oncePerHost":false}`, false},
+	} {
+		k, ok := Default.Get(c.kind)
+		if !ok {
+			t.Fatal(c.kind)
+		}
+		if got := k.Batch(json.RawMessage(c.cfg)); got != c.want {
+			t.Errorf("%s %s = %v, want %v", c.kind, c.cfg, got, c.want)
+		}
 	}
 }

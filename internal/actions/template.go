@@ -18,3 +18,9 @@ func ExpandTemplate(s string, v Vars) string {
 		"{{grant.id}}", v.GrantID,
 	).Replace(s)
 }
+
+// HasPlaceholder reports whether s holds a certificate or grant placeholder
+// that ExpandTemplate would replace.
+func HasPlaceholder(s string) bool {
+	return strings.Contains(s, "{{cert.") || strings.Contains(s, "{{grant.id}}")
+}

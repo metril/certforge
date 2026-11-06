@@ -163,3 +163,26 @@ WHERE grant_id = sqlc.arg(grant_id);
 -- Dispatcher.Deploy to run.
 SELECT id, name, kind, phase, config, secret_cfg, timeout_seconds, optional
 FROM actions WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND org_id = sqlc.arg(org_id);
+
+-- name: UpsertPostTail :exec
+-- Parks a deployed grant's batchable post steps for the target's post-batch job.
+INSERT INTO server_post_tails (grant_id, deploy_target_id, version_id, deploy_seq)
+VALUES (sqlc.arg(grant_id), sqlc.arg(deploy_target_id), sqlc.arg(version_id), sqlc.arg(deploy_seq))
+ON CONFLICT (grant_id) DO UPDATE SET deploy_target_id = EXCLUDED.deploy_target_id,
+       version_id = EXCLUDED.version_id, deploy_seq = EXCLUDED.deploy_seq, created_at = now();
+
+-- name: PostTailsForTarget :many
+-- Claims the target's parked tails; a row another batch job holds is skipped.
+SELECT grant_id, deploy_target_id, version_id, deploy_seq FROM server_post_tails
+WHERE deploy_target_id = sqlc.arg(deploy_target_id)
+ORDER BY grant_id
+FOR UPDATE SKIP LOCKED;
+
+-- name: DeletePostTail :exec
+DELETE FROM server_post_tails WHERE grant_id = sqlc.arg(grant_id);
+
+-- name: ClearPostTail :exec
+-- Drops a grant's tail when it is re-armed. A row a running batch job holds is
+-- left to that job, which deletes it as stale (its deploy_seq no longer matches).
+DELETE FROM server_post_tails WHERE ctid = (
+    SELECT t.ctid FROM server_post_tails t WHERE t.grant_id = sqlc.arg(grant_id) FOR UPDATE SKIP LOCKED);

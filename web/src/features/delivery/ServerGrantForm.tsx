@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { CircleAlert } from 'lucide-react';
 import { ApiError, errorMessage, fieldOfTitle } from '@/api/errors';
 import { allCertificatesPickerQuery, plural } from '@/api/queries/certificates';
-import { actionGroupsQuery, actionsQuery, deployTargetsQuery, layoutsQuery } from '@/api/queries/delivery';
+import { actionGroupsQuery, actionsQuery, createAction, deployTargetsQuery, invalidateActions, layoutsQuery } from '@/api/queries/delivery';
 import { useCreateServerGrant, useUpdateGrant } from '@/api/queries/grants';
-import type { Grant, GrantStep, GrantUpdate } from '@/api/types';
+import type { ActionInput, Grant, GrantStep, GrantUpdate } from '@/api/types';
 import { Combobox } from '@/components/Combobox';
 import { Field } from '@/components/Field';
 import { HelpTip } from '@/components/HelpTip';
@@ -33,6 +34,8 @@ export function ServerGrantForm({ orgId, orgSlug, targetId, editing, onBack, onD
   const targetsQ = useQuery(deployTargetsQuery(orgId));
   const actionsQ = useQuery(actionsQuery(orgId));
   const groupsQ = useQuery(actionGroupsQuery(orgId));
+  const qc = useQueryClient();
+  const [addingRestart, setAddingRestart] = useState(false);
   const create = useCreateServerGrant(orgId, targetId);
   const update = useUpdateGrant(orgId);
   const [certificateId, setCertificateId] = useState<string | undefined>(editing?.certificateId);
@@ -49,6 +52,25 @@ export function ServerGrantForm({ orgId, orgSlug, targetId, editing, onBack, onD
   const groupIds = new Map((groupsQ.data ?? []).map((g) => [g.id, g.actionIds]));
   const hasRestart = steps.some((st) => ('action' in st ? [st.action] : (groupIds.get(st.group) ?? [])).some((id) => kindOf.get(id) === restartKind));
   const showRestartHint = !!restartKind && actionsQ.isSuccess && groupsQ.isSuccess && !hasRestart;
+  const canQuickAdd = restartKind === 'pikvm_restart' || restartKind === 'glkvm_restart';
+  const addRestart = async () => {
+    if (!target || !restartKind) return;
+    setAddingRestart(true);
+    try {
+      let id = (actionsQ.data ?? []).find((a) => a.kind === restartKind)?.id;
+      if (!id) {
+        const body: ActionInput = { name: restartKind === 'pikvm_restart' ? 'Restart PiKVM nginx' : 'Restart GL.iNet nginx', kind: restartKind, phase: 'post_deploy', config: restartKind === 'pikvm_restart' ? { service: 'kvmd-nginx' } : {}, timeoutSeconds: 60, optional: false };
+        id = (await createAction(orgId, body)).id;
+        await invalidateActions(qc, orgId);
+      }
+      const added = id;
+      setSteps((cur) => [...cur, { action: added }]);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setAddingRestart(false);
+    }
+  };
   const [verifyOn, setVerifyOn] = useState<boolean | undefined>(editing ? !!editing.verify : undefined);
   const [hostEdit, setHostEdit] = useState<string | undefined>(undefined);
   const [portEdit, setPortEdit] = useState<string | undefined>(undefined);
@@ -143,11 +165,18 @@ export function ServerGrantForm({ orgId, orgSlug, targetId, editing, onBack, onD
         />
       </Field>
       <div className="grid gap-1.5">
-        <StepsPicker orgId={orgId} runsOn="server" value={steps} onChange={setSteps} newActionHref={orgSlug ? `/o/${orgSlug}/delivery/actions?edit=new` : undefined} />
+        <StepsPicker orgId={orgId} runsOn="server" targetType={target?.type} value={steps} onChange={setSteps} newActionHref={orgSlug ? `/o/${orgSlug}/delivery/actions?edit=new` : undefined} />
         {showRestartHint && (
-          <p className="flex items-center gap-1 text-sm text-muted-foreground">
-            No restart step: the device keeps serving its old certificate until something restarts the service.
-            <HelpTip id="grant.restartStep" />
+          <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <span className="flex items-center gap-1">
+              No restart step: the device keeps serving its old certificate until something restarts the service.
+              <HelpTip id="grant.restartStep" />
+            </span>
+            {canQuickAdd && (
+              <Button type="button" variant="outline" size="sm" disabled={addingRestart} onClick={() => void addRestart()}>
+                Add restart step
+              </Button>
+            )}
           </p>
         )}
         {stepsError && (

@@ -149,6 +149,12 @@ func (e *ActionError) Unwrap() error { return e.Err }
 // runAction runs one action step against the grant and records it. The
 // returned *ActionError is already redacted of the target's and the action's secrets.
 func (d *Dispatcher) runAction(ctx context.Context, row sqlcgen.ServerDeployGrantRow, a stepAction, req targets.Request) error {
+	return d.runActionFor(ctx, row, a, req, []uuid.UUID{row.ID})
+}
+
+// runActionFor runs a once, against row's target and request, and records the
+// run for every grant in grants (a merged step ran for all of them).
+func (d *Dispatcher) runActionFor(ctx context.Context, row sqlcgen.ServerDeployGrantRow, a stepAction, req targets.Request, grants []uuid.UUID) error {
 	timeout := time.Duration(a.TimeoutSeconds) * time.Second
 	if a.TimeoutSeconds <= 0 {
 		timeout = defaultActionTimeout
@@ -161,9 +167,18 @@ func (d *Dispatcher) runAction(ctx context.Context, row sqlcgen.ServerDeployGran
 		timeout = time.Duration(c.Seconds)*time.Second + 5*time.Second
 	}
 	id := a.ID
-	rec := hookRecorder{d: d, grant: row.ID, action: &id}
-	if row.DeployTargetID != nil {
-		rec.target = *row.DeployTargetID
+	var recs []hookRecorder
+	for _, g := range grants {
+		rec := hookRecorder{d: d, grant: g, action: &id}
+		if row.DeployTargetID != nil {
+			rec.target = *row.DeployTargetID
+		}
+		recs = append(recs, rec)
+	}
+	record := func(h targets.HookRun) {
+		for _, r := range recs {
+			r.RecordHook(ctx, h)
+		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -173,20 +188,19 @@ func (d *Dispatcher) runAction(ctx context.Context, row sqlcgen.ServerDeployGran
 	run := targets.HookRun{Phase: a.Phase, Argv: res.argv, ExitCode: res.exit, Duration: time.Since(start),
 		Stdout: capRun([]byte(res.stdout)), Stderr: capRun([]byte(res.stderr))}
 	if err == nil {
-		rec.RecordHook(ctx, run)
+		record(run)
 		return nil
 	}
 	msg := targets.Redact(err, res.redact, 500)
 	if run.Stderr == "" {
 		run.Stderr = capRun([]byte(msg))
 	}
-	rec.RecordHook(ctx, run)
+	record(run)
 	return &ActionError{Phase: a.Phase, Action: a.Name, Err: errors.New(msg)}
 }
 
 func (d *Dispatcher) execAction(ctx context.Context, row sqlcgen.ServerDeployGrantRow, a stepAction, req targets.Request, timeout time.Duration, res *stepResult) error {
 	var c struct {
-		TargetID  string                  `json:"targetId"`
 		Command   string                  `json:"command"`
 		Mode      string                  `json:"mode"`
 		Services  []string                `json:"services"`
@@ -206,11 +220,10 @@ func (d *Dispatcher) execAction(ctx context.Context, row sqlcgen.ServerDeployGra
 		return errors.New("action config invalid")
 	}
 	target := func(types []string, label string) (resolvedTarget, error) {
-		id, err := uuid.Parse(c.TargetID)
-		if err != nil {
-			return resolvedTarget{}, errors.New("action config invalid")
+		if row.DeployTargetID == nil {
+			return resolvedTarget{}, errors.New("action needs a deploy target")
 		}
-		rt, err := d.loadTarget(ctx, row.OrgID, id, types, label)
+		rt, err := d.loadTarget(ctx, row.OrgID, *row.DeployTargetID, types, label)
 		res.redact = rt.redact
 		return rt, err
 	}

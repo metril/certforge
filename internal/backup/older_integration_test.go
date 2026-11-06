@@ -5,6 +5,7 @@ package backup_test
 import (
 	"bytes"
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -39,10 +40,7 @@ func TestRestoreOlderArchiveWithoutLaterTables(t *testing.T) {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if backup.Manifest[len(backup.Manifest)-1] != "grant_check_tokens" {
-		t.Fatal("test assumes grant_check_tokens is the last Manifest table")
-	}
-	older := backup.Manifest[:len(backup.Manifest)-1]
+	older := slices.DeleteFunc(slices.Clone(backup.Manifest), func(n string) bool { return n == "grant_check_tokens" })
 	var archive bytes.Buffer
 	if _, err := backup.WriteWithTablesForTest(ctx, tx, &archive, opts, root, older); err != nil {
 		t.Fatal(err)

@@ -476,3 +476,54 @@ it('other target types never show the restart hint', async () => {
   await new Promise((r) => setTimeout(r, 50));
   expect(screen.queryByText(HINT)).not.toBeInTheDocument();
 });
+
+const quickAddCase = (type: string, actions: unknown[]) => {
+  const t = makeTarget({ id: 't-r', name: 'dev', type: type as never, runsOn: 'server', config: {} });
+  let list = actions;
+  const created: unknown[] = [];
+  server.use(
+    http.get(url('/orgs/org-1/deploy-targets'), () => HttpResponse.json({ items: [t] })),
+    http.get(url('/orgs/org-1/actions'), () => HttpResponse.json({ items: list })),
+    http.get(url('/orgs/org-1/action-groups'), () => HttpResponse.json({ items: [] })),
+    http.post(url('/orgs/org-1/actions'), async ({ request }) => {
+      const b = (await request.json()) as Record<string, unknown>;
+      created.push(b);
+      const a = makeAction({ id: 'a-new', ...b } as never);
+      list = [...list, a];
+      return HttpResponse.json(a, { status: 201 });
+    }),
+  );
+  const view = renderUI(<ServerGrantForm orgId="org-1" targetId="t-r" editing={{ ...grantServer, deployTargetId: 't-r', steps: [] } as never} onBack={() => {}} onDone={() => {}} />);
+  return { created, ...view };
+};
+
+it('Add restart step reuses an existing action of that kind', async () => {
+  const act = makeAction({ id: 'a-r', name: 'kvm restart', kind: 'pikvm_restart', runsOn: 'server', config: { service: 'kvmd-nginx' } } as never);
+  const { created, user } = quickAddCase('pikvm', [act]);
+  await user.click(await screen.findByRole('button', { name: 'Add restart step' }));
+  await screen.findByText('kvm restart');
+  expect(created).toHaveLength(0);
+  expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+});
+
+it('Add restart step creates the action when none of that kind exists, then clears the hint', async () => {
+  const other = makeAction({ id: 'a-o', name: 'other kvm', kind: 'pikvm_restart', runsOn: 'server', config: {} } as never);
+  const { created, user } = quickAddCase('glkvm', [other]);
+  await user.click(await screen.findByRole('button', { name: 'Add restart step' }));
+  await waitFor(() => expect(created).toEqual([expect.objectContaining({ name: 'Restart GL.iNet nginx', kind: 'glkvm_restart', phase: 'post_deploy', config: {} })]));
+  expect(await within(await screen.findByRole('list', { name: 'Step run order' })).findAllByText('Restart GL.iNet nginx')).toHaveLength(2);
+  expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+});
+
+it('Add restart step creates Restart PiKVM nginx with the kvmd-nginx service', async () => {
+  const { created, user } = quickAddCase('pikvm', []);
+  await user.click(await screen.findByRole('button', { name: 'Add restart step' }));
+  await waitFor(() => expect(created).toEqual([expect.objectContaining({ name: 'Restart PiKVM nginx', kind: 'pikvm_restart', config: { service: 'kvmd-nginx' } })]));
+  expect((created[0] as { config: Record<string, unknown> }).config).not.toHaveProperty('targetId');
+});
+
+it('pfsense hint has no Add restart step button', async () => {
+  quickAddCase('pfsense', []);
+  await screen.findByText(HINT);
+  expect(screen.queryByRole('button', { name: 'Add restart step' })).not.toBeInTheDocument();
+});

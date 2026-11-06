@@ -4,8 +4,5 @@
   "description": "Reloads nginx with SIGHUP and waits until port 443 serves the deployed certificate. Fails after 15 seconds otherwise. Runs on the server.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["targetId"],
-  "properties": {
-    "targetId": {"type": "string", "format": "uuid", "title": "Target", "description": "The GL.iNet Comet KVM deploy target."}
-  }
+  "properties": {}
 }

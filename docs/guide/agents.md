@@ -165,12 +165,13 @@ A **Command** action (`exec`) is defined under **Delivery → Actions** and adde
 - A **Pre-deploy** action runs before files are written; a non-zero exit stops the deploy. A **Post-deploy** action runs after; a non-zero exit marks the deployment failed with the files in place.
 - Each action gets `CF_GRANT_ID`, `CF_CERTIFICATE_NAME`, `CF_VERSION_ID`, `CF_FINGERPRINT` and `CF_FILES` (colon-separated paths), plus `PATH`, `HOME`, `LANG`, `TZ` and `LC_*` from the agent. Nothing else is passed on.
 - A command runs in its own process group and is killed with it at its timeout.
+- With **Run once per host** on, the command runs once per reconcile run and gets the variables of the first grant that contributed; leave it off if the script needs per-certificate values.
 - Stdout and stderr are kept up to 8 KiB each and shown on the client's **Hooks** tab (the action run history).
 - The distroless image has no shell, libc or dynamic linker. A command mounted into it must be a static binary (`CGO_ENABLED=0 go build`). A dynamic one fails to start with no useful error. Mount the executables you allow.
 
 ## Restart actions
 
-A **Restart** action restarts a Docker container or a systemd unit by name, with no shell and no general-purpose `docker` binary in the agent. Set **Kind** to Restart and enter a target: `docker:<container>` or `systemd:<unit>`. Phases, failure behavior, timeout and the **Hooks** tab work as for command actions; the run is shown as `restart docker:nginx`.
+A **Restart** action restarts a Docker container or a systemd unit by name, with no shell and no general-purpose `docker` binary in the agent. Set **Kind** to Restart and enter a target: `docker:<container>` or `systemd:<unit>`. Phases, failure behavior, timeout and the **Hooks** tab work as for command actions; the run is shown as `restart docker:nginx`. When several certificates deploy in one reconcile run, the agent restarts each service once, after the last of those certificates is written (see [Merging](delivery.md#merging-steps-across-certificates)).
 
 The agent restarts only targets listed exactly in `CF_RESTART_ALLOW` (comma-separated, for example `docker:nginx,systemd:nginx.service`). With it empty, restart actions are refused with exit code -1 and the agent does not advertise the `restart` capability.
 

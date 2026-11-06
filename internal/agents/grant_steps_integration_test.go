@@ -91,7 +91,7 @@ func TestAssignmentsHooksFollowStepOrderWithGroups(t *testing.T) {
 	c := f.client(t, "c1")
 	a := f.action(t, "a", "exec", `{"argv":["/bin/a"]}`)
 	b := f.action(t, "b", "restart", `{"target":"docker:b"}`)
-	d := f.action(t, "d", "exec", `{"argv":["/bin/d"]}`)
+	d := f.action(t, "d", "exec", `{"argv":["/bin/d"],"oncePerHost":true}`)
 	g := f.group(t, "g", b, d)
 	steps := []actions.Step{{Group: &g}, {Action: &a}}
 	if _, err := f.svc.CreateGrant(ctx, f.org, c.ID, GrantInput{CertID: cert, Delivery: "pull", TargetID: &tid, Steps: steps}); err != nil {
@@ -110,6 +110,9 @@ func TestAssignmentsHooksFollowStepOrderWithGroups(t *testing.T) {
 	}
 	if len(got) != 3 || got[0] != b || got[1] != d || got[2] != a {
 		t.Fatalf("hook order %v, want [%s %s %s]", got, b, d, a)
+	}
+	if h := as.Grants[0].Hooks; h[0].OncePerHost || !h[1].OncePerHost || h[2].OncePerHost {
+		t.Fatalf("oncePerHost flags = %v %v %v", h[0].OncePerHost, h[1].OncePerHost, h[2].OncePerHost)
 	}
 }
 

@@ -357,6 +357,14 @@ type ManualDnsPending struct {
 	CreatedAt   time.Time  `json:"created_at"`
 }
 
+type MigratedStepRemoval struct {
+	GrantID     uuid.UUID  `json:"grant_id"`
+	ActionID    uuid.UUID  `json:"action_id"`
+	OldTargetID *uuid.UUID `json:"old_target_id"`
+	Reason      string     `json:"reason"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
 type NotificationChannel struct {
 	ID               uuid.UUID `json:"id"`
 	OrgID            uuid.UUID `json:"org_id"`
@@ -448,6 +456,14 @@ type ServerDeployment struct {
 	DeploySeq      int64      `json:"deploy_seq"`
 	Remediations   int32      `json:"remediations"`
 	RemediatedFp   *string    `json:"remediated_fp"`
+}
+
+type ServerPostTail struct {
+	GrantID        uuid.UUID `json:"grant_id"`
+	DeployTargetID uuid.UUID `json:"deploy_target_id"`
+	VersionID      uuid.UUID `json:"version_id"`
+	DeploySeq      int64     `json:"deploy_seq"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type Session struct {

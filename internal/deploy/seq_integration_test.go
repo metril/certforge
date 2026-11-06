@@ -17,6 +17,8 @@ import (
 type captureInserter struct {
 	args   []DeployArgs
 	checks []GrantCheckArgs
+	post   []PostBatchArgs
+	postAt []*river.InsertOpts
 	opts   []*river.InsertOpts // opts of each check insert
 }
 
@@ -24,6 +26,9 @@ func (c *captureInserter) InsertTx(_ context.Context, _ pgx.Tx, args river.JobAr
 	switch a := args.(type) {
 	case DeployArgs:
 		c.args = append(c.args, a)
+	case PostBatchArgs:
+		c.post = append(c.post, a)
+		c.postAt = append(c.postAt, opts)
 	case GrantCheckArgs:
 		c.checks = append(c.checks, a)
 		c.opts = append(c.opts, opts)

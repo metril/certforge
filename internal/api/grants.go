@@ -680,7 +680,7 @@ func (s *Server) CreateServerGrant(ctx context.Context, r gen.CreateServerGrantR
 		if _, err := authorize(ctx, authz.ActionDeliveryWrite, &r.OrgId); err != nil {
 			return nil, err
 		}
-		if err := s.d.Agents.CheckSteps(ctx, q, r.OrgId, steps, targets.Server); err != nil {
+		if err := s.d.Agents.CheckSteps(ctx, q, r.OrgId, steps, targets.Server, target.Type); err != nil {
 			return nil, mapAgentErr(err)
 		}
 	}
@@ -860,16 +860,16 @@ func (s *Server) updateServerGrant(ctx context.Context, r gen.UpdateGrantRequest
 			return nil, err
 		}
 	}
-	if err := s.d.Agents.CheckSteps(ctx, q, r.OrgId, newSteps, targets.Server); err != nil {
+	targetT, err := q.GetDeployTarget(ctx, sqlcgen.GetDeployTargetParams{ID: *g.DeployTargetID, OrgID: r.OrgId})
+	if err != nil {
+		return nil, err
+	}
+	if err := s.d.Agents.CheckSteps(ctx, q, r.OrgId, newSteps, targets.Server, targetT.Type); err != nil {
 		return nil, mapAgentErr(err)
 	}
 	var optsIn map[string]interface{}
 	if r.Body != nil {
 		optsIn = r.Body.TargetOptions
-	}
-	targetT, err := q.GetDeployTarget(ctx, sqlcgen.GetDeployTargetParams{ID: *g.DeployTargetID, OrgID: r.OrgId})
-	if err != nil {
-		return nil, err
 	}
 	targetOpts, err := s.serverTargetOptionsIn(targetT.Type, optsIn)
 	if err != nil {
@@ -1097,13 +1097,4 @@ func verifyInterval(v *gen.GrantVerify, def int) int {
 		return *v.IntervalSeconds
 	}
 	return def
-}
-
-// postTargetPhrase names post-action target types, e.g. "an ssh or pikvm".
-func postTargetPhrase(types []string) string {
-	art := "a"
-	if strings.ContainsRune("aeiou", rune(types[0][0])) {
-		art = "an"
-	}
-	return art + " " + strings.Join(types, " or ")
 }

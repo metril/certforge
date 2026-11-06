@@ -51,6 +51,12 @@ var Manifest = []string{
 
 	// 00036_grant_check_tokens.sql
 	"grant_check_tokens",
+
+	// 00040_actions_grant_target.sql
+	"migrated_step_removals",
+
+	// 00041_server_post_tails.sql
+	"server_post_tails",
 }
 
 // TableSum is one table's row count and content hash, as recorded in the

@@ -535,7 +535,10 @@ type AcmeAccountInput struct {
 
 // Action A reusable step a grant runs around a deploy, on an agent or on the server depending on its kind.
 type Action struct {
-	// Config Kind-specific configuration
+	// Batched True when the step runs once per host when several certificates deploy together; false when it runs per grant.
+	Batched *bool `json:"batched,omitempty"`
+
+	// Config Kind-specific configuration, valid against the kind's schema, with secret fields removed. Device kinds carry no target: they run against the deploy target of the server grant that uses them.
 	Config map[string]interface{} `json:"config"`
 
 	// CreatedAt Creation time.
@@ -712,7 +715,7 @@ type ActionSchemaEntry struct {
 	// Schema JSON Schema for the action's config. Fields with secret true are write-only.
 	Schema map[string]interface{} `json:"schema"`
 
-	// TargetTypes Deploy target types config.targetId accepts; empty when the kind has no targetId.
+	// TargetTypes Grant target types this kind is compatible with (a device kind runs against the grant's own target); empty for a kind that fits any grant.
 	TargetTypes []string `json:"targetTypes"`
 }
 
@@ -2553,7 +2556,7 @@ type GrantUpdate struct {
 	// LayoutId Output layout in the same org.
 	LayoutId *openapi_types.UUID `json:"layoutId"`
 
-	// Steps Actions and action groups in run order. An action that runs on the wrong side is 422 on steps[i]. A server grant with steps needs delivery:write.
+	// Steps Actions and action groups in run order. An action that runs on the wrong side, or a device action that does not fit the grant's target type, is 422 on steps[i]. A server grant with steps needs delivery:write.
 	Steps []GrantStep `json:"steps"`
 
 	// TargetOptions Per-type options for the deploy target
@@ -3396,7 +3399,7 @@ type ServerGrantInput struct {
 	// LayoutId Output layout in the same org
 	LayoutId *openapi_types.UUID `json:"layoutId"`
 
-	// Steps Server actions (every kind except exec and restart) to run around the deploy, in order; needs delivery:write. An action that runs on an agent is 422 on steps[i].
+	// Steps Server actions (every kind except exec and restart) to run around the deploy, in order; needs delivery:write. An action that runs on an agent, or a device action that does not fit the grant's target type, is 422 on steps[i].
 	Steps *[]GrantStep `json:"steps,omitempty"`
 
 	// TargetOptions Per-type options for the deploy target, validated against the type's grantSchema from GET /meta/schemas.

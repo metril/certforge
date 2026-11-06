@@ -332,20 +332,6 @@ func (q *Queries) CountLiveGrantsByCert(ctx context.Context, ids []uuid.UUID) ([
 	return items, nil
 }
 
-const countPostActionUsers = `-- name: CountPostActionUsers :one
-SELECT count(DISTINCT g.id)::bigint FROM client_cert_grants g
-JOIN actions a ON g.steps @> jsonb_build_array(jsonb_build_object('action', a.id))
-WHERE g.removed_at IS NULL AND g.client_id IS NULL AND a.config->>'targetId' = $1::text
-`
-
-// Live server grants with a step whose action runs on this target.
-func (q *Queries) CountPostActionUsers(ctx context.Context, id string) (int64, error) {
-	row := q.db.QueryRow(ctx, countPostActionUsers, id)
-	var column_1 int64
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
 const createGrant = `-- name: CreateGrant :one
 INSERT INTO client_cert_grants (client_id, cert_id, delivery, output_spec_id, deploy_target_id, steps, auto_remediate, target_options)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, client_id, cert_id, delivery, output_spec_id, deploy_target_id, auto_remediate, removed_at, created_at, updated_at, removed_revision, redeploy_seq, target_options, steps
@@ -942,27 +928,71 @@ func (q *Queries) LiveGrantIDsUsingTarget(ctx context.Context, deployTargetID *u
 	return items, nil
 }
 
-const liveGrantSidesUsingActionGroup = `-- name: LiveGrantSidesUsingActionGroup :many
-SELECT DISTINCT (deploy_target_id IS NOT NULL)::bool AS server FROM client_cert_grants
-WHERE steps @> jsonb_build_array(jsonb_build_object('group', $1::uuid))
-  AND removed_at IS NULL
+const liveGrantSidesUsingAction = `-- name: LiveGrantSidesUsingAction :many
+SELECT DISTINCT (g.deploy_target_id IS NOT NULL)::bool AS server, COALESCE(t.type, '')::text AS target_type
+FROM client_cert_grants g LEFT JOIN deploy_targets t ON t.id = g.deploy_target_id
+WHERE g.removed_at IS NULL AND (
+  g.steps @> jsonb_build_array(jsonb_build_object('action', $1::uuid))
+  OR EXISTS (SELECT 1 FROM action_groups ag
+             WHERE $1::uuid = ANY(ag.action_ids)
+               AND g.steps @> jsonb_build_array(jsonb_build_object('group', ag.id))))
 `
 
-// Distinct sides (true = server grant, false = client grant) of the live
-// grants whose steps name the group.
-func (q *Queries) LiveGrantSidesUsingActionGroup(ctx context.Context, groupID uuid.UUID) ([]bool, error) {
+type LiveGrantSidesUsingActionRow struct {
+	Server     bool   `json:"server"`
+	TargetType string `json:"target_type"`
+}
+
+// Like LiveGrantSidesUsingActionGroup, for the grants that use the action
+// directly or through a group.
+func (q *Queries) LiveGrantSidesUsingAction(ctx context.Context, actionID uuid.UUID) ([]LiveGrantSidesUsingActionRow, error) {
+	rows, err := q.db.Query(ctx, liveGrantSidesUsingAction, actionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LiveGrantSidesUsingActionRow{}
+	for rows.Next() {
+		var i LiveGrantSidesUsingActionRow
+		if err := rows.Scan(&i.Server, &i.TargetType); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const liveGrantSidesUsingActionGroup = `-- name: LiveGrantSidesUsingActionGroup :many
+SELECT DISTINCT (g.deploy_target_id IS NOT NULL)::bool AS server, COALESCE(t.type, '')::text AS target_type
+FROM client_cert_grants g LEFT JOIN deploy_targets t ON t.id = g.deploy_target_id
+WHERE g.steps @> jsonb_build_array(jsonb_build_object('group', $1::uuid))
+  AND g.removed_at IS NULL
+`
+
+type LiveGrantSidesUsingActionGroupRow struct {
+	Server     bool   `json:"server"`
+	TargetType string `json:"target_type"`
+}
+
+// Distinct sides (server = server grant, false = client grant) and deploy
+// target types (” for a client grant) of the live grants whose steps name
+// the group.
+func (q *Queries) LiveGrantSidesUsingActionGroup(ctx context.Context, groupID uuid.UUID) ([]LiveGrantSidesUsingActionGroupRow, error) {
 	rows, err := q.db.Query(ctx, liveGrantSidesUsingActionGroup, groupID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []bool{}
+	items := []LiveGrantSidesUsingActionGroupRow{}
 	for rows.Next() {
-		var server bool
-		if err := rows.Scan(&server); err != nil {
+		var i LiveGrantSidesUsingActionGroupRow
+		if err := rows.Scan(&i.Server, &i.TargetType); err != nil {
 			return nil, err
 		}
-		items = append(items, server)
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
