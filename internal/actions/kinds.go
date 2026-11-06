@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -38,8 +39,8 @@ type Kind interface {
 	// RunsOn says where the action runs: Agent for exec and restart, Server otherwise.
 	RunsOn() targets.Mode
 	Schema() json.RawMessage
-	// TargetTypes lists the deploy target types a targetId may refer to; empty
-	// when the kind has no targetId.
+	// TargetTypes lists the grant target types a device kind runs against (it
+	// always uses the grant's own deploy target); empty for other kinds.
 	TargetTypes() []string
 	// PhaseHint is the phase the UI suggests: "post_deploy", or "" for none.
 	PhaseHint() string
@@ -218,25 +219,16 @@ func newDefault() *Registry {
 	})
 	targetCmd := func(raw json.RawMessage) error {
 		var c struct {
-			TargetID string `json:"targetId"`
-			Command  string `json:"command"`
+			Command string `json:"command"`
 		}
 		if err := decode(raw, &c); err != nil {
-			return err
-		}
-		if err := checkUUID("targetId", c.TargetID); err != nil {
 			return err
 		}
 		return checkCommand(c.Command)
 	}
 	targetOnly := func(raw json.RawMessage) error {
-		var c struct {
-			TargetID string `json:"targetId"`
-		}
-		if err := decode(raw, &c); err != nil {
-			return err
-		}
-		return checkUUID("targetId", c.TargetID)
+		var c struct{}
+		return decode(raw, &c)
 	}
 	add("ssh", "SSH command", post, targets.Server, []string{"ssh", "pikvm", "glkvm"}, nil,
 		func(_ map[string]json.RawMessage, raw json.RawMessage) error { return targetCmd(raw) })
@@ -245,14 +237,10 @@ func newDefault() *Registry {
 	add("pfsense_restart", "Restart pfSense services", post, targets.Server, []string{"pfsense"}, nil,
 		func(_ map[string]json.RawMessage, raw json.RawMessage) error {
 			var c struct {
-				TargetID string   `json:"targetId"`
 				Mode     string   `json:"mode"`
 				Services []string `json:"services"`
 			}
 			if err := decode(raw, &c); err != nil {
-				return err
-			}
-			if err := checkUUID("targetId", c.TargetID); err != nil {
 				return err
 			}
 			switch c.Mode {
@@ -285,13 +273,9 @@ func newDefault() *Registry {
 	add("pikvm_restart", "Restart PiKVM service", post, targets.Server, []string{"pikvm"}, nil,
 		func(_ map[string]json.RawMessage, raw json.RawMessage) error {
 			var c struct {
-				TargetID string `json:"targetId"`
-				Service  string `json:"service"`
+				Service string `json:"service"`
 			}
 			if err := decode(raw, &c); err != nil {
-				return err
-			}
-			if err := checkUUID("targetId", c.TargetID); err != nil {
 				return err
 			}
 			switch c.Service {
@@ -387,6 +371,25 @@ func newDefault() *Registry {
 		return nil
 	})
 	return r
+}
+
+// Compatible returns the index of the first ref whose kind cannot run against
+// a grant target of targetType, or -1 when all can. An empty targetType (an
+// agent grant) skips the check.
+func Compatible(refs []ActionRef, targetType string) int {
+	if targetType == "" {
+		return -1
+	}
+	for i, r := range refs {
+		k, ok := Default.Get(r.Kind)
+		if !ok {
+			continue
+		}
+		if types := k.TargetTypes(); len(types) > 0 && !slices.Contains(types, targetType) {
+			return i
+		}
+	}
+	return -1
 }
 
 // ValidateOptional rejects optional for a kind that runs on an agent: the
