@@ -32,7 +32,7 @@ Three target types ship with CertForge:
 
 The list shows each target as its name over a muted line: the type, where it writes (a directory, path or URL), and either the saved credential it uses or "secrets stored" if it holds its own. The **Runs on** column shows Server or Agent. **Used by** shows how many grants use it.
 
-To change a target, select the pencil on its row. To delete one, select the bin and type its name. A target that grants still use cannot be deleted. Remove those grants first.
+To change a target, select the pencil on its row. To delete one, select the bin and type its name. A target that grants still use cannot be deleted. Remove those grants first. Actions never block a target's deletion.
 
 ## Runs on
 
@@ -372,11 +372,11 @@ The **Layouts** tab of **Delivery** shapes what an agent writes for a grant. **F
 
 An **action** is one reusable step a grant runs around a deploy: reload a service, restart a firewall's services, call a webhook, check the served certificate. Define them under **Delivery → Actions**, then add them to a grant's **Steps** in the order you want. Actions replace the old hooks, the server grant post action and the per-grant pfSense restart setting.
 
-The **Actions** tab is a library: an action is defined once and any number of grants can use it. A grant does not hold actions itself; its **Steps** pick from the library. For PiKVM and GL.iNet Comet KVM grants, the grant form shows **Add restart step** while no restart step is set. It reuses the restart action for that target, or creates one, and adds it as a post-deploy step in one click.
+The **Actions** tab is a library: an action is defined once and any number of grants can use it. A grant does not hold actions itself; its **Steps** pick from the library. Device actions (SSH, pfSense, PiKVM, GL.iNet, TrueNAS and RouterOS) have no target of their own: they run on the deploy target of the grant that uses them, so one action serves every grant of that target type. The step picker offers only the kinds that fit the grant. For PiKVM and GL.iNet Comet KVM grants, the grant form shows **Add restart step** while no restart step is set. It reuses any restart action of that kind, or creates one, and adds it as a post-deploy step in one click.
 
 | Kind | What it does | Runs on | Accepts |
 |---|---|---|---|
-| **Command** (`exec`) | Runs an executable with arguments, no shell, if the agent's `CF_HOOK_ALLOW` lists it. | Agent | None |
+| **Command** (`exec`) | Runs an executable with arguments, no shell, if the agent's `CF_HOOK_ALLOW` lists it. The **Run once per host** switch makes it a merged step (see [Merging](#merging-steps-across-certificates)). | Agent | None |
 | **Restart** (`restart`) | Restarts `docker:<container>` or `systemd:<unit>` if `CF_RESTART_ALLOW` lists it. | Agent | None |
 | **SSH** (`ssh`) | Runs one command (up to 512 characters) over SSH, reusing the target's host, login and pinned host key. | Server | SSH, PiKVM or GL.iNet Comet KVM target |
 | **pfSense shell** (`pfsense_shell`) | Runs a shell command through the firewall's API. The API reports no exit status, so it counts as done once accepted. The user needs the diag command privilege. | Server | pfSense target |
@@ -390,7 +390,7 @@ The **Actions** tab is a library: an action is defined once and any number of gr
 | **Verify TLS** (`verify_tls`) | Connects to a host and port (SNI optional) and checks it serves the deployed certificate. | Server | None |
 | **Wait** (`wait`) | Pauses 1 to 300 seconds, for example while a service restarts. | Server | None |
 
-An action that names a target reuses that target's connection settings. Its files and own commands are not used. A grant's steps must all run where the grant does: agent actions on a client grant, server actions on a server grant (a client grant with a deploy target runs agent actions only).
+A device action reuses the grant's deploy target for its connection settings; the target's files and own commands are not used. A grant's steps must all run where the grant does: agent actions on a client grant, server actions on a server grant (a client grant with a deploy target runs agent actions only). A device action fits only grants whose target type is in its **Accepts** column. The API refuses an incompatible step, a group edit or a kind change that would leave a grant with one (422).
 
 ### Phases, timeout and optional
 
@@ -402,6 +402,25 @@ An action that names a target reuses that target's connection settings. Its file
 ### Groups
 
 A **group** (the **Groups** tab) is an ordered list of actions that a grant adds as one step. Groups cannot contain groups. A grant has at most 32 steps after groups are expanded, and the order is the run order within each phase. You cannot remove an action from a group, or delete it, in a way that leaves a grant with a step its client or target cannot run. Deleting an action or group that a grant or group uses is refused (409), and the message lists what uses it. Remove those references first.
+
+### Merging steps across certificates
+
+When several certificates deploy to the same host together, steps that do not depend on the certificate run once instead of once per certificate. A restart of the same service, for example, happens once after all the new files are in place. The action sheet shows a read-only **Runs once per host** badge (`batched` in the API) for actions that merge.
+
+| Runs once per host (batched) | Runs per certificate |
+|---|---|
+| PiKVM, GL.iNet and TrueNAS restart, **Wait**, **SSH**, **pfSense shell**, agent **Restart** | **pfSense restart**, **RouterOS restart**, **Notify**, **Verify TLS** |
+| **HTTP** with no `{{cert.*}}` or `{{grant.id}}` in the URL, headers or body | **HTTP** that uses those placeholders |
+| **Command** with **Run once per host** on | **Command** without it |
+
+A batched command gets no per-certificate `CF_*` variables, only those of the first grant that contributed. Turn the switch on only for scripts that do not need them. Pre-deploy steps never merge.
+
+Each grant runs its post-deploy steps one by one until its first batched step. That step and everything after it form the grant's *tail*. Tails of grants on the same host are merged in grant-id order: a batched step whose action is already in the merged list is shared, and anything else goes in after the last shared step. Every grant keeps its own order. For example, grants A (wait, restart, verify) and B (restart, verify) run wait, restart, verify for A, verify for B.
+
+- **Failure:** if a merged step fails, it fails every grant that contributed it, and their later tail steps are skipped. For a contributor where the step is optional, it is recorded as a warning and the tail continues. A failing per-certificate step affects only its own grant.
+- **History:** a merged run is recorded once per contributing grant.
+- **Completion:** a grant is marked deployed after its tail finishes.
+- **Window:** for server-run targets, a job per target runs the merged tails within about 30 seconds of the first deploy in a window; grants that deploy later wait for the next window. An agent merges the grants it applies in one reconcile run.
 
 ### HTTP actions
 
@@ -420,6 +439,8 @@ Every step is recorded: what ran, its phase, exit code or status, output (8 KiB)
 This release removes the `/hooks` API: use `/actions` and `/action-groups`, and send a grant's `steps` (`[{"action": id}, {"group": id}]`) instead of `hookIds`, `postAction` and `targetOptions.pfsenseRestart`. Migration 00033 converts existing hooks (ids kept), post actions and pfSense restart settings into actions and steps. Backups taken before migration 00033 still restore.
 
 Migration 00034 makes restarts explicit actions. The pfSense target's `restartServices` field is gone and PiKVM deploys no longer run `systemctl restart kvmd-nginx`. Existing pfSense and PiKVM grants get a post-deploy restart step added automatically, so nothing changes at first; edit or remove those steps as you like.
+
+Migration 00040 removes the `targetId` from device actions, because they now run on the grant's own target. A grant step whose action named a different host than the grant's target is removed, and each removal is logged as an `action.step_removed` audit event. Review those grants and add the step back if you still want it. Create PiKVM and GL.iNet restart steps with **Add restart step**. Clients that use `targetId` in API calls must drop it.
 
 ## Saved credentials
 

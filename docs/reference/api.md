@@ -59,6 +59,12 @@ Reading the audit log with global `audit:read` shows every event. An organizatio
 
 **Audit export**: `GET /audit/export` streams the filtered log as CSV, at most 100 000 rows. `X-Audit-Truncated: true` means the cap was hit; a failure part-way writes a final `#error` row instead of a silently short file.
 
+## Actions and grant steps
+
+An action's `config` has no `targetId`: device kinds (`ssh`, `pfsense_shell`, `pfsense_restart`, `pikvm_restart`, `glkvm_restart`, `truenas_restart`, `routeros_restart`) run on the grant's deploy target. `GET /meta/schemas` lists each kind's `targetTypes`, the grant target types it fits. An action also has a read-only `batched` boolean: true when its step runs once per host when several certificates deploy together (see [Merging](../guide/delivery.md#merging-steps-across-certificates)). The exec kind takes an optional `oncePerHost` boolean.
+
+Saving a grant with a step whose action does not fit its deploy target, adding such an action to a group a grant uses, or changing an action's kind in that way returns 422. Deleting a deploy target no longer fails because of actions (409 remains when grants use it). A migration that removes a step records the `action.step_removed` audit event.
+
 ## Enrollment requests
 
 When [Require approval](configuration.md#agents) is on, an agent that presents a valid token waits as a pending request until an administrator decides. See [Clients](../guide/clients.md#approval).
