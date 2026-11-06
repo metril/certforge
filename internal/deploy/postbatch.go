@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
-	"github.com/riverqueue/river/rivertype"
 
 	"github.com/metril/certforge/internal/actions"
 	"github.com/metril/certforge/internal/db/sqlcgen"
@@ -21,24 +20,31 @@ const postBatchDelay = 15 * time.Second
 
 // PostBatchArgs is the river job that runs the parked post-deploy tails of
 // every server grant on one deploy target, each identical batchable step once.
+// Window is the postBatchDelay-aligned time bucket (Unix seconds) the tail was
+// parked in: river's default uniqueness (which spans running jobs) then
+// collapses one window's parks into one job, while a tail parked after that
+// job started lands in a later window and so gets its own job.
 type PostBatchArgs struct {
 	TargetID uuid.UUID `json:"target_id"`
+	Window   int64     `json:"window"`
 }
 
 // Kind implements river.JobArgs.
 func (PostBatchArgs) Kind() string { return "certforge_server_post_batch" }
 
-// InsertOpts makes the job unique per target while it waits; a running job
-// does not block the next one, which picks up tails parked after it started.
+// InsertOpts makes the job unique per (target, window).
 func (PostBatchArgs) InsertOpts() river.InsertOpts {
-	return river.InsertOpts{
-		MaxAttempts: 5,
-		UniqueOpts: river.UniqueOpts{
-			ByArgs: true,
-			ByState: []rivertype.JobState{rivertype.JobStateAvailable, rivertype.JobStateScheduled,
-				rivertype.JobStatePending},
-		},
-	}
+	return river.InsertOpts{MaxAttempts: 5, UniqueOpts: river.UniqueOpts{ByArgs: true}}
+}
+
+// insertPostBatch schedules the target's batch job for the window containing
+// now, to run two windows' worth of delay after the window starts, so even a
+// tail parked at the window's end waits at least postBatchDelay.
+func (d *Dispatcher) insertPostBatch(ctx context.Context, tx pgx.Tx, targetID uuid.UUID, now time.Time) error {
+	w := now.Truncate(postBatchDelay)
+	_, err := d.River.InsertTx(ctx, tx, PostBatchArgs{TargetID: targetID, Window: w.Unix()},
+		&river.InsertOpts{ScheduledAt: w.Add(2 * postBatchDelay)})
+	return err
 }
 
 // PostBatchWorker runs PostBatchArgs.
@@ -62,8 +68,7 @@ func (d *Dispatcher) parkTail(ctx context.Context, grantID, targetID, versionID 
 		if err := d.Q.WithTx(tx).UpsertPostTail(ctx, sqlcgen.UpsertPostTailParams{GrantID: grantID, DeployTargetID: targetID, VersionID: versionID, DeploySeq: seq}); err != nil {
 			return err
 		}
-		_, err := d.River.InsertTx(ctx, tx, PostBatchArgs{TargetID: targetID}, &river.InsertOpts{ScheduledAt: time.Now().Add(postBatchDelay)})
-		return err
+		return d.insertPostBatch(ctx, tx, targetID, time.Now())
 	})
 }
 

@@ -12,6 +12,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 )
 
 // batchPair is two grants of different certificates on the same ssh target.
@@ -70,7 +73,7 @@ func TestPostBatchSharedStepRunsOnce(t *testing.T) {
 	if len(ins.post) != 2 || ins.post[0].TargetID != p.ssh {
 		t.Fatalf("post jobs = %+v", ins.post)
 	}
-	if at := ins.postAt[0].ScheduledAt; time.Until(at) < 10*time.Second || time.Until(at) > 20*time.Second {
+	if at := ins.postAt[0].ScheduledAt; time.Until(at) < postBatchDelay-time.Second || time.Until(at) > 2*postBatchDelay+time.Second {
 		t.Fatalf("scheduled at %v", at)
 	}
 	if err := p.f.disp.PostBatch(context.Background(), p.ssh); err != nil {
@@ -294,5 +297,39 @@ func TestPostBatchSkipsLockedTail(t *testing.T) {
 	}
 	if st := p.f.status(t, p.g); st != "deployed" || p.cmds() != 2 {
 		t.Fatalf("g %s cmds %d", st, p.cmds())
+	}
+}
+
+// A real river client must accept PostBatchArgs (custom unique states were
+// rejected), dedupe within a window and insert anew in a later one.
+func TestInsertPostBatchRealRiverUniquePerWindow(t *testing.T) {
+	f := newDispatcherFixture(t)
+	rc, err := river.NewClient(riverpgxv5.New(f.pool), &river.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.disp.River = rc
+	ctx := context.Background()
+	target := uuid.New()
+	base := time.Now().Truncate(postBatchDelay)
+	insert := func(at time.Time) int {
+		t.Helper()
+		if err := pgx.BeginFunc(ctx, f.pool, func(tx pgx.Tx) error { return f.disp.insertPostBatch(ctx, tx, target, at) }); err != nil {
+			t.Fatal(err)
+		}
+		var n int
+		if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM river_job WHERE kind = $1`, PostBatchArgs{}.Kind()).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if n := insert(base.Add(time.Second)); n != 1 {
+		t.Fatalf("first insert: %d jobs", n)
+	}
+	if n := insert(base.Add(postBatchDelay - time.Second)); n != 1 {
+		t.Fatalf("same window: %d jobs, want deduped to 1", n)
+	}
+	if n := insert(base.Add(postBatchDelay + time.Second)); n != 2 {
+		t.Fatalf("later window: %d jobs, want 2", n)
 	}
 }
