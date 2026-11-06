@@ -2,6 +2,22 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.43.0](https://github.com/metril/certforge/compare/v0.42.1...v0.43.0) (2026-11-06)
+
+
+### Features
+
+* **actions:** add a GL.iNet nginx restart action ([866bb5d](https://github.com/metril/certforge/commit/866bb5d0aae52ce32d3ce2d863ccb4577f644b2e))
+* **deploy:** add a GL.iNet Comet KVM target type ([c7ab6fd](https://github.com/metril/certforge/commit/c7ab6fd5f7d2412b88bf55071aa5bd0e3ce61b54))
+* **web:** GL.iNet Comet target and restart step ([04cdca1](https://github.com/metril/certforge/commit/04cdca1b807187bb2d2c1b4e21381954a4346414))
+
+
+### Bug Fixes
+
+* **issuance:** keep the policy renewal date for certs without SANs ([b414fbf](https://github.com/metril/certforge/commit/b414fbf84442395becb003a09be4bb18ab51be4c))
+* **web:** show pending/due-now instead of "1 d ago" for next renewal ([94ee6e3](https://github.com/metril/certforge/commit/94ee6e3fee4f356c998cfa6ac53ac5a512d61e3d))
+* **web:** use the next-renewal label on certificate cards ([c8c4fa4](https://github.com/metril/certforge/commit/c8c4fa4b02b4bb10ecb0fd6846c85f10ccd2f73c))
+
 ## [0.42.1](https://github.com/metril/certforge/compare/v0.42.0...v0.42.1) (2026-11-01)
 
 
