@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Restart PiKVM service",
-  "description": "Restarts a kvmd service on a PiKVM or GL.iNet Comet over SSH, so it serves the new certificate. Runs on the server.",
+  "description": "Restarts a kvmd service on a PiKVM over SSH, so it serves the new certificate. Runs on the server.",
   "type": "object",
   "additionalProperties": false,
   "required": ["targetId"],

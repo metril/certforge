@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Restart GL.iNet nginx",
+  "description": "Restarts the web server (nginx) of a GL.iNet Comet KVM over SSH, so it serves the new certificate. Stops then starts it, because the init script's restart is unreliable on firmware 1.5.0. Fails if nginx is not running afterward. Runs on the server.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["targetId"],
+  "properties": {
+    "targetId": {"type": "string", "format": "uuid", "title": "Target", "description": "The GL.iNet Comet KVM deploy target."}
+  }
+}

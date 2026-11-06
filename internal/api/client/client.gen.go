@@ -32,6 +32,7 @@ const (
 // Defines values for ActionKind.
 const (
 	ActionKindExec            ActionKind = "exec"
+	ActionKindGlkvmRestart    ActionKind = "glkvm_restart"
 	ActionKindHttp            ActionKind = "http"
 	ActionKindNotify          ActionKind = "notify"
 	ActionKindPfsenseRestart  ActionKind = "pfsense_restart"

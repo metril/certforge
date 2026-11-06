@@ -41,6 +41,8 @@ func TestParse(t *testing.T) {
 		{"pikvm_restart", `{"targetId":"` + id1 + `","service":"kvmd-vnc"}`, ""},
 		{"pikvm_restart", `{"targetId":"` + id1 + `","service":"sshd"}`, "service"},
 		{"pikvm_restart", `{}`, "targetId"},
+		{"glkvm_restart", `{"targetId":"` + id1 + `"}`, ""},
+		{"glkvm_restart", `{}`, "targetId"},
 		{"truenas_restart", `{"targetId":"` + id1 + `"}`, ""},
 		{"truenas_restart", `{}`, "targetId"},
 		{"routeros_restart", `{"targetId":"` + id1 + `"}`, ""},
@@ -97,7 +99,7 @@ func TestHTTPSecretSplit(t *testing.T) {
 
 func TestRegistry(t *testing.T) {
 	all := Default.All()
-	if len(all) != 12 {
+	if len(all) != 13 {
 		t.Fatalf("kinds = %d", len(all))
 	}
 	for i, k := range all {

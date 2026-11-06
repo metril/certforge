@@ -217,7 +217,7 @@ func (d *Dispatcher) execAction(ctx context.Context, row sqlcgen.ServerDeployGra
 	secs := int(timeout.Seconds())
 	switch a.Kind {
 	case "ssh":
-		rt, err := target([]string{TypeSSH, TypePiKVM}, "ssh")
+		rt, err := target([]string{TypeSSH, TypePiKVM, TypeGLKVM}, "ssh")
 		if err != nil {
 			return err
 		}
@@ -258,6 +258,31 @@ func (d *Dispatcher) execAction(ctx context.Context, row sqlcgen.ServerDeployGra
 		}
 		cmd := "systemctl restart " + svc
 		res.argv = []string{"pikvm_restart", cfg.Host, svc}
+		cl, err := sshx.Dial(ctx, sshx.Opts{Host: cfg.Host, Port: cfg.Port, User: cfg.Username, Password: cfg.Password,
+			PrivateKeyPEM: cfg.PrivateKey, PrivateKeyPassphrase: cfg.PrivateKeyPassphrase, HostKey: cfg.HostKey, AllowLoopback: req.HTTP.AllowLoopback, Timeout: timeout})
+		if err != nil {
+			return err
+		}
+		defer func() { _ = cl.Close() }()
+		stdout, stderr, code, err := cl.Run(ctx, cmd)
+		if err != nil {
+			return err
+		}
+		res.exit, res.stdout, res.stderr = code, string(stdout), string(stderr)
+		if code != 0 {
+			return fmt.Errorf("exit %d: %s", code, sshSnippet(stderr))
+		}
+	case "glkvm_restart":
+		rt, err := target([]string{TypeGLKVM}, "glkvm")
+		if err != nil {
+			return err
+		}
+		var cfg SSHConfig
+		if err := json.Unmarshal(rt.cfg, &cfg); err != nil {
+			return errors.New("glkvm target config invalid")
+		}
+		const cmd = "/etc/init.d/S99kvmd-nginx stop; /etc/init.d/S99kvmd-nginx start; sleep 2; pidof nginx >/dev/null"
+		res.argv = []string{"glkvm_restart", cfg.Host}
 		cl, err := sshx.Dial(ctx, sshx.Opts{Host: cfg.Host, Port: cfg.Port, User: cfg.Username, Password: cfg.Password,
 			PrivateKeyPEM: cfg.PrivateKey, PrivateKeyPassphrase: cfg.PrivateKeyPassphrase, HostKey: cfg.HostKey, AllowLoopback: req.HTTP.AllowLoopback, Timeout: timeout})
 		if err != nil {
