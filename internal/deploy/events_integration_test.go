@@ -76,6 +76,7 @@ func newEventsFixture(t *testing.T) *eventsFixture {
 		Pool: pool, Q: q, Reg: reg, Certs: certs, Box: box,
 		HTTP:   func(context.Context) targets.HTTPFactory { return targets.HTTPFactory{AllowLoopback: true} },
 		Events: notify.DeployEvents{E: emitter},
+		River:  fakeNotifyInserter{},
 	}
 	key := bytes.Repeat([]byte{7}, 32)
 	env := crypto.NewEnvelope(crypto.NewStaticWrapper(crypto.KeyID(key), key))
@@ -358,7 +359,15 @@ func TestPostActionFailureEmitsActionFailed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := f.disp.Deploy(ctx, grantID, versionID); err == nil {
+	err := f.disp.Deploy(ctx, grantID, versionID)
+	if err == nil { // the http step is batchable: it runs in the post-batch job
+		var tid uuid.UUID
+		if qerr := f.pool.QueryRow(ctx, `SELECT deploy_target_id FROM client_cert_grants WHERE id = $1`, grantID).Scan(&tid); qerr != nil {
+			t.Fatal(qerr)
+		}
+		err = f.disp.PostBatch(ctx, tid)
+	}
+	if err == nil {
 		t.Fatal("Deploy = nil, want the action's error")
 	}
 	if got := eventCount(t, f.pool, "action.failed"); got != 1 {

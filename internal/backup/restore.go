@@ -43,14 +43,22 @@ const checkTokensMigration = 36
 // migrated_step_removals.
 const stepRemovalsMigration = 40
 
+// postTailsMigration is 00041_server_post_tails.sql, which added
+// server_post_tails.
+const postTailsMigration = 41
+
 // manifestFor returns the table list of the schema at migration version v.
 func manifestFor(v int64) []string {
-	if v >= stepRemovalsMigration {
+	if v >= postTailsMigration {
 		return Manifest
 	}
 	out := make([]string, 0, len(Manifest))
 	for _, t := range Manifest {
 		switch t {
+		case "server_post_tails":
+			if v >= postTailsMigration {
+				out = append(out, t)
+			}
 		case "migrated_step_removals":
 			if v >= stepRemovalsMigration {
 				out = append(out, t)

@@ -120,6 +120,19 @@ func (f *dispatcherFixture) stepOf(t *testing.T, id uuid.UUID) stepAction {
 		RunsOn: targets.Server, Optional: r.Optional, TimeoutSeconds: int(r.TimeoutSeconds), Config: r.Config}}
 }
 
+// deployAll deploys and then runs the target's parked post-batch tail, the
+// way river would after postBatchDelay.
+func (f *dispatcherFixture) deployAll(ctx context.Context, grantID, versionID uuid.UUID) error {
+	if err := f.disp.Deploy(ctx, grantID, versionID); err != nil {
+		return err
+	}
+	var tid uuid.UUID
+	if err := f.pool.QueryRow(ctx, `SELECT deploy_target_id FROM client_cert_grants WHERE id = $1`, grantID).Scan(&tid); err != nil {
+		return err
+	}
+	return f.disp.PostBatch(ctx, tid)
+}
+
 type recordedRun struct {
 	phase, stdout, stderr string
 	argv                  []string
@@ -198,7 +211,7 @@ func TestActionSSHPostRecorded(t *testing.T) {
 	u := newStepSetup(t)
 	a := u.sshAction(t, "reload", "post_deploy", "systemctl reload nginx")
 	u.f.setSteps(t, u.g, step(a))
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err != nil {
 		t.Fatal(err)
 	}
 	if st := u.f.status(t, u.g); st != "deployed" {
@@ -219,7 +232,7 @@ func TestActionNonZeroFailsDeployment(t *testing.T) {
 	u := newStepSetup(t)
 	u.srv.Exit = 3
 	u.f.setSteps(t, u.g, step(u.sshAction(t, "reload", "post_deploy", "false")))
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err == nil {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err == nil {
 		t.Fatal("expected error")
 	}
 	if st := u.f.status(t, u.g); st != "failed" {
@@ -239,7 +252,7 @@ func TestActionDialFailureRecorded(t *testing.T) {
 	if _, err := u.f.pool.Exec(context.Background(), `UPDATE deploy_targets SET config = jsonb_set(config, '{port}', '1') WHERE type = 'ssh'`); err != nil {
 		t.Fatal(err)
 	}
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err == nil {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err == nil {
 		t.Fatal("expected error")
 	}
 	if st := u.f.status(t, u.g); st != "failed" {
@@ -254,7 +267,7 @@ func TestActionOnPiKVMTarget(t *testing.T) {
 	u := newStepSetup(t)
 	u.f.setSteps(t, u.g, step(u.sshAction(t, "hi", "post_deploy", "echo hi")))
 	u.useSSHTarget(t, "pikvm")
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err != nil {
 		t.Fatal(err)
 	}
 	if len(u.srv.Cmds) != 1 || u.srv.Cmds[0] != "echo hi" {
@@ -266,7 +279,7 @@ func TestActionOnGLKVMTarget(t *testing.T) {
 	u := newStepSetup(t)
 	u.f.setSteps(t, u.g, step(u.sshAction(t, "hi", "post_deploy", "echo hi")))
 	u.useSSHTarget(t, "glkvm")
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err != nil {
 		t.Fatal(err)
 	}
 	if len(u.srv.Cmds) != 1 || u.srv.Cmds[0] != "echo hi" {
@@ -280,7 +293,7 @@ func TestPiKVMRestartAction(t *testing.T) {
 	a := u.f.action(t, "kvm", "pikvm_restart", "post_deploy", map[string]any{})
 	b := u.f.action(t, "vnc", "pikvm_restart", "post_deploy", map[string]any{"service": "kvmd-vnc"})
 	u.f.setSteps(t, u.g, step(a), step(b))
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err != nil {
 		t.Fatal(err)
 	}
 	if len(u.srv.Cmds) != 2 || u.srv.Cmds[0] != "systemctl restart kvmd-nginx" || u.srv.Cmds[1] != "systemctl restart kvmd-vnc" {
@@ -292,13 +305,13 @@ func TestPiKVMRestartAction(t *testing.T) {
 	// A non-zero exit fails; optional swallows it.
 	u.srv.Exit = 5
 	u.f.pending(t, u.g, u.ver)
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err == nil {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err == nil {
 		t.Fatal("expected error")
 	}
 	opt := u.f.action(t, "kvm-opt", "pikvm_restart", "post_deploy", map[string]any{}, actionOpts{optional: true})
 	u.f.setSteps(t, u.g, step(opt))
 	u.f.pending(t, u.g, u.ver)
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err != nil {
 		t.Fatal(err)
 	}
 	// A non-pikvm target is rejected.
@@ -306,7 +319,7 @@ func TestPiKVMRestartAction(t *testing.T) {
 	u.srv.Exit = 0
 	u.f.setSteps(t, u.g, step(a))
 	u.f.pending(t, u.g, u.ver)
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err == nil {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err == nil {
 		t.Fatal("expected error for non-pikvm target")
 	}
 }
@@ -316,7 +329,7 @@ func TestGLKVMRestartAction(t *testing.T) {
 	u.useSSHTarget(t, "glkvm")
 	a := u.f.action(t, "kvm", "glkvm_restart", "post_deploy", map[string]any{})
 	u.f.setSteps(t, u.g, step(a))
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err != nil {
 		t.Fatal(err)
 	}
 	want := glkvmReloadScript
@@ -329,7 +342,7 @@ func TestGLKVMRestartAction(t *testing.T) {
 	// A non-zero exit fails.
 	u.srv.Exit = 1
 	u.f.pending(t, u.g, u.ver)
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err == nil {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err == nil {
 		t.Fatal("expected error")
 	}
 	// A non-glkvm target is rejected.
@@ -337,7 +350,7 @@ func TestGLKVMRestartAction(t *testing.T) {
 	u.srv.Exit = 0
 	u.f.setSteps(t, u.g, step(a))
 	u.f.pending(t, u.g, u.ver)
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err == nil {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err == nil {
 		t.Fatal("expected error for non-glkvm target")
 	}
 }
@@ -346,7 +359,7 @@ func TestPreActionFailureDeploysNothing(t *testing.T) {
 	u := newStepSetup(t)
 	u.srv.Exit = 2
 	u.f.setSteps(t, u.g, step(u.sshAction(t, "drain", "pre_deploy", "drain")))
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err == nil {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err == nil {
 		t.Fatal("expected error")
 	}
 	if len(u.sec.Calls) != 0 {
@@ -364,7 +377,7 @@ func TestOptionalPostFailureStillDeploys(t *testing.T) {
 	u := newStepSetup(t)
 	u.srv.Exit = 1
 	u.f.setSteps(t, u.g, step(u.sshAction(t, "nice", "post_deploy", "maybe", actionOpts{optional: true})))
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err != nil {
 		t.Fatal(err)
 	}
 	if st := u.f.status(t, u.g); st != "deployed" {
@@ -384,7 +397,7 @@ func TestActionGroupOrderAndPhases(t *testing.T) {
 	pre := u.sshAction(t, "pre", "pre_deploy", "PRE")
 	grp := u.f.group(t, "bc", b, c)
 	u.f.setSteps(t, u.g, step(a), gstep(grp), step(d), step(pre))
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.Join(u.srv.Cmds, ","); got != "PRE,A,B,C,D" {
@@ -407,7 +420,7 @@ func TestActionHTTPPost(t *testing.T) {
 		"body": "cert={{cert.name}} grant={{grant.id}}", "expectedStatus": map[string]int{"min": 201, "max": 201}},
 		actionOpts{secrets: map[string]string{"secretHeaders": string(sh)}})
 	u.f.setSteps(t, u.g, step(a))
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err != nil {
 		t.Fatal(err)
 	}
 	if gotMethod != "POST" || gotAuth != "Bearer tok-s3cret" || gotHdr != "prod" || gotBody != "cert=web grant="+u.g.String() {
@@ -430,7 +443,7 @@ func TestActionHTTPBadStatusRedacted(t *testing.T) {
 	a := u.f.action(t, "hook", "http", "post_deploy", map[string]any{"method": "GET", "url": srv.URL},
 		actionOpts{secrets: map[string]string{"secretHeaders": string(sh)}})
 	u.f.setSteps(t, u.g, step(a))
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err == nil {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err == nil {
 		t.Fatal("expected error")
 	}
 	le := u.f.lastError(t, u.g)
@@ -504,7 +517,7 @@ func TestActionNotify(t *testing.T) {
 	u.f.disp.Notify = fn
 	ch := uuid.New()
 	u.f.setSteps(t, u.g, step(u.f.action(t, "tell", "notify", "post_deploy", map[string]any{"channelId": ch})))
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err != nil {
 		t.Fatal(err)
 	}
 	if len(fn.calls) != 1 || fn.calls[0].GrantID != u.g || fn.calls[0].CertName != "web" || fn.calls[0].Phase != "post_deploy" {
@@ -513,12 +526,12 @@ func TestActionNotify(t *testing.T) {
 	// A failing channel fails the deploy; a missing notifier does too.
 	u.f.pending(t, u.g, u.ver)
 	fn.err = errors.New("channel down")
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err == nil || !strings.Contains(err.Error(), "channel down") {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err == nil || !strings.Contains(err.Error(), "channel down") {
 		t.Fatalf("err = %v", err)
 	}
 	u.f.pending(t, u.g, u.ver)
 	u.f.disp.Notify = nil
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err == nil || !strings.Contains(err.Error(), "not configured") {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err == nil || !strings.Contains(err.Error(), "not configured") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -527,7 +540,7 @@ func TestAgentActionRejectedOnServerGrant(t *testing.T) {
 	u := newStepSetup(t)
 	a := u.f.action(t, "x", "exec", "post_deploy", map[string]any{"argv": []string{"/bin/true"}})
 	u.f.setSteps(t, u.g, step(a))
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err == nil || !strings.Contains(err.Error(), "runs on an agent") {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err == nil || !strings.Contains(err.Error(), "runs on an agent") {
 		t.Fatalf("err = %v", err)
 	}
 	if len(u.sec.Calls) != 0 {
@@ -588,7 +601,7 @@ func TestPfSenseDeployNeverRestartsStepDoes(t *testing.T) {
 	u.f.reg.Register(u.sec)
 	a := u.f.action(t, "restart", "pfsense_restart", "post_deploy", map[string]any{"mode": "all"})
 	u.f.setSteps(t, u.g, step(a))
-	if err := u.f.disp.Deploy(context.Background(), u.g, u.ver); err != nil {
+	if err := u.f.deployAll(context.Background(), u.g, u.ver); err != nil {
 		t.Fatal(err)
 	}
 	if len(u.sec.Calls) != 1 || strings.Contains(string(u.sec.Calls[0].GrantOptions), "pfsenseRestart") {

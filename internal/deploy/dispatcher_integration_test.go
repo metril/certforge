@@ -48,7 +48,8 @@ func newDispatcherFixture(t *testing.T) *dispatcherFixture {
 	reg := targets.NewRegistry()
 	disp := &Dispatcher{
 		Pool: pool, Q: q, Reg: reg, Certs: certs, Box: box,
-		HTTP: func(context.Context) targets.HTTPFactory { return targets.HTTPFactory{AllowLoopback: true} },
+		HTTP:  func(context.Context) targets.HTTPFactory { return targets.HTTPFactory{AllowLoopback: true} },
+		River: &captureInserter{},
 	}
 	return &dispatcherFixture{pool: pool, q: q, certs: certs, box: box, reg: reg, disp: disp, org: dbtest.Org(t, pool)}
 }
