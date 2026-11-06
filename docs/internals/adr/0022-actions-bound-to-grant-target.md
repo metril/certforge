@@ -10,7 +10,7 @@ Device actions have no `targetId`; they run on the grant's deploy target, server
 
 Migration 00041 adds `server_post_tails`, where a server grant parks its tail until the batch job runs.
 
-Post-deploy steps whose execution does not depend on the certificate are batchable (`Kind.Batch`). A grant runs post steps inline until its first batchable step; that step and the rest form its tail. Tails of grants on one host are merged in grant-id order, sharing a batchable step by action id and keeping each grant's order. The server runs the merged tails in a `certforge_server_post_batch` job per target, scheduled about 15 s after the first deploy of a window and unique per target while pending; the agent merges within one reconcile run. A merged failure fails every contributor where the step is not optional. Exec is per certificate unless the action sets `oncePerHost`.
+Post-deploy steps whose execution does not depend on the certificate are batchable (`Kind.Batch`). A grant runs post steps inline until its first batchable step; that step and the rest form its tail. Tails of grants on one host are merged in grant-id order, sharing a batchable step by action id and keeping each grant's order. The server runs the merged tails in a `certforge_server_post_batch` job per target, unique per target and 15-second window and scheduled at the window start plus 30 s, so it runs 15–30 s after the deploys it collects; the agent merges within one reconcile run. A merged failure fails every contributor where the step is not optional. Exec is per certificate unless the action sets `oncePerHost`.
 
 ## Consequences
 - Breaking: clients must stop sending `targetId` for device actions; one action serves every grant of a target type.
