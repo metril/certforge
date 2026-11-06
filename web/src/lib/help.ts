@@ -399,6 +399,8 @@ export const help = {
   'hook.phase': { text: 'Pre-deploy runs before files are written, and a failure stops the deploy. Post-deploy runs after.' },
   'action.kind': { text: 'What the step does. Exec and restart run on an agent; every other kind runs on the server.', learnMore: 'guide/delivery.md#actions' },
   'action.phase': { text: 'Pre-deploy runs before the certificate is written, and a failure stops the deploy. Post-deploy runs after.', learnMore: 'guide/delivery.md#actions' },
+  'action.oncePerHost': { text: 'Run once per host when several certificates deploy together; the script must not rely on per-certificate variables.', learnMore: 'guide/delivery.md#actions' },
+  'action.batched': { text: 'When several grants on one host deploy together, this step runs once and is shared.', learnMore: 'guide/delivery.md#actions' },
   'action.optional': { text: 'A failure is recorded, but the deploy still succeeds.', learnMore: 'guide/delivery.md#actions' },
   'action.group': { text: 'An ordered list of actions a grant runs as one step. Groups cannot contain groups.', learnMore: 'guide/delivery.md#actions' },
   'hook.timeout': { text: 'The hook and its child processes are stopped after this long.' },

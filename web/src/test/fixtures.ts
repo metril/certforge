@@ -1163,14 +1163,14 @@ export function makeActionRun(p: Partial<ActionRun> = {}): ActionRun {
 // GET /meta/schemas `actions`: all 12 kinds (internal/actions/schemas/*.json, abridged to the fields the UI renders).
 const uuidProp = (title: string) => ({ type: 'string', format: 'uuid', title });
 const actionSchema = (properties: Record<string, unknown>, required: string[]) => ({ type: 'object', additionalProperties: false, required, properties });
-const targetKind = (code: string, name: string, targetTypes: string[], extra: Record<string, unknown> = {}, required = ['targetId']): ActionSchemaEntry => ({
-  code, name, runsOn: 'server', phaseHint: 'post_deploy', targetTypes, schema: actionSchema({ targetId: uuidProp('Target'), ...extra }, required),
+const targetKind = (code: string, name: string, targetTypes: string[], extra: Record<string, unknown> = {}, required: string[] = []): ActionSchemaEntry => ({
+  code, name, runsOn: 'server', phaseHint: 'post_deploy', targetTypes, schema: actionSchema(extra, required),
 });
 export const metaActions: ActionSchemaEntry[] = [
-  { code: 'exec', name: 'Run command (agent)', runsOn: 'agent', phaseHint: '', targetTypes: [], schema: actionSchema({ argv: { type: 'array', minItems: 1, maxItems: 64, items: { type: 'string' }, title: 'Command' } }, ['argv']) },
+  { code: 'exec', name: 'Run command (agent)', runsOn: 'agent', phaseHint: '', targetTypes: [], schema: actionSchema({ argv: { type: 'array', minItems: 1, maxItems: 64, items: { type: 'string' }, title: 'Command' }, oncePerHost: { type: 'boolean', default: false, title: 'Once per host' } }, ['argv']) },
   { code: 'restart', name: 'Restart service (agent)', runsOn: 'agent', phaseHint: 'post_deploy', targetTypes: [], schema: actionSchema({ target: { type: 'string', title: 'Target' } }, ['target']) },
-  targetKind('ssh', 'SSH command', ['ssh', 'pikvm', 'glkvm'], { command: { type: 'string', minLength: 1, maxLength: 512, title: 'Command' } }, ['targetId', 'command']),
-  targetKind('pfsense_shell', 'pfSense shell command', ['pfsense'], { command: { type: 'string', minLength: 1, maxLength: 512, title: 'Command' } }, ['targetId', 'command']),
+  targetKind('ssh', 'SSH command', ['ssh', 'pikvm', 'glkvm'], { command: { type: 'string', minLength: 1, maxLength: 512, title: 'Command' } }, ['command']),
+  targetKind('pfsense_shell', 'pfSense shell command', ['pfsense'], { command: { type: 'string', minLength: 1, maxLength: 512, title: 'Command' } }, ['command']),
   targetKind('pfsense_restart', 'Restart pfSense services', ['pfsense'], {
     mode: { type: 'string', enum: ['all', 'selected', 'none'], default: 'all', title: 'Restart' },
     services: { type: 'array', maxItems: 64, items: { type: 'string', minLength: 1, maxLength: 64 }, title: 'Services' },

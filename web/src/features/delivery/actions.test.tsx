@@ -131,20 +131,29 @@ it('creates an http action and prefills the phase from the kind hint', async () 
   await waitFor(() => expect(posted).toMatchObject({ name: 'ping', kind: 'http', phase: 'post_deploy', optional: true, config: { method: 'POST', url: 'https://hooks.example.com/x' } }));
 });
 
-it('offers only deploy targets of the types the kind accepts', async () => {
+it('has no target field for a device kind', async () => {
   const { user } = renderRoute('/o/acme/delivery/actions?edit=new');
   const sheet = await screen.findByRole('dialog', { name: 'New action' });
   await user.type(within(sheet).getByLabelText('Name'), 'reload');
   await user.click(within(sheet).getByRole('combobox', { name: 'Kind' }));
   await user.click(await screen.findByRole('option', { name: /SSH command/ }));
-  await user.click(await within(sheet).findByRole('combobox', { name: 'Target' }));
-  expect(await screen.findByRole('option', { name: /bastion/ })).toBeInTheDocument();
-  expect(screen.getByRole('option', { name: /kvm/ })).toBeInTheDocument();
-  expect(screen.queryByRole('option', { name: /edge traefik/ })).not.toBeInTheDocument();
-  await user.click(screen.getByRole('option', { name: /bastion/ }));
-  await user.type(within(sheet).getByLabelText('Command'), 'systemctl reload nginx');
+  await user.type(await within(sheet).findByLabelText('Command'), 'systemctl reload nginx');
+  expect(within(sheet).queryByRole('combobox', { name: 'Target' })).not.toBeInTheDocument();
   await user.click(within(sheet).getByRole('button', { name: 'Save' }));
-  await waitFor(() => expect(posted).toMatchObject({ kind: 'ssh', config: { targetId: T_SSH, command: 'systemctl reload nginx' } }));
+  await waitFor(() => expect(posted).toMatchObject({ kind: 'ssh', config: { command: 'systemctl reload nginx' } }));
+  expect((posted as { config: Record<string, unknown> }).config).not.toHaveProperty('targetId');
+});
+
+it('saves an exec action with the once-per-host switch and shows the badge', async () => {
+  const { user } = renderRoute('/o/acme/delivery/actions?edit=new');
+  const sheet = await screen.findByRole('dialog', { name: 'New action' });
+  await user.type(within(sheet).getByLabelText('Name'), 'sync');
+  expect(within(sheet).queryByText('Runs once per host', { selector: 'span' })).not.toBeInTheDocument();
+  await user.type(within(sheet).getByLabelText('Executable'), '/usr/bin/sync');
+  await user.click(within(sheet).getByRole('switch', { name: 'Once per host' }));
+  expect(within(sheet).getAllByText('Runs once per host').length).toBeGreaterThan(0);
+  await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(posted).toMatchObject({ kind: 'exec', config: { argv: ['/usr/bin/sync'], oncePerHost: true } }));
 });
 
 it('sends __unchanged__ for a stored secret that was not touched', async () => {

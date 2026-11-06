@@ -4,7 +4,6 @@ import { CircleAlert, ListRestart, LoaderCircle } from 'lucide-react';
 import type { AdcsProbeTemplate } from '@/api/types';
 import { orgsQuery } from '@/api/queries/orgs';
 import { channelsQuery } from '@/api/queries/channels';
-import { deployTargetsQuery } from '@/api/queries/delivery';
 import { AdcsTemplateRequirements } from '@/features/issuers/AdcsTemplateRequirements';
 import { CaBundleInput, type CaBundleScope } from '@/components/CaBundleInput';
 import { HostKeyInput, type HostKeyScope } from '@/components/HostKeyInput';
@@ -240,31 +239,7 @@ function AdcsTemplateWidget(props: WidgetProps) {
 }
 
 /** formContext.actionForm, set by the action sheet. */
-export type ActionFormContext = { orgId: string; targetTypes: string[] };
-
-// `ui:widget: 'actionTarget'` (an action kind's `targetId`): a searchable
-// select over the org's deploy targets of the types the kind accepts.
-function ActionTargetWidget({ id, value, onChange, disabled, readonly, label, registry }: WidgetProps) {
-  const ctx = (registry.formContext as { actionForm?: ActionFormContext } | undefined)?.actionForm;
-  const q = useQuery({ ...deployTargetsQuery(ctx?.orgId ?? ''), enabled: !!ctx });
-  const types = ctx?.targetTypes ?? [];
-  const targets = (q.data ?? []).filter((t) => types.length === 0 || types.includes(t.type));
-  const options: ComboOption[] = targets.map((t) => ({ value: t.id, label: t.name, hint: t.type }));
-  const current = typeof value === 'string' ? value : '';
-  if (current && !targets.some((t) => t.id === current)) options.unshift({ value: current, label: current, disabled: true, hint: 'Not an accepted target' });
-  return (
-    <Combobox
-      id={id}
-      aria-label={label}
-      value={current || undefined}
-      onChange={(v) => onChange(v ?? undefined)}
-      options={options}
-      placeholder={q.isPending ? 'Loading…' : 'Pick a deploy target'}
-      emptyText={types.length > 0 ? `No ${types.join(' or ')} target in this org.` : 'No deploy target.'}
-      disabled={disabled || readonly}
-    />
-  );
-}
+export type ActionFormContext = { orgId: string };
 
 // `ui:widget: 'channel'` (a notify action's `channelId`): the org's notification channels.
 function ChannelWidget({ id, value, onChange, disabled, readonly, label, registry }: WidgetProps) {
@@ -336,7 +311,6 @@ export const widgets: RegistryWidgetsType = {
   sshHostKey: SshHostKeyWidget,
   adcsTemplate: AdcsTemplateWidget,
   caBundle: CaBundleWidget,
-  actionTarget: ActionTargetWidget,
   channel: ChannelWidget,
   orgSelect: OrgSelectWidget,
   CheckboxWidget: SwitchWidget,

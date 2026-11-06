@@ -116,7 +116,7 @@ export function ActionsPage() {
               {actions.map((a) => (
                 <TableRow key={a.id}>
                   <TableCell className={cn('py-1.5', stickyCol)}>
-                    <PrimaryCell primary={a.name} meta={a.optional ? ['Optional'] : []} />
+                    <PrimaryCell primary={a.name} meta={[...(a.optional ? ['Optional'] : []), ...(a.batched ? ['Runs once per host'] : [])]} />
                   </TableCell>
                   <TableCell className="py-1 text-sm">{kindName.get(a.kind) ?? a.kind}</TableCell>
                   <TableCell className="py-1">
