@@ -497,8 +497,8 @@ const quickAddCase = (type: string, actions: unknown[]) => {
   return { created, ...view };
 };
 
-it('Add restart step reuses an existing action for this target', async () => {
-  const act = makeAction({ id: 'a-r', name: 'kvm restart', kind: 'pikvm_restart', runsOn: 'server', config: { targetId: 't-r', service: 'kvmd-nginx' } } as never);
+it('Add restart step reuses an existing action of that kind', async () => {
+  const act = makeAction({ id: 'a-r', name: 'kvm restart', kind: 'pikvm_restart', runsOn: 'server', config: { service: 'kvmd-nginx' } } as never);
   const { created, user } = quickAddCase('pikvm', [act]);
   await user.click(await screen.findByRole('button', { name: 'Add restart step' }));
   await screen.findByText('kvm restart');
@@ -506,11 +506,11 @@ it('Add restart step reuses an existing action for this target', async () => {
   expect(screen.queryByText(HINT)).not.toBeInTheDocument();
 });
 
-it('Add restart step creates the action when none matches, then clears the hint', async () => {
-  const other = makeAction({ id: 'a-o', name: 'other kvm', kind: 'glkvm_restart', runsOn: 'server', config: { targetId: 'elsewhere' } } as never);
+it('Add restart step creates the action when none of that kind exists, then clears the hint', async () => {
+  const other = makeAction({ id: 'a-o', name: 'other kvm', kind: 'pikvm_restart', runsOn: 'server', config: {} } as never);
   const { created, user } = quickAddCase('glkvm', [other]);
   await user.click(await screen.findByRole('button', { name: 'Add restart step' }));
-  await waitFor(() => expect(created).toEqual([expect.objectContaining({ name: 'Restart nginx on dev', kind: 'glkvm_restart', phase: 'post_deploy', config: { targetId: 't-r' } })]));
+  await waitFor(() => expect(created).toEqual([expect.objectContaining({ name: 'Restart nginx on dev', kind: 'glkvm_restart', phase: 'post_deploy', config: {} })]));
   await screen.findByText('Restart nginx on dev');
   expect(screen.queryByText(HINT)).not.toBeInTheDocument();
 });

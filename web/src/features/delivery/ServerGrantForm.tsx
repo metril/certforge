@@ -57,9 +57,9 @@ export function ServerGrantForm({ orgId, orgSlug, targetId, editing, onBack, onD
     if (!target || !restartKind) return;
     setAddingRestart(true);
     try {
-      let id = (actionsQ.data ?? []).find((a) => a.kind === restartKind && (a.config as { targetId?: string }).targetId === targetId)?.id;
+      let id = (actionsQ.data ?? []).find((a) => a.kind === restartKind)?.id;
       if (!id) {
-        const body: ActionInput = { name: `Restart nginx on ${target.name}`, kind: restartKind, phase: 'post_deploy', config: restartKind === 'pikvm_restart' ? { targetId, service: 'kvmd-nginx' } : { targetId }, timeoutSeconds: 60, optional: false };
+        const body: ActionInput = { name: `Restart nginx on ${target.name}`, kind: restartKind, phase: 'post_deploy', config: restartKind === 'pikvm_restart' ? { service: 'kvmd-nginx' } : {}, timeoutSeconds: 60, optional: false };
         id = (await createAction(orgId, body)).id;
         await invalidateActions(qc, orgId);
       }
