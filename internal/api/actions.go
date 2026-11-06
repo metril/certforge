@@ -65,14 +65,18 @@ func actionOut(a sqlcgen.Action, grants int, secretKeys []string) gen.Action {
 	cfg := map[string]interface{}{}
 	_ = json.Unmarshal(a.Config, &cfg)
 	runsOn := gen.RunsOn("server")
-	if k, ok := actions.Default.Get(a.Kind); ok && k.RunsOn() == targets.Agent {
-		runsOn = "agent"
+	batched := false
+	if k, ok := actions.Default.Get(a.Kind); ok {
+		if k.RunsOn() == targets.Agent {
+			runsOn = "agent"
+		}
+		batched = k.Batch(a.Config)
 	}
 	if secretKeys == nil {
 		secretKeys = []string{}
 	}
 	return gen.Action{Id: a.ID, OrgId: a.OrgID, Name: a.Name, Kind: gen.ActionKind(a.Kind), Phase: gen.ActionPhase(a.Phase), RunsOn: runsOn,
-		Config: cfg, SecretKeys: secretKeys, TimeoutSeconds: int(a.TimeoutSeconds), Optional: a.Optional, GrantCount: grants,
+		Config: cfg, SecretKeys: secretKeys, TimeoutSeconds: int(a.TimeoutSeconds), Optional: a.Optional, Batched: &batched, GrantCount: grants,
 		CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt}
 }
 

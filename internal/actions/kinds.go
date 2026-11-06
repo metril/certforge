@@ -44,6 +44,10 @@ type Kind interface {
 	TargetTypes() []string
 	// PhaseHint is the phase the UI suggests: "post_deploy", or "" for none.
 	PhaseHint() string
+	// Batch reports whether an action of this kind with config cfg does not
+	// depend on the certificate, so identical steps of grants on one host may
+	// run once for all of them.
+	Batch(cfg json.RawMessage) bool
 	// Parse validates a config and splits it into public and secret parts.
 	Parse(raw json.RawMessage) (Config, error)
 }
@@ -54,6 +58,7 @@ type kind struct {
 	types            []string
 	schema           json.RawMessage
 	secrets          []string
+	batch            func(cfg json.RawMessage) bool
 	validate         func(m map[string]json.RawMessage, raw json.RawMessage) error
 }
 
@@ -63,6 +68,13 @@ func (k *kind) RunsOn() targets.Mode    { return k.runsOn }
 func (k *kind) Schema() json.RawMessage { return k.schema }
 func (k *kind) TargetTypes() []string   { return k.types }
 func (k *kind) PhaseHint() string       { return k.hint }
+
+func (k *kind) Batch(cfg json.RawMessage) bool {
+	if k.batch == nil {
+		return false
+	}
+	return k.batch(cfg)
+}
 
 func (k *kind) Parse(raw json.RawMessage) (Config, error) {
 	var m map[string]json.RawMessage
@@ -198,10 +210,16 @@ func newDefault() *Registry {
 			schema: load(code), secrets: secrets, validate: validate})
 	}
 	const post = "post_deploy"
+	always := func(json.RawMessage) bool { return true }
+	setBatch := func(code string, f func(json.RawMessage) bool) {
+		k, _ := r.Get(code)
+		k.(*kind).batch = f
+	}
 
 	add("exec", "Run command", "", targets.Agent, nil, nil, func(_ map[string]json.RawMessage, raw json.RawMessage) error {
 		var c struct {
-			Argv []string `json:"argv"`
+			Argv        []string `json:"argv"`
+			OncePerHost bool     `json:"oncePerHost"`
 		}
 		if err := decode(raw, &c); err != nil {
 			return err
@@ -369,6 +387,33 @@ func newDefault() *Registry {
 			return fe("seconds", "seconds is 1 to 300")
 		}
 		return nil
+	})
+	for _, c := range []string{"ssh", "pfsense_shell", "pikvm_restart", "glkvm_restart", "truenas_restart", "wait", "restart"} {
+		setBatch(c, always)
+	}
+	// An exec runs once per host only when it opts in.
+	setBatch("exec", func(cfg json.RawMessage) bool {
+		var c struct {
+			OncePerHost bool `json:"oncePerHost"`
+		}
+		return json.Unmarshal(cfg, &c) == nil && c.OncePerHost
+	})
+	// An http request is batchable unless it expands certificate placeholders.
+	setBatch("http", func(cfg json.RawMessage) bool {
+		var c struct {
+			URL     string            `json:"url"`
+			Headers map[string]string `json:"headers"`
+			Body    string            `json:"body"`
+		}
+		if json.Unmarshal(cfg, &c) != nil || HasPlaceholder(c.URL) || HasPlaceholder(c.Body) {
+			return false
+		}
+		for k, v := range c.Headers {
+			if HasPlaceholder(k) || HasPlaceholder(v) {
+				return false
+			}
+		}
+		return true
 	})
 	return r
 }

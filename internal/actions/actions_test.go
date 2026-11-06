@@ -244,3 +244,42 @@ func TestExpandTemplate(t *testing.T) {
 		t.Errorf("rescanned: %q", got)
 	}
 }
+
+func TestHasPlaceholder(t *testing.T) {
+	for s, want := range map[string]bool{"{{cert.name}}": true, "x{{cert.notAfter}}": true, "{{grant.id}}": true, "{{other}}": false, "": false} {
+		if got := HasPlaceholder(s); got != want {
+			t.Errorf("%q = %v", s, got)
+		}
+	}
+}
+
+func TestKindBatch(t *testing.T) {
+	for _, c := range []struct {
+		kind, cfg string
+		want      bool
+	}{
+		{"wait", `{"seconds":1}`, true},
+		{"ssh", `{"command":"x {{cert.name}}"}`, true},
+		{"pikvm_restart", `{}`, true},
+		{"restart", `{"target":"nginx"}`, true},
+		{"http", `{"method":"GET","url":"https://a/b"}`, true},
+		{"http", `{"method":"GET","url":"https://a/{{cert.name}}"}`, false},
+		{"http", `{"method":"POST","url":"https://a","body":"{{grant.id}}"}`, false},
+		{"http", `{"method":"GET","url":"https://a","headers":{"X":"{{cert.fingerprint}}"}}`, false},
+		{"notify", `{}`, false},
+		{"verify_tls", `{}`, false},
+		{"pfsense_restart", `{}`, false},
+		{"routeros_restart", `{}`, false},
+		{"exec", `{"argv":["/bin/true"]}`, false},
+		{"exec", `{"argv":["/bin/true"],"oncePerHost":true}`, true},
+		{"exec", `{"argv":["/bin/true"],"oncePerHost":false}`, false},
+	} {
+		k, ok := Default.Get(c.kind)
+		if !ok {
+			t.Fatal(c.kind)
+		}
+		if got := k.Batch(json.RawMessage(c.cfg)); got != c.want {
+			t.Errorf("%s %s = %v, want %v", c.kind, c.cfg, got, c.want)
+		}
+	}
+}
