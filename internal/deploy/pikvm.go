@@ -19,7 +19,7 @@ const TypePiKVM = "pikvm"
 
 const pikvmSchema = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "PiKVM / GL.iNet Comet",
+  "title": "PiKVM",
   "description": "Writes kvmd's nginx certificate and key over SSH. The writes are wrapped in rw/ro (root filesystem read-write, then read-only). A pikvm_restart action restarts kvmd-nginx. Log in as root. Runs on the server.",
   "credentialKinds": ["ssh", "password"],
   "type": "object",
@@ -57,7 +57,7 @@ type PiKVM struct{}
 func (PiKVM) Type() string { return TypePiKVM }
 
 // Name implements targets.Target.
-func (PiKVM) Name() string { return "PiKVM / GL.iNet Comet" }
+func (PiKVM) Name() string { return "PiKVM" }
 
 // Schema implements targets.Target.
 func (PiKVM) Schema() json.RawMessage { return json.RawMessage(pikvmSchema) }

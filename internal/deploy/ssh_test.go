@@ -245,7 +245,7 @@ func TestSSHRecordsCommands(t *testing.T) {
 // credential kinds, and the keywords are the ones the design assigns.
 func TestCredentialKinds(t *testing.T) {
 	want := map[string][]string{
-		"ssh": {"ssh", "password"}, "pikvm": {"ssh", "password"}, "pfsense": {"password"}, "routeros": {"password"},
+		"ssh": {"ssh", "password"}, "pikvm": {"ssh", "password"}, "glkvm": {"ssh", "password"}, "pfsense": {"password"}, "routeros": {"password"},
 		"truenas": {"apiKey"}, "authentik": {"token"},
 	}
 	known := map[string]bool{}
@@ -259,6 +259,8 @@ func TestCredentialKinds(t *testing.T) {
 			tg = SSH{}
 		case "pikvm":
 			tg = PiKVM{}
+		case "glkvm":
+			tg = GLKVM{}
 		case "pfsense":
 			tg = PfSense{}
 		case "routeros":
