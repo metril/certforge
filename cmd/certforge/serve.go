@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
@@ -163,6 +164,24 @@ func runServe(ctx context.Context, _ []string, _ io.Writer) error {
 	monitorSvc := &monitor.Service{Store: &monitor.Store{Pool: pool, Q: q}, Emitter: notifyEmitter, Settings: store}
 	issuanceStore := issuance.NewStore(pool, box, store)
 	issuanceStore.SetVault(vaultProvider)
+	// lego's zone lookup reads one package-global nameserver list; point it
+	// once at a loopback forwarder that applies the issuance resolvers.
+	zoneAddr, err := challenge.StartZoneForwarder(ctx)
+	if err != nil {
+		return fmt.Errorf("zone forwarder: %w", err)
+	}
+	if err := dns01.AddRecursiveNameservers([]string{zoneAddr})(nil); err != nil {
+		return fmt.Errorf("zone forwarder: %w", err)
+	}
+	challenge.SetDefaultResolvers(func() []string {
+		c, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		d, err := issuanceStore.GlobalDefaults(c)
+		if err != nil || d.Resolvers == nil {
+			return nil
+		}
+		return *d.Resolvers
+	})
 	// An AD CS CA's web services follow the notifier URL policy: loopback
 	// only when the notifications allowLoopbackUrls setting says so.
 	issuanceStore.SetADCSLoopback(func(ctx context.Context) bool {
