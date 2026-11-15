@@ -114,7 +114,7 @@ CertForge places every DNS TXT record first, validates every name, then removes 
 | **Served by** | **Server** or **Agent** (HTTP only). | **Server** |
 | **Webroot** | Directory the agent writes tokens to (HTTP via agent). | none |
 | **Propagation** | Seconds to wait for the TXT record (DNS, Manual). | provider default |
-| **Resolvers** | DNS servers for the propagation check: `host[:port]` or a DoH URL. Up to 10. | system resolvers |
+| **Resolvers** | DNS servers for the propagation check, the zone lookup and the CNAME follow: `host[:port]` or a DoH URL. Up to 10. | system resolvers |
 | **CNAME alias zone** | Zone the CNAME points into (DNS). | none |
 
 ## Common problems
@@ -126,6 +126,8 @@ CertForge places every DNS TXT record first, validates every name, then removes 
 **"no verification rule matches <name> and no catch-all rule is configured".** Add a rule for the name, or a `*` catch-all in the defaults.
 
 **The CA says the TXT record is missing (`dns`, `incorrectResponse`).** The record had not propagated. Raise **Propagation**, check **Resolvers**, or use a [DoH resolver](certificates.md#defaults-and-overrides) if your network intercepts port 53. Stale records at the same name can also cause it.
+
+**"failed to find zone ... zone could not be found".** The zone lookup uses the effective **Resolvers** too. Set resolvers that can see the public zone (for example a DoH resolver) when the system resolver serves a LAN-only sub-zone.
 
 **The test works but the CA cannot see the record.** The CA queries the zone's authoritative servers. Check for split-horizon DNS and CNAMEs.
 

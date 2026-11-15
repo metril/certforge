@@ -300,6 +300,7 @@ func (w *IssueWorker) run(ctx context.Context, cert Certificate, attemptID uuid.
 	if err != nil {
 		return nil, eff, err
 	}
+	defer router.Close()
 	replaces := w.replacesCert(ctx, cert, eff, ca, tl)
 	req := signer.IssueRequest{Names: cert.Names(), KeyType: eff.KeyType.Value, PreferredChain: eff.PreferredChain.Value,
 		MustStaple: eff.MustStaple.Value, Account: material, Challenge: router, Replaces: replaces,
@@ -689,7 +690,11 @@ func (w *IssueWorker) buildRouter(ctx context.Context, cert Certificate, eff Eff
 			Timeout: time.Duration(secs) * time.Second, AliasZone: sp.CNAMEAliasZone, Label: label})
 	}
 	r := challenge.NewRouter(ctx, cert.Names(), rules, tl)
-	return r, manual, r.Validate()
+	if err := r.Validate(); err != nil {
+		r.Close()
+		return r, manual, err
+	}
+	return r, manual, nil
 }
 
 func (w *IssueWorker) succeed(ctx context.Context, cert Certificate, attemptID uuid.UUID, tl *Timeline, iss *signer.Issued, eff Effective, start time.Time) error {
