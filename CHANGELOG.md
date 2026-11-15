@@ -2,6 +2,16 @@
 
 All notable changes to CertForge are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Releases from here on are cut and written by [release-please](https://github.com/googleapis/release-please) from commit messages on `main`; see docs/development.md#releases. Everything below "Pre-release history" predates that and was written by hand.
 
+## [0.44.1](https://github.com/metril/certforge/compare/v0.44.0...v0.44.1) (2026-11-15)
+
+
+### Bug Fixes
+
+* **challenge:** apply configured resolvers to the dns-01 zone lookup ([55b7377](https://github.com/metril/certforge/commit/55b737709f3c251b51c13bceffbdddc80dd36ec9))
+* **challenge:** apply configured resolvers to the dns-01 zone lookup ([4e37ca8](https://github.com/metril/certforge/commit/4e37ca8cac569b5893c6f5b1d5c40e664b558042))
+* **deps:** bump Go to 1.26.11 for GO-2026-6859 ([e831b4a](https://github.com/metril/certforge/commit/e831b4ad021e19e92b6bd96d9124d24cdac2f1f8))
+* **deps:** bump Go to 1.26.11 for GO-2026-6859 ([47e19bc](https://github.com/metril/certforge/commit/47e19bcc6631cff4a9934ca7a36ef0ac25115a06))
+
 ## [0.44.0](https://github.com/metril/certforge/compare/v0.43.1...v0.44.0) (2026-11-06)
 
 
