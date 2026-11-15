@@ -146,7 +146,7 @@ The sections are `general`, `authentication`, `issuance_defaults`, `issuance`, `
 | **Reuse key** (`reuseKey`) | off | – | Keep the private key across renewals. |
 | **Must-Staple** (`mustStaple`) | off | – | Request the OCSP must-staple extension. |
 | **Propagation timeout** (`propagationSeconds`) | provider default | 0–3600 | How long DNS-01 waits for TXT records. `0` or unset uses each DNS provider's own default. |
-| **Resolvers** (`resolvers`) | system | `host` or `host:port` | Resolvers used for propagation checks. |
+| **Resolvers** (`resolvers`) | system | `host` or `host:port` | Resolvers used for propagation checks and the zone lookup (including the CNAME follow). |
 | **Catch-all verification rules** (`verificationRules`) | none | – | How names are validated. A lower level's list replaces the higher level's list entirely. Each rule: `match`, `method` (`dns-01` or `manual-dns`), optional `dnsCredentialId`, `propagationSeconds` (0–3600), `resolvers`, `cnameAliasZone`. |
 
 ### Issuance

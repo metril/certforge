@@ -45,7 +45,7 @@ Every issuance field exists at three levels: global (**Settings → Issuance def
 | **Reuse key** | off | Keeps the private key across renewals. |
 | **Must-Staple** | off | Adds the OCSP must-staple extension. ACME CAs only. |
 | **Propagation wait** | provider default | Seconds to wait for DNS records, 0 to 3600. |
-| **Resolvers** | system resolvers | DNS servers for propagation checks: `host`, `host:port` or a DoH URL such as `https://cloudflare-dns.com/dns-query`. Use DoH on networks that intercept port 53. |
+| **Resolvers** | system resolvers | DNS servers for propagation checks, the zone lookup and the CNAME follow: `host`, `host:port` or a DoH URL such as `https://cloudflare-dns.com/dns-query`. Use DoH on networks that intercept port 53. If overlapping issuances run at the same time with different resolvers, the zone lookup falls back to the global resolvers (then the system ones). |
 | **Verification rules** | none | Catch-all rules appended after a certificate's own. The closest level that sets them replaces the rest; lists never merge. |
 
 Unset **Propagation wait** lets each DNS credential's provider decide, so a provider's own timeout setting takes effect. Limits: at most 50 verification rules and 10 resolvers per list. The server rejects a save over a limit with 422, but a list that already exceeds it keeps working until you edit that list.

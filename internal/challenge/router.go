@@ -55,10 +55,12 @@ type Router struct {
 	budgetStart map[string]time.Time // name -> when its per-name propagation budget started
 	refused     bool                 // a propagation check reported "returned REFUSED"
 	usedResolv  bool                 // CheckTXT ran against configured resolvers
+	release     func()               // drops the zone-forwarder registration
 }
 
 const (
 	hintRefused  = "network appears to intercept DNS; set Settings → Issuance → Resolvers (e.g. https://cloudflare-dns.com/dns-query)"
+	hintZone     = "the zone lookup could not find the zone; it uses the effective Resolvers (Settings → Issuance → Resolvers), so check that they can see the public zone (e.g. https://cloudflare-dns.com/dns-query)"
 	hintNegCache = "resolver may be caching a negative answer; use DoH resolvers or raise Propagation wait"
 )
 
@@ -75,6 +77,8 @@ func (r *Router) Hint(err error) string {
 	switch {
 	case refused || strings.Contains(msg, "returned REFUSED"):
 		return hintRefused
+	case strings.Contains(msg, "failed to find zone") || strings.Contains(msg, "zone could not be found"):
+		return hintZone
 	case used && (strings.Contains(msg, "time limit exceeded") || errors.Is(err, ErrPropagationTimeout)):
 		return hintNegCache
 	}
@@ -100,7 +104,40 @@ func NewRouter(ctx context.Context, names []string, rules []Rule, sink StepSink)
 	for i, n := range names {
 		ns[i] = normalize(n)
 	}
-	return &Router{ctx: ctx, names: ns, rules: slices.Clone(rules), sink: sink, now: time.Now}
+	r := &Router{ctx: ctx, names: ns, rules: slices.Clone(rules), sink: sink, now: time.Now}
+	r.registerZones()
+	return r
+}
+
+// registerZones points the zone forwarder at each dns-01 rule's resolvers
+// for the names that rule serves, so lego's zone lookup and CNAME follow use
+// them too.
+func (r *Router) registerZones() {
+	var releases []func()
+	for _, n := range r.names {
+		rule, ok := r.ruleFor(n)
+		if !ok || len(rule.Resolvers) == 0 || ruleType(rule.Provider) != DNS01 {
+			continue
+		}
+		releases = append(releases, RegisterZone([]string{n}, rule.Resolvers))
+	}
+	r.release = func() {
+		for _, f := range releases {
+			f()
+		}
+	}
+}
+
+// Close releases the router's zone-forwarder registrations. Safe to call
+// more than once.
+func (r *Router) Close() {
+	r.mu.Lock()
+	f := r.release
+	r.release = nil
+	r.mu.Unlock()
+	if f != nil {
+		f()
+	}
 }
 
 // Validate fails when a name is an IP address, or no rule matches it: for a

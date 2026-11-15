@@ -20,33 +20,12 @@ import (
 // the CA name resolvers, because lego v4's dns01.AddRecursiveNameservers sets
 // a package-global and would leak between concurrent issuances.
 func CheckTXT(ctx context.Context, resolvers []string, fqdn, value string) (bool, error) {
-	c := &dns.Client{Timeout: 5 * time.Second}
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(fqdn), dns.TypeTXT)
 	m.RecursionDesired = true
 	m.SetEdns0(4096, false)
 	for _, r := range resolvers {
-		if IsDoH(r) {
-			in, err := queryDoH(ctx, r, m)
-			if err != nil {
-				return false, fmt.Errorf("query %s at %s: %w", fqdn, r, err)
-			}
-			if err := rcodeErr(r, fqdn, in); err != nil {
-				return false, err
-			}
-			if !hasTXT(in, value) {
-				return false, nil
-			}
-			continue
-		}
-		addr := r
-		if _, _, err := net.SplitHostPort(r); err != nil {
-			addr = net.JoinHostPort(r, "53")
-		}
-		in, _, err := c.ExchangeContext(ctx, m, addr)
-		if err == nil && in.Truncated {
-			in, _, err = (&dns.Client{Net: "tcp", Timeout: 5 * time.Second}).ExchangeContext(ctx, m, addr)
-		}
+		in, addr, err := exchange(ctx, r, m)
 		if err != nil {
 			return false, fmt.Errorf("query %s at %s: %w", fqdn, addr, err)
 		}
@@ -58,6 +37,25 @@ func CheckTXT(ctx context.Context, resolvers []string, fqdn, value string) (bool
 		}
 	}
 	return true, nil
+}
+
+// exchange sends m to one resolver entry (DoH URL, host or host:port),
+// retrying over TCP when a plain UDP answer is truncated. It returns the
+// address actually queried, for error messages.
+func exchange(ctx context.Context, resolver string, m *dns.Msg) (*dns.Msg, string, error) {
+	if IsDoH(resolver) {
+		in, err := queryDoH(ctx, resolver, m)
+		return in, resolver, err
+	}
+	addr := resolver
+	if _, _, err := net.SplitHostPort(resolver); err != nil {
+		addr = net.JoinHostPort(resolver, "53")
+	}
+	in, _, err := (&dns.Client{Timeout: 5 * time.Second}).ExchangeContext(ctx, m, addr)
+	if err == nil && in.Truncated {
+		in, _, err = (&dns.Client{Net: "tcp", Timeout: 5 * time.Second}).ExchangeContext(ctx, m, addr)
+	}
+	return in, addr, err
 }
 
 // rcodeErr turns a failure rcode (REFUSED, SERVFAIL, ...) into an error
@@ -130,21 +128,17 @@ func queryDoH(ctx context.Context, endpoint string, m *dns.Msg) (*dns.Msg, error
 // CheckTXTAuthoritative reports whether every authoritative nameserver of
 // fqdn's zone answers value among its TXT records, asking each one directly
 // (no recursion), like lego's default propagation check. lego v4 exposes no
-// public entry point for that check, so this mirrors it using the system
-// resolvers to find the zone and its nameservers.
+// public entry point for that check, so this mirrors it using the zone
+// forwarder (or the system resolvers) to find the zone and its nameservers.
 func CheckTXTAuthoritative(ctx context.Context, fqdn, value string) (bool, error) {
 	fqdn = dns.Fqdn(fqdn)
 	zone, err := dns01.FindZoneByFqdn(fqdn)
 	if err != nil {
 		return false, err
 	}
-	cfg, err := dns.ClientConfigFromFile("/etc/resolv.conf")
+	nss, err := nameserverList()
 	if err != nil {
-		return false, fmt.Errorf("read /etc/resolv.conf: %w", err)
-	}
-	var nss []string
-	for _, s := range cfg.Servers {
-		nss = append(nss, net.JoinHostPort(s, cfg.Port))
+		return false, err
 	}
 	nsq := new(dns.Msg)
 	nsq.SetQuestion(zone, dns.TypeNS)
